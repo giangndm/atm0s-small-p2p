@@ -2308,3 +2308,31 @@ audited code.
   - Failure summary: a single heartbeat with 1,025 channel entries updates
     1,025 channel states for one remote peer, exceeding the test cap of 1,024
     channels.
+
+### ISSUE-107: Pubsub RPC method names have no service-level length cap
+
+- Category: high-load stability, input validation
+- Reviewer: `Gibbs the 2nd`, confirmed.
+- Affected code:
+  - `src/service/pubsub_service.rs`: `PubsubMessage::GuestPublishRpc`,
+    `PublishRpc`, `GuestFeedbackRpc`, and `FeedbackRpc` each carry a `String`
+    method name with no semantic length bound.
+  - `src/service/pubsub_service.rs`: `PubsubService::on_service` deserializes
+    inbound pubsub RPC messages from unicast or broadcast payloads.
+  - `src/service/pubsub_service.rs`: inbound RPC method names are cloned and
+    forwarded unchanged to local `SubscriberEvent` or `PublisherEvent`
+    handlers.
+- Impact: a peer can send a pubsub RPC with an oversized method name and force
+  the receiver to deserialize and deliver that method string to application
+  handlers. Outer framing may still limit total message bytes, but the pubsub
+  service has no method-name cap, truncation, validation, or rejection path.
+  This is distinct from ISSUE-024's lower-level peer frame-size cap gap,
+  ISSUE-039/048's pubsub membership authorization bypasses, ISSUE-043's pending
+  RPC request retention, ISSUE-074/075's stale local requester issues,
+  ISSUE-100's remote membership growth, and ISSUE-104/105/106's row and batch
+  cap issues.
+- Evidence test:
+  - `cargo test pubsub_rpc_methods_must_be_bounded -- --nocapture`
+  - Failure summary: a remote `PublishRpc` with a 1,025-byte method name is
+    delivered unchanged to the local subscriber, exceeding the test cap of
+    1,024 bytes.

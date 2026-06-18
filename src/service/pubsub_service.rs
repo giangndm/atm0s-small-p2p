@@ -811,6 +811,31 @@ mod test {
     }
 
     #[tokio::test]
+    async fn pubsub_rpc_methods_must_be_bounded() {
+        const MAX_METHOD_LEN: usize = 1024;
+        let mut service = test_service();
+        let channel = PubsubChannelId(1);
+        let from_peer = PeerId::from(2);
+        let (sub_tx, mut sub_rx) = unbounded_channel();
+
+        service
+            .on_internal(InternalMsg::SubscriberCreated(SubscriberLocalId::rand(), channel, sub_tx))
+            .await
+            .expect("subscriber should be registered");
+
+        let oversized_method = "m".repeat(MAX_METHOD_LEN + 1);
+        let payload = bincode::serialize(&PubsubMessage::PublishRpc(channel, vec![1], RpcId::rand(), oversized_method)).expect("test RPC should serialize");
+
+        service.on_service(P2pServiceEvent::Unicast(from_peer, payload)).await.expect("publish RPC should be processed");
+
+        let event = sub_rx.try_recv().expect("subscriber should receive publish RPC");
+        match event {
+            SubscriberEvent::PublishRpc(_, _, method, PeerSrc::Remote(_)) => assert!(method.len() <= MAX_METHOD_LEN, "pubsub RPC method names must be bounded, got {} bytes", method.len()),
+            other => panic!("expected PublishRpc event, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
     async fn pubsub_guest_object_publish_must_return_error_on_serialize_failure() {
         let requester = test_service().requester();
 
