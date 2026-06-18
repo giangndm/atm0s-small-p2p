@@ -1301,6 +1301,30 @@ mod tests {
     }
 
     #[test]
+    fn ignored_rpc_response_must_not_refresh_remote_activity() {
+        let stale = Instant::now() - Duration::from_secs(11);
+        let mut remote: RemoteStore<u16, u16, u16> = RemoteStore {
+            ctx: StateCtx {
+                remote: 1,
+                slots: BTreeMap::from([(7, Slot::new(70, Version(1)))]),
+                outs: VecDeque::new(),
+                next_state: None,
+            },
+            state: RemoteStoreState::Working(WorkingState::new(Version(1))),
+            last_active: stale,
+        };
+
+        remote.on_rpc_res(RpcRes::FetchSnapshot(None, Version(99)));
+
+        assert_eq!(
+            remote.last_active(),
+            stale,
+            "ignored or unsolicited RPC responses must not refresh remote activity and prevent timeout cleanup"
+        );
+        assert_eq!(remote.pop_out(), None, "ignored RPC responses must not emit local events");
+    }
+
+    #[test]
     fn working_state_must_reject_duplicate_fetch_changed_versions() {
         let mut ctx: StateCtx<u16, u16, u16> = StateCtx {
             remote: 1,

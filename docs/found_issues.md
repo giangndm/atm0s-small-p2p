@@ -3357,3 +3357,32 @@ must resolve.
     control stream while `main_rx` is dropped; the spawned incoming peer task
     panics at `src/peer.rs:62` with `should send to main: SendError`, and the
     panic hook records the background panic.
+
+### ISSUE-140: Ignored replicated-KV RPC responses refresh stale remote activity
+
+- Category: stability, resource cleanup, bad-network resilience
+- Score: 55/100
+- Reviewer: `Helmholtz the 2nd`, confirmed.
+- Affected code:
+  - `src/service/replicate_kv_service/remote_storage.rs`:
+    `RemoteStore::on_rpc_res` updates `last_active` before dispatching the
+    response to the current state.
+  - `src/service/replicate_kv_service/remote_storage.rs`:
+    `WorkingState::on_rpc_res` ignores `RpcRes::FetchSnapshot` responses, so
+    an unsolicited or stale snapshot response can refresh activity without any
+    accepted state transition or output.
+  - `src/service/replicate_kv_service.rs`: remote cleanup depends on
+    `remote.last_active().elapsed() < REMOTE_TIMEOUT_MS`.
+- Impact: stale remote replicated-KV stores can be kept alive by ignored RPC
+  response traffic. Under bad network replay, delayed packets, or adversarial
+  unsolicited responses, timeout cleanup can be prevented even though the
+  remote made no valid progress. This is distinct from ISSUE-045, which covers
+  unbounded remote-store creation; ISSUE-086/087, which cover unsolicited
+  `FetchChanged` responses mutating state or forcing resync; and ISSUE-131/138,
+  which cover snapshot page size and version-contract issues.
+- Evidence test:
+  - `cargo test ignored_rpc_response_must_not_refresh_remote_activity`
+  - Failure summary: a stale `WorkingState` remote receives an ignored
+    `RpcRes::FetchSnapshot(None, Version(99))`; no output is produced, but
+    `last_active` changes from the stale instant to `Instant::now()`, preventing
+    timeout cleanup from recognizing the remote as inactive.
