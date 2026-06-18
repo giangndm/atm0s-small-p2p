@@ -1001,7 +1001,7 @@ audited code.
 ### ISSUE-053: Inbound out-of-range service ids kill peer connection tasks
 
 - Category: security, bad-network stability
-- Reviewer: `Codex`, confirmed by source inspection and failing inbound test.
+- Reviewer: `Hooke`, confirmed.
 - Affected code:
   - `src/msg.rs`: `P2pServiceId` is deserialized from the wire as a `u16`,
     including values outside the 256-slot service table.
@@ -1024,8 +1024,7 @@ audited code.
 ### ISSUE-054: Zero network tick interval panics node construction
 
 - Category: correctness, configuration stability
-- Reviewer: `Codex`, confirmed by source inspection and failing constructor
-  test.
+- Reviewer: `Hooke`, confirmed.
 - Affected code:
   - `src/lib.rs`: `P2pNetwork::new` passes `cfg.tick_ms` directly to
     `tokio::time::interval(Duration::from_millis(cfg.tick_ms))`.
@@ -1043,8 +1042,7 @@ audited code.
 ### ISSUE-055: Discovery advertisements can duplicate configured seed ids
 
 - Category: correctness, seed stability
-- Reviewer: `Codex`, confirmed by source inspection and failing discovery
-  test.
+- Reviewer: `Hooke`, confirmed.
 - Affected code:
   - `src/discovery.rs`: `PeerDiscovery::apply_sync` accepts remote
     advertisements for peers that are already configured as seeds.
