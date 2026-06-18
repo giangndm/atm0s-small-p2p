@@ -1671,3 +1671,29 @@ audited code.
     with `publish=false` and `subscribe=false` does not produce
     `SubscriberEvent::PeerLeaved(PeerSrc::Remote(node2))`; the test times out
     waiting for the leave event.
+
+### ISSUE-081: Replicated KV full sync accepts an initial empty snapshot as nonzero complete state
+
+- Category: correctness, security
+- Reviewer: `Turing`, confirmed.
+- Affected code:
+  - `src/service/replicate_kv_service/remote_storage.rs`:
+    `SyncFullState::on_rpc_res` accepts
+    `RpcRes::FetchSnapshot(Some(snapshot), version)` without rejecting an empty
+    initial page.
+  - `src/service/replicate_kv_service/remote_storage.rs`: when
+    `snapshot.next_key` is `None`, the state transitions to
+    `WorkingState::new(version)` even if `snapshot.slots` is empty and
+    `version` is nonzero.
+- Impact: a malicious or malformed peer can claim full sync completed at a
+  nonzero version while providing no snapshot data. The receiver then believes
+  it is synchronized at that version with an empty remote store, causing silent
+  data loss until later repairs happen to expose the gap. This is distinct from
+  ISSUE-038, which covers empty continuation pages with `next_key`, and
+  ISSUE-059, which covers `None` as a fake continuation response.
+- Evidence test:
+  - `cargo test full_sync_must_reject_initial_empty_snapshot_with_nonzero_version -- --nocapture`
+  - Failure summary: an initial
+    `RpcRes::FetchSnapshot(Some(SnapshotData { slots: vec![], next_key: None, ... }), Version(1))`
+    sets `ctx.next_state` to `Working(Version(1))`; expected the invalid empty
+    nonzero snapshot to be rejected.
