@@ -955,3 +955,25 @@ audited code.
   - Failure summary: a full synthetic peer control channel makes
     `SharedCtx::send_unicast` exceed the 50 ms timeout instead of failing fast
     or using the nonblocking unicast path.
+
+### ISSUE-051: Legitimate PeerStopped leaves stopped neighbour connected
+
+- Category: correctness, graceful-shutdown stability
+- Reviewer: `Anscombe`, confirmed.
+- Affected code:
+  - `src/lib.rs`: `P2pNetwork::process_internal` handles
+    `MainEvent::PeerStopped(conn, peer)` by removing discovery and router
+    state only.
+  - `src/lib.rs`: the same branch does not remove the `conn` from
+    `NetworkNeighbours` or unregister the shared connection context.
+  - `src/lib.rs`: tick processing still iterates `connected_conns()`, and
+    connect logic still uses `has_peer()` to suppress reconnects.
+- Impact: after a legitimate graceful stop notification, a non-seed peer can
+  remain marked as a connected neighbour until a later QUIC disconnect event.
+  During that window reconnects can be suppressed and tick sync work can still
+  target a stopped peer.
+- Evidence test:
+  - `cargo test peer_stopped_must_remove_stopped_neighbour_immediately -- --nocapture`
+  - Failure summary: after processing `MainEvent::PeerStopped(conn, peer)`,
+    `node.neighbours.has_peer(&peer)` remains true instead of immediately
+    removing the stopped non-seed neighbour.

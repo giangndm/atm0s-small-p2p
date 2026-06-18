@@ -3,7 +3,7 @@ use std::time::Duration;
 use crate::{
     msg::{BroadcastMsgId, PeerMessage},
     router::RouteAction,
-    ConnectionId, MainEvent, P2pServiceEvent, PeerAddress, PeerId,
+    ConnectionId, MainEvent, P2pNetworkEvent, P2pServiceEvent, PeerAddress, PeerId,
 };
 use futures::FutureExt;
 
@@ -49,6 +49,47 @@ async fn peer_stopped_for_seed_must_not_remove_active_seed_route() {
         node.router.action(&seed),
         Some(RouteAction::Next(seed_conn)),
         "a stopped notification must not remove the active route to a configured seed"
+    );
+}
+
+#[tokio::test]
+async fn peer_stopped_must_remove_stopped_neighbour_immediately() {
+    let (mut node1, addr1) = create_node(true, 1, vec![]).await;
+    let (mut node2, _addr2) = create_node(false, 2, vec![addr1.clone()]).await;
+
+    let stopped_conn = tokio::time::timeout(Duration::from_secs(3), async {
+        loop {
+            tokio::select! {
+                _ = node1.recv() => {}
+                event = node2.recv() => {
+                    if let Ok(P2pNetworkEvent::PeerConnected(conn, peer)) = event {
+                        if peer == addr1.peer_id() {
+                            return conn;
+                        }
+                    }
+                }
+            }
+        }
+    })
+    .await
+    .expect("node2 should connect to node1");
+
+    assert!(
+        node2.neighbours.has_peer(&addr1.peer_id()),
+        "test setup should have node1 marked as a connected neighbour"
+    );
+
+    node2
+        .process_internal(100, MainEvent::PeerStopped(stopped_conn, addr1.peer_id()))
+        .expect("peer stopped event should process");
+
+    assert!(
+        !node2.neighbours.has_peer(&addr1.peer_id()),
+        "legitimate PeerStopped must immediately remove the stopped non-seed neighbour"
+    );
+    assert!(
+        node2.neighbours.connected_conns().all(|conn| conn.conn_id() != stopped_conn),
+        "stopped connection must not remain eligible for tick sync traffic"
     );
 }
 
