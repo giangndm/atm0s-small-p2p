@@ -3331,3 +3331,29 @@ must resolve.
     `max_version = Version(2)` returns snapshot data for key `2` at
     `Version(2)` but declares the response version as `Version(3)`; expected
     the declared version to remain `Version(2)`.
+
+### ISSUE-139: Early PeerConnectError reporting can panic after main loop shutdown
+
+- Category: shutdown stability, bad-network stability, connection lifecycle
+- Score: 63/100
+- Reviewer: `Mill the 2nd`, confirmed.
+- Affected code:
+  - `src/peer.rs`: `PeerConnection::new_incoming` reports early
+    `incoming.await` and `connection.accept_bi()` failures with
+    `main_tx.send(MainEvent::PeerConnectError(...)).await.expect("should send to main")`.
+  - `src/peer.rs`: `PeerConnection::new_connecting` uses the same unchecked
+    send pattern for early `connecting.await` and `connection.open_bi()`
+    failures.
+- Impact: if the main `P2pNetwork` loop is dropped or shutting down while an
+  early QUIC connect/open failure is reported, the background peer task panics
+  instead of exiting quietly. Bad-network connection failures during teardown
+  can therefore surface as task panics and noisy instability. This is distinct
+  from ISSUE-028, which covers public requester panics after network drop;
+  ISSUE-128/129/130/132, which cover service shutdown panics; and ISSUE-135,
+  which covers stale `PeerConnectError` state mutation in the main loop.
+- Evidence test:
+  - `cargo test incoming_connect_error_after_main_drop_must_not_panic_task`
+  - Failure summary: a raw client connects and closes before opening the P2P
+    control stream while `main_rx` is dropped; the spawned incoming peer task
+    panics at `src/peer.rs:62` with `should send to main: SendError`, and the
+    panic hook records the background panic.

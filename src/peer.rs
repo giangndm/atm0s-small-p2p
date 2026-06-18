@@ -233,11 +233,18 @@ async fn run_connection<SECURE: HandshakeProtocol>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::net::UdpSocket;
+    use std::{
+        net::UdpSocket,
+        sync::{
+            atomic::{AtomicBool, Ordering},
+            Arc,
+        },
+    };
 
+    use quinn::VarInt;
     use rustls::pki_types::{CertificateDer, PrivatePkcs8KeyDer};
 
-    use crate::{neighbours::NetworkNeighbours, router::SharedRouterTable, NetworkAddress, P2pNetwork, P2pNetworkConfig, SharedKeyHandshake};
+    use crate::{neighbours::NetworkNeighbours, quic::make_server_endpoint, router::SharedRouterTable, NetworkAddress, P2pNetwork, P2pNetworkConfig, SharedKeyHandshake, CERT_DOMAIN_NAME};
 
     const DEFAULT_CLUSTER_CERT: &[u8] = include_bytes!("../certs/dev.cluster.cert");
     const DEFAULT_CLUSTER_KEY: &[u8] = include_bytes!("../certs/dev.cluster.key");
@@ -260,6 +267,45 @@ mod tests {
         assert!(
             !neighbours.has_peer(&peer),
             "an unconnected outgoing attempt must not make reconnect logic believe peer {peer} is already connected"
+        );
+    }
+
+    #[tokio::test]
+    async fn incoming_connect_error_after_main_drop_must_not_panic_task() {
+        let _ = rustls::crypto::ring::default_provider().install_default();
+        let server_addr = UdpSocket::bind("127.0.0.1:0").expect("should bind server udp").local_addr().expect("should read server addr");
+        let client_addr = UdpSocket::bind("127.0.0.1:0").expect("should bind client udp").local_addr().expect("should read client addr");
+        let priv_key = PrivatePkcs8KeyDer::from(DEFAULT_CLUSTER_KEY.to_vec());
+        let cert = CertificateDer::from(DEFAULT_CLUSTER_CERT.to_vec());
+        let server = make_server_endpoint(server_addr, priv_key.clone_key(), cert.clone()).expect("server endpoint should build");
+        let client = make_server_endpoint(client_addr, priv_key, cert).expect("client endpoint should build");
+
+        let panicked = Arc::new(AtomicBool::new(false));
+        let previous_hook = std::panic::take_hook();
+        let hook_flag = panicked.clone();
+        std::panic::set_hook(Box::new(move |info| {
+            hook_flag.store(true, Ordering::SeqCst);
+            eprintln!("{info}");
+        }));
+
+        let ctx = SharedCtx::new(PeerId::from(1), SharedRouterTable::new(PeerId::from(1)));
+        let (main_tx, main_rx) = channel(1);
+        drop(main_rx);
+
+        let connecting = client.connect(server_addr, CERT_DOMAIN_NAME).expect("client should start connecting");
+        let incoming = server.accept().await.expect("server should accept incoming connection");
+        let _conn = PeerConnection::new_incoming(Arc::new(SharedKeyHandshake::from("atm0s")), PeerId::from(1), incoming, main_tx, ctx);
+        let connected = connecting.await.expect("client should connect");
+        connected.close(VarInt::from_u32(0), b"close before p2p control stream");
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(1);
+        while tokio::time::Instant::now() < deadline && !panicked.load(Ordering::SeqCst) {
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+        std::panic::set_hook(previous_hook);
+
+        assert!(
+            !panicked.load(Ordering::SeqCst),
+            "incoming connection error reporting must not panic when the main event receiver has already closed"
         );
     }
 
