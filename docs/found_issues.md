@@ -366,3 +366,21 @@ audited code.
   - `cargo test rejects_overflowing_request_timestamp_without_panic -- --nocapture`
   - Failure summary: verification panics at the timeout addition with
     `attempt to add with overflow` instead of returning `Err`.
+
+### ISSUE-022: Alias shutdown from one peer clears all cached aliases
+
+- Category: security, correctness
+- Reviewer: `Archimedes`, confirmed.
+- Affected code:
+  - `src/service/alias_service.rs`: `AliasMessage::Shutdown` iterates over and
+    removes every alias cache entry.
+  - `src/service/alias_service.rs`: the shutdown branch ignores the sender
+    peer id, unlike `NotifyDel`, which removes only the sender from an alias's
+    peer set.
+- Impact: any peer that can send alias service messages can evict alias hints
+  learned from unrelated peers, forcing needless scans and disrupting alias
+  lookups across the cluster.
+- Evidence test:
+  - `cargo test shutdown_from_one_peer_must_not_clear_aliases_from_other_peers -- --nocapture`
+  - Failure summary: an alias learned from `peer2` is removed after `peer1`
+    sends `Shutdown`.

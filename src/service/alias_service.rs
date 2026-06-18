@@ -666,4 +666,23 @@ mod test {
         // Verify cache is cleared
         assert!(ctx.internal.cache.is_empty());
     }
+
+    #[test]
+    fn shutdown_from_one_peer_must_not_clear_aliases_from_other_peers() {
+        let mut ctx = TestContext::new();
+        let alias_from_peer1 = AliasId(1);
+        let alias_from_peer2 = AliasId(2);
+        let peer1 = PeerId(1);
+        let peer2 = PeerId(2);
+
+        ctx.internal.on_msg(ctx.now, peer1, AliasMessage::NotifySet(alias_from_peer1));
+        ctx.internal.on_msg(ctx.now, peer2, AliasMessage::NotifySet(alias_from_peer2));
+
+        ctx.internal.on_msg(ctx.now, peer1, AliasMessage::Shutdown);
+
+        assert!(
+            ctx.internal.cache.contains(&alias_from_peer2),
+            "shutdown from one peer must not remove alias hints learned from other peers"
+        );
+    }
 }
