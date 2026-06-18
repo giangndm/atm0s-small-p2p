@@ -28,6 +28,11 @@ pub(crate) fn encode_info_for_test(neighbours: Vec<(ConnectionId, PeerId, u16)>)
     bincode::serialize(&Message::Info(neighbours)).expect("test message should serialize")
 }
 
+#[cfg(test)]
+pub(crate) fn encode_scan_for_test() -> Vec<u8> {
+    bincode::serialize(&Message::Scan).expect("test message should serialize")
+}
+
 pub struct VisualizationService {
     service: P2pService,
     neighbours: HashMap<PeerId, u64>,

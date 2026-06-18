@@ -1624,3 +1624,25 @@ audited code.
   - Failure summary: node2 injects a metrics `Scan` into node1's metrics
     service, and node2's base service receives a unicast response from node1
     containing a metrics `Info` frame.
+
+### ISSUE-079: Visualization service discloses topology to arbitrary scan requests
+
+- Category: security, topology integrity
+- Reviewer: `Hypatia`, confirmed.
+- Affected code:
+  - `src/service/visualization_service.rs`: `VisualizationService::recv`
+    accepts `Message::Scan` from any unicast or broadcast sender.
+  - `src/service/visualization_service.rs`: the `Message::Scan` branch gathers
+    `requester.router().neighbours()` and sends `Message::Info(neighbours)`
+    back to the sender without checking collector role or any pending request
+    state.
+- Impact: any connected peer can send a visualization `Scan` frame to a
+  non-collector node and force it to disclose local topology/neighbour data.
+  This is distinct from ISSUE-061, which covers accepting unsolicited forged
+  `Info` and poisoning visualization output, and from ISSUE-078, which covers
+  the same disclosure pattern in the metrics service.
+- Evidence test:
+  - `cargo test visualization_scan_must_not_disclose_topology_to_non_collector -- --nocapture`
+  - Failure summary: node2 injects a visualization `Scan` into node1's
+    visualization service, and node2's base service receives a unicast response
+    from node1 containing a topology `Info` frame.
