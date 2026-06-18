@@ -643,6 +643,25 @@ mod test {
     }
 
     #[test]
+    fn duplicate_find_waiters_for_same_alias_must_be_bounded() {
+        const MAX_WAITERS_PER_ALIAS: usize = 1024;
+        let mut ctx = TestContext::new();
+        let alias_id = AliasId(1);
+
+        for _ in 0..=MAX_WAITERS_PER_ALIAS {
+            let (tx, _rx) = oneshot::channel();
+            ctx.internal.on_control(ctx.now, AliasControl::Find(alias_id, tx));
+        }
+
+        let waiters = ctx.internal.find_reqs.get(&alias_id).expect("find request should exist").waits.len();
+
+        assert!(
+            waiters <= MAX_WAITERS_PER_ALIAS,
+            "duplicate find waiters for one alias must be bounded, got {waiters}"
+        );
+    }
+
+    #[test]
     fn test_shutdown() {
         let mut ctx = TestContext::new();
         let alias_id = AliasId(1);

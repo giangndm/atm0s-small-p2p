@@ -616,3 +616,23 @@ audited code.
   - Failure summary: a snapshot response declaring `Version(1)` but containing
     `Slot::new(..., Version(99))` is accepted, stored, and emitted instead of
     being rejected.
+
+### ISSUE-035: Alias lookup stores unbounded duplicate waiters
+
+- Category: high-load stability, resource exhaustion
+- Reviewer: `Mencius`, confirmed.
+- Affected code:
+  - `src/service/alias_service.rs`: `FindRequest.waits` is an unbounded `Vec`.
+  - `src/service/alias_service.rs`: duplicate `AliasControl::Find` calls for
+    the same alias push another oneshot sender into the existing request and
+    return.
+  - `src/service/alias_service.rs`: waiters are drained only when the alias is
+    found or the scan/hint timeout fires.
+- Impact: local callers can issue many concurrent `find` operations for one
+  missing or stale alias. The service suppresses duplicate network scans but
+  still accumulates arbitrary local waiters and memory under one `find_reqs`
+  entry until timeout.
+- Evidence test:
+  - `cargo test duplicate_find_waiters_for_same_alias_must_be_bounded -- --nocapture`
+  - Failure summary: 1,025 duplicate find waiters are stored for one alias,
+    exceeding the test cap of 1,024.
