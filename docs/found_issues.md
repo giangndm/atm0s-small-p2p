@@ -422,3 +422,22 @@ audited code.
   - `cargo test peer_message_codec_must_reject_oversized_service_payloads -- --nocapture`
   - Failure summary: a 70 KB unicast service payload is encoded successfully
     instead of being rejected before framing.
+
+### ISSUE-025: Replicated KV `FetchSnapshot` reversed bounds panic
+
+- Category: security, correctness
+- Reviewer: `Hilbert`, confirmed.
+- Affected code:
+  - `src/service/replicate_kv_service.rs`: unicast RPC requests from peers are
+    passed into `ReplicatedKvStore::on_remote_event`.
+  - `src/service/replicate_kv_service/local_storage.rs`: remote
+    `RpcReq::FetchSnapshot { from, to, max_version }` is passed directly to
+    `snapshot`.
+  - `src/service/replicate_kv_service/local_storage.rs`: `snapshot` calls
+    `self.slots.range(from..=to)` without checking `from <= to`.
+- Impact: a malicious peer can send reversed snapshot bounds and panic the
+  local service path inside `BTreeMap::range`.
+- Evidence test:
+  - `cargo test fetch_snapshot_with_reversed_bounds_must_not_panic -- --nocapture`
+  - Failure summary: `BTreeMap::range` panics with
+    `range start is greater than range end`.

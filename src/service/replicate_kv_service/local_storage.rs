@@ -265,4 +265,24 @@ mod tests {
 
         assert!(result.is_ok(), "untrusted FetchChanged version arithmetic must not panic or wrap");
     }
+
+    #[test]
+    fn fetch_snapshot_with_reversed_bounds_must_not_panic() {
+        let mut store: LocalStore<u16, u16, u16> = LocalStore::new(10, 2);
+        store.set(1, 1);
+        store.set(2, 2);
+
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            store.on_rpc_req(
+                2,
+                RpcReq::FetchSnapshot {
+                    from: Some(2),
+                    to: Some(1),
+                    max_version: None,
+                },
+            );
+        }));
+
+        assert!(result.is_ok(), "untrusted FetchSnapshot bounds must be rejected without panicking");
+    }
 }
