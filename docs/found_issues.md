@@ -1862,3 +1862,27 @@ audited code.
     1 }`, a response with two `Changed { version: Version(1), ... }` entries is
     accepted and advances `state.version` to `Version(1)`; expected the
     duplicate-version response to be rejected.
+
+### ISSUE-089: Replicated KV applies FetchChanged versions beyond the requested count
+
+- Category: correctness, security
+- Reviewer: `Planck`, confirmed.
+- Affected code:
+  - `src/service/replicate_kv_service/local_storage.rs`:
+    `LocalStore::changeds_from_to` computes `to = from + count` (bounded by
+    compose size) and emits only `self.changeds.range(from..to)`.
+  - `src/service/replicate_kv_service/remote_storage.rs`:
+    `WorkingState::on_broadcast` records a `FetchChanged { from, count }`
+    request, but `WorkingState::on_rpc_res` does not validate returned
+    `Changed.version` values against that requested range.
+- Impact: after a real outstanding `FetchChanged { from: Version(1), count: 1
+  }` request, a malicious or malformed peer can include both versions `1` and
+  `2` in the response. The receiver applies the extra out-of-range version,
+  advances to `Version(2)`, mutates slots, and emits local `KvEvent` changes.
+  This is distinct from ISSUE-088, which covers duplicate versions, and from
+  ISSUE-046, which covers unbounded response batches.
+- Evidence test:
+  - `cargo test working_state_must_reject_fetch_changed_versions_beyond_requested_count -- --nocapture`
+  - Failure summary: after requesting one missing change, a response containing
+    versions `1` and `2` is accepted and advances `state.version` to
+    `Version(2)`; expected versions beyond the requested count to be rejected.

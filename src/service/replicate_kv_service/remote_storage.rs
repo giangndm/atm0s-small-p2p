@@ -1311,6 +1311,55 @@ mod tests {
     }
 
     #[test]
+    fn working_state_must_reject_fetch_changed_versions_beyond_requested_count() {
+        let mut ctx: StateCtx<u16, u16, u16> = StateCtx {
+            remote: 1,
+            slots: BTreeMap::new(),
+            outs: VecDeque::new(),
+            next_state: None,
+        };
+
+        let now = Instant::now();
+        let mut state = WorkingState::new(Version(0));
+
+        state.on_broadcast(&mut ctx, now, BroadcastEvent::Version(Version(1)));
+        ctx.outs.clear();
+
+        state.on_rpc_res(
+            &mut ctx,
+            now,
+            RpcRes::FetchChanged(Ok(vec![
+                Changed {
+                    key: 1,
+                    version: Version(1),
+                    action: Action::Set(1),
+                },
+                Changed {
+                    key: 2,
+                    version: Version(2),
+                    action: Action::Set(2),
+                },
+            ])),
+        );
+
+        assert_eq!(
+            state.version,
+            Version(0),
+            "FetchChanged responses must not apply versions beyond the requested count"
+        );
+        assert_eq!(
+            ctx.slots,
+            BTreeMap::new(),
+            "FetchChanged responses must reject extra versions outside the requested range"
+        );
+        assert_eq!(
+            ctx.outs.pop_front(),
+            None,
+            "FetchChanged responses with extra versions must not emit local KvEvent changes"
+        );
+    }
+
+    #[test]
     fn test_working_state_resend_timeout_fetch_changed() {
         let mut ctx: StateCtx<u16, u16, u16> = StateCtx {
             remote: 1,
