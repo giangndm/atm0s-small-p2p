@@ -929,6 +929,34 @@ mod tests {
     }
 
     #[test]
+    fn working_state_must_cap_pending_fetch_changed_response() {
+        let mut ctx: StateCtx<u16, u16, u16> = StateCtx {
+            remote: 1,
+            slots: BTreeMap::new(),
+            outs: VecDeque::new(),
+            next_state: None,
+        };
+
+        let now = Instant::now();
+        let mut state = WorkingState::new(Version(0));
+        let changeds = (2..=2_050)
+            .map(|version| Changed {
+                key: version as u16,
+                version: Version(version),
+                action: Action::Set(version as u16),
+            })
+            .collect();
+
+        state.on_rpc_res(&mut ctx, now, RpcRes::FetchChanged(Ok(changeds)));
+
+        assert!(
+            state.pendings.len() <= 1024,
+            "future changed RPC responses from one remote must be capped to avoid unbounded memory growth, got {}",
+            state.pendings.len()
+        );
+    }
+
+    #[test]
     fn destroy_remote_should_clear_slots() {
         let mut ctx: StateCtx<u16, u16, u16> = StateCtx {
             remote: 1,

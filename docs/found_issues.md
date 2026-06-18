@@ -845,3 +845,24 @@ audited code.
   - `cargo test remote_store_creation_must_be_bounded -- --nocapture`
   - Failure summary: 1025 distinct remote `Version(0)` broadcasts leave 1025
     `RemoteStore` entries, failing the bounded-remote assertion.
+
+### ISSUE-046: Replicated KV accepts unbounded FetchChanged response batches
+
+- Category: high-load stability, resource exhaustion
+- Reviewer: `Feynman`, confirmed.
+- Affected code:
+  - `src/service/replicate_kv_service/remote_storage.rs`:
+    `WorkingState::on_rpc_res` accepts
+    `RpcRes::FetchChanged(Ok(changeds))` from a remote peer.
+  - `src/service/replicate_kv_service/remote_storage.rs`: every response item
+    with `changed.version > self.version` is inserted into the unbounded
+    `pendings` map before `apply_pendings`.
+- Impact: a malicious or buggy peer can answer a fetch request, or send an
+  unsolicited response, with a large batch of far-future changes and force
+  immediate memory growth in one frame. This is distinct from ISSUE-027, which
+  covers the broadcast ingress path into the same pending map.
+- Evidence test:
+  - `cargo test working_state_must_cap_pending_fetch_changed_response -- --nocapture`
+  - Failure summary: a single `FetchChanged(Ok(...))` response containing
+    versions `2..=2050` leaves 2049 pending changes, exceeding the test cap of
+    1024.
