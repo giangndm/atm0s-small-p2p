@@ -1743,3 +1743,23 @@ audited code.
   - Failure summary: after a first page with `next_key = Some(5)`, a
     continuation page containing key `4` is inserted into `ctx.slots`; expected
     slots before the requested continuation key to be rejected.
+
+### ISSUE-084: Replicated KV full sync accepts unsorted snapshot pages
+
+- Category: correctness, security
+- Reviewer: `Aquinas`, confirmed.
+- Affected code:
+  - `src/service/replicate_kv_service/local_storage.rs`: valid snapshot pages
+    are produced from a `BTreeMap` range, so slots are ordered by key.
+  - `src/service/replicate_kv_service/remote_storage.rs`:
+    `SyncFullState::on_rpc_res` trusts remote `SnapshotData.slots` and inserts
+    them without checking monotonic key order.
+- Impact: a malicious or malformed peer can send a snapshot page such as
+  `[(2, ...), (1, ...)]`. The receiver stores both slots and can complete full
+  sync while accepting a page shape that a valid producer would not emit. This
+  is distinct from ISSUE-082 and ISSUE-083, which cover upper/lower key bounds;
+  this issue covers per-page key ordering.
+- Evidence test:
+  - `cargo test full_sync_must_reject_unsorted_snapshot_slots -- --nocapture`
+  - Failure summary: a snapshot response with slots ordered as keys `2, 1` is
+    accepted and stored; expected unsorted snapshot pages to be rejected.

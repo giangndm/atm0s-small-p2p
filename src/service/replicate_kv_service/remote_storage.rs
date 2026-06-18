@@ -644,6 +644,43 @@ mod tests {
     }
 
     #[test]
+    fn full_sync_must_reject_unsorted_snapshot_slots() {
+        let mut ctx: StateCtx<u16, u16, u16> = StateCtx {
+            remote: 1,
+            slots: BTreeMap::new(),
+            outs: VecDeque::new(),
+            next_state: None,
+        };
+
+        let now = Instant::now();
+        let mut state = SyncFullState::default();
+        state.init(&mut ctx, now);
+        ctx.outs.clear();
+
+        state.on_rpc_res(
+            &mut ctx,
+            now,
+            RpcRes::FetchSnapshot(
+                Some(SnapshotData {
+                    slots: vec![(2, Slot::new(2, Version(1))), (1, Slot::new(1, Version(1)))],
+                    next_key: None,
+                    biggest_key: 2,
+                }),
+                Version(1),
+            ),
+        );
+
+        assert!(
+            ctx.slots.is_empty(),
+            "snapshot slots must be rejected unless they are ordered by key"
+        );
+        assert_eq!(
+            ctx.next_state, None,
+            "full sync must not complete after accepting unsorted snapshot slots"
+        );
+    }
+
+    #[test]
     fn full_sync_must_reject_continuation_slot_before_requested_key() {
         let mut ctx: StateCtx<u16, u16, u16> = StateCtx {
             remote: 1,
