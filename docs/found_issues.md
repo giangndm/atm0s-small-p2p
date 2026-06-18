@@ -3490,3 +3490,36 @@ must resolve.
     key `1` sets `ctx.next_state` to `Working(Version(3))`; expected full sync
     to reject or ignore the stale terminal page and keep the continuation
     outstanding.
+
+### ISSUE-144: Peer alias leaks if main loop closes before PeerConnected delivery
+
+- Category: shutdown stability, bad-network stability, connection lifecycle
+- Score: 66/100
+- Reviewer: `Tesla the 2nd`, confirmed.
+- Affected code:
+  - `src/peer.rs`: after authentication, `run_connection` creates a
+    `PeerConnectionAlias` and `PeerConnectionInternal`, then registers the alias
+    with `ctx.register_conn`.
+  - `src/peer.rs`: if
+    `main_tx.send(MainEvent::PeerConnected(conn_id, to_id, rtt_ms)).await`
+    fails because the main loop has closed, `run_connection` returns `Ok(())`
+    immediately.
+  - `src/peer.rs`: normal cleanup via `ctx.unregister_conn(&conn_id)` and
+    metric reset happens only after `internal.run_loop()` and
+    `PeerDisconnected`, so the failed `PeerConnected` branch skips it.
+- Impact: during shutdown or teardown, a peer task can successfully
+  authenticate, register its alias, fail to notify the closed main loop, and
+  leave the alias visible through `SharedCtx::conn`. Later local send,
+  open-stream, graceful-shutdown, or maintenance paths can observe a stale
+  connection that the main loop never accepted. This is distinct from
+  ISSUE-057/063/064/065/067/068, which cover stale or malformed main-loop
+  events after they reach `P2pNetwork::process_internal`; ISSUE-136, which
+  covers cleanup blocked after `PeerDisconnected` on a full main queue; and
+  ISSUE-139, which covers early `PeerConnectError` panic before authenticated
+  alias registration.
+- Evidence test:
+  - `cargo test authenticated_peer_alias_must_be_cleaned_if_main_loop_closed_before_connected_event`
+  - Failure summary: a valid incoming handshake runs with `main_rx` dropped;
+    after the task tries to send `PeerConnected`, `ctx.conn(&conn_id)` remains
+    `Some`, but expected cleanup should unregister the alias and leave it
+    `None`.

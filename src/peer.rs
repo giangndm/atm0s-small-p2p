@@ -310,6 +310,53 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn authenticated_peer_alias_must_be_cleaned_if_main_loop_closed_before_connected_event() {
+        let _ = rustls::crypto::ring::default_provider().install_default();
+        let server_addr = UdpSocket::bind("127.0.0.1:0").expect("should bind server udp").local_addr().expect("should read server addr");
+        let client_addr = UdpSocket::bind("127.0.0.1:0").expect("should bind client udp").local_addr().expect("should read client addr");
+        let priv_key = PrivatePkcs8KeyDer::from(DEFAULT_CLUSTER_KEY.to_vec());
+        let cert = CertificateDer::from(DEFAULT_CLUSTER_CERT.to_vec());
+        let server = make_server_endpoint(server_addr, priv_key.clone_key(), cert.clone()).expect("server endpoint should build");
+        let client = make_server_endpoint(client_addr, priv_key, cert).expect("client endpoint should build");
+        let secure = Arc::new(SharedKeyHandshake::from("atm0s"));
+        let local_id = PeerId::from(1);
+        let remote_id = PeerId::from(2);
+        let ctx = SharedCtx::new(local_id, SharedRouterTable::new(local_id));
+        let (main_tx, main_rx) = channel(1);
+        drop(main_rx);
+
+        let connecting = client.connect(server_addr, CERT_DOMAIN_NAME).expect("client should start connecting");
+        let incoming = server.accept().await.expect("server should accept incoming connection");
+        let conn = PeerConnection::new_incoming(secure.clone(), local_id, incoming, main_tx, ctx.clone());
+        let conn_id = conn.conn_id();
+        let connection = connecting.await.expect("client should connect");
+        let (mut send, mut recv) = connection.open_bi().await.expect("client should open control stream");
+
+        let auth = secure.create_request(remote_id, local_id, now_ms());
+        write_object::<_, _, MAX_CONTROL_PEER_PKT>(
+            &mut send,
+            &ConnectReq {
+                from: remote_id,
+                to: local_id,
+                auth,
+            },
+        )
+        .await
+        .expect("client should send connect request");
+        let _ = tokio::time::timeout(Duration::from_millis(200), wait_object::<_, ConnectRes, MAX_CONTROL_PEER_PKT>(&mut recv)).await;
+
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(1);
+        while tokio::time::Instant::now() < deadline && ctx.conn(&conn_id).is_none() {
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+
+        assert!(
+            ctx.conn(&conn_id).is_none(),
+            "authenticated peer alias must be unregistered when PeerConnected cannot be delivered to the closed main loop"
+        );
+    }
+
+    #[tokio::test]
     async fn send_broadcast_must_not_block_on_full_peer_control_queue() {
         let ctx = SharedCtx::new(PeerId::from(0), SharedRouterTable::new(PeerId::from(0)));
         let (tx, _rx) = channel(1);
