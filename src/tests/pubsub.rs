@@ -666,6 +666,41 @@ async fn pubsub_publisher_after_service_drop_must_not_be_dead_on_arrival() {
 }
 
 #[test(tokio::test)]
+async fn dropped_publisher_requester_must_not_continue_publishing() {
+    let (mut node1, _addr1) = create_node(true, 1, vec![]).await;
+    let mut service1 = PubsubService::new(node1.create_service(0.into()));
+    let service1_requester = service1.requester();
+    tokio::spawn(async move { while node1.recv().await.is_ok() {} });
+    tokio::spawn(async move { service1.run_loop().await });
+
+    let channel_id: PubsubChannelId = 1000.into();
+    let publisher = service1_requester.publisher(channel_id).await;
+    let stale_requester = publisher.requester().clone();
+    let mut subscriber = service1_requester.subscriber(channel_id).await;
+    let ttl = Duration::from_secs(1);
+
+    assert_eq!(
+        timeout(ttl, subscriber.recv()).await.expect("subscriber should observe initial local publisher").expect("subscriber channel should stay open"),
+        SubscriberEvent::PeerJoined(PeerSrc::Local)
+    );
+
+    drop(publisher);
+
+    assert_eq!(
+        timeout(ttl, subscriber.recv()).await.expect("subscriber should observe dropped local publisher").expect("subscriber channel should stay open"),
+        SubscriberEvent::PeerLeaved(PeerSrc::Local)
+    );
+
+    stale_requester.publish(b"stale-publish".to_vec()).await.expect("stale requester send should not panic");
+
+    let delivered = timeout(Duration::from_millis(500), subscriber.recv()).await;
+    assert!(
+        !matches!(delivered, Ok(Ok(SubscriberEvent::Publish(data))) if data == b"stale-publish".to_vec()),
+        "a requester cloned from a dropped Publisher must not continue publishing on that channel"
+    );
+}
+
+#[test(tokio::test)]
 async fn pubsub_publish_rpc_answer_must_be_bound_to_expected_responder() {
     let (mut node1, addr1) = create_node(true, 1, vec![]).await;
     let mut service1 = PubsubService::new(node1.create_service(0.into()));

@@ -1367,3 +1367,29 @@ audited code.
     processing `MainEvent::PeerStats(ConnectionId(66), PeerId(99), metrics)`
     inserts exported metrics for `PeerId(99)`; expected the mismatched stats
     event to be ignored.
+
+### ISSUE-069: Dropped publisher requesters can still publish
+
+- Category: correctness, pubsub lifecycle stability
+- Reviewer: `Epicurus`, confirmed.
+- Affected code:
+  - `src/service/pubsub_service/publisher.rs`: `PublisherRequester` is cloneable
+    and keeps `local_id`, `channel_id`, and the service control sender after the
+    owning `Publisher` is dropped.
+  - `src/service/pubsub_service/publisher.rs`: `Publisher::drop` sends
+    `InternalMsg::PublisherDestroyed(local_id, channel_id)`.
+  - `src/service/pubsub_service.rs`:
+    `InternalMsg::Publish(_local_id, channel, vec)` ignores `_local_id` and
+    delivers to local/remote subscribers whenever the channel exists.
+- Impact: after the last local publisher is dropped and subscribers observe
+  `PeerLeaved(PeerSrc::Local)`, any cloned requester from that dropped publisher
+  can still publish on the channel. This violates publisher lifetime semantics
+  and can deliver messages from a publisher that the pubsub state already
+  considers gone. This is distinct from ISSUE-058, which covers creating
+  dead-on-arrival handles after the whole `PubsubService` is gone.
+- Evidence test:
+  - `cargo test dropped_publisher_requester_must_not_continue_publishing -- --nocapture`
+  - Failure summary: after dropping the publisher and receiving
+    `SubscriberEvent::PeerLeaved(PeerSrc::Local)`, a cloned stale requester
+    publishes `stale-publish`, and the subscriber still receives
+    `SubscriberEvent::Publish`.
