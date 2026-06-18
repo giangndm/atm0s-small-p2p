@@ -231,4 +231,30 @@ mod test {
             "stale advertisements should not immediately re-add a gracefully stopped non-seed peer"
         );
     }
+
+    #[test_log::test]
+    fn apply_sync_rejects_local_peer_advertisement() {
+        let local = PeerId(1);
+        let local_addr = peer_addr("1@127.0.0.1:9000");
+        let attacker_local_addr = peer_addr("1@127.0.0.1:9999");
+        let mut discovery = PeerDiscovery::default();
+        discovery.enable_local(local, local_addr.network_address().clone());
+
+        discovery.apply_sync(100, PeerDiscoverySync(vec![(local, 100, attacker_local_addr.network_address().clone())]));
+
+        assert!(discovery.remotes().all(|addr| addr.peer_id() != local), "sync must not create a remote candidate for the local peer id");
+    }
+
+    #[test_log::test]
+    fn apply_sync_rejects_overflowing_future_timestamp() {
+        let peer = peer_addr("2@127.0.0.1:9001");
+        let mut discovery = PeerDiscovery::default();
+
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            discovery.apply_sync(100, PeerDiscoverySync(vec![(peer.peer_id(), u64::MAX, peer.network_address().clone())]));
+        }));
+
+        assert!(result.is_ok(), "untrusted discovery timestamps must not panic on overflow");
+        assert_eq!(discovery.remotes().next(), None, "untrusted future/overflow timestamp should not create an immortal peer");
+    }
 }

@@ -157,4 +157,18 @@ mod tests {
         let request = secure.create_request(peer2, peer1, 1000);
         assert!(secure.verify_request(request, peer2, peer1, 1000 + HANDSHAKE_TIMEOUT + 1).is_err());
     }
+
+    #[test]
+    fn rejects_arbitrarily_future_request_timestamp() {
+        let secure = SharedKeyHandshake::from("test_key");
+        let peer1 = PeerId::from(1);
+        let peer2 = PeerId::from(2);
+
+        let request = secure.create_request(peer1, peer2, 1_000_000_000);
+
+        assert!(
+            secure.verify_request(request, peer1, peer2, 1_000).is_err(),
+            "future-dated handshake tokens must not be accepted before their timestamp window"
+        );
+    }
 }

@@ -399,4 +399,119 @@ mod tests {
         assert_eq!(table.next_remote(&peer2), None);
         assert_eq!(table.next_remote(&peer1), Some((conn1, (0, 100).into())));
     }
+
+    #[test_log::test]
+    fn should_keep_existing_best_path_on_equal_score() {
+        let mut table = RouterTable::new(PeerId(0));
+
+        let relay1 = PeerId(1);
+        let relay2 = PeerId(2);
+        let dest = PeerId(3);
+        let conn1 = ConnectionId(1);
+        let conn2 = ConnectionId(2);
+
+        table.set_direct(conn2, relay2, 10);
+        table.apply_sync(conn2, RouterTableSync(vec![(dest, (1, 100).into())]));
+        assert_eq!(table.next_remote(&dest), Some((conn2, (2, 110).into())));
+
+        table.set_direct(conn1, relay1, 10);
+        table.apply_sync(conn1, RouterTableSync(vec![(dest, (1, 100).into())]));
+
+        assert_eq!(
+            table.next_remote(&dest),
+            Some((conn2, (2, 110).into())),
+            "equal-cost route updates should not make the active path jump between connections"
+        );
+    }
+
+    #[test_log::test]
+    fn active_path_should_not_jump_for_tiny_rtt_jitter() {
+        let mut table = RouterTable::new(PeerId(0));
+        let peer1 = PeerId(1);
+        let conn1 = ConnectionId(1);
+        let peer2 = PeerId(2);
+        let conn2 = ConnectionId(2);
+        let dest = PeerId(9);
+
+        table.set_direct(conn1, peer1, 10);
+        table.set_direct(conn2, peer2, 10);
+
+        table.apply_sync(conn1, RouterTableSync(vec![(dest, (0, 100).into())]));
+        table.apply_sync(conn2, RouterTableSync(vec![(dest, (0, 101).into())]));
+        assert_eq!(table.action(&dest), Some(RouteAction::Next(conn1)));
+
+        table.apply_sync(conn2, RouterTableSync(vec![(dest, (0, 99).into())]));
+
+        assert_eq!(
+            table.action(&dest),
+            Some(RouteAction::Next(conn1)),
+            "tiny RTT jitter should not make the active path jump between connections"
+        );
+    }
+
+    #[test_log::test]
+    fn should_not_store_or_advertise_route_to_local_peer() {
+        let local = PeerId(0);
+        let peer1 = PeerId(1);
+        let peer2 = PeerId(2);
+        let conn1 = ConnectionId(1);
+        let conn2 = ConnectionId(2);
+        let mut table = RouterTable::new(local);
+
+        table.set_direct(conn1, peer1, 10);
+        table.set_direct(conn2, peer2, 10);
+        table.apply_sync(conn1, RouterTableSync(vec![(local, (0, 1).into())]));
+
+        assert_eq!(table.next_remote(&local), None, "router must not store relay routes to the local peer");
+        assert!(
+            !table.create_sync(&peer2).0.iter().any(|(peer, _)| *peer == local),
+            "router must not advertise poisoned routes to the local peer"
+        );
+    }
+
+    #[test_log::test]
+    fn should_reject_over_max_hops_for_forwarding() {
+        let mut table = RouterTable::new(PeerId(0));
+        let peer1 = PeerId(1);
+        let peer2 = PeerId(2);
+        let conn1 = ConnectionId(1);
+
+        table.set_direct(conn1, peer1, 10);
+        table.apply_sync(conn1, RouterTableSync(vec![(peer2, (MAX_HOPS, 10).into())]));
+
+        assert_eq!(table.next_remote(&peer2), None, "over-MAX_HOPS paths should not be usable for local forwarding");
+    }
+
+    #[test_log::test]
+    fn should_not_advertise_route_back_to_next_hop() {
+        let mut table = RouterTable::new(PeerId(0));
+        let peer1 = PeerId(1);
+        let peer2 = PeerId(2);
+        let conn1 = ConnectionId(1);
+
+        table.set_direct(conn1, peer1, 10);
+        table.apply_sync(conn1, RouterTableSync(vec![(peer2, (0, 10).into())]));
+
+        assert_eq!(
+            table.create_sync(&peer1),
+            RouterTableSync(vec![]),
+            "route learned from a peer should not be advertised back to that peer"
+        );
+    }
+
+    #[test_log::test]
+    fn should_reject_excessive_route_sync_entries() {
+        const MAX_ALLOWED_SYNC_ROUTES: usize = 1024;
+        let mut table = RouterTable::new(PeerId(0));
+        let conn1 = ConnectionId(1);
+
+        table.set_direct(conn1, PeerId(1), 10);
+        let huge_sync = (10_000..11_100).map(|id| (PeerId(id), (0, 1).into())).collect::<Vec<_>>();
+        table.apply_sync(conn1, RouterTableSync(huge_sync));
+
+        assert!(
+            table.create_sync(&PeerId(1)).0.len() <= MAX_ALLOWED_SYNC_ROUTES,
+            "untrusted route sync payloads should be capped or rejected"
+        );
+    }
 }
