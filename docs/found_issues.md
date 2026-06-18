@@ -17,7 +17,8 @@ audited code.
 ### ISSUE-001: Forged third-party `PeerStopped` removes a live peer
 
 - Category: security, correctness
-- Reviewer: `Leibniz`, confirmed. Also confirmed by `Bernoulli` and `Wegener`.
+- Reviewer: `Leibniz`, confirmed. Also confirmed by `Bernoulli`, `Wegener`,
+  and `Carver`.
 - Affected code:
   - `src/msg.rs`: `PeerMessage::PeerStopped(PeerId)` carries a free peer id.
   - `src/peer/peer_internal.rs`: accepts and forwards any stopped peer id.
@@ -28,6 +29,10 @@ audited code.
 - Evidence test:
   - `cargo test forged_peer_stopped_must_not_remove_third_party_route -- --nocapture`
   - Failure summary: route to victim becomes `None`; expected `Some(Next(ConnectionId(20)))`.
+  - Additional propagation evidence:
+    `cargo test forged_peer_stopped_must_not_be_forwarded_to_other_neighbours -- --nocapture`
+  - Failure summary: a relay forwards a forged stop for an unrelated victim,
+    causing an observer to remove its route to that victim.
 
 ### ISSUE-002: Future-dated handshake timestamps are accepted
 

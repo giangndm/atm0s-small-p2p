@@ -96,6 +96,55 @@ async fn peer_stopped_must_remove_stopped_neighbour_immediately() {
 }
 
 #[tokio::test]
+async fn forged_peer_stopped_must_not_be_forwarded_to_other_neighbours() {
+    let (mut relay, relay_addr) = create_node(true, 2, vec![]).await;
+    tokio::spawn(async move { while relay.recv().await.is_ok() {} });
+
+    let (mut attacker, _attacker_addr) = create_node(false, 1, vec![relay_addr.clone()]).await;
+    let attacker_ctx = attacker.ctx.clone();
+    tokio::spawn(async move { while attacker.recv().await.is_ok() {} });
+
+    let (mut victim, victim_addr) = create_node(false, 4, vec![relay_addr.clone()]).await;
+    tokio::spawn(async move { while victim.recv().await.is_ok() {} });
+
+    let (mut observer, _observer_addr) = create_node(false, 3, vec![relay_addr]).await;
+    let observer_router = observer.router.clone();
+    tokio::spawn(async move { while observer.recv().await.is_ok() {} });
+    let victim_peer = victim_addr.peer_id();
+
+    let attacker_conn = tokio::time::timeout(Duration::from_secs(3), async {
+        loop {
+            if let (Some(conn), Some(RouteAction::Next(_))) = (attacker_ctx.conns().into_iter().next(), observer_router.action(&victim_peer)) {
+                return conn;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .expect("observer should learn a route to the victim and attacker should connect to relay");
+
+    attacker_conn
+        .try_send(PeerMessage::PeerStopped(victim_peer))
+        .expect("attacker should be able to send forged stop over authenticated relay connection");
+
+    let route_was_removed = tokio::time::timeout(Duration::from_secs(1), async {
+        loop {
+            if observer_router.action(&victim_peer).is_none() {
+                return true;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .unwrap_or(false);
+
+    assert!(
+        !route_was_removed,
+        "a relay must not forward forged PeerStopped for an unrelated victim to other neighbours"
+    );
+}
+
+#[tokio::test]
 async fn stale_peer_connected_event_must_not_install_unusable_route() {
     let (mut node, _addr) = create_node(false, 1, vec![]).await;
     let stale_conn = ConnectionId::from(404);
