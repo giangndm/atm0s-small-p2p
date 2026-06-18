@@ -688,3 +688,50 @@ impl PubsubServiceRequester {
         Subscriber::build(channel, self.internal_tx.clone())
     }
 }
+
+#[cfg(test)]
+mod test {
+    use tokio::sync::mpsc::unbounded_channel;
+
+    use super::*;
+    use crate::{ctx::SharedCtx, msg::P2pServiceId, router::SharedRouterTable};
+
+    fn test_service() -> PubsubService {
+        let ctx = SharedCtx::new(PeerId::from(1), SharedRouterTable::new(PeerId::from(1)));
+        let (service, _tx) = P2pService::build(P2pServiceId::from(0), ctx);
+        PubsubService::new(service)
+    }
+
+    #[tokio::test]
+    async fn pending_publish_rpc_requests_must_be_bounded() {
+        const MAX_PENDING_RPCS: usize = 1024;
+        let mut service = test_service();
+        let channel = PubsubChannelId(1);
+        let (sub_tx, _sub_rx) = unbounded_channel();
+
+        service
+            .on_internal(InternalMsg::SubscriberCreated(SubscriberLocalId::rand(), channel, sub_tx))
+            .await
+            .expect("subscriber should be registered");
+
+        for _ in 0..=MAX_PENDING_RPCS {
+            let (tx, _rx) = oneshot::channel();
+            service
+                .on_internal(InternalMsg::GuestPublishRpc(
+                    channel,
+                    vec![1],
+                    "hold".to_string(),
+                    tx,
+                    Duration::from_secs(3600),
+                ))
+                .await
+                .expect("publish RPC should be accepted");
+        }
+
+        let pending_rpcs = service.publish_rpc_reqs.len();
+        assert!(
+            pending_rpcs <= MAX_PENDING_RPCS,
+            "pending publish RPC requests must be bounded, got {pending_rpcs}"
+        );
+    }
+}

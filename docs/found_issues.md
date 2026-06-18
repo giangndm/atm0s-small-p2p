@@ -781,3 +781,25 @@ audited code.
   - Failure summary: with `last_updated = u64::MAX - 10` and a 6 ms interval,
     the timeout helper panics at `src/service/visualization_service.rs:36` with
     `attempt to add with overflow`.
+
+### ISSUE-043: Pubsub retains unbounded unanswered RPC requests
+
+- Category: high-load stability
+- Reviewer: `Darwin`, confirmed.
+- Affected code:
+  - `src/service/pubsub_service.rs`: `publish_rpc_reqs` and
+    `feedback_rpc_reqs` are unbounded `HashMap`s keyed by random `RpcId`.
+  - `src/service/pubsub_service.rs`: guest and member publish/feedback RPC
+    paths insert pending requests whenever there is at least one destination,
+    using caller-supplied timeouts and no admission cap or backpressure.
+  - `src/service/pubsub_service.rs`: cleanup only happens after an answer or
+    the periodic timeout sweep.
+- Impact: a local high-load caller can retain many unanswered pubsub RPC
+  waiters for long timeout windows, growing memory linearly and producing local
+  fanout work for each pending RPC. This is distinct from ISSUE-039's remote
+  membership bypass and ISSUE-041's alias lookup backlog.
+- Evidence test:
+  - `cargo test pending_publish_rpc_requests_must_be_bounded -- --nocapture`
+  - Failure summary: 1025 unanswered guest publish RPCs with a local subscriber
+    destination leave 1025 entries in `publish_rpc_reqs`, failing the bounded
+    pending-RPC assertion.
