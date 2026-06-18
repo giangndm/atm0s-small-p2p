@@ -2599,3 +2599,36 @@ audited code.
     receives a local `FeedbackRpc`, the stale requester answers with the same
     `RpcId` and completes the subscriber's pending RPC with
     `stale-feedback-answer`.
+
+### ISSUE-117: Idle inbound stream-connect handshakes are not admission bounded
+
+- Category: stability, resource exhaustion under bad-network or malicious-peer
+  conditions
+- Reviewer: `Plato the 2nd`, confirmed.
+- Affected code:
+  - `src/peer/peer_internal.rs`: `PeerConnectionInternal::on_accept_bi`
+    spawns one `accept_bi` task for every inbound bidirectional stream.
+  - `src/peer/peer_internal.rs`: `accept_bi` immediately awaits
+    `wait_object::<_, StreamConnectReq, MAX_CONTROL_STREAM_PKT>(&mut stream)`
+    with no per-stream admission gate or stream-connect read timeout.
+  - `src/quic.rs`: the transport is configured with
+    `max_concurrent_bidi_streams(10_000)`, so the transport can accept many
+    concurrent bidirectional streams before the application sees a valid
+    stream-connect request.
+- Impact: an authenticated connected peer can open many bidirectional streams
+  and send no `StreamConnectReq`, leaving one idle `accept_bi` task/resource per
+  stream. Under malicious peers, packet loss, or stalled clients, this can
+  accumulate up to the large transport limit because the application has no
+  lower admission cap or handshake timeout for idle stream-connect attempts.
+  This is distinct from ISSUE-011/012, which cover successful `open_stream`
+  responses when the local destination service cannot receive; ISSUE-056, which
+  covers caller-side blocking on a full peer control queue before stream-open
+  timeout; ISSUE-091, which covers an out-of-range service id panic after a
+  stream request is sent; and ISSUE-024, which covers frame-size/resource caps
+  on the peer message codec.
+- Evidence test:
+  - `cargo test idle_inbound_stream_connects_must_be_admission_bounded -- --nocapture`
+  - Failure summary: a raw authenticated QUIC peer opens 17 inbound
+    bidirectional streams and sends no `StreamConnectReq`; all 17 are
+    transport-accepted, exceeding the test's admission threshold of 16 idle
+    stream-connect attempts.

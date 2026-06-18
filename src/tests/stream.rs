@@ -1,4 +1,5 @@
 use std::{
+    net::UdpSocket,
     sync::{
         atomic::{AtomicBool, Ordering},
         Arc,
@@ -7,9 +8,30 @@ use std::{
 };
 
 use super::create_node;
-use crate::{msg::P2pServiceId, router::RouteAction, P2pServiceEvent, PeerId};
+use crate::{
+    msg::P2pServiceId,
+    quic::make_server_endpoint,
+    router::RouteAction,
+    secure::HandshakeProtocol,
+    stream::{wait_object, write_object, P2pQuicStream},
+    P2pServiceEvent, PeerId, SharedKeyHandshake, CERT_DOMAIN_NAME,
+};
 use futures::FutureExt;
+use rustls::pki_types::{CertificateDer, PrivatePkcs8KeyDer};
+use serde::{Deserialize, Serialize};
 use test_log::test;
+
+#[derive(Serialize)]
+struct RawConnectReq {
+    from: PeerId,
+    to: PeerId,
+    auth: Vec<u8>,
+}
+
+#[derive(Deserialize)]
+struct RawConnectRes {
+    result: Result<Vec<u8>, String>,
+}
 
 #[tokio::test]
 async fn open_stream_fails_when_destination_service_receiver_is_closed() {
@@ -215,5 +237,61 @@ async fn inbound_out_of_range_stream_service_id_must_not_panic_accept_task() {
     assert!(
         matches!(event, P2pServiceEvent::Stream(source, received_meta, _stream) if source == addr1.peer_id() && received_meta == meta),
         "inbound unknown out-of-range stream service id must be rejected without killing later valid stream delivery"
+    );
+}
+
+#[tokio::test]
+async fn idle_inbound_stream_connects_must_be_admission_bounded() {
+    const ACCEPTABLE_IDLE_STREAMS: usize = 16;
+    const ATTEMPTED_IDLE_STREAMS: usize = ACCEPTABLE_IDLE_STREAMS + 1;
+
+    let (mut node, addr) = create_node(false, 2, vec![]).await;
+    let _service = node.create_service(0.into());
+    tokio::spawn(async move { while node.recv().await.is_ok() {} });
+
+    let client_addr = UdpSocket::bind("127.0.0.1:0").expect("should bind client udp").local_addr().expect("should get client addr");
+    let priv_key = PrivatePkcs8KeyDer::from(super::DEFAULT_CLUSTER_KEY.to_vec());
+    let cert = CertificateDer::from(super::DEFAULT_CLUSTER_CERT.to_vec());
+    let client = make_server_endpoint(client_addr, priv_key, cert).expect("should create raw client endpoint");
+
+    let connection = client
+        .connect(**addr.network_address(), CERT_DOMAIN_NAME)
+        .expect("raw client should start QUIC connect")
+        .await
+        .expect("raw client should connect");
+
+    let (send, recv) = connection.open_bi().await.expect("raw client should open main control stream");
+    let mut main_stream = P2pQuicStream::new(recv, send);
+    let attacker = PeerId::from(99);
+    let secure: SharedKeyHandshake = super::DEFAULT_SECURE_KEY.into();
+    write_object::<_, _, 60000>(
+        &mut main_stream,
+        &RawConnectReq {
+            from: attacker,
+            to: addr.peer_id(),
+            auth: secure.create_request(attacker, addr.peer_id(), crate::now_ms()),
+        },
+    )
+    .await
+    .expect("raw client should send authenticated connect request");
+    let response: RawConnectRes = wait_object::<_, _, 60000>(&mut main_stream)
+        .await
+        .expect("raw client should receive connect response");
+    secure
+        .verify_response(response.result.expect("connect response should be accepted"), addr.peer_id(), attacker, crate::now_ms())
+        .expect("raw client should verify connect response");
+
+    let mut idle_streams = Vec::new();
+    for _ in 0..ATTEMPTED_IDLE_STREAMS {
+        let stream = tokio::time::timeout(Duration::from_secs(1), connection.open_bi())
+            .await
+            .expect("idle stream open should not hang")
+            .expect("idle stream open should be transport-accepted");
+        idle_streams.push(stream);
+    }
+
+    assert!(
+        idle_streams.len() <= ACCEPTABLE_IDLE_STREAMS,
+        "inbound stream-connect attempts that never send StreamConnectReq must be capped or timed out before more than {ACCEPTABLE_IDLE_STREAMS} idle accept tasks can accumulate"
     );
 }
