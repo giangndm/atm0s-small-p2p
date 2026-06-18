@@ -167,4 +167,31 @@ mod test {
         let remote_peers = service.neighbours.len();
         assert!(remote_peers <= MAX_REMOTE_PEERS, "visualization remote peer state must be bounded, got {remote_peers}");
     }
+
+    #[tokio::test]
+    async fn visualization_info_batches_must_be_bounded() {
+        const MAX_TOPOLOGY_ROWS_PER_INFO: usize = 1024;
+        let ctx = SharedCtx::new(PeerId::from(1), SharedRouterTable::new(PeerId::from(1)));
+        let (base_service, service_tx) = P2pService::build(P2pServiceId::from(0), ctx);
+        let mut service = VisualizationService::new(None, false, base_service);
+        let neighbours = (0..=MAX_TOPOLOGY_ROWS_PER_INFO)
+            .map(|idx| (ConnectionId::from(idx as u64 + 10), PeerId::from(idx as u64 + 100), idx as u16))
+            .collect::<Vec<_>>();
+
+        service_tx
+            .send(P2pServiceEvent::Unicast(PeerId::from(2), encode_info_for_test(neighbours)))
+            .await
+            .expect("visualization service channel should accept test message");
+
+        let event = service.recv().await.expect("visualization event should be emitted");
+        let VisualizationServiceEvent::PeerJoined(_, delivered) = event else {
+            panic!("expected PeerJoined event, got {event:?}");
+        };
+
+        assert!(
+            delivered.len() <= MAX_TOPOLOGY_ROWS_PER_INFO,
+            "visualization Info batches must be bounded, got {} rows",
+            delivered.len()
+        );
+    }
 }

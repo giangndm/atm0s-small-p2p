@@ -2255,3 +2255,30 @@ audited code.
   - Failure summary: a single metrics `Info` frame with 1,025 rows is delivered
     as one `OnPeerConnectionMetric` event, exceeding the test cap of 1,024
     rows.
+
+### ISSUE-105: Visualization `Info` batches have no service-level row cap
+
+- Category: high-load stability, resource exhaustion
+- Reviewer: `Galileo the 2nd`, confirmed.
+- Affected code:
+  - `src/service/visualization_service.rs`: `Message::Info` carries a
+    `Vec<(ConnectionId, PeerId, u16)>` with no semantic row bound.
+  - `src/service/visualization_service.rs`: `VisualizationService::recv`
+    deserializes visualization service messages from unicast or broadcast
+    payloads.
+  - `src/service/visualization_service.rs`: `Message::Info(neighbours)` is
+    forwarded directly as `VisualizationServiceEvent::PeerJoined` or
+    `PeerUpdated` with the full vector.
+- Impact: a peer can send a visualization `Info` frame containing a large
+  topology vector, forcing deserialization and forwarding of an oversized
+  batch. Outer framing still has byte limits, but there is no
+  visualization-service row cap, validation, truncation, or rejection path.
+  This is distinct from ISSUE-061's forged/unsolicited topology content,
+  ISSUE-079's topology disclosure through `Scan`, ISSUE-102's retained sender
+  state growth, ISSUE-104's metrics row-cap issue, ISSUE-024's lower-level peer
+  frame-size cap gap, and ISSUE-010's route/discovery sync vector growth.
+- Evidence test:
+  - `cargo test visualization_info_batches_must_be_bounded -- --nocapture`
+  - Failure summary: a single visualization `Info` frame with 1,025 topology
+    rows is delivered as one `PeerJoined` event, exceeding the test cap of
+    1,024 rows.
