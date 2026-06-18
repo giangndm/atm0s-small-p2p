@@ -701,3 +701,25 @@ audited code.
   - Failure summary: an empty snapshot page with `next_key: Some(1)` causes the
     receiver to emit another `FetchSnapshot` instead of rejecting the
     non-progressing page.
+
+### ISSUE-039: Pubsub accepts member messages from peers without channel membership
+
+- Category: security, correctness
+- Reviewer: `Faraday`, confirmed.
+- Affected code:
+  - `src/service/pubsub_service.rs`: inbound `PubsubMessage::Publish` delivers
+    to local subscribers if the channel exists, without checking that
+    `from_peer` is in `remote_publishers`.
+  - `src/service/pubsub_service.rs`: inbound `PubsubMessage::Feedback`
+    similarly delivers to local publishers without checking `remote_subscribers`.
+  - `src/service/pubsub_service.rs`: `remote_publishers` and
+    `remote_subscribers` are maintained but not used to authorize normal member
+    traffic.
+- Impact: any connected authenticated peer can inject normal `Publish` data
+  into subscribers for an existing channel without joining as a publisher. The
+  feedback direction has the same membership bypass for peers that never joined
+  as subscribers.
+- Evidence test:
+  - `cargo test pubsub_publish_must_require_remote_publisher_membership -- --nocapture`
+  - Failure summary: node2 injects `PubsubMessage::Publish` into node1's
+    subscriber without ever joining the channel as a publisher.

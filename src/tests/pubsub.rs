@@ -5,7 +5,10 @@ use tokio::time::timeout;
 
 use crate::{
     msg::PeerMessage,
-    pubsub_service::{encode_heartbeat_for_test, encode_publish_rpc_answer_for_test, encode_subscriber_joined_for_test, PeerSrc, PublisherEvent, PubsubChannelId, PubsubService, SubscriberEvent},
+    pubsub_service::{
+        encode_heartbeat_for_test, encode_publish_for_test, encode_publish_rpc_answer_for_test, encode_subscriber_joined_for_test, PeerSrc, PublisherEvent, PubsubChannelId, PubsubService,
+        SubscriberEvent,
+    },
 };
 
 use super::create_node;
@@ -775,4 +778,43 @@ async fn pubsub_feedback_rpc_no_destination() {
     let channel_id: PubsubChannelId = 1000.into();
     let subscriber = service1_requester.subscriber(channel_id).await;
     assert!(subscriber.requester().feedback_rpc("ping", vec![1, 2, 3], Duration::from_secs(1)).await.is_err());
+}
+
+#[test(tokio::test)]
+async fn pubsub_publish_must_require_remote_publisher_membership() {
+    let (mut node1, addr1) = create_node(true, 1, vec![]).await;
+    let mut service1 = PubsubService::new(node1.create_service(0.into()));
+    let service1_requester = service1.requester();
+    tokio::spawn(async move { while node1.recv().await.is_ok() {} });
+    tokio::spawn(async move { service1.run_loop().await });
+
+    let (mut node2, addr2) = create_node(false, 2, vec![addr1.clone()]).await;
+    let node2_ctx = node2.ctx.clone();
+    tokio::spawn(async move { while node2.recv().await.is_ok() {} });
+
+    tokio::time::sleep(Duration::from_secs(1)).await;
+    let channel_id: PubsubChannelId = 1000.into();
+    let mut subscriber = service1_requester.subscriber(channel_id).await;
+
+    let conn = tokio::time::timeout(Duration::from_secs(3), async {
+        loop {
+            if let Some(conn) = node2_ctx.conns().into_iter().next() {
+                return conn;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .expect("node2 should connect to node1");
+
+    let injected = b"publish-without-membership".to_vec();
+    conn.try_send(PeerMessage::Unicast(addr2.peer_id(), addr1.peer_id(), 0.into(), encode_publish_for_test(channel_id, injected.clone())))
+        .expect("attacker should be able to inject a pubsub publish frame");
+
+    let delivered = timeout(Duration::from_millis(500), subscriber.recv()).await;
+
+    assert!(
+        !matches!(delivered, Ok(Ok(SubscriberEvent::Publish(data))) if data == injected),
+        "pubsub Publish must not be delivered from a peer that has not joined the channel as a publisher"
+    );
 }
