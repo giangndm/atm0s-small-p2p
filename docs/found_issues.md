@@ -3275,3 +3275,30 @@ must resolve.
   - Failure summary: after node2 connects to node1, the test fills node2's
     bounded main event queue and closes node1; `node2.ctx.conn(live_conn)`
     remains present after disconnect cleanup should have unregistered the alias.
+
+### ISSUE-137: Pending alias finds can resolve remote after the alias becomes local
+
+- Category: correctness, alias lifecycle stability, bad-network race
+- Score: 68/100
+- Reviewer: `Volta the 2nd`, confirmed.
+- Affected code:
+  - `src/service/alias_service.rs`: `AliasControl::Find` for a missing alias
+    inserts a `find_reqs` entry in scan state.
+  - `src/service/alias_service.rs`: `AliasControl::Register` increments local
+    alias state and broadcasts `NotifySet`, but does not complete or remove an
+    existing pending find for the same alias.
+  - `src/service/alias_service.rs`: a later `AliasMessage::Found(alias)` then
+    removes the pending request and answers `AliasFoundLocation::Scan(from)`
+    even though the alias is now local.
+- Impact: local alias registration can lose a race against an older pending
+  scan. Callers waiting on `find(alias)` may be told to use a remote peer for an
+  alias that is already local, causing wrong stream placement, avoidable remote
+  traffic, and inconsistent alias ownership under churn or delayed network
+  replies. This is distinct from ISSUE-090 and ISSUE-109, which cover unchecked
+  or unsolicited remote `Found` trust and cache poisoning; this issue is the
+  failure to reconcile pending find state when local ownership appears.
+- Evidence test:
+  - `cargo test pending_find_must_prefer_late_local_registration_over_remote_found -- --nocapture`
+  - Failure summary: after a missing-alias find starts a scan, local
+    registration of that alias does not complete the pending find; a later
+    remote `Found` returns `Some(Scan(PeerId(2)))` instead of `Some(Local)`.

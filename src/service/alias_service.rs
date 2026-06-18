@@ -705,6 +705,32 @@ mod test {
     }
 
     #[test]
+    fn pending_find_must_prefer_late_local_registration_over_remote_found() {
+        let mut ctx = TestContext::new();
+        let alias_id = AliasId(1);
+        let remote_peer = PeerId(2);
+
+        let (tx, mut rx) = oneshot::channel();
+        ctx.internal.on_control(ctx.now, AliasControl::Find(alias_id, tx));
+        assert_eq!(ctx.collect_outputs(), vec![InternalOutput::Broadcast(AliasMessage::Scan(alias_id))]);
+
+        ctx.internal.on_control(ctx.now, AliasControl::Register(alias_id));
+        ctx.collect_outputs();
+
+        ctx.internal.on_msg(ctx.now, remote_peer, AliasMessage::Found(alias_id));
+
+        assert_eq!(
+            rx.try_recv().expect("pending find should complete"),
+            Some(AliasFoundLocation::Local),
+            "a pending alias find must resolve to Local once the alias is registered locally, not to a later remote Found"
+        );
+        assert!(
+            !ctx.internal.find_reqs.contains_key(&alias_id),
+            "local registration should clear the obsolete pending find request"
+        );
+    }
+
+    #[test]
     fn test_find_cached_alias_timeout_switch_to_scan() {
         let mut ctx = TestContext::new();
         let alias_id = AliasId(1);
