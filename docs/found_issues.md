@@ -1497,3 +1497,31 @@ audited code.
   - Failure summary: after dropping node1's `P2pService`, a cloned
     `P2pServiceRequester` opens `stale-service-stream`, and node2's service
     receives `P2pServiceEvent::Stream`.
+
+### ISSUE-074: Dropped publisher requesters can still issue publish RPCs
+
+- Category: correctness, pubsub lifecycle stability
+- Reviewer: `Galileo`, confirmed.
+- Affected code:
+  - `src/service/pubsub_service/publisher.rs`: `PublisherRequester` is
+    cloneable and retains `local_id`, `channel_id`, and the service control
+    sender after the owning `Publisher` is dropped.
+  - `src/service/pubsub_service/publisher.rs`: `Publisher::drop` sends
+    `InternalMsg::PublisherDestroyed(local_id, channel_id)`.
+  - `src/service/pubsub_service.rs`:
+    `InternalMsg::PublishRpc(_local_id, channel, data, method, tx, timeout)`
+    ignores `_local_id`, delivers RPCs to local/remote subscribers, and inserts
+    pending RPC state whenever the channel has destinations.
+- Impact: after the last local publisher is dropped and subscribers observe
+  `PeerLeaved(PeerSrc::Local)`, any cloned requester from that dropped
+  publisher can still issue publish RPCs on the channel. This invokes
+  subscriber RPC handlers and creates pending RPC state from a publisher the
+  pubsub state already considers gone. This is distinct from ISSUE-069, which
+  covers ordinary publishes, and from ISSUE-020/043/048, which cover other
+  pubsub RPC answer, retention, and remote membership failure modes.
+- Evidence test:
+  - `cargo test dropped_publisher_requester_must_not_continue_publish_rpc -- --nocapture`
+  - Failure summary: after dropping the publisher and receiving
+    `SubscriberEvent::PeerLeaved(PeerSrc::Local)`, a cloned stale requester
+    issues `publish_rpc("stale", b"stale-publish-rpc", ...)`, and the
+    subscriber still receives `SubscriberEvent::PublishRpc`.

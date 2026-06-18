@@ -701,6 +701,48 @@ async fn dropped_publisher_requester_must_not_continue_publishing() {
 }
 
 #[test(tokio::test)]
+async fn dropped_publisher_requester_must_not_continue_publish_rpc() {
+    let (mut node1, _addr1) = create_node(true, 1, vec![]).await;
+    let mut service1 = PubsubService::new(node1.create_service(0.into()));
+    let service1_requester = service1.requester();
+    tokio::spawn(async move { while node1.recv().await.is_ok() {} });
+    tokio::spawn(async move { service1.run_loop().await });
+
+    let channel_id: PubsubChannelId = 1000.into();
+    let publisher = service1_requester.publisher(channel_id).await;
+    let stale_requester = publisher.requester().clone();
+    let mut subscriber = service1_requester.subscriber(channel_id).await;
+    let ttl = Duration::from_secs(1);
+
+    assert_eq!(
+        timeout(ttl, subscriber.recv()).await.expect("subscriber should observe initial local publisher").expect("subscriber channel should stay open"),
+        SubscriberEvent::PeerJoined(PeerSrc::Local)
+    );
+
+    drop(publisher);
+
+    assert_eq!(
+        timeout(ttl, subscriber.recv()).await.expect("subscriber should observe dropped local publisher").expect("subscriber channel should stay open"),
+        SubscriberEvent::PeerLeaved(PeerSrc::Local)
+    );
+
+    let rpc_payload = b"stale-publish-rpc".to_vec();
+    let rpc_task = tokio::spawn({
+        let stale_requester = stale_requester.clone();
+        let rpc_payload = rpc_payload.clone();
+        async move { stale_requester.publish_rpc("stale", rpc_payload, Duration::from_secs(1)).await }
+    });
+
+    let delivered = timeout(Duration::from_millis(500), subscriber.recv()).await;
+    rpc_task.abort();
+
+    assert!(
+        !matches!(delivered, Ok(Ok(SubscriberEvent::PublishRpc(data, _, method, PeerSrc::Local))) if data == rpc_payload && method == "stale"),
+        "a requester cloned from a dropped Publisher must not continue issuing publish RPCs on that channel"
+    );
+}
+
+#[test(tokio::test)]
 async fn dropped_subscriber_requester_must_not_continue_feedback() {
     let (mut node1, _addr1) = create_node(true, 1, vec![]).await;
     let mut service1 = PubsubService::new(node1.create_service(0.into()));
