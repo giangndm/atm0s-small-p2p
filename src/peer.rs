@@ -305,4 +305,31 @@ mod tests {
             "send_unicast must not wait indefinitely on a congested peer control queue"
         );
     }
+
+    #[tokio::test]
+    async fn open_stream_must_not_block_on_full_peer_control_queue() {
+        let router = SharedRouterTable::new(PeerId::from(0));
+        let ctx = SharedCtx::new(PeerId::from(0), router.clone());
+        let conn = ConnectionId::from(1);
+        let peer = PeerId::from(1);
+        let (tx, _rx) = channel(1);
+
+        router.set_direct(conn, peer, 0);
+        tx.try_send(PeerConnectionControl::Send(PeerMessage::PeerStopped(PeerId::from(99)), None))
+            .expect("test control queue should accept first message");
+
+        let alias = PeerConnectionAlias::new(PeerId::from(0), peer, conn, tx);
+        ctx.register_conn(conn, alias);
+
+        let result = tokio::time::timeout(
+            Duration::from_millis(50),
+            ctx.open_stream(P2pServiceId::from(1), peer, b"meta".to_vec()),
+        )
+        .await;
+
+        assert!(
+            result.is_ok(),
+            "open_stream must not wait indefinitely on a congested peer control queue"
+        );
+    }
 }

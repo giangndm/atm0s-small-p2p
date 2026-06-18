@@ -1058,3 +1058,27 @@ audited code.
   - Failure summary: after applying an advertisement for seed peer `1` at
     `127.0.0.1:9001`, `remotes()` returns both `1@127.0.0.1:9001` and the
     configured `1@127.0.0.1:9000`; expected only the configured seed address.
+
+### ISSUE-056: Stream open can block on congested peer control queue
+
+- Category: stability, high-load backpressure
+- Reviewer: `Confucius`, confirmed.
+- Affected code:
+  - `src/ctx.rs`: `SharedCtx::open_stream` awaits the target peer alias
+    directly after route lookup.
+  - `src/peer/peer_alias.rs`: `PeerConnectionAlias::open_stream` awaits
+    `control_tx.send(PeerConnectionControl::OpenStream(...))` on a bounded
+    peer control queue before any stream setup timeout can apply.
+  - `src/peer/peer_internal.rs`: `OPEN_BI_TIMEOUT` only wraps
+    `connection.open_bi()` after the peer task has already received the
+    `OpenStream` command.
+- Impact: under high load, a full peer control queue can make stream-opening
+  callers wait indefinitely before the operation reaches the existing
+  `OPEN_BI_TIMEOUT`. This is distinct from ISSUE-049 and ISSUE-050 because it
+  affects the stream-opening API and bypasses its stream setup timeout before a
+  stream attempt starts.
+- Evidence test:
+  - `cargo test open_stream_must_not_block_on_full_peer_control_queue -- --nocapture`
+  - Failure summary: the test fills a synthetic bounded peer control queue,
+    then `SharedCtx::open_stream` fails the 50 ms timeout assertion because it
+    is blocked while awaiting admission of `PeerConnectionControl::OpenStream`.
