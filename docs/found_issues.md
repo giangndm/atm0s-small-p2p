@@ -1263,6 +1263,7 @@ must resolve.
 ### ISSUE-061: Visualization accepts unsolicited forged topology info
 
 - Category: security, topology correctness
+- Score: 74/100
 - Reviewer: `Halley`, confirmed.
 - Affected code:
   - `src/service/visualization_service.rs`: `VisualizationService::recv`
@@ -1285,6 +1286,7 @@ must resolve.
 ### ISSUE-062: Metrics accepts unsolicited forged connection metrics
 
 - Category: security, monitoring correctness
+- Score: 76/100
 - Reviewer: `Locke`, confirmed.
 - Affected code:
   - `src/service/metrics_service.rs`: `MetricsService::recv` accepts any
@@ -1311,6 +1313,7 @@ must resolve.
 ### ISSUE-063: Stale peer data events panic without a direct route
 
 - Category: correctness, async race stability
+- Score: 72/100
 - Reviewer: `Chandrasekhar`, confirmed.
 - Affected code:
   - `src/lib.rs`: `P2pNetwork::process_internal` handles
@@ -1333,6 +1336,7 @@ must resolve.
 ### ISSUE-064: Stale peer stats events publish metrics for unknown connections
 
 - Category: correctness, monitoring stability
+- Score: 55/100
 - Reviewer: `Avicenna`, confirmed.
 - Affected code:
   - `src/lib.rs`: `P2pNetwork::process_internal` handles
@@ -1355,6 +1359,7 @@ must resolve.
 ### ISSUE-065: Stale disconnect events are emitted to users
 
 - Category: correctness, API event stability
+- Score: 54/100
 - Reviewer: `Harvey`, confirmed.
 - Affected code:
   - `src/lib.rs`: `P2pNetwork::process_internal` handles
@@ -1378,6 +1383,7 @@ must resolve.
 ### ISSUE-066: Disconnect events do not validate peer id against connection owner
 
 - Category: correctness, routing stability
+- Score: 68/100
 - Reviewer: `Raman`, confirmed.
 - Affected code:
   - `src/lib.rs`: `P2pNetwork::process_internal` handles
@@ -1400,6 +1406,7 @@ must resolve.
 ### ISSUE-067: PeerConnected can rebind an existing connection to a different peer
 
 - Category: correctness, routing stability
+- Score: 73/100
 - Reviewer: `Ptolemy`, confirmed.
 - Affected code:
   - `src/lib.rs`: `P2pNetwork::process_internal` handles
@@ -1423,6 +1430,7 @@ must resolve.
 ### ISSUE-068: PeerStats can relabel a known connection to the wrong peer
 
 - Category: correctness, observability integrity
+- Score: 60/100
 - Reviewer: `Curie`, confirmed.
 - Affected code:
   - `src/lib.rs`: `P2pNetwork::process_internal` handles
@@ -1447,6 +1455,7 @@ must resolve.
 ### ISSUE-069: Dropped publisher requesters can still publish
 
 - Category: correctness, pubsub lifecycle stability
+- Score: 66/100
 - Reviewer: `Epicurus`, confirmed.
 - Affected code:
   - `src/service/pubsub_service/publisher.rs`: `PublisherRequester` is cloneable
@@ -1473,6 +1482,7 @@ must resolve.
 ### ISSUE-070: Dropped subscriber requesters can still send feedback
 
 - Category: correctness, pubsub lifecycle stability
+- Score: 66/100
 - Reviewer: `Einstein`, confirmed.
 - Affected code:
   - `src/service/pubsub_service/subscriber.rs`: `SubscriberRequester` is
@@ -1500,6 +1510,7 @@ must resolve.
 ### ISSUE-071: Replicated KV retries stale FetchChanged after broadcasts fill the gap
 
 - Category: correctness, high-load/backpressure stability
+- Score: 58/100
 - Reviewer: `Herschel`, confirmed.
 - Affected code:
   - `src/service/replicate_kv_service/remote_storage.rs`:
@@ -1529,6 +1540,7 @@ must resolve.
 ### ISSUE-072: Dropped service requesters can still send unicast
 
 - Category: correctness, service lifecycle stability
+- Score: 70/100
 - Reviewer: `Arendt`, confirmed.
 - Affected code:
   - `src/service.rs`: `P2pServiceRequester` is cloneable and keeps only
@@ -1553,6 +1565,7 @@ must resolve.
 ### ISSUE-073: Dropped service requesters can still open streams
 
 - Category: correctness, pipe lifecycle stability
+- Score: 72/100
 - Reviewer: `Parfit`, confirmed.
 - Affected code:
   - `src/service.rs`: `P2pServiceRequester` is cloneable and keeps only
@@ -1577,6 +1590,7 @@ must resolve.
 ### ISSUE-074: Dropped publisher requesters can still issue publish RPCs
 
 - Category: correctness, pubsub lifecycle stability
+- Score: 70/100
 - Reviewer: `Galileo`, confirmed.
 - Affected code:
   - `src/service/pubsub_service/publisher.rs`: `PublisherRequester` is
@@ -1605,6 +1619,7 @@ must resolve.
 ### ISSUE-075: Dropped subscriber requesters can still issue feedback RPCs
 
 - Category: correctness, pubsub lifecycle stability
+- Score: 70/100
 - Reviewer: `Lorentz`, confirmed.
 - Affected code:
   - `src/service/pubsub_service/subscriber.rs`: `SubscriberRequester` is
@@ -1633,6 +1648,7 @@ must resolve.
 ### ISSUE-076: Dropped service requesters can still send broadcast
 
 - Category: correctness, service lifecycle stability
+- Score: 69/100
 - Reviewer: `Hume`, confirmed.
 - Affected code:
   - `src/service.rs`: `P2pServiceRequester` is cloneable and keeps only
@@ -1657,6 +1673,7 @@ must resolve.
 ### ISSUE-077: Replicated KV zero changed batch size returns false empty success
 
 - Category: correctness, bad-network stability
+- Score: 60/100
 - Reviewer: `Peirce`, confirmed.
 - Affected code:
   - `src/service/replicate_kv_service.rs`: `ReplicatedKvService::new` exposes
@@ -1683,6 +1700,7 @@ must resolve.
 ### ISSUE-078: Metrics service discloses metrics to arbitrary scan requests
 
 - Category: security, monitoring integrity
+- Score: 78/100
 - Reviewer: `Euler`, confirmed.
 - Affected code:
   - `src/service/metrics_service.rs`: `MetricsService::recv` accepts
@@ -1704,6 +1722,7 @@ must resolve.
 ### ISSUE-079: Visualization service discloses topology to arbitrary scan requests
 
 - Category: security, topology integrity
+- Score: 76/100
 - Reviewer: `Hypatia`, confirmed.
 - Affected code:
   - `src/service/visualization_service.rs`: `VisualizationService::recv`
@@ -1726,6 +1745,7 @@ must resolve.
 ### ISSUE-080: Pubsub heartbeat does not remove stale remote publishers
 
 - Category: bad-network correctness, pubsub stability
+- Score: 68/100
 - Reviewer: `Plato`, confirmed. Additional omitted-channel heartbeat evidence
   reviewed by `Bohr` as an ISSUE-080 variant.
 - Affected code:
