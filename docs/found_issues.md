@@ -2473,3 +2473,37 @@ audited code.
   - `cargo test connect_to_own_peer_address_must_fail -- --nocapture`
   - Failure summary: `connect()` to the node's own advertised `PeerAddress`
     returns `Ok(())`; expected the self-connect target to be rejected.
+
+### ISSUE-113: concurrent `connect()` calls to the same peer are not coalesced
+
+- Category: correctness, high-load stability
+- Reviewer: `Dewey the 2nd`, confirmed.
+- Affected code:
+  - `src/lib.rs`: `P2pNetwork::process_control` suppresses a new
+    `ControlCmd::Connect` only when `self.neighbours.has_peer(&addr.peer_id())`
+    is true.
+  - `src/neighbours.rs`: `NetworkNeighbours::has_peer` returns true only for
+    neighbours whose `PeerConnection::is_connected()` is true.
+  - `src/peer.rs`: outgoing attempts are inserted with `peer_id:
+    Some(to_peer)` and `is_connected: false`, so additional connect commands
+    for the same peer can start more QUIC connection attempts before the first
+    one finishes.
+- Impact: high-load callers, repeated seed ticks, or malicious API use can
+  issue several `connect()` requests to the same peer while the first handshake
+  is still pending. The node starts parallel outgoing QUIC connections, and
+  each successful handshake can emit `PeerConnected`, install direct route
+  state, register metrics, and trigger sync work. This can create duplicate
+  direct connections, noisy route/path updates, duplicate connection events,
+  and unnecessary work under churn. This is distinct from ISSUE-016's early
+  success before identity authentication, ISSUE-057's stale connected event
+  installing an unusable route, ISSUE-067's rebinding of an existing connection
+  to a different peer, and ISSUE-112's self-connect acceptance. It is also
+  distinct from the `stale_pending_outgoing_peer_does_not_suppress_reconnect`
+  unit test: stale or failed unconnected attempts must not suppress reconnect
+  forever, but live in-flight attempts should still be coalesced or otherwise
+  bounded until they connect, fail, or time out.
+- Evidence test:
+  - `cargo test concurrent_connects_to_same_peer_must_be_coalesced -- --nocapture`
+  - Failure summary: four immediate `try_connect()` calls to the same peer
+    produce four `PeerConnected` events; the test expected at most one
+    connected event for that peer while duplicate attempts were in flight.
