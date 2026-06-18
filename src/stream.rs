@@ -120,6 +120,8 @@ pub async fn write_object<W: AsyncWrite + Send + Unpin, O: Serialize, const MAX_
 
 #[cfg(test)]
 mod tests {
+    use futures::FutureExt;
+    use serde::Serializer;
     use tokio_util::{bytes::BytesMut, codec::Encoder};
 
     use crate::{
@@ -128,6 +130,17 @@ mod tests {
     };
 
     use super::*;
+
+    struct FailingSerialize;
+
+    impl Serialize for FailingSerialize {
+        fn serialize<S>(&self, _serializer: S) -> Result<S::Ok, S::Error>
+        where
+            S: Serializer,
+        {
+            Err(serde::ser::Error::custom("intentional stream serialization failure"))
+        }
+    }
 
     #[test]
     fn peer_message_codec_must_reject_oversized_service_payloads() {
@@ -138,5 +151,19 @@ mod tests {
         let result = codec.encode(PeerMessage::Unicast(PeerId::from(1), PeerId::from(2), P2pServiceId::from(0), oversized), &mut dst);
 
         assert!(result.is_err(), "main peer message codec must reject oversized service payloads before framing");
+    }
+
+    #[tokio::test]
+    async fn write_object_must_return_error_on_serialize_failure() {
+        let (mut writer, _reader) = tokio::io::duplex(1024);
+
+        let result = std::panic::AssertUnwindSafe(write_object::<_, _, 1024>(&mut writer, &FailingSerialize))
+            .catch_unwind()
+            .await;
+
+        assert!(
+            matches!(result, Ok(Err(_))),
+            "write_object must return Err instead of panicking when serialization fails"
+        );
     }
 }

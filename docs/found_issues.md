@@ -2051,3 +2051,22 @@ audited code.
   - Failure summary: `service.recv()` panics at
     `src/service/replicate_kv_service.rs:163` when serializing a value whose
     `Serialize` implementation returns a custom error.
+
+### ISSUE-097: QUIC object writer panics on serialization failure
+
+- Category: correctness, API stability
+- Reviewer: `Poincare`, confirmed.
+- Affected code:
+  - `src/stream.rs`: `write_object` returns `anyhow::Result<()>` but calls
+    `bincode::serialized_size(object).expect(...)` and
+    `bincode::serialize(object).expect(...)`.
+- Impact: a valid `Serialize` implementation can return an error, but the
+  shared QUIC object writer unwinds instead of propagating `Err`. This can panic
+  connection handshake or stream-control write paths that rely on the helper.
+  This is distinct from ISSUE-094 and ISSUE-096, which cover service-level
+  pubsub and replicated-KV serialization surfaces.
+- Evidence test:
+  - `cargo test write_object_must_return_error_on_serialize_failure -- --nocapture`
+  - Failure summary: `write_object::<_, _, 1024>` panics at
+    `src/stream.rs:109` when serialization returns a custom error; expected
+    `Ok(Err(_))`.
