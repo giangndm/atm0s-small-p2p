@@ -514,4 +514,21 @@ mod tests {
             "untrusted route sync payloads should be capped or rejected"
         );
     }
+
+    #[test_log::test]
+    fn should_reject_overflowing_route_sync_metric_without_panic() {
+        let mut table = RouterTable::new(PeerId(0));
+        let conn1 = ConnectionId(1);
+        let peer1 = PeerId(1);
+        let peer2 = PeerId(2);
+
+        table.set_direct(conn1, peer1, 10);
+
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            table.apply_sync(conn1, RouterTableSync(vec![(peer2, (u8::MAX, u16::MAX).into())]));
+        }));
+
+        assert!(result.is_ok(), "untrusted route metrics must not overflow or panic during path composition");
+        assert_eq!(table.next_remote(&peer2), None, "overflowing route metrics must be rejected, not wrapped into a usable path");
+    }
 }

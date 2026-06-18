@@ -573,3 +573,23 @@ audited code.
   - Failure summary: `LocalStore::snapshot` with `compose_max_pkts = 0`
     returns `slots: []` and `next_key: Some(...)`, proving snapshot paging can
     request continuation without advancing.
+
+### ISSUE-033: Router route-sync metric arithmetic overflows
+
+- Category: security, correctness, bad-network stability
+- Reviewer: `Schrodinger`, confirmed.
+- Affected code:
+  - `src/router.rs`: `RouterTableSync` accepts peer-supplied `PathMetric`
+    values.
+  - `src/router.rs`: `RouterTable::apply_sync` composes advertised metrics with
+    the direct-link metric using `new_metric += *direct_metric`.
+  - `src/router.rs`: `PathMetric::add_assign` uses raw `u8` and `u16`
+    addition.
+- Impact: a connected peer can advertise maximum route metrics and panic a
+  debug build during route composition. In release builds the arithmetic can
+  wrap, turning an invalid route into a potentially low-cost usable path before
+  later filtering.
+- Evidence test:
+  - `cargo test should_reject_overflowing_route_sync_metric_without_panic -- --nocapture`
+  - Failure summary: applying a route sync with `(u8::MAX, u16::MAX)` panics at
+    `src/router.rs:196` with `attempt to add with overflow`.
