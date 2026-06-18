@@ -2875,3 +2875,31 @@ must resolve.
   - `cargo test requester_connect_backlog_must_be_bounded -- --nocapture`
   - Failure summary: 1,025 `try_connect` calls for distinct target peers remain
     queued in `node.control_rx`, exceeding the bounded-backlog assertion.
+
+### ISSUE-126: Pubsub internal control messages can accumulate without bound
+
+- Category: high-load stability, resource exhaustion, API backpressure
+- Score: 70/100
+- Reviewer: `Banach the 2nd`, confirmed.
+- Affected code:
+  - `src/service/pubsub_service.rs`: `PubsubService::new` creates
+    `internal_tx/internal_rx` with `tokio::sync::mpsc::unbounded_channel`.
+  - `src/service/pubsub_service.rs`: `PubsubServiceRequester::publisher` and
+    `subscriber` enqueue handle-registration messages through that unbounded
+    channel and return handles without admission control.
+  - `src/service/pubsub_service/publisher.rs` and
+    `src/service/pubsub_service/subscriber.rs`: handle actions and drops use the
+    same unbounded control sender for additional `InternalMsg` variants.
+- Impact: a local caller holding a pubsub requester can enqueue service-control
+  work faster than `PubsubService::run_loop` drains `internal_rx`. Under high
+  handle churn or a stalled service loop, pending pubsub control messages can
+  grow memory without bound before the service processes them. This is distinct
+  from ISSUE-058, which covers dead-on-arrival handles after service drop;
+  ISSUE-108, which covers retained empty channel state after processed teardown;
+  ISSUE-123/124, which cover per-handle event output queues; ISSUE-125, which
+  covers the network requester's control queue; and the pending RPC issues.
+- Evidence test:
+  - `cargo test pubsub_internal_control_backlog_must_be_bounded -- --nocapture`
+  - Failure summary: 1,025 `PubsubServiceRequester::publisher(...)` calls leave
+    1,025 pending messages in `service.internal_rx`, exceeding the bounded
+    control-backlog assertion.

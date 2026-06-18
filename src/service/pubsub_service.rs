@@ -731,6 +731,24 @@ mod test {
     }
 
     #[tokio::test]
+    async fn pubsub_internal_control_backlog_must_be_bounded() {
+        const MAX_PENDING_CONTROLS: usize = 1024;
+        let service = test_service();
+        let requester = service.requester();
+        let mut publishers = Vec::new();
+
+        for channel in 0..=MAX_PENDING_CONTROLS {
+            publishers.push(requester.publisher(PubsubChannelId(channel as u64 + 10)).await);
+        }
+
+        assert!(
+            service.internal_rx.len() <= MAX_PENDING_CONTROLS,
+            "pending pubsub internal control messages must be bounded, got {}",
+            service.internal_rx.len()
+        );
+    }
+
+    #[tokio::test]
     async fn pending_publish_rpc_requests_must_be_bounded() {
         const MAX_PENDING_RPCS: usize = 1024;
         let mut service = test_service();
