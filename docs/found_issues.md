@@ -1720,3 +1720,26 @@ audited code.
   - Failure summary: a snapshot response with
     `slots = [(2, Slot::new(2, Version(1)))]` and `biggest_key = 1` inserts key
     `2` into `ctx.slots`; expected out-of-range snapshot slots to be rejected.
+
+### ISSUE-083: Replicated KV full sync accepts continuation slots before requested key
+
+- Category: correctness, security
+- Reviewer: `Jason`, confirmed.
+- Affected code:
+  - `src/service/replicate_kv_service/remote_storage.rs`:
+    `SyncFullState::on_rpc_res` requests continuation snapshots from
+    `snapshot.next_key`, but does not remember or validate that lower bound.
+  - `src/service/replicate_kv_service/remote_storage.rs`: continuation
+    `snapshot.slots` entries are emitted and inserted even if their keys are
+    before the requested `next_key`.
+- Impact: a malicious or malformed peer can answer a continuation request that
+  should start at key `5` with a slot for key `4`. The receiver stores the
+  out-of-request-range slot and can complete full sync using an invalid page.
+  This is distinct from ISSUE-082, which covers slots past the advertised
+  `biggest_key` upper bound, and from ISSUE-047, which covers continuation
+  version mismatch.
+- Evidence test:
+  - `cargo test full_sync_must_reject_continuation_slot_before_requested_key -- --nocapture`
+  - Failure summary: after a first page with `next_key = Some(5)`, a
+    continuation page containing key `4` is inserted into `ctx.slots`; expected
+    slots before the requested continuation key to be rejected.

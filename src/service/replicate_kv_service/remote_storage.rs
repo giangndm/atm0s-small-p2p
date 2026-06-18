@@ -644,6 +644,57 @@ mod tests {
     }
 
     #[test]
+    fn full_sync_must_reject_continuation_slot_before_requested_key() {
+        let mut ctx: StateCtx<u16, u16, u16> = StateCtx {
+            remote: 1,
+            slots: BTreeMap::new(),
+            outs: VecDeque::new(),
+            next_state: None,
+        };
+
+        let now = Instant::now();
+        let mut state = SyncFullState::default();
+        state.init(&mut ctx, now);
+        ctx.outs.clear();
+
+        state.on_rpc_res(
+            &mut ctx,
+            now,
+            RpcRes::FetchSnapshot(
+                Some(SnapshotData {
+                    slots: vec![(1, Slot::new(1, Version(1)))],
+                    next_key: Some(5),
+                    biggest_key: 10,
+                }),
+                Version(1),
+            ),
+        );
+        ctx.outs.clear();
+
+        state.on_rpc_res(
+            &mut ctx,
+            now,
+            RpcRes::FetchSnapshot(
+                Some(SnapshotData {
+                    slots: vec![(4, Slot::new(4, Version(1)))],
+                    next_key: None,
+                    biggest_key: 10,
+                }),
+                Version(1),
+            ),
+        );
+
+        assert!(
+            !ctx.slots.contains_key(&4),
+            "continuation snapshot slots before the requested next_key must be rejected"
+        );
+        assert_eq!(
+            ctx.next_state, None,
+            "full sync must not complete after accepting a continuation slot before the requested next_key"
+        );
+    }
+
+    #[test]
     fn full_sync_must_reject_continuation_snapshot_version_mismatch() {
         let mut ctx: StateCtx<u16, u16, u16> = StateCtx {
             remote: 1,
