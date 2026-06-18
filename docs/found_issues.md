@@ -382,6 +382,7 @@ must resolve.
 ### ISSUE-021: Handshake timeout check overflows on maximum timestamp
 
 - Category: security, correctness
+- Score: 74/100
 - Reviewer: `Dewey`, confirmed.
 - Affected code:
   - `src/secure.rs`: `validate_handshake` computes
@@ -398,6 +399,7 @@ must resolve.
 ### ISSUE-022: Alias shutdown from one peer clears all cached aliases
 
 - Category: security, correctness
+- Score: 72/100
 - Reviewer: `Archimedes`, confirmed.
 - Affected code:
   - `src/service/alias_service.rs`: `AliasMessage::Shutdown` iterates over and
@@ -416,6 +418,7 @@ must resolve.
 ### ISSUE-023: Replicated KV `FetchChanged` version arithmetic overflows
 
 - Category: security, correctness
+- Score: 76/100
 - Reviewer: `Dirac`, confirmed.
 - Affected code:
   - `src/service/replicate_kv_service/local_storage.rs`: remote
@@ -434,6 +437,7 @@ must resolve.
 ### ISSUE-024: Peer message codec lacks the 60 KB application payload cap
 
 - Category: high-load stability, resource exhaustion
+- Score: 70/100
 - Reviewer: `Descartes`, confirmed.
 - Affected code:
   - `src/peer/peer_internal.rs`: the main peer stream uses
@@ -454,6 +458,7 @@ must resolve.
 ### ISSUE-025: Replicated KV `FetchSnapshot` reversed bounds panic
 
 - Category: security, correctness
+- Score: 78/100
 - Reviewer: `Hilbert`, confirmed.
 - Affected code:
   - `src/service/replicate_kv_service.rs`: unicast RPC requests from peers are
@@ -473,6 +478,7 @@ must resolve.
 ### ISSUE-026: Pubsub heartbeat does not remove stale remote subscribers
 
 - Category: bad-network correctness, stability
+- Score: 66/100
 - Reviewer: `Euclid`, confirmed.
 - Affected code:
   - `src/service/pubsub_service.rs`: the module comment says heartbeat repairs
@@ -493,6 +499,7 @@ must resolve.
 ### ISSUE-027: Replicated KV stores unbounded future changed broadcasts
 
 - Category: high-load stability, resource exhaustion
+- Score: 82/100
 - Reviewer: `Socrates`, confirmed.
 - Affected code:
   - `src/service/replicate_kv_service/remote_storage.rs`: `WorkingState`
@@ -513,6 +520,7 @@ must resolve.
 ### ISSUE-028: Stale network requester panics after network drop
 
 - Category: correctness, API stability
+- Score: 58/100
 - Reviewer: `Heisenberg`, confirmed.
 - Affected code:
   - `src/requester.rs`: `P2pNetworkRequester::connect` calls
@@ -534,6 +542,7 @@ must resolve.
 ### ISSUE-029: Stale alias requester panics after service drop
 
 - Category: correctness, API stability
+- Score: 57/100
 - Reviewer: `Singer`, confirmed.
 - Affected code:
   - `src/service/alias_service.rs`: `AliasServiceRequester::register`,
@@ -550,6 +559,7 @@ must resolve.
 ### ISSUE-030: Duplicate service creation panics instead of returning an error
 
 - Category: correctness, API stability
+- Score: 52/100
 - Reviewer: `Fermat`, confirmed.
 - Affected code:
   - `src/lib.rs`: `P2pNetwork::create_service` exposes a public
@@ -566,6 +576,7 @@ must resolve.
 ### ISSUE-031: Replicated KV local version increment overflows
 
 - Category: long-running correctness, stability
+- Score: 64/100
 - Reviewer: `Sagan`, confirmed.
 - Affected code:
   - `src/service/replicate_kv_service/local_storage.rs`: local `set` and `del`
@@ -585,6 +596,7 @@ must resolve.
 ### ISSUE-032: Replicated KV zero snapshot page size stalls full sync
 
 - Category: correctness, bad-network stability
+- Score: 61/100
 - Reviewer: `Sartre`, confirmed.
 - Affected code:
   - `src/service/replicate_kv_service.rs`: `ReplicatedKvStore::new` accepts
@@ -609,6 +621,7 @@ must resolve.
 ### ISSUE-033: Router route-sync metric arithmetic overflows
 
 - Category: security, correctness, bad-network stability
+- Score: 78/100
 - Reviewer: `Schrodinger`, confirmed.
 - Affected code:
   - `src/router.rs`: `RouterTableSync` accepts peer-supplied `PathMetric`
@@ -629,6 +642,7 @@ must resolve.
 ### ISSUE-034: Replicated KV full sync accepts future-version snapshot slots
 
 - Category: security, correctness
+- Score: 83/100
 - Reviewer: `Zeno`, confirmed.
 - Affected code:
   - `src/service/replicate_kv_service/remote_storage.rs`:
@@ -652,6 +666,7 @@ must resolve.
 ### ISSUE-035: Alias lookup stores unbounded duplicate waiters
 
 - Category: high-load stability, resource exhaustion
+- Score: 68/100
 - Reviewer: `Mencius`, confirmed.
 - Affected code:
   - `src/service/alias_service.rs`: `FindRequest.waits` is an unbounded `Vec`.
@@ -672,6 +687,7 @@ must resolve.
 ### ISSUE-036: Alias find timeout arithmetic overflows near maximum timestamp
 
 - Category: long-running stability, correctness
+- Score: 55/100
 - Reviewer: `Aristotle`, confirmed.
 - Affected code:
   - `src/service/alias_service.rs`: `AliasServiceInternal::on_tick` checks
@@ -692,6 +708,7 @@ must resolve.
 ### ISSUE-037: Replicated KV full-sync consumer emits reversed snapshot bounds
 
 - Category: security, correctness
+- Score: 73/100
 - Reviewer: `McClintock`, confirmed.
 - Affected code:
   - `src/service/replicate_kv_service/remote_storage.rs`:
@@ -715,6 +732,7 @@ must resolve.
 ### ISSUE-038: Replicated KV full-sync consumer accepts empty continuation pages
 
 - Category: bad-network stability, correctness
+- Score: 70/100
 - Reviewer: `Beauvoir`, confirmed.
 - Affected code:
   - `src/service/replicate_kv_service/remote_storage.rs`:
@@ -737,6 +755,7 @@ must resolve.
 ### ISSUE-039: Pubsub accepts member messages from peers without channel membership
 
 - Category: security, correctness
+- Score: 86/100
 - Reviewer: `Faraday`, confirmed.
 - Affected code:
   - `src/service/pubsub_service.rs`: inbound `PubsubMessage::Publish` delivers
@@ -759,6 +778,7 @@ must resolve.
 ### ISSUE-040: Metrics and visualization services panic on zero collection interval
 
 - Category: correctness, API stability
+- Score: 45/100
 - Reviewer: `Volta`, confirmed.
 - Affected code:
   - `src/service/metrics_service.rs`: `MetricsService::new` passes
