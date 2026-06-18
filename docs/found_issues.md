@@ -1020,3 +1020,22 @@ audited code.
     `src/ctx.rs:33` with `index out of bounds: the len is 256 but the index is
     256`, then a valid follow-up unicast on the same connection fails because
     the peer connection channel is closed.
+
+### ISSUE-054: Zero network tick interval panics node construction
+
+- Category: correctness, configuration stability
+- Reviewer: `Codex`, confirmed by source inspection and failing constructor
+  test.
+- Affected code:
+  - `src/lib.rs`: `P2pNetwork::new` passes `cfg.tick_ms` directly to
+    `tokio::time::interval(Duration::from_millis(cfg.tick_ms))`.
+  - `src/lib.rs`: `P2pNetworkConfig::tick_ms` is public and has no validation
+    that it is non-zero.
+- Impact: a caller can construct `P2pNetworkConfig` with `tick_ms = 0` and
+  panic node creation instead of receiving a recoverable configuration error or
+  a normalized minimum tick. This is distinct from ISSUE-040, which covers
+  metrics and visualization service collection intervals.
+- Evidence test:
+  - `cargo test zero_network_tick_interval_must_not_panic -- --nocapture`
+  - Failure summary: `P2pNetwork::new` panics at `src/lib.rs:184` with
+    `` `period` must be non-zero. `` when `tick_ms` is zero.

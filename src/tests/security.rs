@@ -1,13 +1,14 @@
-use std::time::Duration;
+use std::{net::UdpSocket, time::Duration};
 
 use crate::{
     msg::{BroadcastMsgId, P2pServiceId, PeerMessage},
     router::RouteAction,
-    ConnectionId, MainEvent, P2pNetworkEvent, P2pServiceEvent, PeerAddress, PeerId,
+    ConnectionId, MainEvent, P2pNetwork, P2pNetworkConfig, P2pNetworkEvent, P2pServiceEvent, PeerAddress, PeerId, SharedKeyHandshake,
 };
 use futures::FutureExt;
+use rustls::pki_types::{CertificateDer, PrivatePkcs8KeyDer};
 
-use super::create_node;
+use super::{create_node, DEFAULT_CLUSTER_CERT, DEFAULT_CLUSTER_KEY, DEFAULT_SECURE_KEY};
 
 #[tokio::test]
 async fn forged_peer_stopped_must_not_remove_third_party_route() {
@@ -268,6 +269,32 @@ async fn inbound_out_of_range_unicast_service_id_must_not_kill_connection() {
         P2pServiceEvent::Unicast(addr1.peer_id(), data),
         "inbound unknown out-of-range service id must be rejected without killing the connection"
     );
+}
+
+#[tokio::test]
+async fn zero_network_tick_interval_must_not_panic() {
+    let _ = rustls::crypto::ring::default_provider().install_default();
+    let priv_key: PrivatePkcs8KeyDer<'_> = PrivatePkcs8KeyDer::from(DEFAULT_CLUSTER_KEY.to_vec());
+    let cert = CertificateDer::from(DEFAULT_CLUSTER_CERT.to_vec());
+    let addr = {
+        let socket = UdpSocket::bind("127.0.0.1:0").expect("test socket should bind");
+        socket.local_addr().expect("test socket should have local address")
+    };
+
+    let result = std::panic::AssertUnwindSafe(P2pNetwork::new(P2pNetworkConfig {
+        peer_id: PeerId::from(1),
+        listen_addr: addr,
+        advertise: None,
+        priv_key,
+        cert,
+        tick_ms: 0,
+        seeds: vec![],
+        secure: SharedKeyHandshake::from(DEFAULT_SECURE_KEY),
+    }))
+    .catch_unwind()
+    .await;
+
+    assert!(result.is_ok(), "zero network tick interval must be rejected or normalized without panicking");
 }
 
 #[tokio::test]
