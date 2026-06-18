@@ -1205,3 +1205,29 @@ audited code.
   - Failure summary: node2 injects `Message::Info([(ConnectionId(999),
     PeerId(123), 7)])` to node1, and node1 emits a matching `PeerJoined`
     event even though it never requested a scan response.
+
+### ISSUE-062: Metrics accepts unsolicited forged connection metrics
+
+- Category: security, monitoring correctness
+- Reviewer: `Locke`, confirmed.
+- Affected code:
+  - `src/service/metrics_service.rs`: `MetricsService::recv` accepts any
+    unicast or broadcast frame that deserializes as `Message`.
+  - `src/service/metrics_service.rs`: `Message::Info(peer_metrics)` is emitted
+    directly as `MetricsServiceEvent::OnPeerConnectionMetric(from,
+    peer_metrics)`.
+  - `src/service/metrics_service.rs`: the service does not track pending scan
+    requests, expected responders, nonces, collector-only state, or validate
+    that metric entries correspond to real peer connections.
+- Impact: any connected peer can inject arbitrary connection metrics into a
+  collector, including fake connection ids, peers, RTT, loss, and byte counts.
+  Monitoring, alerting, or health decisions built on this service can observe
+  forged data. This shares an unsolicited-response pattern with ISSUE-061, but
+  affects the metrics service and peer-connection metric events rather than
+  visualization topology.
+- Evidence test:
+  - `cargo test metrics_info_must_not_be_accepted_without_scan_request -- --nocapture`
+  - Failure summary: node2 injects a forged `Message::Info` containing
+    `ConnectionId(999)` and fake metric counters; node1 emits the matching
+    `OnPeerConnectionMetric` event even though it never requested a scan
+    response.

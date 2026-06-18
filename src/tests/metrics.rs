@@ -1,8 +1,9 @@
 use std::time::Duration;
 
 use crate::{
-    metrics_service::{MetricsService, MetricsServiceEvent},
-    PeerId,
+    metrics_service::{encode_info_for_test, MetricsService, MetricsServiceEvent},
+    msg::PeerMessage,
+    ConnectionId, PeerConnectionMetric, PeerId,
 };
 use test_log::test;
 
@@ -50,4 +51,59 @@ async fn metrics_service_zero_collect_interval_must_not_panic() {
     }));
 
     assert!(result.is_ok(), "zero metrics collection interval must be rejected or normalized without panicking");
+}
+
+#[test(tokio::test)]
+async fn metrics_info_must_not_be_accepted_without_scan_request() {
+    let (mut node1, addr1) = create_node(true, 1, vec![]).await;
+    let mut service1 = MetricsService::new(None, node1.create_service(0.into()), false);
+    tokio::spawn(async move { while node1.recv().await.is_ok() {} });
+
+    let (mut node2, addr2) = create_node(false, 2, vec![addr1.clone()]).await;
+    let node2_ctx = node2.ctx.clone();
+    tokio::spawn(async move { while node2.recv().await.is_ok() {} });
+
+    let conn = tokio::time::timeout(Duration::from_secs(3), async {
+        loop {
+            if let Some(conn) = node2_ctx.conns().into_iter().next() {
+                return conn;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .expect("node2 should connect to node1");
+
+    let forged_metrics = vec![(
+        ConnectionId::from(999),
+        PeerId::from(123),
+        PeerConnectionMetric {
+            uptime: 999,
+            rtt: 7,
+            sent_pkt: 8,
+            lost_pkt: 9,
+            lost_bytes: 10,
+            send_bytes: 11,
+            recv_bytes: 12,
+            current_mtu: 1200,
+        },
+    )];
+    conn.try_send(PeerMessage::Unicast(
+        addr2.peer_id(),
+        addr1.peer_id(),
+        0.into(),
+        encode_info_for_test(forged_metrics.clone()),
+    ))
+    .expect("attacker should be able to inject a metrics info frame");
+
+    let delivered = tokio::time::timeout(Duration::from_millis(500), service1.recv()).await;
+
+    assert!(
+        !matches!(
+            delivered,
+            Ok(Ok(MetricsServiceEvent::OnPeerConnectionMetric(peer, metrics)))
+                if peer == addr2.peer_id() && metrics == forged_metrics
+        ),
+        "metrics service must not accept unsolicited metric Info frames without a prior Scan request"
+    );
 }

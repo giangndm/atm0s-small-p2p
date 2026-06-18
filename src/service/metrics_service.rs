@@ -18,6 +18,11 @@ enum Message {
     Info(Vec<(ConnectionId, PeerId, PeerConnectionMetric)>),
 }
 
+#[cfg(test)]
+pub(crate) fn encode_info_for_test(metrics: Vec<(ConnectionId, PeerId, PeerConnectionMetric)>) -> Vec<u8> {
+    bincode::serialize(&Message::Info(metrics)).expect("test message should serialize")
+}
+
 const DEFAULT_COLLECTOR_INTERVAL: u64 = 1;
 
 pub struct MetricsService {
