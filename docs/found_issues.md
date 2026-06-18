@@ -3557,3 +3557,31 @@ must resolve.
     with a route advertisement for `PeerId(4)` installs
     `PeerId(4) -> ConnectionId(10)`; expected mismatched `PeerData` to be
     ignored and leave no route to `PeerId(4)`.
+
+### ISSUE-146: Shared-key handshake request tokens are replayable
+
+- Category: security, authentication replay
+- Score: 70/100
+- Reviewer: `Jason the 2nd`, confirmed.
+- Affected code:
+  - `src/secure.rs`: `HandshakeData` contains only `from`, `to`, `timestamp`,
+    and `is_initiator`.
+  - `src/secure.rs`: `SharedKeyHandshake::generate_handshake` signs that
+    deterministic payload with the shared key and static seed.
+  - `src/secure.rs`: `SharedKeyHandshake::validate_handshake` checks timestamp
+    freshness, peer ids, role, and hash, then returns `Ok(())` without nonce,
+    server challenge, session binding, or replay cache.
+  - `src/secure.rs`: `verify_request` delegates directly to that stateless
+    validation.
+- Impact: any captured valid request token can authenticate another connection
+  as the same peer until `HANDSHAKE_TIMEOUT` expires. This is distinct from
+  ISSUE-002, which covers future-dated tokens being accepted before their time
+  and extending the replay window; ISSUE-021, which covers timestamp overflow;
+  ISSUE-016, which covers `connect()` success before identity authentication;
+  and ISSUE-113/114, which cover duplicate connection coalescing after or
+  during connection establishment.
+- Evidence test:
+  - `cargo test request_handshake_tokens_must_not_be_replayable`
+  - Failure summary: a request token created at timestamp `1000` verifies at
+    `1005` and then verifies again at `1010`; expected the second use of the
+    same request blob to be rejected.

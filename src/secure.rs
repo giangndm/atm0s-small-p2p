@@ -173,6 +173,21 @@ mod tests {
     }
 
     #[test]
+    fn request_handshake_tokens_must_not_be_replayable() {
+        let secure = SharedKeyHandshake::from("test_key");
+        let peer1 = PeerId::from(1);
+        let peer2 = PeerId::from(2);
+
+        let request = secure.create_request(peer1, peer2, 1_000);
+
+        assert!(secure.verify_request(request.clone(), peer1, peer2, 1_005).is_ok());
+        assert!(
+            secure.verify_request(request, peer1, peer2, 1_010).is_err(),
+            "the same request token must not authenticate a second connection"
+        );
+    }
+
+    #[test]
     fn rejects_overflowing_request_timestamp_without_panic() {
         let secure = SharedKeyHandshake::from("test_key");
         let peer1 = PeerId::from(1);
