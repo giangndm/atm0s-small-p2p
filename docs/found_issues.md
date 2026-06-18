@@ -402,3 +402,23 @@ audited code.
   - `cargo test fetch_changed_with_overflowing_from_version_must_not_panic -- --nocapture`
   - Failure summary: the remote fetch path panics at `Version::add` with
     `attempt to add with overflow`.
+
+### ISSUE-024: Peer message codec lacks the 60 KB application payload cap
+
+- Category: high-load stability, resource exhaustion
+- Reviewer: `Descartes`, confirmed.
+- Affected code:
+  - `src/peer/peer_internal.rs`: the main peer stream uses
+    `Framed<P2pQuicStream, BincodeCodec<PeerMessage>>`.
+  - `src/stream.rs`: `BincodeCodec` uses `LengthDelimitedCodec::default()`
+    without configuring the project-level application max.
+  - `src/msg.rs`: `PeerMessage::Unicast` and `PeerMessage::Broadcast` carry
+    arbitrary `Vec<u8>` service payloads.
+- Impact: although tokio-util has an 8 MiB default frame cap, service messages
+  bypass the 60 KB cap used for stream connect objects. A connected peer can
+  force multi-MiB frame allocation/deserialization and broadcast forwarding
+  clones.
+- Evidence test:
+  - `cargo test peer_message_codec_must_reject_oversized_service_payloads -- --nocapture`
+  - Failure summary: a 70 KB unicast service payload is encoded successfully
+    instead of being rejected before framing.

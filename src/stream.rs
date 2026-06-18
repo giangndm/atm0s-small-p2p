@@ -117,3 +117,26 @@ pub async fn write_object<W: AsyncWrite + Send + Unpin, O: Serialize, const MAX_
     writer.write_all(&data_buf).await?;
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use tokio_util::{bytes::BytesMut, codec::Encoder};
+
+    use crate::{
+        msg::{P2pServiceId, PeerMessage},
+        PeerId,
+    };
+
+    use super::*;
+
+    #[test]
+    fn peer_message_codec_must_reject_oversized_service_payloads() {
+        let mut codec = BincodeCodec::<PeerMessage>::default();
+        let mut dst = BytesMut::new();
+        let oversized = vec![0; 70_000];
+
+        let result = codec.encode(PeerMessage::Unicast(PeerId::from(1), PeerId::from(2), P2pServiceId::from(0), oversized), &mut dst);
+
+        assert!(result.is_err(), "main peer message codec must reject oversized service payloads before framing");
+    }
+}
