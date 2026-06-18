@@ -896,6 +896,71 @@ mod tests {
     }
 
     #[test]
+    fn full_sync_must_reject_stale_terminal_snapshot_after_continuation_request() {
+        let mut ctx: StateCtx<u16, u16, u16> = StateCtx {
+            remote: 1,
+            slots: BTreeMap::new(),
+            outs: VecDeque::new(),
+            next_state: None,
+        };
+
+        let now = Instant::now();
+        let mut state = SyncFullState::default();
+        state.init(&mut ctx, now);
+        ctx.outs.clear();
+
+        state.on_rpc_res(
+            &mut ctx,
+            now,
+            RpcRes::FetchSnapshot(
+                Some(SnapshotData {
+                    slots: vec![(1, Slot::new(10, Version(1)))],
+                    next_key: Some(2),
+                    biggest_key: 3,
+                }),
+                Version(3),
+            ),
+        );
+
+        assert_eq!(ctx.outs.pop_front(), Some(Event::KvEvent(KvEvent::Set(Some(1), 1, 10))));
+        assert_eq!(
+            ctx.outs.pop_front(),
+            Some(Event::NetEvent(NetEvent::Unicast(
+                1,
+                RpcEvent::RpcReq(RpcReq::FetchSnapshot {
+                    from: Some(2),
+                    to: Some(3),
+                    max_version: Some(Version(3)),
+                })
+            )))
+        );
+        assert_eq!(ctx.outs.pop_front(), None);
+
+        state.on_rpc_res(
+            &mut ctx,
+            now,
+            RpcRes::FetchSnapshot(
+                Some(SnapshotData {
+                    slots: vec![(1, Slot::new(10, Version(1)))],
+                    next_key: None,
+                    biggest_key: 1,
+                }),
+                Version(1),
+            ),
+        );
+
+        assert_eq!(
+            ctx.next_state, None,
+            "stale terminal snapshot responses must not complete full sync while a continuation range is outstanding"
+        );
+        assert_eq!(
+            ctx.slots,
+            BTreeMap::from([(1, Slot::new(10, Version(1)))]),
+            "stale terminal snapshot responses must not hide keys still pending in the requested continuation range"
+        );
+    }
+
+    #[test]
     fn test_restore_full_resend() {
         let mut ctx: StateCtx<u16, u16, u16> = StateCtx {
             remote: 1,

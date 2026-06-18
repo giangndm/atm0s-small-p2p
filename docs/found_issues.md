@@ -3455,3 +3455,38 @@ must resolve.
     handles; the publisher event backlog contains only `PeerJoined(Local)` and
     no `PeerJoined(Remote(PeerId(3)))`, and the subscriber likewise misses the
     existing remote publisher.
+
+### ISSUE-143: Replicated KV full sync accepts stale terminal snapshot responses
+
+- Category: correctness, replication consistency, bad-network stability
+- Score: 76/100
+- Reviewer: `James the 2nd`, confirmed.
+- Affected code:
+  - `src/service/replicate_kv_service/remote_storage.rs`:
+    `SyncFullState::on_rpc_res` accepts every
+    `RpcRes::FetchSnapshot(Some(snapshot), version)` while full sync is active.
+  - `src/service/replicate_kv_service/remote_storage.rs`: the first snapshot
+    page locks `self.version` and `self.biggest_key`, and a partial page records
+    an outstanding continuation request in `self.sending_req`.
+  - `src/service/replicate_kv_service/remote_storage.rs`: any later
+    `Some(snapshot)` with `next_key == None` transitions to `WorkingState`
+    without checking that the response matches the outstanding continuation
+    range.
+- Impact: after a partial snapshot page requests
+  `FetchSnapshot { from: Some(2), to: Some(3), max_version: Some(Version(3)) }`,
+  a stale or reordered terminal response that looks like an older initial-page
+  response can complete full sync. The replica can move to `WorkingState` at the
+  locked version while silently missing keys that were still pending in the
+  continuation range. This is distinct from ISSUE-047, which covers mismatched
+  continuation response versions; ISSUE-059, which covers `FetchSnapshot(None)`
+  as fake completion; ISSUE-083, which covers slots before the requested lower
+  bound; ISSUE-110/138, which cover producer-side snapshot omissions/version
+  labels; ISSUE-140, which covers ignored responses refreshing activity; and
+  ISSUE-141, which covers partial `FetchChanged` repair.
+- Evidence test:
+  - `cargo test full_sync_must_reject_stale_terminal_snapshot_after_continuation_request`
+  - Failure summary: after the first page for key `1` requests continuation
+    `from=2..=3` at `Version(3)`, a stale terminal `Some(snapshot)` for only
+    key `1` sets `ctx.next_state` to `Working(Version(3))`; expected full sync
+    to reject or ignore the stale terminal page and keep the continuation
+    outstanding.
