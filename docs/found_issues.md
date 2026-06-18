@@ -1785,3 +1785,28 @@ audited code.
   - Failure summary: a snapshot response with duplicate key `1` is accepted;
     the second value overwrites the first in `ctx.slots`; expected duplicate-key
     snapshot pages to be rejected.
+
+### ISSUE-086: Replicated KV applies unsolicited FetchChanged success responses
+
+- Category: correctness, security
+- Reviewer: `Hegel`, confirmed.
+- Affected code:
+  - `src/service/replicate_kv_service.rs`: any deserialized unicast
+    `RpcEvent::RpcRes` from a peer is forwarded to that peer's `RemoteStore`
+    without a request id or request-correlation check.
+  - `src/service/replicate_kv_service/remote_storage.rs`:
+    `WorkingState::on_rpc_res` applies
+    `RpcRes::FetchChanged(Ok(changeds))` without checking that
+    `self.sending_req` is currently waiting for a `FetchChanged` response.
+- Impact: a peer can send a single unsolicited `FetchChanged` success for the
+  next version and force the receiver to advance its replicated version, mutate
+  `ctx.slots`, and emit local `KvEvent` changes. This is distinct from
+  ISSUE-046, which covers unbounded batch/resource exhaustion; this issue uses
+  one next-version change and demonstrates request-correlation/integrity
+  failure.
+- Evidence test:
+  - `cargo test working_state_must_reject_unsolicited_fetch_changed_success -- --nocapture`
+  - Failure summary: with no outstanding `FetchChanged` request, an unsolicited
+    response containing `Changed { version: Version(1), ... }` advances
+    `state.version` from `Version(0)` to `Version(1)`; expected it to be
+    rejected.
