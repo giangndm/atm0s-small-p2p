@@ -172,6 +172,31 @@ async fn stale_peer_disconnected_event_must_not_emit_user_disconnect() {
 }
 
 #[tokio::test]
+async fn peer_disconnected_must_validate_peer_matches_connection() {
+    let (mut node, _addr) = create_node(false, 1, vec![]).await;
+    let conn = ConnectionId::from(77);
+    let real_peer = PeerId::from(2);
+    let forged_peer = PeerId::from(99);
+
+    node.router.set_direct(conn, real_peer, 10);
+
+    let event = node
+        .process_internal(100, MainEvent::PeerDisconnected(conn, forged_peer))
+        .expect("disconnect event should process");
+
+    assert_eq!(
+        event,
+        P2pNetworkEvent::Continue,
+        "PeerDisconnected must be ignored when the reported peer id does not match the connection owner"
+    );
+    assert_eq!(
+        node.router.action(&real_peer),
+        Some(RouteAction::Next(conn)),
+        "a forged disconnect peer id must not remove the route for the real connection peer"
+    );
+}
+
+#[tokio::test]
 async fn unicast_source_must_be_bound_to_authenticated_connection_peer() {
     let (mut node1, addr1) = create_node(true, 1, vec![]).await;
     let node1_ctx = node1.ctx.clone();

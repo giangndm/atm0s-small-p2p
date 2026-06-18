@@ -1298,3 +1298,25 @@ audited code.
     `MainEvent::PeerDisconnected(ConnectionId(404), PeerId(2))` on a fresh
     node returns `P2pNetworkEvent::PeerDisconnected(...)`; expected the stale
     event to be ignored as `Continue`.
+
+### ISSUE-066: Disconnect events do not validate peer id against connection owner
+
+- Category: correctness, routing stability
+- Reviewer: `Raman`, confirmed.
+- Affected code:
+  - `src/lib.rs`: `P2pNetwork::process_internal` handles
+    `MainEvent::PeerDisconnected(conn, peer)` by deleting the direct route for
+    `conn` and emitting `P2pNetworkEvent::PeerDisconnected(conn, peer)` without
+    checking that `peer` matches the peer currently attached to `conn`.
+- Impact: a mismatched disconnect event for a live connection can remove the
+  route for the real connected peer while notifying applications that a
+  different peer disconnected. This can corrupt routing state and public
+  connection state under stale, reordered, or malformed internal events. This
+  is distinct from ISSUE-065 because it covers a known connection id whose
+  reported peer id is wrong, rather than an entirely unknown connection id.
+- Evidence test:
+  - `cargo test peer_disconnected_must_validate_peer_matches_connection -- --nocapture`
+  - Failure summary: a direct route for `ConnectionId(77) -> PeerId(2)`
+    receives `MainEvent::PeerDisconnected(ConnectionId(77), PeerId(99))`;
+    current code emits `PeerDisconnected(ConnectionId(77), PeerId(99))`
+    instead of ignoring the peer mismatch.
