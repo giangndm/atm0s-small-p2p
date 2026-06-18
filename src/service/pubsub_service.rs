@@ -110,6 +110,11 @@ pub(crate) fn encode_subscriber_joined_for_test(channel: PubsubChannelId) -> Vec
 }
 
 #[cfg(test)]
+pub(crate) fn encode_publisher_joined_for_test(channel: PubsubChannelId) -> Vec<u8> {
+    bincode::serialize(&PubsubMessage::PublisherJoined(channel)).expect("test message should serialize")
+}
+
+#[cfg(test)]
 pub(crate) fn encode_publish_for_test(channel: PubsubChannelId, data: Vec<u8>) -> Vec<u8> {
     bincode::serialize(&PubsubMessage::Publish(channel, data)).expect("test message should serialize")
 }

@@ -1646,3 +1646,28 @@ audited code.
   - Failure summary: node2 injects a visualization `Scan` into node1's
     visualization service, and node2's base service receives a unicast response
     from node1 containing a topology `Info` frame.
+
+### ISSUE-080: Pubsub heartbeat does not remove stale remote publishers
+
+- Category: bad-network correctness, pubsub stability
+- Reviewer: `Plato`, confirmed.
+- Affected code:
+  - `src/service/pubsub_service.rs`: inbound `Heartbeat` adds remote publishers
+    when `heartbeat.publish` is true.
+  - `src/service/pubsub_service.rs`: the same `Heartbeat` branch never removes
+    peers from `remote_publishers` when `heartbeat.publish` is false.
+  - `src/service/pubsub_service.rs`: explicit `PublisherLeaved` removes and
+    notifies local subscribers, but heartbeat repair cannot correct a missed
+    leave event.
+- Impact: after a lost `PublisherLeaved` message, local subscribers can keep
+  believing a remote publisher is still present even after later heartbeats say
+  that peer no longer publishes the channel. Subscribers do not receive
+  `SubscriberEvent::PeerLeaved`, so bad-network state divergence can persist.
+  This is distinct from ISSUE-026, which covers stale remote subscribers
+  affecting local publishers.
+- Evidence test:
+  - `cargo test pubsub_heartbeat_must_remove_stale_remote_publisher -- --nocapture`
+  - Failure summary: after injecting `PublisherJoined` from node2, a heartbeat
+    with `publish=false` and `subscribe=false` does not produce
+    `SubscriberEvent::PeerLeaved(PeerSrc::Remote(node2))`; the test times out
+    waiting for the leave event.
