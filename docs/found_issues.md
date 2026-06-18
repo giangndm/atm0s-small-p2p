@@ -866,3 +866,29 @@ audited code.
   - Failure summary: a single `FetchChanged(Ok(...))` response containing
     versions `2..=2050` leaves 2049 pending changes, exceeding the test cap of
     1024.
+
+### ISSUE-047: Replicated KV full sync accepts mismatched continuation versions
+
+- Category: security, correctness
+- Reviewer: `Tesla`, confirmed.
+- Affected code:
+  - `src/service/replicate_kv_service/remote_storage.rs`:
+    `SyncFullState::on_rpc_res` locks `self.version` from the first snapshot
+    page.
+  - `src/service/replicate_kv_service/remote_storage.rs`: continuation
+    `FetchSnapshot` responses ignore their declared `version` instead of
+    requiring it to match the locked snapshot version.
+  - `src/service/replicate_kv_service/remote_storage.rs`: continuation slots
+    are emitted and stored without checking they are no newer than the locked
+    snapshot version.
+- Impact: a malicious peer can send a first snapshot page at one version, then
+  send a continuation page from a later version. The receiver can mix newer data
+  into a snapshot while transitioning to `WorkingState` at the older locked
+  version, corrupting replication consistency. This is distinct from ISSUE-034,
+  which covers a single response whose slots exceed that same response's
+  declared version.
+- Evidence test:
+  - `cargo test full_sync_must_reject_continuation_snapshot_version_mismatch -- --nocapture`
+  - Failure summary: after locking the snapshot at `Version(1)`, a continuation
+    response declaring `Version(2)` stores key `2` instead of rejecting the
+    mismatched page.

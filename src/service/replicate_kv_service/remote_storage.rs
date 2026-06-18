@@ -574,6 +574,57 @@ mod tests {
     }
 
     #[test]
+    fn full_sync_must_reject_continuation_snapshot_version_mismatch() {
+        let mut ctx: StateCtx<u16, u16, u16> = StateCtx {
+            remote: 1,
+            slots: BTreeMap::new(),
+            outs: VecDeque::new(),
+            next_state: None,
+        };
+
+        let now = Instant::now();
+        let mut state = SyncFullState::default();
+        state.init(&mut ctx, now);
+        ctx.outs.clear();
+
+        state.on_rpc_res(
+            &mut ctx,
+            now,
+            RpcRes::FetchSnapshot(
+                Some(SnapshotData {
+                    slots: vec![(1, Slot::new(1, Version(1)))],
+                    next_key: Some(2),
+                    biggest_key: 2,
+                }),
+                Version(1),
+            ),
+        );
+        ctx.outs.clear();
+
+        state.on_rpc_res(
+            &mut ctx,
+            now,
+            RpcRes::FetchSnapshot(
+                Some(SnapshotData {
+                    slots: vec![(2, Slot::new(2, Version(2)))],
+                    next_key: None,
+                    biggest_key: 2,
+                }),
+                Version(2),
+            ),
+        );
+
+        assert!(
+            !ctx.slots.contains_key(&2),
+            "continuation snapshot page with a different declared version must be rejected"
+        );
+        assert_eq!(
+            ctx.next_state, None,
+            "full sync must not transition to WorkingState after accepting data newer than the locked snapshot version"
+        );
+    }
+
+    #[test]
     fn test_restore_full_resend() {
         let mut ctx: StateCtx<u16, u16, u16> = StateCtx {
             remote: 1,
