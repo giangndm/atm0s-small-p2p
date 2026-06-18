@@ -411,6 +411,42 @@ async fn dropped_service_requester_must_not_continue_sending_unicast() {
 }
 
 #[tokio::test]
+async fn dropped_service_requester_must_not_continue_sending_broadcast() {
+    let (mut node1, _addr1) = create_node(true, 1, vec![]).await;
+    let service1 = node1.create_service(0.into());
+    let stale_requester = service1.requester();
+    let node1_requester = node1.requester();
+    tokio::spawn(async move { while node1.recv().await.is_ok() {} });
+
+    let (mut node2, addr2) = create_node(false, 2, vec![]).await;
+    let mut service2 = node2.create_service(0.into());
+    tokio::spawn(async move { while node2.recv().await.is_ok() {} });
+
+    node1_requester.connect(addr2.clone()).await.expect("connect should succeed");
+    tokio::time::timeout(Duration::from_secs(3), async {
+        loop {
+            if matches!(stale_requester.router().action(&addr2.peer_id()), Some(RouteAction::Next(_))) {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .expect("route to node2 should become available");
+    drop(service1);
+
+    let data = b"stale-service-broadcast".to_vec();
+    stale_requester.send_broadcast(data.clone()).await;
+
+    let delivered = tokio::time::timeout(Duration::from_millis(500), service2.recv()).await;
+
+    assert!(
+        !matches!(delivered, Ok(Some(P2pServiceEvent::Broadcast(_, received))) if received == data),
+        "a requester cloned from a dropped P2pService must not continue sending broadcast messages"
+    );
+}
+
+#[tokio::test]
 async fn duplicate_service_creation_must_not_panic() {
     let (mut node, _addr) = create_node(false, 1, vec![]).await;
     let _first = node.create_service(0.into());

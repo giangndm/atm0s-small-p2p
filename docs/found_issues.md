@@ -1553,3 +1553,27 @@ audited code.
     `PublisherEvent::PeerLeaved(PeerSrc::Local)`, a cloned stale requester
     issues `feedback_rpc("stale", b"stale-feedback-rpc", ...)`, and the
     publisher still receives `PublisherEvent::FeedbackRpc`.
+
+### ISSUE-076: Dropped service requesters can still send broadcast
+
+- Category: correctness, service lifecycle stability
+- Reviewer: `Hume`, confirmed.
+- Affected code:
+  - `src/service.rs`: `P2pServiceRequester` is cloneable and keeps only
+    `service`, plus `SharedCtx`, so it outlives the owning `P2pService`.
+  - `src/service.rs`: `P2pServiceRequester::send_broadcast` delegates directly
+    to `SharedCtx::send_broadcast` without checking that the service receiver
+    is still alive.
+  - `src/ctx.rs`: `SharedCtx::send_broadcast` fans out
+    `PeerMessage::Broadcast` with the supplied service id to all current
+    connections.
+- Impact: after a `P2pService` is dropped, a previously cloned requester can
+  still send broadcast messages under that service id. Remote peers receive
+  broadcast data from a service instance whose local owner has already been
+  destroyed. This is distinct from ISSUE-072, which covers unicast, and
+  ISSUE-073, which covers stream setup.
+- Evidence test:
+  - `cargo test dropped_service_requester_must_not_continue_sending_broadcast -- --nocapture`
+  - Failure summary: after dropping node1's `P2pService`, a cloned
+    `P2pServiceRequester` sends `stale-service-broadcast`, and node2's service
+    receives `P2pServiceEvent::Broadcast`.
