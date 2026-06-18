@@ -741,3 +741,24 @@ audited code.
   - `cargo test metrics_service_zero_collect_interval_must_not_panic -- --nocapture`
   - Failure summary: `MetricsService::new(Some(Duration::ZERO), ...)` panics at
     `src/service/metrics_service.rs:32` with `` `period` must be non-zero. ``.
+
+### ISSUE-041: Alias lookup tracks unbounded distinct pending misses
+
+- Category: high-load stability, bad-network stability
+- Reviewer: `Hubble`, confirmed.
+- Affected code:
+  - `src/service/alias_service.rs`: `AliasServiceInternal::find_reqs` stores
+    pending lookups in a `HashMap<AliasId, FindRequest>` with no admission
+    limit or backpressure.
+  - `src/service/alias_service.rs`: every unique missing
+    `AliasControl::Find` queues a broadcast `AliasMessage::Scan` and inserts a
+    separate pending request until timeout.
+- Impact: under high local load or a bad network where aliases remain missing,
+  callers can create unbounded pending lookup state across distinct aliases.
+  The same burst also queues one broadcast scan per unique miss, amplifying
+  memory use and network work until the timeout loop catches up. This is
+  distinct from ISSUE-035, which covers many duplicate waiters for one alias.
+- Evidence test:
+  - `cargo test distinct_pending_find_requests_must_be_bounded -- --nocapture`
+  - Failure summary: 1025 unique missing alias lookups leave 1025 pending
+    `find_reqs`, failing the bounded-pending-request assertion.

@@ -662,6 +662,29 @@ mod test {
     }
 
     #[test]
+    fn distinct_pending_find_requests_must_be_bounded() {
+        const MAX_PENDING_FINDS: usize = 1024;
+        let mut ctx = TestContext::new();
+
+        for id in 0..=MAX_PENDING_FINDS {
+            let (tx, _rx) = oneshot::channel();
+            ctx.internal.on_control(ctx.now, AliasControl::Find(AliasId(id as u64), tx));
+        }
+
+        let pending_finds = ctx.internal.find_reqs.len();
+        let pending_scans = ctx.internal.outs.len();
+
+        assert!(
+            pending_finds <= MAX_PENDING_FINDS,
+            "pending alias find requests must be bounded, got {pending_finds}"
+        );
+        assert!(
+            pending_scans <= MAX_PENDING_FINDS,
+            "pending alias scan fanout must be bounded, got {pending_scans}"
+        );
+    }
+
+    #[test]
     fn find_timeout_at_max_timestamp_must_not_overflow() {
         let mut ctx = TestContext::new();
         let alias_id = AliasId(1);
