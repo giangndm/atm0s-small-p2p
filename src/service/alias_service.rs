@@ -565,6 +565,39 @@ mod test {
     }
 
     #[test]
+    fn cached_hint_find_must_ignore_found_from_unchecked_peer() {
+        let mut ctx = TestContext::new();
+        let alias_id = AliasId(1);
+        let hinted_peer = PeerId(1);
+        let unchecked_peer = PeerId(2);
+
+        ctx.internal.on_msg(ctx.now, hinted_peer, AliasMessage::NotifySet(alias_id));
+
+        let (tx, mut rx) = oneshot::channel();
+        ctx.internal.on_control(ctx.now, AliasControl::Find(alias_id, tx));
+
+        assert_eq!(
+            ctx.collect_outputs(),
+            vec![InternalOutput::Unicast(hinted_peer, AliasMessage::Check(alias_id))]
+        );
+
+        ctx.internal.on_msg(ctx.now, unchecked_peer, AliasMessage::Found(alias_id));
+
+        assert!(
+            rx.try_recv().is_err(),
+            "cached hint lookup must not complete from a peer that was not checked"
+        );
+        assert!(
+            ctx.internal.find_reqs.contains_key(&alias_id),
+            "cached hint lookup must remain pending after an unchecked peer replies Found"
+        );
+        assert!(
+            !ctx.internal.cache.get(&alias_id).is_some_and(|peers| peers.contains(&unchecked_peer)),
+            "unchecked Found responses must not poison the alias hint cache"
+        );
+    }
+
+    #[test]
     fn test_find_cached_alias_not_found() {
         let mut ctx = TestContext::new();
         let alias_id = AliasId(1);

@@ -1886,3 +1886,26 @@ audited code.
   - Failure summary: after requesting one missing change, a response containing
     versions `1` and `2` is accepted and advances `state.version` to
     `Version(2)`; expected versions beyond the requested count to be rejected.
+
+### ISSUE-090: Alias cached hint lookup accepts Found from unchecked peers
+
+- Category: correctness, security
+- Reviewer: `Banach`, confirmed.
+- Affected code:
+  - `src/service/alias_service.rs`: cached alias lookup sends
+    `AliasMessage::Check(alias)` only to peers in the cached hint set and stores
+    that set in `FindRequestState::CheckHint`.
+  - `src/service/alias_service.rs`: `AliasMessage::Found(alias)` unconditionally
+    inserts the sender into the cache and completes any pending lookup for that
+    alias, without checking whether the sender was one of the hinted peers that
+    received `Check`.
+- Impact: an unrelated peer can race `Found(alias)` into a cached-hint lookup,
+  complete the caller with `AliasFoundLocation::Hint(unchecked_peer)`, and
+  poison the alias hint cache. This is distinct from the existing alias issues
+  about refcount overflow, shutdown cache eviction, stale requester panic,
+  pending-find growth, and timeout arithmetic.
+- Evidence test:
+  - `cargo test cached_hint_find_must_ignore_found_from_unchecked_peer -- --nocapture`
+  - Failure summary: after a cached lookup checks only `PeerId(1)`, a
+    `Found(alias)` from `PeerId(2)` completes the lookup; expected unchecked
+    peers to be ignored during `CheckHint`.
