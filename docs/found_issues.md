@@ -1393,3 +1393,30 @@ audited code.
     `SubscriberEvent::PeerLeaved(PeerSrc::Local)`, a cloned stale requester
     publishes `stale-publish`, and the subscriber still receives
     `SubscriberEvent::Publish`.
+
+### ISSUE-070: Dropped subscriber requesters can still send feedback
+
+- Category: correctness, pubsub lifecycle stability
+- Reviewer: `Einstein`, confirmed.
+- Affected code:
+  - `src/service/pubsub_service/subscriber.rs`: `SubscriberRequester` is
+    cloneable and retains `local_id`, `channel_id`, and the service control
+    sender after the owning `Subscriber` is dropped.
+  - `src/service/pubsub_service/subscriber.rs`: `Subscriber::drop` sends
+    `InternalMsg::SubscriberDestroyed(local_id, channel_id)`.
+  - `src/service/pubsub_service.rs`:
+    `InternalMsg::Feedback(_local_id, channel, vec)` ignores `_local_id` and
+    delivers to local/remote publishers whenever the channel exists.
+- Impact: after the last local subscriber is dropped and publishers observe
+  `PeerLeaved(PeerSrc::Local)`, any cloned requester from that dropped
+  subscriber can still send feedback on the channel. This violates subscriber
+  lifetime semantics and can deliver messages from a subscriber the pubsub
+  state already considers gone. This is distinct from ISSUE-069 because it
+  covers stale feedback from a dropped subscriber rather than stale publishes
+  from a dropped publisher.
+- Evidence test:
+  - `cargo test dropped_subscriber_requester_must_not_continue_feedback -- --nocapture`
+  - Failure summary: after dropping the subscriber and receiving
+    `PublisherEvent::PeerLeaved(PeerSrc::Local)`, a cloned stale requester sends
+    `stale-feedback`, and the publisher still receives
+    `PublisherEvent::Feedback`.
