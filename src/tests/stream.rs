@@ -295,3 +295,39 @@ async fn idle_inbound_stream_connects_must_be_admission_bounded() {
         "inbound stream-connect attempts that never send StreamConnectReq must be capped or timed out before more than {ACCEPTABLE_IDLE_STREAMS} idle accept tasks can accumulate"
     );
 }
+
+#[tokio::test]
+async fn unauthenticated_inbound_connections_must_be_admission_bounded() {
+    const ACCEPTABLE_PENDING_CONNECTIONS: usize = 16;
+    const ATTEMPTED_PENDING_CONNECTIONS: usize = ACCEPTABLE_PENDING_CONNECTIONS + 1;
+
+    let (mut node, addr) = create_node(false, 2, vec![]).await;
+    let _service = node.create_service(0.into());
+    tokio::spawn(async move { while node.recv().await.is_ok() {} });
+
+    let mut pending_connections = Vec::new();
+    for _ in 0..ATTEMPTED_PENDING_CONNECTIONS {
+        let client_addr = UdpSocket::bind("127.0.0.1:0")
+            .expect("should bind client udp")
+            .local_addr()
+            .expect("should get client addr");
+        let priv_key = PrivatePkcs8KeyDer::from(super::DEFAULT_CLUSTER_KEY.to_vec());
+        let cert = CertificateDer::from(super::DEFAULT_CLUSTER_CERT.to_vec());
+        let client = make_server_endpoint(client_addr, priv_key, cert).expect("should create raw client endpoint");
+        let connection = tokio::time::timeout(
+            Duration::from_secs(1),
+            client.connect(**addr.network_address(), CERT_DOMAIN_NAME)
+                .expect("raw client should start QUIC connect"),
+        )
+        .await
+        .expect("raw client connection should not hang")
+        .expect("raw client connection should be accepted");
+
+        pending_connections.push((client, connection));
+    }
+
+    assert!(
+        pending_connections.len() <= ACCEPTABLE_PENDING_CONNECTIONS,
+        "unauthenticated inbound connections must be capped or timed out before more than {ACCEPTABLE_PENDING_CONNECTIONS} can accumulate"
+    );
+}

@@ -3199,3 +3199,29 @@ must resolve.
     `PeerStopped`, a later unicast over the same peer connection times out with
     `Err(Elapsed(()))`; expected the connection task to keep processing traffic
     instead of blocking on `main_tx.send`.
+
+### ISSUE-134: Unauthenticated inbound QUIC connections are not admission bounded
+
+- Category: security, high-load stability, resource exhaustion
+- Score: 72/100
+- Reviewer: `Rawls the 2nd`, confirmed.
+- Affected code:
+  - `src/lib.rs`: `P2pNetwork::process_incoming` accepts every inbound
+    `Incoming`, creates `PeerConnection::new_incoming`, and inserts it into
+    `neighbours` before the P2P handshake authenticates the peer.
+  - `src/peer.rs`: `PeerConnection::new_incoming` awaits `incoming.await` and
+    then `connection.accept_bi().await` without a node-level cap for pending
+    unauthenticated connections or a P2P control-stream handshake timeout.
+  - `src/quic.rs`: transport limits allow many concurrent connections/streams
+    and rely only on QUIC idle timeout rather than P2P admission control.
+- Impact: raw QUIC clients can connect to a node, never open or send the P2P
+  main control stream, and remain as pending unauthenticated connection tasks.
+  Under load or hostile traffic this can consume connection/task resources
+  before authentication and before normal peer-level controls apply. This is
+  distinct from ISSUE-117, which covers idle bidirectional stream-connect
+  handshakes after an authenticated peer connection already exists.
+- Evidence test:
+  - `cargo test unauthenticated_inbound_connections_must_be_admission_bounded -- --nocapture`
+  - Failure summary: 17 raw QUIC clients connect to a node and never open the
+    P2P main control stream; all are accepted, exceeding the test's admission
+    threshold of 16 pending unauthenticated connections.
