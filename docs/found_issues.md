@@ -656,3 +656,26 @@ audited code.
   - Failure summary: ticking a pending alias find created at `u64::MAX - 10`
     panics at `src/service/alias_service.rs:244` with
     `attempt to add with overflow`.
+
+### ISSUE-037: Replicated KV full-sync consumer emits reversed snapshot bounds
+
+- Category: security, correctness
+- Reviewer: `McClintock`, confirmed.
+- Affected code:
+  - `src/service/replicate_kv_service/remote_storage.rs`:
+    `SyncFullState::on_rpc_res` accepts untrusted snapshot pagination metadata.
+  - `src/service/replicate_kv_service/remote_storage.rs`: when
+    `snapshot.next_key` is present, it sends a follow-up `FetchSnapshot` using
+    `from = next_key` and `to = self.biggest_key` without validating
+    `next_key <= biggest_key`.
+  - `src/service/replicate_kv_service/local_storage.rs`: recipients of that
+    invalid request hit the reversed-bounds snapshot producer path.
+- Impact: a malicious peer can reply to full sync with `next_key > biggest_key`
+  and make the receiver emit protocol-invalid reversed snapshot bounds. If sent
+  to an unfixed peer, that request can trigger the producer-side panic from
+  ISSUE-025; even with that panic fixed, the consumer is still trusting invalid
+  pagination metadata.
+- Evidence test:
+  - `cargo test full_sync_must_reject_snapshot_next_key_past_biggest_key -- --nocapture`
+  - Failure summary: a response with `next_key = 2` and `biggest_key = 1`
+    makes the receiver emit `FetchSnapshot { from: Some(2), to: Some(1), ... }`.

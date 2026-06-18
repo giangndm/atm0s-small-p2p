@@ -500,6 +500,47 @@ mod tests {
     }
 
     #[test]
+    fn full_sync_must_reject_snapshot_next_key_past_biggest_key() {
+        let mut ctx: StateCtx<u16, u16, u16> = StateCtx {
+            remote: 1,
+            slots: BTreeMap::new(),
+            outs: VecDeque::new(),
+            next_state: None,
+        };
+
+        let now = Instant::now();
+        let mut state = SyncFullState::default();
+        state.init(&mut ctx, now);
+        ctx.outs.clear();
+
+        state.on_rpc_res(
+            &mut ctx,
+            now,
+            RpcRes::FetchSnapshot(
+                Some(SnapshotData {
+                    slots: vec![(1, Slot::new(1, Version(1)))],
+                    next_key: Some(2),
+                    biggest_key: 1,
+                }),
+                Version(1),
+            ),
+        );
+
+        assert_ne!(
+            ctx.outs.pop_back(),
+            Some(Event::NetEvent(NetEvent::Unicast(
+                1,
+                RpcEvent::RpcReq(RpcReq::FetchSnapshot {
+                    from: Some(2),
+                    to: Some(1),
+                    max_version: Some(Version(1)),
+                })
+            ))),
+            "snapshot next_key greater than biggest_key must not make the receiver emit reversed FetchSnapshot bounds"
+        );
+    }
+
+    #[test]
     fn test_restore_full_resend() {
         let mut ctx: StateCtx<u16, u16, u16> = StateCtx {
             remote: 1,
