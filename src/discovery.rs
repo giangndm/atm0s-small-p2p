@@ -154,6 +154,23 @@ mod test {
     }
 
     #[test_log::test]
+    fn apply_sync_must_not_overwrite_newer_discovery_with_stale_advertisement() {
+        let mut discovery = PeerDiscovery::default();
+        let peer = PeerId(1);
+        let fresh_addr = peer_addr("1@127.0.0.1:9001");
+        let stale_addr = peer_addr("1@127.0.0.1:9000");
+
+        discovery.apply_sync(200, PeerDiscoverySync(vec![(peer, 200, fresh_addr.network_address().clone())]));
+        discovery.apply_sync(210, PeerDiscoverySync(vec![(peer, 100, stale_addr.network_address().clone())]));
+
+        assert_eq!(
+            discovery.remotes().collect::<Vec<_>>(),
+            vec![fresh_addr],
+            "stale discovery advertisements must not overwrite newer peer addresses"
+        );
+    }
+
+    #[test_log::test]
     fn clear_timeout() {
         let mut discovery = PeerDiscovery::default();
 

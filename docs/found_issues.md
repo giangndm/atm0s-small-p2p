@@ -1939,3 +1939,27 @@ audited code.
   - Failure summary: the test's panic hook observes an out-of-bounds panic at
     `src/ctx.rs` after opening a stream with service id `256`; expected the
     invalid stream request to be rejected without panicking in the accept task.
+
+### ISSUE-092: Discovery accepts stale advertisements over newer peer addresses
+
+- Category: correctness, security, stability
+- Reviewer: `Nash`, confirmed.
+- Affected code:
+  - `src/discovery.rs`: `PeerDiscovery::apply_sync` accepts any non-expired
+    advertisement and unconditionally writes
+    `self.remotes.insert(peer, (last_updated, address))`.
+  - `src/discovery.rs`: `create_sync_for` propagates `last_updated` as freshness
+    metadata, but the receiver does not compare it with the currently stored
+    timestamp for the same peer.
+- Impact: stale gossip can roll an active discovered peer back to an older
+  address as long as the older advertisement has not timed out. This can cause
+  reconnect churn, stale-address poisoning, and instability under reordered or
+  delayed discovery syncs. This is distinct from ISSUE-009, which covers
+  overflow/future timestamps, ISSUE-005, which covers local-id advertisements,
+  and ISSUE-055, which covers configured seed ids.
+- Evidence test:
+  - `cargo test apply_sync_must_not_overwrite_newer_discovery_with_stale_advertisement -- --nocapture`
+  - Failure summary: after learning peer `1` at timestamp `200` and address
+    `127.0.0.1:9001`, a later sync containing timestamp `100` and address
+    `127.0.0.1:9000` overwrites the newer address; expected the stale
+    advertisement to be ignored.
