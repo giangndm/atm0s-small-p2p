@@ -1,7 +1,7 @@
 use std::time::Duration;
 
 use crate::{
-    msg::{BroadcastMsgId, PeerMessage},
+    msg::{BroadcastMsgId, P2pServiceId, PeerMessage},
     router::RouteAction,
     ConnectionId, MainEvent, P2pNetworkEvent, P2pServiceEvent, PeerAddress, PeerId,
 };
@@ -207,6 +207,20 @@ async fn duplicate_service_creation_must_not_panic() {
     }));
 
     assert!(result.is_ok(), "creating a duplicate service id must return a recoverable error instead of panicking");
+}
+
+#[tokio::test]
+async fn out_of_range_service_id_must_not_panic() {
+    let (mut node, _addr) = create_node(false, 1, vec![]).await;
+
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let _service = node.create_service(P2pServiceId::from(256u16));
+    }));
+
+    assert!(
+        result.is_ok(),
+        "creating an out-of-range service id must return a recoverable error instead of panicking"
+    );
 }
 
 #[tokio::test]

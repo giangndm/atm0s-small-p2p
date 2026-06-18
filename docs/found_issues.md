@@ -977,3 +977,23 @@ audited code.
   - Failure summary: after processing `MainEvent::PeerStopped(conn, peer)`,
     `node.neighbours.has_peer(&peer)` remains true instead of immediately
     removing the stopped non-seed neighbour.
+
+### ISSUE-052: Out-of-range service ids panic service registration
+
+- Category: correctness, API stability
+- Reviewer: `James`, confirmed.
+- Affected code:
+  - `src/msg.rs`: `P2pServiceId` is a `u16`, allowing values outside the
+    256-slot service table.
+  - `src/ctx.rs`: `SharedCtxInternal::set_service` indexes
+    `services[*service_id as usize]` without range validation.
+  - `src/lib.rs`: `P2pNetwork::create_service` exposes this unchecked path as
+    a public API.
+- Impact: callers can request `P2pServiceId(256)` or larger and panic service
+  registration with an out-of-bounds index. This is distinct from ISSUE-030,
+  which covers duplicate ids inside the valid service table range.
+- Evidence test:
+  - `cargo test out_of_range_service_id_must_not_panic -- --nocapture`
+  - Failure summary: `node.create_service(P2pServiceId::from(256u16))` panics
+    at `src/ctx.rs:28` with `index out of bounds: the len is 256 but the index
+    is 256`.
