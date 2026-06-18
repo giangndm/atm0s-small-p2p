@@ -912,3 +912,25 @@ audited code.
   - `cargo test pubsub_publish_rpc_must_require_remote_publisher_membership -- --nocapture`
   - Failure summary: node2 injects `PubsubMessage::PublishRpc` into node1's
     subscriber without ever joining the channel as a publisher.
+
+### ISSUE-049: Broadcast fanout can block on one congested peer control queue
+
+- Category: high-load stability, bad-network stability
+- Reviewer: `Cicero`, confirmed.
+- Affected code:
+  - `src/ctx.rs`: `SharedCtx::send_broadcast` awaits
+    `conn_alias.send(...)` sequentially for every connection.
+  - `src/peer/peer_alias.rs`: `PeerConnectionAlias::send` awaits a bounded peer
+    control channel.
+  - `src/service/alias_service.rs`, `src/service/metrics_service.rs`,
+    `src/service/visualization_service.rs`, and `src/service/pubsub_service.rs`
+    use the awaited broadcast path.
+- Impact: one stalled or congested peer control queue can block service
+  broadcast fanout and stall the caller's service loop before later peers are
+  attempted. This is distinct from prior service-queue/open-stream issues
+  because it affects ordinary broadcast fanout.
+- Evidence test:
+  - `cargo test send_broadcast_must_not_block_on_full_peer_control_queue -- --nocapture`
+  - Failure summary: a full synthetic peer control channel makes
+    `SharedCtx::send_broadcast` exceed the 50 ms timeout instead of completing
+    without blocking on that peer.

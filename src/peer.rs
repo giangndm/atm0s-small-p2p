@@ -233,7 +233,7 @@ async fn run_connection<SECURE: HandshakeProtocol>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::neighbours::NetworkNeighbours;
+    use crate::{neighbours::NetworkNeighbours, router::SharedRouterTable};
 
     #[test]
     fn stale_pending_outgoing_peer_does_not_suppress_reconnect() {
@@ -253,6 +253,29 @@ mod tests {
         assert!(
             !neighbours.has_peer(&peer),
             "an unconnected outgoing attempt must not make reconnect logic believe peer {peer} is already connected"
+        );
+    }
+
+    #[tokio::test]
+    async fn send_broadcast_must_not_block_on_full_peer_control_queue() {
+        let ctx = SharedCtx::new(PeerId::from(0), SharedRouterTable::new(PeerId::from(0)));
+        let (tx, _rx) = channel(1);
+
+        tx.try_send(PeerConnectionControl::Send(PeerMessage::PeerStopped(PeerId::from(99)), None))
+            .expect("test control queue should accept first message");
+
+        let alias = PeerConnectionAlias::new(PeerId::from(0), PeerId::from(1), ConnectionId::from(1), tx);
+        ctx.register_conn(ConnectionId::from(1), alias);
+
+        let result = tokio::time::timeout(
+            Duration::from_millis(50),
+            ctx.send_broadcast(P2pServiceId::from(1), vec![1, 2, 3]),
+        )
+        .await;
+
+        assert!(
+            result.is_ok(),
+            "send_broadcast must not wait indefinitely on a congested peer control queue"
         );
     }
 }
