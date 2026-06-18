@@ -2537,3 +2537,33 @@ audited code.
   - Failure summary: four inbound connections from peer `2` to node `1`
     produce four `PeerConnected` events on node `1`; the test expected at most
     one connected event for that already-connected peer.
+
+### ISSUE-115: Local pubsub publish RPC answers are not bound to the subscriber handle
+
+- Category: correctness, security, lifecycle stability
+- Reviewer: `Gauss the 2nd`, confirmed.
+- Affected code:
+  - `src/service/pubsub_service/subscriber.rs`:
+    `SubscriberRequester::answer_publish_rpc` sends
+    `InternalMsg::PublishRpcAnswer(rpc, source, data)` without including its
+    `SubscriberLocalId`.
+  - `src/service/pubsub_service.rs`: `InternalMsg::PublishRpcAnswer` carries
+    only `RpcId`, `PeerSrc`, and data, so the service cannot verify which local
+    subscriber handle is answering.
+  - `src/service/pubsub_service.rs`: when `peer_src` is `PeerSrc::Local`,
+    `PubsubService::on_internal` removes `publish_rpc_reqs[rpc_id]` and
+    completes the pending publisher request by `RpcId` only.
+- Impact: a requester cloned from a dropped subscriber can answer a local
+  publish RPC handled by a different live subscriber when it knows the `RpcId`.
+  `PubsubService` completes the pending publisher request by
+  `RpcId`/`PeerSrc::Local` only, allowing stale or unauthorized local handles to
+  inject RPC results. This is distinct from ISSUE-020's remote/inbound RPC
+  answer binding gap, ISSUE-070/075's stale subscriber requesters initiating
+  feedback traffic, and ISSUE-074's stale publisher requesters issuing publish
+  RPCs.
+- Evidence test:
+  - `cargo test dropped_subscriber_requester_must_not_answer_publish_rpc -- --nocapture`
+  - Failure summary: after a stale subscriber is dropped and a live subscriber
+    receives a local `PublishRpc`, the stale requester answers with the same
+    `RpcId` and completes the publisher's pending RPC with
+    `stale-local-answer`.
