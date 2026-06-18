@@ -2729,3 +2729,32 @@ must resolve.
     `send service msg got error no available capacity` and only 10 broadcast
     events can be drained; expected all 11 to be preserved or backpressured
     instead of silently dropped.
+
+### ISSUE-121: Short pubsub RPC timeouts wait for the global one-second sweep
+
+- Category: correctness, bad-network stability, timeout reliability
+- Score: 57/100
+- Reviewer: `Leibniz the 2nd`, confirmed.
+- Affected code:
+  - `src/service/pubsub_service.rs`: `RPC_TICK_INTERVAL_MS` is fixed at 1,000
+    ms.
+  - `src/service/pubsub_service.rs`: `PubsubService::run_loop` only calls
+    `on_rpc_tick` when that global interval ticks.
+  - `src/service/pubsub_service.rs`: `on_rpc_tick` is the only path that checks
+    `publish_rpc_reqs` and `feedback_rpc_reqs` against each request's
+    caller-supplied timeout.
+- Impact: callers that request short pubsub RPC deadlines can block far longer
+  than the supplied timeout because pending RPCs are timed out only by the
+  global one-second sweep. Under bad-network or no-answer conditions this
+  violates API timeout expectations, ties up caller tasks and pending request
+  state longer than requested, and can amplify load when many short-deadline
+  RPCs are issued. This is distinct from ISSUE-043, which covers unbounded
+  pending RPC retention; ISSUE-074/075, which cover stale requesters issuing
+  RPCs after handle teardown; and ISSUE-115/116, which cover RPC answer
+  authorization/binding.
+- Evidence test:
+  - `cargo test pubsub_publish_rpc_must_respect_short_timeout -- --nocapture`
+  - Failure summary: a local `publish_rpc("slow", ..., Duration::from_millis(20))`
+    delivers a `PublishRpc` event that is intentionally not answered, but the
+    task still has not completed after a 200 ms outer timeout because the
+    service waits for its one-second RPC sweep before returning timeout.

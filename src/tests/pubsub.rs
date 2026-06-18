@@ -498,6 +498,47 @@ async fn pubsub_publish_rpc_local() {
 }
 
 #[test(tokio::test)]
+async fn pubsub_publish_rpc_must_respect_short_timeout() {
+    let (mut node1, _addr1) = create_node(true, 1, vec![]).await;
+    let mut service1 = PubsubService::new(node1.create_service(0.into()));
+    let service1_requester = service1.requester();
+    tokio::spawn(async move { while node1.recv().await.is_ok() {} });
+    tokio::spawn(async move { service1.run_loop().await });
+
+    let channel_id: PubsubChannelId = 1000.into();
+    let mut publisher = service1_requester.publisher(channel_id).await;
+    let mut subscriber = service1_requester.subscriber(channel_id).await;
+    let ttl = Duration::from_secs(1);
+
+    assert_eq!(
+        timeout(ttl, subscriber.recv()).await.expect("should not timeout").expect("should recv"),
+        SubscriberEvent::PeerJoined(PeerSrc::Local)
+    );
+    assert_eq!(
+        timeout(ttl, publisher.recv()).await.expect("should not timeout").expect("should recv"),
+        PublisherEvent::PeerJoined(PeerSrc::Local)
+    );
+
+    let publisher_requester = publisher.requester().clone();
+    let publish_task = tokio::spawn(async move { publisher_requester.publish_rpc("slow", vec![1], Duration::from_millis(20)).await });
+
+    match timeout(ttl, subscriber.recv()).await.expect("subscriber should receive publish RPC").expect("subscriber should stay open") {
+        SubscriberEvent::PublishRpc(data, _rpc_id, method, PeerSrc::Local) => {
+            assert_eq!(data, vec![1]);
+            assert_eq!(method, "slow");
+        }
+        other => panic!("expected local PublishRpc event, got {other:?}"),
+    }
+
+    let result = timeout(Duration::from_millis(200), publish_task)
+        .await
+        .expect("publish_rpc should complete near its caller-supplied timeout, not wait for the 1s service sweep")
+        .expect("publish task should not panic");
+
+    assert!(result.is_err(), "unanswered publish_rpc should return a timeout error");
+}
+
+#[test(tokio::test)]
 async fn dropped_subscriber_requester_must_not_answer_publish_rpc() {
     let (mut node1, _addr1) = create_node(true, 1, vec![]).await;
     let mut service1 = PubsubService::new(node1.create_service(0.into()));
