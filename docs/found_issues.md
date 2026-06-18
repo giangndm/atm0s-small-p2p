@@ -481,3 +481,20 @@ audited code.
   - `cargo test working_state_must_cap_pending_future_changes -- --nocapture`
   - Failure summary: 2,049 far-future changes remain pending, exceeding the
     test cap of 1,024.
+
+### ISSUE-028: Stale network requester panics after network drop
+
+- Category: correctness, API stability
+- Reviewer: `Heisenberg`, confirmed.
+- Affected code:
+  - `src/requester.rs`: `P2pNetworkRequester::connect` calls
+    `control_tx.send(...).expect("should send to main loop")`.
+  - `src/requester.rs`: `P2pNetworkRequester::try_connect` has the same panic
+    path.
+- Impact: a cloned requester handle can outlive `P2pNetwork`; using it after
+  the control receiver is closed panics through the public API instead of
+  returning a recoverable error or no-op.
+- Evidence test:
+  - `cargo test requester_connect_after_network_drop_returns_error_not_panic -- --nocapture`
+  - Failure summary: after dropping `P2pNetwork`, `requester.connect(...)`
+    panics at `src/requester.rs:12` with `SendError`.

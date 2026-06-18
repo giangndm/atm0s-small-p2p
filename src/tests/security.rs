@@ -5,6 +5,7 @@ use crate::{
     router::RouteAction,
     ConnectionId, MainEvent, P2pServiceEvent, PeerAddress, PeerId,
 };
+use futures::FutureExt;
 
 use super::create_node;
 
@@ -141,6 +142,18 @@ async fn connect_must_fail_when_remote_peer_id_does_not_match_address() {
     let wrong_addr = PeerAddress::new(PeerId::from(99), addr1.network_address().clone());
 
     assert!(requester2.connect(wrong_addr).await.is_err(), "connect must not return Ok before the remote peer id is authenticated");
+}
+
+#[tokio::test]
+async fn requester_connect_after_network_drop_returns_error_not_panic() {
+    let (mut node, _addr) = create_node(false, 1, vec![]).await;
+    let requester = node.requester();
+    drop(node);
+
+    let target: PeerAddress = "2@127.0.0.1:10000".parse().expect("target address should parse");
+    let result = std::panic::AssertUnwindSafe(requester.connect(target)).catch_unwind().await;
+
+    assert!(matches!(result, Ok(Err(_))), "connect on a stale requester must return Err instead of panicking");
 }
 
 #[tokio::test]
