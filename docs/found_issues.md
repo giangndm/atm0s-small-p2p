@@ -2155,3 +2155,30 @@ audited code.
   - Failure summary: after 1,025 distinct `PublisherJoined` events for one
     channel, `remote_publishers.len()` is 1,025, exceeding the test cap of
     1,024.
+
+### ISSUE-101: Alias cache peer hints are unbounded per alias
+
+- Category: high-load stability, resource exhaustion
+- Reviewer: `Beauvoir the 2nd`, confirmed.
+- Affected code:
+  - `src/service/alias_service.rs`: `AliasServiceInternal.cache` is an
+    `LruCache<AliasId, HashSet<PeerId>>`, so the LRU bounds alias keys but not
+    the number of peer hints stored under one alias.
+  - `src/service/alias_service.rs`: inbound `AliasMessage::NotifySet` inserts
+    the sender peer into the alias's `HashSet` without a per-alias cap.
+  - `src/service/alias_service.rs`: inbound `AliasMessage::Found` also inserts
+    the sender peer into the alias hint set.
+  - `src/service/alias_service.rs`: a later cached `Find` iterates the whole
+    retained peer set and queues one `Check` per peer.
+- Impact: high churn or malformed alias traffic can grow one alias's cached
+  peer-hint set without bound and amplify later lookup fanout. Spoofed peer
+  identities make this worse, but the primary failure is missing per-alias
+  admission or eviction for retained hint peers. This is distinct from
+  ISSUE-035's duplicate local waiters, ISSUE-041's distinct pending lookups,
+  ISSUE-090's unchecked `Found` lookup poisoning, ISSUE-022's shutdown cache
+  eviction, and ISSUE-100's pubsub membership resource bound.
+- Evidence test:
+  - `cargo test cached_alias_peer_hints_must_be_bounded -- --nocapture`
+  - Failure summary: after 1,025 `NotifySet` messages for one alias from
+    distinct peer ids, the cached peer-hint set length is 1,025, exceeding the
+    test cap of 1,024.

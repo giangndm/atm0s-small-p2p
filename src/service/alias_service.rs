@@ -576,17 +576,11 @@ mod test {
         let (tx, mut rx) = oneshot::channel();
         ctx.internal.on_control(ctx.now, AliasControl::Find(alias_id, tx));
 
-        assert_eq!(
-            ctx.collect_outputs(),
-            vec![InternalOutput::Unicast(hinted_peer, AliasMessage::Check(alias_id))]
-        );
+        assert_eq!(ctx.collect_outputs(), vec![InternalOutput::Unicast(hinted_peer, AliasMessage::Check(alias_id))]);
 
         ctx.internal.on_msg(ctx.now, unchecked_peer, AliasMessage::Found(alias_id));
 
-        assert!(
-            rx.try_recv().is_err(),
-            "cached hint lookup must not complete from a peer that was not checked"
-        );
+        assert!(rx.try_recv().is_err(), "cached hint lookup must not complete from a peer that was not checked");
         assert!(
             ctx.internal.find_reqs.contains_key(&alias_id),
             "cached hint lookup must remain pending after an unchecked peer replies Found"
@@ -595,6 +589,21 @@ mod test {
             !ctx.internal.cache.get(&alias_id).is_some_and(|peers| peers.contains(&unchecked_peer)),
             "unchecked Found responses must not poison the alias hint cache"
         );
+    }
+
+    #[test]
+    fn cached_alias_peer_hints_must_be_bounded() {
+        const MAX_PEERS_PER_ALIAS: usize = 1024;
+        let mut ctx = TestContext::new();
+        let alias_id = AliasId(1);
+
+        for peer in 0..=MAX_PEERS_PER_ALIAS {
+            ctx.internal.on_msg(ctx.now, PeerId::from(peer as u64 + 10), AliasMessage::NotifySet(alias_id));
+        }
+
+        let cached_peers = ctx.internal.cache.get(&alias_id).expect("alias should be cached").len();
+
+        assert!(cached_peers <= MAX_PEERS_PER_ALIAS, "cached peer hints for one alias must be bounded, got {cached_peers}");
     }
 
     #[test]
@@ -688,10 +697,7 @@ mod test {
 
         let waiters = ctx.internal.find_reqs.get(&alias_id).expect("find request should exist").waits.len();
 
-        assert!(
-            waiters <= MAX_WAITERS_PER_ALIAS,
-            "duplicate find waiters for one alias must be bounded, got {waiters}"
-        );
+        assert!(waiters <= MAX_WAITERS_PER_ALIAS, "duplicate find waiters for one alias must be bounded, got {waiters}");
     }
 
     #[test]
@@ -707,14 +713,8 @@ mod test {
         let pending_finds = ctx.internal.find_reqs.len();
         let pending_scans = ctx.internal.outs.len();
 
-        assert!(
-            pending_finds <= MAX_PENDING_FINDS,
-            "pending alias find requests must be bounded, got {pending_finds}"
-        );
-        assert!(
-            pending_scans <= MAX_PENDING_FINDS,
-            "pending alias scan fanout must be bounded, got {pending_scans}"
-        );
+        assert!(pending_finds <= MAX_PENDING_FINDS, "pending alias find requests must be bounded, got {pending_finds}");
+        assert!(pending_scans <= MAX_PENDING_FINDS, "pending alias scan fanout must be bounded, got {pending_scans}");
     }
 
     #[test]
