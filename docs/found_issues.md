@@ -2818,3 +2818,33 @@ must resolve.
     but undrained local subscriber leaves `sub_rx.len() == 1025`; expected the
     local subscriber event backlog to be bounded, backpressured, or otherwise
     controlled.
+
+### ISSUE-124: Local pubsub publisher event queues are unbounded
+
+- Category: high-load stability, resource exhaustion, pubsub reliability
+- Score: 72/100
+- Reviewer: `Cicero the 2nd`, confirmed.
+- Affected code:
+  - `src/service/pubsub_service/publisher.rs`: `Publisher::build` creates an
+    unbounded `mpsc::unbounded_channel` for each local publisher event stream.
+  - `src/service/pubsub_service.rs`: feedback delivery paths send
+    `PublisherEvent` values into every matching local publisher queue with
+    `pub_tx.send(...)` and no cardinality cap, backpressure, or drop/close
+    policy.
+- Impact: an undrained or slow local publisher can accumulate one queued event
+  per incoming feedback, feedback RPC, guest feedback, heartbeat membership
+  change, or lifecycle notification. Under high feedback rate, bad-network
+  replay, or a stalled application consumer, this can grow memory without bound
+  inside the pubsub service even after the bounded P2P service queue has already
+  accepted and processed the inbound message. This is symmetric with but
+  distinct from ISSUE-123, which covers subscriber event queues fed by
+  publish-side traffic; this issue covers publisher event queues fed by
+  feedback-side traffic. It is also distinct from ISSUE-043, ISSUE-100,
+  ISSUE-106, ISSUE-119/120, and the stale requester lifecycle issues for the
+  same reasons.
+- Evidence test:
+  - `cargo test local_publisher_event_backlog_must_be_bounded -- --nocapture`
+  - Failure summary: sending 1,025 remote `Feedback` messages to one registered
+    but undrained local publisher leaves `pub_rx.len() == 1025`; expected the
+    local publisher event backlog to be bounded, backpressured, or otherwise
+    controlled.
