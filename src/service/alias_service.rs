@@ -423,6 +423,7 @@ impl AliasServiceInternal {
 #[cfg(test)]
 mod test {
     use super::*;
+    use crate::{ctx::SharedCtx, msg::P2pServiceId, router::SharedRouterTable};
 
     struct TestContext {
         internal: AliasServiceInternal,
@@ -453,6 +454,30 @@ mod test {
             }
             outputs
         }
+    }
+
+    fn test_service() -> AliasService {
+        let ctx = SharedCtx::new(PeerId::from(1), SharedRouterTable::new(PeerId::from(1)));
+        let (service, _tx) = P2pService::build(P2pServiceId::from(0), ctx);
+        AliasService::new(service)
+    }
+
+    #[tokio::test]
+    async fn alias_internal_control_backlog_must_be_bounded() {
+        const MAX_PENDING_CONTROLS: usize = 1024;
+        let service = test_service();
+        let requester = service.requester();
+        let mut guards = Vec::new();
+
+        for alias in 0..=MAX_PENDING_CONTROLS {
+            guards.push(requester.register(AliasId(alias as u64 + 10)));
+        }
+
+        assert!(
+            service.rx.len() <= MAX_PENDING_CONTROLS,
+            "pending alias internal control messages must be bounded, got {}",
+            service.rx.len()
+        );
     }
 
     #[test]

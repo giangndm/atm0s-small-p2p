@@ -2903,3 +2903,31 @@ must resolve.
   - Failure summary: 1,025 `PubsubServiceRequester::publisher(...)` calls leave
     1,025 pending messages in `service.internal_rx`, exceeding the bounded
     control-backlog assertion.
+
+### ISSUE-127: Alias internal control messages can accumulate without bound
+
+- Category: high-load stability, resource exhaustion, API backpressure
+- Score: 70/100
+- Reviewer: `Schrodinger the 2nd`, confirmed.
+- Affected code:
+  - `src/service/alias_service.rs`: `AliasService::new` creates `tx/rx` with
+    `tokio::sync::mpsc::unbounded_channel`.
+  - `src/service/alias_service.rs`: `AliasServiceRequester::register`, `find`,
+    and `shutdown` enqueue `AliasControl` messages through that unbounded
+    channel without admission control or backpressure while the service is
+    alive.
+  - `src/service/alias_service.rs`: `AliasGuard::drop` uses the same unbounded
+    sender for unregister control messages.
+- Impact: a local caller holding an alias requester can enqueue alias
+  service-control work faster than `AliasService::run_loop` drains `rx`. Under
+  high alias registration churn or a stalled service loop, pending alias
+  control messages can grow memory without bound before the service processes
+  them. This is distinct from ISSUE-029, which covers stale requester panics
+  after service drop; ISSUE-035/041, which cover processed alias lookup state;
+  ISSUE-101, which covers cached peer hints; and ISSUE-125/126, which cover the
+  same unbounded-channel class in different components.
+- Evidence test:
+  - `cargo test alias_internal_control_backlog_must_be_bounded -- --nocapture`
+  - Failure summary: 1,025 `AliasServiceRequester::register(...)` calls leave
+    1,025 pending messages in `service.rx`, exceeding the bounded
+    control-backlog assertion.
