@@ -2848,3 +2848,30 @@ must resolve.
     but undrained local publisher leaves `pub_rx.len() == 1025`; expected the
     local publisher event backlog to be bounded, backpressured, or otherwise
     controlled.
+
+### ISSUE-125: Requester connect commands can accumulate without bound
+
+- Category: high-load stability, resource exhaustion, API backpressure
+- Score: 70/100
+- Reviewer: `Feynman the 2nd`, confirmed.
+- Affected code:
+  - `src/lib.rs`: `P2pNetwork::new` creates `control_tx/control_rx` with
+    `tokio::sync::mpsc::unbounded_channel`.
+  - `src/requester.rs`: `P2pNetworkRequester::try_connect` sends
+    `ControlCmd::Connect(addr, None)` into that unbounded channel and returns
+    immediately, with no admission cap, coalescing, or backpressure.
+  - `src/requester.rs`: `P2pNetworkRequester::connect` uses the same unbounded
+    channel before awaiting the per-request answer.
+- Impact: any local caller holding a requester can enqueue connect work faster
+  than the network main loop drains `control_rx`. Under high load, repeated seed
+  churn, or misuse of the public API, pending connect commands can grow memory
+  without bound before any dial attempt is processed. This is distinct from
+  ISSUE-028, which covers panics after the receiver is closed; ISSUE-113, which
+  covers duplicate in-flight connections after commands are processed; and
+  ISSUE-114, which covers inbound duplicate connections. It is also distinct
+  from peer/service/pubsub queue issues because this is the public
+  requester-to-main-loop control queue.
+- Evidence test:
+  - `cargo test requester_connect_backlog_must_be_bounded -- --nocapture`
+  - Failure summary: 1,025 `try_connect` calls for distinct target peers remain
+    queued in `node.control_rx`, exceeding the bounded-backlog assertion.
