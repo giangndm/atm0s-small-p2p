@@ -1986,3 +1986,26 @@ audited code.
     stop at timestamp `110`, and receiving a fresh restart advertisement at
     timestamp `120` with address `127.0.0.1:9002`, `remotes()` stays empty;
     expected the fresh restart advertisement to be accepted.
+
+### ISSUE-094: Pubsub object helper panics on user serialization failure
+
+- Category: correctness, API stability
+- Reviewer: `Averroes`, confirmed.
+- Affected code:
+  - `src/service/pubsub_service.rs`: `PubsubServiceRequester::publish_as_guest_ob`
+    returns `anyhow::Result<()>` but calls
+    `bincode::serialize(&ob).expect("should serialize")` on caller-supplied
+    `Serialize`.
+  - `src/service/pubsub_service.rs`,
+    `src/service/pubsub_service/publisher.rs`, and
+    `src/service/pubsub_service/subscriber.rs`: similar public object helpers
+    use `expect` around serialization for user-provided objects.
+- Impact: a valid `Serialize` implementation can return an error, but these
+  public async helpers unwind instead of propagating `Err`. That breaks API
+  stability and lets local caller input panic pubsub code paths that are typed
+  as recoverable `Result` APIs.
+- Evidence test:
+  - `cargo test pubsub_guest_object_publish_must_return_error_on_serialize_failure -- --nocapture`
+  - Failure summary: `publish_as_guest_ob(...)` unwinds at
+    `src/service/pubsub_service.rs:658` when serialization returns a custom
+    error; expected the helper to return `Ok(Err(_))` rather than panic.

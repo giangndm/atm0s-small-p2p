@@ -706,10 +706,23 @@ impl PubsubServiceRequester {
 
 #[cfg(test)]
 mod test {
+    use futures::FutureExt;
+    use serde::Serializer;
     use tokio::sync::mpsc::unbounded_channel;
 
     use super::*;
     use crate::{ctx::SharedCtx, msg::P2pServiceId, router::SharedRouterTable};
+
+    struct FailingSerialize;
+
+    impl Serialize for FailingSerialize {
+        fn serialize<S>(&self, _serializer: S) -> Result<S::Ok, S::Error>
+        where
+            S: Serializer,
+        {
+            Err(serde::ser::Error::custom("intentional serialization failure"))
+        }
+    }
 
     fn test_service() -> PubsubService {
         let ctx = SharedCtx::new(PeerId::from(1), SharedRouterTable::new(PeerId::from(1)));
@@ -747,6 +760,20 @@ mod test {
         assert!(
             pending_rpcs <= MAX_PENDING_RPCS,
             "pending publish RPC requests must be bounded, got {pending_rpcs}"
+        );
+    }
+
+    #[tokio::test]
+    async fn pubsub_guest_object_publish_must_return_error_on_serialize_failure() {
+        let requester = test_service().requester();
+
+        let result = std::panic::AssertUnwindSafe(requester.publish_as_guest_ob(PubsubChannelId(1), FailingSerialize))
+            .catch_unwind()
+            .await;
+
+        assert!(
+            matches!(result, Ok(Err(_))),
+            "object publish helpers must return serialization errors instead of panicking through the public API"
         );
     }
 }
