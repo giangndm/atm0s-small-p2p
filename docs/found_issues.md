@@ -823,3 +823,25 @@ audited code.
   - Failure summary: a composed metric `(relay_hops: 2, rtt_ms: 65525)` panics
     at `src/router.rs:190` with `attempt to add with overflow` while selecting
     the best path.
+
+### ISSUE-045: Replicated KV creates unbounded remote stores
+
+- Category: high-load stability, bad-network stability
+- Reviewer: `Gauss`, confirmed.
+- Affected code:
+  - `src/service/replicate_kv_service.rs`: `ReplicatedKvStore::on_remote_event`
+    creates a `RemoteStore` for every previously unseen `from` node before
+    applying any admission limit or flow control.
+  - `src/service/replicate_kv_service.rs`: `remotes` is an unbounded
+    `HashMap<N, RemoteStore<N, K, V>>`.
+  - `src/service/replicate_kv_service/remote_storage.rs`: each new
+    `RemoteStore` enters full sync and immediately queues a `FetchSnapshot`
+    request.
+- Impact: under high load or bad-network sender churn, many distinct remote
+  identities can grow replicated-KV remote state linearly during the idle
+  timeout window. Each new remote also queues outgoing full-sync work, so the
+  memory growth is coupled with extra network fanout.
+- Evidence test:
+  - `cargo test remote_store_creation_must_be_bounded -- --nocapture`
+  - Failure summary: 1025 distinct remote `Version(0)` broadcasts leave 1025
+    `RemoteStore` entries, failing the bounded-remote assertion.

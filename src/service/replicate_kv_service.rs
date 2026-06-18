@@ -197,3 +197,32 @@ where
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::messages::Version;
+
+    use super::*;
+
+    #[test]
+    fn remote_store_creation_must_be_bounded() {
+        const MAX_REMOTES: usize = 1024;
+        let mut store: ReplicatedKvStore<u64, u64, u64> = ReplicatedKvStore::new(10, 10);
+
+        for from in 0..=MAX_REMOTES as u64 {
+            store.on_remote_event(from, NetEvent::Broadcast(BroadcastEvent::Version(Version(0))));
+        }
+
+        let remote_count = store.remotes.len();
+        let queued_sync_requests = store.outs.len();
+
+        assert!(
+            remote_count <= MAX_REMOTES,
+            "remote stores must be bounded, got {remote_count}"
+        );
+        assert!(
+            queued_sync_requests <= MAX_REMOTES,
+            "queued full-sync requests must be bounded, got {queued_sync_requests}"
+        );
+    }
+}
