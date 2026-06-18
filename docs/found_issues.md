@@ -2083,3 +2083,26 @@ audited code.
   - Failure summary: `write_object::<_, _, 1024>` panics at
     `src/stream.rs:109` when serialization returns a custom error; expected
     `Ok(Err(_))`.
+
+### ISSUE-098: QUIC object writer truncates lengths above `u16::MAX`
+
+- Category: correctness, API stability
+- Reviewer: `Nash the 2nd`, confirmed.
+- Affected code:
+  - `src/stream.rs`: `write_object` checks serialized size only against the
+    generic `MAX_SIZE`, then writes `(data_buf.len() as u16).to_be_bytes()`.
+  - `src/stream.rs`: `wait_object` reads a two-byte length prefix, so the
+    object format cannot represent payloads larger than `u16::MAX`.
+- Impact: if `write_object` is instantiated with `MAX_SIZE > u16::MAX`, it can
+  accept a serialized object whose length cannot be represented by the wire
+  prefix, return `Ok(())`, and emit a truncated length. A receiver then reads
+  only the wrapped length, likely fails deserialization, and leaves trailing
+  bytes in the stream, desynchronizing the helper protocol. Current in-tree
+  production constants are below `u16::MAX`; the issue is in the public generic
+  helper contract. This is distinct from ISSUE-024's main peer-message codec
+  cap and ISSUE-097's serialization-error panic.
+- Evidence test:
+  - `cargo test write_object_must_reject_payloads_larger_than_u16_length_prefix -- --nocapture`
+  - Failure summary: `write_object::<_, _, 100_000>` returns `Ok(())` for a
+    70 KB payload even though the two-byte length prefix cannot represent it;
+    expected a recoverable error.

@@ -157,13 +157,18 @@ mod tests {
     async fn write_object_must_return_error_on_serialize_failure() {
         let (mut writer, _reader) = tokio::io::duplex(1024);
 
-        let result = std::panic::AssertUnwindSafe(write_object::<_, _, 1024>(&mut writer, &FailingSerialize))
-            .catch_unwind()
-            .await;
+        let result = std::panic::AssertUnwindSafe(write_object::<_, _, 1024>(&mut writer, &FailingSerialize)).catch_unwind().await;
 
-        assert!(
-            matches!(result, Ok(Err(_))),
-            "write_object must return Err instead of panicking when serialization fails"
-        );
+        assert!(matches!(result, Ok(Err(_))), "write_object must return Err instead of panicking when serialization fails");
+    }
+
+    #[tokio::test]
+    async fn write_object_must_reject_payloads_larger_than_u16_length_prefix() {
+        let mut writer = Vec::new();
+        let payload = vec![7u8; 70_000];
+
+        let result = write_object::<_, _, 100_000>(&mut writer, &payload).await;
+
+        assert!(result.is_err(), "write_object must reject objects larger than the two-byte length prefix can represent");
     }
 }
