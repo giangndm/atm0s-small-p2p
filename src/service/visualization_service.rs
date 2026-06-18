@@ -32,6 +32,10 @@ pub struct VisualizationService {
     outs: VecDeque<VisualizationServiceEvent>,
 }
 
+fn is_peer_timed_out(now: u64, last_updated: u64, interval: Duration) -> bool {
+    now >= last_updated + interval.as_millis() as u64 * 2
+}
+
 impl VisualizationService {
     pub fn new(collect_interval: Option<Duration>, collect_me: bool, service: P2pService) -> Self {
         let ticker = tokio::time::interval(collect_interval.unwrap_or(Duration::from_secs(100)));
@@ -72,7 +76,7 @@ impl VisualizationService {
                         let now = now_ms();
                         let mut timeout_peers = vec![];
                         for (peer, last_updated) in self.neighbours.iter() {
-                            if now >= *last_updated + interval.as_millis() as u64 * 2 {
+                            if is_peer_timed_out(now, *last_updated, interval) {
                                 timeout_peers.push(*peer);
                                 self.outs.push_back(VisualizationServiceEvent::PeerLeaved(*peer));
                             }
@@ -111,5 +115,25 @@ impl VisualizationService {
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn visualization_peer_timeout_deadline_must_not_overflow() {
+        let last_updated = u64::MAX - 10;
+        let interval = Duration::from_millis(6);
+        let now = u64::MAX;
+
+        let result = std::panic::catch_unwind(|| is_peer_timed_out(now, last_updated, interval));
+
+        assert!(result.is_ok(), "visualization timeout arithmetic must not panic near u64::MAX");
+        assert!(
+            !result.expect("timeout calculation should not panic"),
+            "visualization timeout deadline must not wrap and expire a peer before the mathematical deadline"
+        );
     }
 }

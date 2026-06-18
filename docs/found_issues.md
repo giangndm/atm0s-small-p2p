@@ -762,3 +762,22 @@ audited code.
   - `cargo test distinct_pending_find_requests_must_be_bounded -- --nocapture`
   - Failure summary: 1025 unique missing alias lookups leave 1025 pending
     `find_reqs`, failing the bounded-pending-request assertion.
+
+### ISSUE-042: Visualization peer timeout arithmetic overflows
+
+- Category: correctness, long-running stability
+- Reviewer: `Franklin`, confirmed.
+- Affected code:
+  - `src/service/visualization_service.rs`: peer expiry compares
+    `now >= last_updated + interval.as_millis() as u64 * 2`.
+  - `src/service/visualization_service.rs`: the timeout deadline uses unchecked
+    `u64` addition and unchecked conversion from `Duration::as_millis()`.
+- Impact: in a very long-running process, or with a very large configured
+  collection interval, visualization peer expiry can panic in debug builds. In
+  release builds the deadline can wrap, causing peers to be reported as left
+  before the mathematical timeout.
+- Evidence test:
+  - `cargo test visualization_peer_timeout_deadline_must_not_overflow -- --nocapture`
+  - Failure summary: with `last_updated = u64::MAX - 10` and a 6 ms interval,
+    the timeout helper panics at `src/service/visualization_service.rs:36` with
+    `attempt to add with overflow`.
