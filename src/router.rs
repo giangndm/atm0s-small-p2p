@@ -531,4 +531,27 @@ mod tests {
         assert!(result.is_ok(), "untrusted route metrics must not overflow or panic during path composition");
         assert_eq!(table.next_remote(&peer2), None, "overflowing route metrics must be rejected, not wrapped into a usable path");
     }
+
+    #[test_log::test]
+    fn should_not_overflow_score_during_best_path_selection() {
+        let mut table = RouterTable::new(PeerId(0));
+        let peer1 = PeerId(1);
+        let peer2 = PeerId(2);
+        let conn1 = ConnectionId(1);
+        let conn2 = ConnectionId(2);
+
+        table.set_direct(conn1, peer1, 0);
+        table.set_direct(conn2, peer2, 50);
+
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            table.apply_sync(conn1, RouterTableSync(vec![(peer2, (1, 65525).into())]));
+        }));
+
+        assert!(result.is_ok(), "route score calculation must not overflow or panic");
+        assert_eq!(
+            table.next_remote(&peer2),
+            Some((conn2, (0, 50).into())),
+            "overflowing route score must not wrap and beat the direct path"
+        );
+    }
 }

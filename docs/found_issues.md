@@ -803,3 +803,23 @@ audited code.
   - Failure summary: 1025 unanswered guest publish RPCs with a local subscriber
     destination leave 1025 entries in `publish_rpc_reqs`, failing the bounded
     pending-RPC assertion.
+
+### ISSUE-044: Router best-path score arithmetic overflows
+
+- Category: correctness, bad-network stability
+- Reviewer: `Mendel`, confirmed.
+- Affected code:
+  - `src/router.rs`: `PathMetric::score` computes
+    `rtt_ms + relay_hops as u16 * 10` with unchecked `u16` arithmetic.
+  - `src/router.rs`: `PeerMemory::select_best` calls `score()` while choosing
+    the active path.
+- Impact: an advertised route can compose successfully, then panic later during
+  best-path selection if its RTT is near `u16::MAX` and hop count is nonzero.
+  In release builds the score can wrap and make an awful relayed path look
+  cheaper than a direct path. This is distinct from ISSUE-033, which overflows
+  during route metric composition in `AddAssign`.
+- Evidence test:
+  - `cargo test should_not_overflow_score_during_best_path_selection -- --nocapture`
+  - Failure summary: a composed metric `(relay_hops: 2, rtt_ms: 65525)` panics
+    at `src/router.rs:190` with `attempt to add with overflow` while selecting
+    the best path.
