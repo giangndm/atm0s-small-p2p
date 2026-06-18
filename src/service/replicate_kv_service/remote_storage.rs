@@ -1360,6 +1360,34 @@ mod tests {
     }
 
     #[test]
+    fn working_state_must_not_cancel_repair_after_empty_fetch_changed_success() {
+        let mut ctx: StateCtx<u16, u16, u16> = StateCtx {
+            remote: 1,
+            slots: BTreeMap::new(),
+            outs: VecDeque::new(),
+            next_state: None,
+        };
+
+        let now = Instant::now();
+        let mut state = WorkingState::new(Version(0));
+
+        state.on_broadcast(&mut ctx, now, BroadcastEvent::Version(Version(1)));
+        assert_eq!(
+            ctx.outs.pop_front(),
+            Some(Event::NetEvent(NetEvent::Unicast(1, RpcEvent::RpcReq(RpcReq::FetchChanged { from: Version(1), count: 1 }))))
+        );
+        assert_eq!(ctx.outs.pop_front(), None);
+
+        state.on_rpc_res(&mut ctx, now, RpcRes::FetchChanged(Ok(vec![])));
+        state.on_tick(&mut ctx, now + REQUEST_TIMEOUT + Duration::from_millis(1));
+
+        assert!(
+            ctx.next_state.is_some() || ctx.outs.pop_front().is_some(),
+            "empty FetchChanged success must not cancel the in-flight repair without retrying or starting full resync"
+        );
+    }
+
+    #[test]
     fn test_working_state_resend_timeout_fetch_changed() {
         let mut ctx: StateCtx<u16, u16, u16> = StateCtx {
             remote: 1,

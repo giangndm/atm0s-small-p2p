@@ -2418,3 +2418,31 @@ audited code.
     returns `slots: []` and `next_key: None` after key `3` was updated to a
     newer version, causing the test to fail because the page appears complete
     while omitting the historical key.
+
+### ISSUE-111: Replicated KV consumer cancels FetchChanged repair on empty success
+
+- Category: correctness, bad-network stability
+- Reviewer: `Kepler the 2nd`, confirmed.
+- Affected code:
+  - `src/service/replicate_kv_service/remote_storage.rs`:
+    `WorkingState::on_rpc_res` handles `RpcRes::FetchChanged(Ok(changeds))`
+    by inserting any versions newer than the current version.
+  - `src/service/replicate_kv_service/remote_storage.rs`: after processing the
+    response, it unconditionally sets `self.sending_req = None` before calling
+    `apply_pendings(ctx)`.
+  - `src/service/replicate_kv_service/remote_storage.rs`: if `changeds` is
+    empty for an outstanding missing-version repair, no version advances, no
+    pending entry is applied, no retry remains, and no full resync is scheduled.
+- Impact: a malformed, stale, or malicious peer can answer an active
+  missing-version repair with `FetchChanged(Ok(vec![]))`. The consumer clears
+  the in-flight repair without advancing `version`, applying pendings, retrying,
+  or starting full sync, so the remote replica can remain permanently behind.
+  This is distinct from ISSUE-077 and ISSUE-099's producer-side empty-success
+  bugs, ISSUE-086/087's unsolicited response handling, ISSUE-088/089's malformed
+  non-empty response validation, and ISSUE-071's stale retry after broadcasts
+  already filled a gap.
+- Evidence test:
+  - `cargo test working_state_must_not_cancel_repair_after_empty_fetch_changed_success -- --nocapture`
+  - Failure summary: after requesting `FetchChanged { from: Version(1), count:
+    1 }`, an empty successful response clears the in-flight repair; the next
+    timeout tick emits no retry and does not transition to full resync.
