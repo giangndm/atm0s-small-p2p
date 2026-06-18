@@ -456,6 +456,41 @@ async fn concurrent_connects_to_same_peer_must_be_coalesced() {
 }
 
 #[tokio::test]
+async fn inbound_duplicate_connections_from_same_peer_must_be_coalesced() {
+    let (mut node1, addr1) = create_node(true, 1, vec![]).await;
+
+    let (mut node2, _addr2) = create_node(false, 2, vec![]).await;
+    let requester2 = node2.requester();
+    tokio::spawn(async move { while node2.recv().await.is_ok() {} });
+
+    for _ in 0..4 {
+        requester2.try_connect(addr1.clone());
+    }
+
+    let mut connected_from_node2 = 0;
+    let deadline = tokio::time::sleep(Duration::from_secs(2));
+    tokio::pin!(deadline);
+
+    loop {
+        tokio::select! {
+            _ = &mut deadline => break,
+            event = node1.recv() => {
+                if let P2pNetworkEvent::PeerConnected(_conn, peer) = event.expect("node1 should keep running") {
+                    if peer == PeerId::from(2) {
+                        connected_from_node2 += 1;
+                    }
+                }
+            }
+        }
+    }
+
+    assert!(
+        connected_from_node2 <= 1,
+        "inbound duplicate connections from one peer must be coalesced, got {connected_from_node2} connected events"
+    );
+}
+
+#[tokio::test]
 async fn requester_connect_after_network_drop_returns_error_not_panic() {
     let (mut node, _addr) = create_node(false, 1, vec![]).await;
     let requester = node.requester();

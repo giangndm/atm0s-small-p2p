@@ -2507,3 +2507,33 @@ audited code.
   - Failure summary: four immediate `try_connect()` calls to the same peer
     produce four `PeerConnected` events; the test expected at most one
     connected event for that peer while duplicate attempts were in flight.
+
+### ISSUE-114: Inbound duplicate connections from the same peer are not coalesced
+
+- Category: correctness, high-load stability
+- Reviewer: `Fermat the 2nd`, confirmed.
+- Affected code:
+  - `src/lib.rs`: `P2pNetwork::process_incoming` accepts every inbound QUIC
+    connection and inserts a `PeerConnection` before the remote peer id is
+    known.
+  - `src/peer.rs`: after the inbound handshake authenticates, `run_connection`
+    sends `MainEvent::PeerConnected(conn_id, to_id, rtt_ms)` for the remote
+    peer id.
+  - `src/lib.rs`: `P2pNetwork::process_internal` handles every
+    `MainEvent::PeerConnected` by calling `router.set_direct`,
+    `neighbours.mark_connected`, and emitting a public `PeerConnected` event
+    without checking whether that peer already has a live connection.
+- Impact: a remote peer can open several inbound connections to the listener.
+  After each authenticates as the same peer, the node emits another
+  `PeerConnected` event and refreshes direct route/neighbour state instead of
+  coalescing or bounding duplicates. This can create duplicate direct
+  connections, repeated sync/metrics work, noisy route updates, and high-load
+  instability. This is distinct from ISSUE-113's outbound/API-side duplicate
+  `connect()` attempts, and from ISSUE-057/067's stale or mismatched internal
+  `PeerConnected` event validation: this issue uses real live inbound
+  connections with real authenticated peer ids.
+- Evidence test:
+  - `cargo test inbound_duplicate_connections_from_same_peer_must_be_coalesced -- --nocapture`
+  - Failure summary: four inbound connections from peer `2` to node `1`
+    produce four `PeerConnected` events on node `1`; the test expected at most
+    one connected event for that already-connected peer.
