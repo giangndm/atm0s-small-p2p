@@ -593,6 +593,60 @@ async fn pubsub_feedback_rpc_local() {
 }
 
 #[test(tokio::test)]
+async fn dropped_publisher_requester_must_not_answer_feedback_rpc() {
+    let (mut node1, _addr1) = create_node(true, 1, vec![]).await;
+    let mut service1 = PubsubService::new(node1.create_service(0.into()));
+    let service1_requester = service1.requester();
+    tokio::spawn(async move { while node1.recv().await.is_ok() {} });
+    tokio::spawn(async move { service1.run_loop().await });
+
+    let channel_id: PubsubChannelId = 1000.into();
+    let stale_publisher = service1_requester.publisher(channel_id).await;
+    let stale_requester = stale_publisher.requester().clone();
+    let mut live_publisher = service1_requester.publisher(channel_id).await;
+    let mut subscriber = service1_requester.subscriber(channel_id).await;
+
+    let ttl = Duration::from_secs(1);
+    assert_eq!(
+        timeout(ttl, subscriber.recv()).await.expect("should not timeout").expect("subscriber should see local publisher"),
+        SubscriberEvent::PeerJoined(PeerSrc::Local)
+    );
+    assert_eq!(
+        timeout(ttl, live_publisher.recv()).await.expect("should not timeout").expect("live publisher should see local subscriber"),
+        PublisherEvent::PeerJoined(PeerSrc::Local)
+    );
+
+    drop(stale_publisher);
+    tokio::time::sleep(Duration::from_millis(50)).await;
+
+    let subscriber_requester = subscriber.requester().clone();
+    let feedback_task = tokio::spawn(async move { subscriber_requester.feedback_rpc("ping", vec![1, 2, 3], Duration::from_secs(2)).await });
+
+    let rpc_id = match timeout(ttl, live_publisher.recv())
+        .await
+        .expect("live publisher should receive feedback RPC")
+        .expect("live publisher channel should stay open")
+    {
+        PublisherEvent::FeedbackRpc(_, rpc_id, _, PeerSrc::Local) => rpc_id,
+        other => panic!("expected local FeedbackRpc event, got {other:?}"),
+    };
+
+    let fake_answer = b"stale-feedback-answer".to_vec();
+    stale_requester
+        .answer_feedback_rpc(rpc_id, PeerSrc::Local, fake_answer.clone())
+        .await
+        .expect("stale requester answer should not panic");
+
+    if let Ok(joined) = timeout(Duration::from_millis(500), feedback_task).await {
+        let result = joined.expect("feedback task should not panic");
+        assert!(
+            !matches!(result, Ok(data) if data == fake_answer),
+            "a requester cloned from a dropped Publisher must not complete a local feedback RPC it did not handle"
+        );
+    }
+}
+
+#[test(tokio::test)]
 async fn pubsub_publish_rpc_remote() {
     let (mut node1, addr1) = create_node(true, 1, vec![]).await;
     let mut service1 = PubsubService::new(node1.create_service(0.into()));

@@ -2567,3 +2567,35 @@ audited code.
     receives a local `PublishRpc`, the stale requester answers with the same
     `RpcId` and completes the publisher's pending RPC with
     `stale-local-answer`.
+
+### ISSUE-116: Local pubsub feedback RPC answers are not bound to the publisher handle
+
+- Category: correctness, security, lifecycle stability
+- Reviewer: `Harvey the 2nd`, confirmed.
+- Affected code:
+  - `src/service/pubsub_service/publisher.rs`:
+    `PublisherRequester::answer_feedback_rpc` sends
+    `InternalMsg::FeedbackRpcAnswer(rpc, source, data)` without including its
+    `PublisherLocalId`.
+  - `src/service/pubsub_service.rs`: `InternalMsg::FeedbackRpcAnswer` carries
+    only `RpcId`, `PeerSrc`, and data, so the service cannot verify which local
+    publisher handle is answering.
+  - `src/service/pubsub_service.rs`: when `peer_src` is `PeerSrc::Local`,
+    `PubsubService::on_internal` removes `feedback_rpc_reqs[rpc_id]` and
+    completes the pending subscriber request by `RpcId` only.
+- Impact: a stale or otherwise unauthorized local publisher requester can
+  complete a local feedback RPC if it learns the `RpcId`. The failing evidence
+  uses a requester cloned from a dropped publisher to answer a feedback RPC
+  handled by a different live publisher. `PubsubService` completes the pending
+  subscriber request by `RpcId`/`PeerSrc::Local` only, allowing stale or
+  unauthorized local handles to inject feedback RPC results. This is distinct
+  from ISSUE-020's remote/inbound RPC answer binding gap, ISSUE-074's stale
+  publisher requesters issuing publish RPCs, ISSUE-069's stale publisher
+  ordinary publishes, and ISSUE-115's subscriber-side local publish RPC answer
+  binding gap.
+- Evidence test:
+  - `cargo test dropped_publisher_requester_must_not_answer_feedback_rpc -- --nocapture`
+  - Failure summary: after a stale publisher is dropped and a live publisher
+    receives a local `FeedbackRpc`, the stale requester answers with the same
+    `RpcId` and completes the subscriber's pending RPC with
+    `stale-feedback-answer`.
