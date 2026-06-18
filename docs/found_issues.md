@@ -1836,3 +1836,29 @@ audited code.
   - Failure summary: with no outstanding `FetchChanged` request, an unsolicited
     `FetchChanged(Err(MissingData))` clears existing slot key `7`; expected the
     remote store to remain in working state with its slots intact.
+
+### ISSUE-088: Replicated KV accepts duplicate versions in FetchChanged responses
+
+- Category: correctness, security
+- Reviewer: `Helmholtz`, confirmed.
+- Affected code:
+  - `src/service/replicate_kv_service/local_storage.rs`:
+    `LocalStore::changeds_from_to` emits changes from a `BTreeMap` range keyed
+    by `Version`, so a legitimate response cannot contain duplicate versions.
+  - `src/service/replicate_kv_service/remote_storage.rs`:
+    `WorkingState::on_rpc_res` inserts every `FetchChanged(Ok(_))` item into
+    `pendings: BTreeMap<Version, Changed<_, _>>`, so duplicate versions silently
+    overwrite earlier entries before `apply_pendings`.
+- Impact: after a real outstanding `FetchChanged` request, a malicious or
+  malformed peer can send two conflicting `Changed` entries for the same
+  version. The receiver silently keeps the later one, advances its working
+  version, mutates slots, and emits a local `KvEvent`. This is distinct from
+  ISSUE-085, which covers duplicate keys in snapshot pages; ISSUE-086/087,
+  which cover unsolicited responses; and ISSUE-046, which covers unbounded
+  response batches.
+- Evidence test:
+  - `cargo test working_state_must_reject_duplicate_fetch_changed_versions -- --nocapture`
+  - Failure summary: after requesting `FetchChanged { from: Version(1), count:
+    1 }`, a response with two `Changed { version: Version(1), ... }` entries is
+    accepted and advances `state.version` to `Version(1)`; expected the
+    duplicate-version response to be rejected.
