@@ -4,7 +4,7 @@ use crate::{
     msg::{BroadcastMsgId, P2pServiceId, PeerMessage},
     router::RouteAction,
     ConnectionId, MainEvent, P2pNetwork, P2pNetworkConfig, P2pNetworkEvent, P2pServiceEvent, PeerAddress, PeerConnectionMetric, PeerId, PeerMainData,
-    SharedKeyHandshake,
+    SharedKeyHandshake, SharedRouterTable,
 };
 use futures::FutureExt;
 use rustls::pki_types::{CertificateDer, PrivatePkcs8KeyDer};
@@ -371,6 +371,31 @@ async fn stale_peer_data_event_must_not_panic_without_direct_route() {
     assert!(
         matches!(result, Ok(Ok(P2pNetworkEvent::Continue))),
         "PeerData for a stale connection id must be ignored or return an error instead of panicking"
+    );
+}
+
+#[tokio::test]
+async fn peer_data_must_validate_peer_matches_connection() {
+    let (mut node, _addr) = create_node(false, 1, vec![]).await;
+    let conn = ConnectionId::from(10);
+    let real_peer = PeerId::from(2);
+    let forged_peer = PeerId::from(99);
+    let advertised_peer = PeerId::from(4);
+    let remote_router = SharedRouterTable::new(real_peer);
+
+    node.router.set_direct(conn, real_peer, 10);
+    remote_router.set_direct(ConnectionId::from(20), advertised_peer, 5);
+
+    let route = remote_router.create_sync(&node.local_id);
+    let advertise = node.discovery.create_sync_for(100, &node.local_id);
+
+    node.process_internal(100, MainEvent::PeerData(conn, forged_peer, PeerMainData::Sync { route, advertise }))
+        .expect("mismatched peer data event should process");
+
+    assert_eq!(
+        node.router.action(&advertised_peer),
+        None,
+        "PeerData must be ignored when the reported peer id does not match the live connection owner"
     );
 }
 

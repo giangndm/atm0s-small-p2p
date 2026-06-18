@@ -3523,3 +3523,37 @@ must resolve.
     after the task tries to send `PeerConnected`, `ctx.conn(&conn_id)` remains
     `Some`, but expected cleanup should unregister the alias and leave it
     `None`.
+
+### ISSUE-145: Mismatched PeerData can mutate routes on a live connection
+
+- Category: correctness, internal-event integrity, route stability
+- Score: 70/100
+- Reviewer: `Newton the 2nd`, confirmed.
+- Affected code:
+  - `src/peer/peer_internal.rs`: peer tasks emit
+    `MainEvent::PeerData(self.conn_id, self.to_id, ...)`, so the event carries
+    both the connection id and the authenticated peer id.
+  - `src/lib.rs`: `P2pNetwork::process_internal` receives
+    `MainEvent::PeerData(conn, peer, data)` but only logs `peer`.
+  - `src/lib.rs`: the sync handler calls `self.router.apply_sync(conn, route)`
+    and `self.discovery.apply_sync(now_ms, advertise)` without validating that
+    the reported `peer` matches the live connection owner.
+  - `src/router.rs`: `RouterTable::apply_sync` resolves the route source from
+    `directs[conn]`, so a mismatched `PeerData` still mutates routes through the
+    live connection.
+- Impact: a stale, reordered, or malformed peer task event for a known live
+  connection can apply route/discovery data even when its peer id no longer
+  matches the connection owner. This can install or remove routes as if the data
+  came from the real authenticated peer, causing route poisoning and noisy path
+  state. This is distinct from ISSUE-063, which covers unknown/stale
+  `PeerData` panicking without a direct route; ISSUE-066, which covers
+  mismatched `PeerDisconnected`; ISSUE-067, which covers mismatched
+  `PeerConnected`; ISSUE-068, which covers mismatched `PeerStats`; and
+  ISSUE-135, which covers stale `PeerConnectError` removing a live neighbour.
+- Evidence test:
+  - `cargo test peer_data_must_validate_peer_matches_connection`
+  - Failure summary: with live direct route `ConnectionId(10) -> PeerId(2)`,
+    injecting `MainEvent::PeerData(ConnectionId(10), PeerId(99), Sync { ... })`
+    with a route advertisement for `PeerId(4)` installs
+    `PeerId(4) -> ConnectionId(10)`; expected mismatched `PeerData` to be
+    ignored and leave no route to `PeerId(4)`.
