@@ -514,3 +514,19 @@ audited code.
   - `cargo test alias_find_after_service_drop_returns_none_not_panic -- --nocapture`
   - Failure summary: after dropping `AliasService`, `requester.find(...)`
     panics at `src/service/alias_service.rs:99` with `SendError`.
+
+### ISSUE-030: Duplicate service creation panics instead of returning an error
+
+- Category: correctness, API stability
+- Reviewer: `Fermat`, confirmed.
+- Affected code:
+  - `src/lib.rs`: `P2pNetwork::create_service` exposes a public
+    `P2pService` return type with no recoverable duplicate-id error path.
+  - `src/ctx.rs`: `SharedCtxInternal::set_service` enforces uniqueness with
+    `assert!(..., "Service ID already used")`.
+- Impact: creating a duplicate service id is a plausible caller error, but it
+  unwinds the caller instead of returning `Err` or `None`.
+- Evidence test:
+  - `cargo test duplicate_service_creation_must_not_panic -- --nocapture`
+  - Failure summary: the second `create_service(0.into())` panics at
+    `src/ctx.rs:28` with `Service ID already used`.

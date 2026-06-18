@@ -157,6 +157,18 @@ async fn requester_connect_after_network_drop_returns_error_not_panic() {
 }
 
 #[tokio::test]
+async fn duplicate_service_creation_must_not_panic() {
+    let (mut node, _addr) = create_node(false, 1, vec![]).await;
+    let _first = node.create_service(0.into());
+
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let _second = node.create_service(0.into());
+    }));
+
+    assert!(result.is_ok(), "creating a duplicate service id must return a recoverable error instead of panicking");
+}
+
+#[tokio::test]
 async fn broadcast_dedup_must_include_source_not_only_message_id() {
     let (mut node1, addr1) = create_node(true, 1, vec![]).await;
     let node1_ctx = node1.ctx.clone();
