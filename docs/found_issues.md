@@ -1525,3 +1525,31 @@ audited code.
     `SubscriberEvent::PeerLeaved(PeerSrc::Local)`, a cloned stale requester
     issues `publish_rpc("stale", b"stale-publish-rpc", ...)`, and the
     subscriber still receives `SubscriberEvent::PublishRpc`.
+
+### ISSUE-075: Dropped subscriber requesters can still issue feedback RPCs
+
+- Category: correctness, pubsub lifecycle stability
+- Reviewer: `Lorentz`, confirmed.
+- Affected code:
+  - `src/service/pubsub_service/subscriber.rs`: `SubscriberRequester` is
+    cloneable and retains `local_id`, `channel_id`, and the service control
+    sender after the owning `Subscriber` is dropped.
+  - `src/service/pubsub_service/subscriber.rs`: `Subscriber::drop` sends
+    `InternalMsg::SubscriberDestroyed(local_id, channel_id)`.
+  - `src/service/pubsub_service.rs`:
+    `InternalMsg::FeedbackRpc(_local_id, channel, data, method, tx, timeout)`
+    ignores `_local_id`, delivers RPCs to local/remote publishers, and inserts
+    pending RPC state whenever the channel has destinations.
+- Impact: after the last local subscriber is dropped and publishers observe
+  `PeerLeaved(PeerSrc::Local)`, any cloned requester from that dropped
+  subscriber can still issue feedback RPCs on the channel. This invokes
+  publisher RPC handlers and creates pending RPC state from a subscriber the
+  pubsub state already considers gone. This is distinct from ISSUE-070, which
+  covers ordinary feedback, and from ISSUE-074, which covers the publisher-side
+  publish RPC mirror.
+- Evidence test:
+  - `cargo test dropped_subscriber_requester_must_not_continue_feedback_rpc -- --nocapture`
+  - Failure summary: after dropping the subscriber and receiving
+    `PublisherEvent::PeerLeaved(PeerSrc::Local)`, a cloned stale requester
+    issues `feedback_rpc("stale", b"stale-feedback-rpc", ...)`, and the
+    publisher still receives `PublisherEvent::FeedbackRpc`.

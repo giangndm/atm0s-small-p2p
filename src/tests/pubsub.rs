@@ -778,6 +778,48 @@ async fn dropped_subscriber_requester_must_not_continue_feedback() {
 }
 
 #[test(tokio::test)]
+async fn dropped_subscriber_requester_must_not_continue_feedback_rpc() {
+    let (mut node1, _addr1) = create_node(true, 1, vec![]).await;
+    let mut service1 = PubsubService::new(node1.create_service(0.into()));
+    let service1_requester = service1.requester();
+    tokio::spawn(async move { while node1.recv().await.is_ok() {} });
+    tokio::spawn(async move { service1.run_loop().await });
+
+    let channel_id: PubsubChannelId = 1000.into();
+    let mut publisher = service1_requester.publisher(channel_id).await;
+    let subscriber = service1_requester.subscriber(channel_id).await;
+    let stale_requester = subscriber.requester().clone();
+    let ttl = Duration::from_secs(1);
+
+    assert_eq!(
+        timeout(ttl, publisher.recv()).await.expect("publisher should observe initial local subscriber").expect("publisher channel should stay open"),
+        PublisherEvent::PeerJoined(PeerSrc::Local)
+    );
+
+    drop(subscriber);
+
+    assert_eq!(
+        timeout(ttl, publisher.recv()).await.expect("publisher should observe dropped local subscriber").expect("publisher channel should stay open"),
+        PublisherEvent::PeerLeaved(PeerSrc::Local)
+    );
+
+    let rpc_payload = b"stale-feedback-rpc".to_vec();
+    let rpc_task = tokio::spawn({
+        let stale_requester = stale_requester.clone();
+        let rpc_payload = rpc_payload.clone();
+        async move { stale_requester.feedback_rpc("stale", rpc_payload, Duration::from_secs(1)).await }
+    });
+
+    let delivered = timeout(Duration::from_millis(500), publisher.recv()).await;
+    rpc_task.abort();
+
+    assert!(
+        !matches!(delivered, Ok(Ok(PublisherEvent::FeedbackRpc(data, _, method, PeerSrc::Local))) if data == rpc_payload && method == "stale"),
+        "a requester cloned from a dropped Subscriber must not continue issuing feedback RPCs on that channel"
+    );
+}
+
+#[test(tokio::test)]
 async fn pubsub_publish_rpc_answer_must_be_bound_to_expected_responder() {
     let (mut node1, addr1) = create_node(true, 1, vec![]).await;
     let mut service1 = PubsubService::new(node1.create_service(0.into()));
