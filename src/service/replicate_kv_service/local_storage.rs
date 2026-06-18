@@ -340,4 +340,19 @@ mod tests {
             "snapshot paging must not return an empty page with next_key because sync cannot advance"
         );
     }
+
+    #[test]
+    fn snapshot_must_not_return_terminal_empty_page_for_newer_updated_keys() {
+        let mut store: LocalStore<u16, u16, u16> = LocalStore::new(10, 2);
+        store.set(3, 30);
+        store.set(1, 10);
+        store.set(3, 31);
+
+        let snapshot = store.snapshot(Some(3), Some(3), Some(Version(2))).expect("snapshot should exist for requested key range");
+
+        assert!(
+            !snapshot.slots.is_empty() || snapshot.next_key.is_some(),
+            "snapshot at max_version must not silently complete an empty page for a key range containing only newer current slots"
+        );
+    }
 }

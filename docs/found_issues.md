@@ -2388,3 +2388,33 @@ audited code.
   - Failure summary: a single unsolicited `Found(alias)` with no pending lookup
     creates a cache entry for that alias; expected unsolicited `Found` messages
     to be ignored.
+
+### ISSUE-110: Replicated KV snapshots can terminally omit keys updated past max_version
+
+- Category: correctness, bad-network/concurrent-write stability
+- Reviewer: `Bacon the 2nd`, confirmed.
+- Affected code:
+  - `src/service/replicate_kv_service/local_storage.rs`:
+    `LocalStore::snapshot` filters out current slots whose
+    `slot.version > max_version`.
+  - `src/service/replicate_kv_service/local_storage.rs`: `LocalStore` retains
+    only the latest `Slot` per key in `slots`, not historical values for older
+    snapshot versions.
+  - `src/service/replicate_kv_service/local_storage.rs`: when all keys in the
+    requested range are newer than `max_version`, the producer can return
+    `SnapshotData { slots: vec![], next_key: None, ... }`.
+- Impact: during paged full sync, the first page locks a snapshot version. If a
+  key in a later requested range existed at that version but is updated before
+  the continuation request, the producer no longer has the old value. It filters
+  out the newer current slot and returns a terminal empty page, so the receiver
+  can complete full sync while missing historical data. This is distinct from
+  ISSUE-032's zero-size empty page with continuation, ISSUE-038's consumer
+  acceptance of empty continuation pages, ISSUE-081's initial empty snapshot
+  acceptance, ISSUE-034's future-version slot acceptance, and ISSUE-047's
+  continuation version mismatch.
+- Evidence test:
+  - `cargo test snapshot_must_not_return_terminal_empty_page_for_newer_updated_keys -- --nocapture`
+  - Failure summary: a bounded snapshot at `max_version = 2` over key `3`
+    returns `slots: []` and `next_key: None` after key `3` was updated to a
+    newer version, causing the test to fail because the page appears complete
+    while omitting the historical key.
