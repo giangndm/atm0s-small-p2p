@@ -3302,3 +3302,32 @@ must resolve.
   - Failure summary: after a missing-alias find starts a scan, local
     registration of that alias does not complete the pending find; a later
     remote `Found` returns `Some(Scan(PeerId(2)))` instead of `Some(Local)`.
+
+### ISSUE-138: Replicated KV snapshot producer declares live version for bounded continuation pages
+
+- Category: correctness, replication consistency, bad-network stability
+- Score: 70/100
+- Reviewer: `Poincare the 2nd`, confirmed.
+- Affected code:
+  - `src/service/replicate_kv_service/local_storage.rs`:
+    `LocalStore::on_rpc_req` handles
+    `RpcReq::FetchSnapshot { from, to, max_version }`.
+  - `src/service/replicate_kv_service/local_storage.rs`: the response is built
+    as `RpcRes::FetchSnapshot(self.snapshot(from, to, max_version),
+    self.version)`, so the data is filtered by `max_version` but the declared
+    response version is the producer's newer live version.
+- Impact: during paged full sync, a consumer can lock snapshot version `2` and
+  request a continuation with `max_version = Some(Version(2))` after the
+  producer has advanced to version `3`. The producer returns version-2 data but
+  labels it as version `3`, making an honest continuation page violate the
+  snapshot-version contract. A fixed consumer would reject the page; an unfixed
+  consumer can mix version labels and data. This is distinct from ISSUE-047,
+  which covers consumer-side acceptance of mismatched continuation responses,
+  and from ISSUE-110, which covers omitted historical keys after filtering by
+  `max_version`.
+- Evidence test:
+  - `cargo test continuation_snapshot_response_must_preserve_requested_max_version -- --nocapture`
+  - Failure summary: a continuation `FetchSnapshot` request bounded to
+    `max_version = Version(2)` returns snapshot data for key `2` at
+    `Version(2)` but declares the response version as `Version(3)`; expected
+    the declared version to remain `Version(2)`.

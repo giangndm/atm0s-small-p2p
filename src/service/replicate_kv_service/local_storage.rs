@@ -355,4 +355,40 @@ mod tests {
             "snapshot at max_version must not silently complete an empty page for a key range containing only newer current slots"
         );
     }
+
+    #[test]
+    fn continuation_snapshot_response_must_preserve_requested_max_version() {
+        let mut store: LocalStore<u16, u16, u16> = LocalStore::new(10, 1);
+        store.set(1, 10);
+        store.set(2, 20);
+        while store.pop_out().is_some() {}
+
+        store.set(3, 30);
+        while store.pop_out().is_some() {}
+
+        store.on_rpc_req(
+            2,
+            RpcReq::FetchSnapshot {
+                from: Some(2),
+                to: Some(2),
+                max_version: Some(Version(2)),
+            },
+        );
+
+        assert_eq!(
+            store.pop_out(),
+            Some(Event::NetEvent(NetEvent::Unicast(
+                2,
+                RpcEvent::RpcRes(RpcRes::FetchSnapshot(
+                    Some(SnapshotData {
+                        slots: vec![(2, Slot::new(20, Version(2)))],
+                        next_key: None,
+                        biggest_key: 2,
+                    }),
+                    Version(2),
+                ))
+            ))),
+            "FetchSnapshot responses constrained by max_version must declare that same snapshot version, not the producer's newer live version"
+        );
+    }
 }
