@@ -350,3 +350,19 @@ audited code.
   - Failure summary: node3 injects `PublishRpcAnswer(..., rpc_id)` and node1's
     `publish_rpc` completes with `forged-rpc-answer` even though node3 was not
     the subscriber handling the RPC.
+
+### ISSUE-021: Handshake timeout check overflows on maximum timestamp
+
+- Category: security, correctness
+- Reviewer: `Dewey`, confirmed.
+- Affected code:
+  - `src/secure.rs`: `validate_handshake` computes
+    `handshake_data.timestamp + HANDSHAKE_TIMEOUT` on a signed but
+    peer-controlled timestamp.
+- Impact: a peer with the shared key can send a valid handshake timestamped at
+  `u64::MAX`; debug builds panic on the addition, while release builds wrap and
+  make timeout validation incorrect.
+- Evidence test:
+  - `cargo test rejects_overflowing_request_timestamp_without_panic -- --nocapture`
+  - Failure summary: verification panics at the timeout addition with
+    `attempt to add with overflow` instead of returning `Err`.

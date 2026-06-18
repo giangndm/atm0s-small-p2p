@@ -171,4 +171,16 @@ mod tests {
             "future-dated handshake tokens must not be accepted before their timestamp window"
         );
     }
+
+    #[test]
+    fn rejects_overflowing_request_timestamp_without_panic() {
+        let secure = SharedKeyHandshake::from("test_key");
+        let peer1 = PeerId::from(1);
+        let peer2 = PeerId::from(2);
+
+        let request = secure.create_request(peer1, peer2, u64::MAX);
+        let result = std::panic::catch_unwind(|| secure.verify_request(request, peer1, peer2, 1_000));
+
+        assert!(matches!(result, Ok(Err(_))), "overflowing handshake timestamps must be rejected without panicking or wrapping");
+    }
 }
