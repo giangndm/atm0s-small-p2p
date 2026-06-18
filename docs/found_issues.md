@@ -1420,3 +1420,32 @@ audited code.
     `PublisherEvent::PeerLeaved(PeerSrc::Local)`, a cloned stale requester sends
     `stale-feedback`, and the publisher still receives
     `PublisherEvent::Feedback`.
+
+### ISSUE-071: Replicated KV retries stale FetchChanged after broadcasts fill the gap
+
+- Category: correctness, high-load/backpressure stability
+- Reviewer: `Herschel`, confirmed.
+- Affected code:
+  - `src/service/replicate_kv_service/remote_storage.rs`:
+    `WorkingState::apply_pendings` stores `self.sending_req` when a version gap
+    is detected.
+  - `src/service/replicate_kv_service/remote_storage.rs`:
+    `WorkingState::on_broadcast` can later receive the missing change by
+    broadcast and advance `self.version`, but does not clear the old pending
+    `FetchChanged` request.
+  - `src/service/replicate_kv_service/remote_storage.rs`:
+    `WorkingState::on_tick` blindly resends `self.sending_req` after timeout.
+- Impact: after normal broadcasts already fill a version gap and the remote
+  store converges, the node continues retrying an obsolete `FetchChanged`
+  request on every timeout. Under packet loss or high load this creates
+  unnecessary repair traffic and can keep requesting stale ranges after the
+  replica is already up to date. This is distinct from ISSUE-027 and ISSUE-046,
+  which cover unbounded pending-change memory growth; this issue is stale
+  request state after convergence.
+- Evidence test:
+  - `cargo test working_state_must_cancel_fetch_changed_when_broadcast_fills_gap -- --nocapture`
+  - Failure summary: after `Changed(version=2)` queues
+    `FetchChanged { from: Version(1), count: 1 }`, a later broadcast
+    `Changed(version=1)` fills the gap and advances the state to `Version(2)`,
+    but ticking after `REQUEST_TIMEOUT` still emits the obsolete
+    `FetchChanged { from: Version(1), count: 1 }` instead of no retry.

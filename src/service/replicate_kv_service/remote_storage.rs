@@ -895,6 +895,54 @@ mod tests {
         assert_eq!(ctx.outs.pop_front(), None);
     }
 
+    #[test]
+    fn working_state_must_cancel_fetch_changed_when_broadcast_fills_gap() {
+        let mut ctx: StateCtx<u16, u16, u16> = StateCtx {
+            remote: 1,
+            slots: BTreeMap::new(),
+            outs: VecDeque::new(),
+            next_state: None,
+        };
+
+        let now = Instant::now();
+        let mut state = WorkingState::new(Version(0));
+
+        state.on_broadcast(
+            &mut ctx,
+            now,
+            BroadcastEvent::Changed(Changed {
+                key: 1,
+                version: Version(2),
+                action: Action::Set(2),
+            }),
+        );
+        assert_eq!(
+            ctx.outs.pop_front(),
+            Some(Event::NetEvent(NetEvent::Unicast(1, RpcEvent::RpcReq(RpcReq::FetchChanged { from: Version(1), count: 1 }))))
+        );
+        assert_eq!(ctx.outs.pop_front(), None);
+
+        state.on_broadcast(
+            &mut ctx,
+            now,
+            BroadcastEvent::Changed(Changed {
+                key: 1,
+                version: Version(1),
+                action: Action::Set(1),
+            }),
+        );
+        assert_eq!(state.version, Version(2), "broadcast gap fill should advance the working version");
+        while ctx.outs.pop_front().is_some() {}
+
+        state.on_tick(&mut ctx, now + REQUEST_TIMEOUT + Duration::from_millis(1));
+
+        assert_eq!(
+            ctx.outs.pop_front(),
+            None,
+            "FetchChanged retry must be cancelled after broadcasts fill the missing gap"
+        );
+    }
+
     /// After missing changed we got FetchChanged response
     #[test]
     fn test_working_state_missing_changed2() {
