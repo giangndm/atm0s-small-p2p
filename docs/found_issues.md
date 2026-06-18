@@ -1039,3 +1039,24 @@ audited code.
   - `cargo test zero_network_tick_interval_must_not_panic -- --nocapture`
   - Failure summary: `P2pNetwork::new` panics at `src/lib.rs:184` with
     `` `period` must be non-zero. `` when `tick_ms` is zero.
+
+### ISSUE-055: Discovery advertisements can duplicate configured seed ids
+
+- Category: correctness, seed stability
+- Reviewer: `Codex`, confirmed by source inspection and failing discovery
+  test.
+- Affected code:
+  - `src/discovery.rs`: `PeerDiscovery::apply_sync` accepts remote
+    advertisements for peers that are already configured as seeds.
+  - `src/discovery.rs`: `PeerDiscovery::remotes` returns learned remotes first
+    and then configured seeds, so a remote-advertised seed id can appear before
+    the trusted configured seed address.
+- Impact: a peer can advertise the id of a configured seed at a different
+  address. The node then keeps both candidates and may attempt the untrusted
+  address before the configured seed, adding connection churn and weakening the
+  invariant that seed nodes are preserved from static configuration.
+- Evidence test:
+  - `cargo test apply_sync_must_not_duplicate_or_override_configured_seed -- --nocapture`
+  - Failure summary: after applying an advertisement for seed peer `1` at
+    `127.0.0.1:9001`, `remotes()` returns both `1@127.0.0.1:9001` and the
+    configured `1@127.0.0.1:9000`; expected only the configured seed address.

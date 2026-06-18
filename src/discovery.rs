@@ -217,6 +217,21 @@ mod test {
     }
 
     #[test_log::test]
+    fn apply_sync_must_not_duplicate_or_override_configured_seed() {
+        let seed = peer_addr("1@127.0.0.1:9000");
+        let advertised_seed = peer_addr("1@127.0.0.1:9001");
+        let mut discovery = PeerDiscovery::new(vec![seed.clone()]);
+
+        discovery.apply_sync(100, PeerDiscoverySync(vec![(advertised_seed.peer_id(), 100, advertised_seed.network_address().clone())]));
+
+        assert_eq!(
+            discovery.remotes().collect::<Vec<_>>(),
+            vec![seed],
+            "remote discovery advertisements must not duplicate or override configured seed addresses"
+        );
+    }
+
+    #[test_log::test]
     fn graceful_stop_tombstone_ignores_stale_non_seed_advertise() {
         let stopped = peer_addr("2@127.0.0.1:9001");
         let mut discovery = PeerDiscovery::default();
