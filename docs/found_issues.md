@@ -797,6 +797,7 @@ must resolve.
 ### ISSUE-041: Alias lookup tracks unbounded distinct pending misses
 
 - Category: high-load stability, bad-network stability
+- Score: 68/100
 - Reviewer: `Hubble`, confirmed.
 - Affected code:
   - `src/service/alias_service.rs`: `AliasServiceInternal::find_reqs` stores
@@ -818,6 +819,7 @@ must resolve.
 ### ISSUE-042: Visualization peer timeout arithmetic overflows
 
 - Category: correctness, long-running stability
+- Score: 52/100
 - Reviewer: `Franklin`, confirmed.
 - Affected code:
   - `src/service/visualization_service.rs`: peer expiry compares
@@ -837,6 +839,7 @@ must resolve.
 ### ISSUE-043: Pubsub retains unbounded unanswered RPC requests
 
 - Category: high-load stability
+- Score: 72/100
 - Reviewer: `Darwin`, confirmed.
 - Affected code:
   - `src/service/pubsub_service.rs`: `publish_rpc_reqs` and
@@ -859,6 +862,7 @@ must resolve.
 ### ISSUE-044: Router best-path score arithmetic overflows
 
 - Category: correctness, bad-network stability
+- Score: 74/100
 - Reviewer: `Mendel`, confirmed.
 - Affected code:
   - `src/router.rs`: `PathMetric::score` computes
@@ -879,6 +883,7 @@ must resolve.
 ### ISSUE-045: Replicated KV creates unbounded remote stores
 
 - Category: high-load stability, bad-network stability
+- Score: 76/100
 - Reviewer: `Gauss`, confirmed.
 - Affected code:
   - `src/service/replicate_kv_service.rs`: `ReplicatedKvStore::on_remote_event`
@@ -901,6 +906,7 @@ must resolve.
 ### ISSUE-046: Replicated KV accepts unbounded FetchChanged response batches
 
 - Category: high-load stability, resource exhaustion
+- Score: 78/100
 - Reviewer: `Feynman`, confirmed.
 - Affected code:
   - `src/service/replicate_kv_service/remote_storage.rs`:
@@ -922,6 +928,7 @@ must resolve.
 ### ISSUE-047: Replicated KV full sync accepts mismatched continuation versions
 
 - Category: security, correctness
+- Score: 82/100
 - Reviewer: `Tesla`, confirmed.
 - Affected code:
   - `src/service/replicate_kv_service/remote_storage.rs`:
@@ -948,6 +955,7 @@ must resolve.
 ### ISSUE-048: Pubsub RPC member messages bypass channel membership
 
 - Category: security, correctness
+- Score: 86/100
 - Reviewer: `Kierkegaard`, confirmed.
 - Affected code:
   - `src/service/pubsub_service.rs`: inbound `PubsubMessage::PublishRpc`
@@ -968,6 +976,7 @@ must resolve.
 ### ISSUE-049: Broadcast fanout can block on one congested peer control queue
 
 - Category: high-load stability, bad-network stability
+- Score: 70/100
 - Reviewer: `Cicero`, confirmed.
 - Affected code:
   - `src/ctx.rs`: `SharedCtx::send_broadcast` awaits
@@ -990,6 +999,7 @@ must resolve.
 ### ISSUE-050: Unicast send can block on a congested peer control queue
 
 - Category: high-load stability, bad-network stability
+- Score: 68/100
 - Reviewer: `Ramanujan`, confirmed.
 - Affected code:
   - `src/ctx.rs`: `SharedCtx::send_unicast` awaits
@@ -1011,6 +1021,7 @@ must resolve.
 ### ISSUE-051: Legitimate PeerStopped leaves stopped neighbour connected
 
 - Category: correctness, graceful-shutdown stability
+- Score: 63/100
 - Reviewer: `Anscombe`, confirmed.
 - Affected code:
   - `src/lib.rs`: `P2pNetwork::process_internal` handles
@@ -1033,6 +1044,7 @@ must resolve.
 ### ISSUE-052: Out-of-range service ids panic service registration
 
 - Category: correctness, API stability
+- Score: 56/100
 - Reviewer: `James`, confirmed.
 - Affected code:
   - `src/msg.rs`: `P2pServiceId` is a `u16`, allowing values outside the
@@ -1053,6 +1065,7 @@ must resolve.
 ### ISSUE-053: Inbound out-of-range service ids kill peer connection tasks
 
 - Category: security, bad-network stability
+- Score: 84/100
 - Reviewer: `Hooke`, confirmed. Additional fuzz evidence confirmed by
   `Socrates the 2nd`.
 - Affected code:
@@ -1084,6 +1097,7 @@ must resolve.
 ### ISSUE-054: Zero network tick interval panics node construction
 
 - Category: correctness, configuration stability
+- Score: 45/100
 - Reviewer: `Hooke`, confirmed.
 - Affected code:
   - `src/lib.rs`: `P2pNetwork::new` passes `cfg.tick_ms` directly to
@@ -1102,6 +1116,7 @@ must resolve.
 ### ISSUE-055: Discovery advertisements can duplicate configured seed ids
 
 - Category: correctness, seed stability
+- Score: 64/100
 - Reviewer: `Hooke`, confirmed.
 - Affected code:
   - `src/discovery.rs`: `PeerDiscovery::apply_sync` accepts remote
@@ -1122,6 +1137,7 @@ must resolve.
 ### ISSUE-056: Stream open can block on congested peer control queue
 
 - Category: stability, high-load backpressure
+- Score: 70/100
 - Reviewer: `Confucius`, confirmed.
 - Affected code:
   - `src/ctx.rs`: `SharedCtx::open_stream` awaits the target peer alias
@@ -1146,6 +1162,7 @@ must resolve.
 ### ISSUE-057: Stale peer-connected events install unusable routes
 
 - Category: correctness, async race stability
+- Score: 67/100
 - Reviewer: `Russell`, confirmed.
 - Affected code:
   - `src/lib.rs`: `P2pNetwork::process_internal` handles
@@ -1168,6 +1185,7 @@ must resolve.
 ### ISSUE-058: Pubsub requester can create dead-on-arrival handles
 
 - Category: correctness, API stability
+- Score: 58/100
 - Reviewer: `Kant`, confirmed.
 - Affected code:
   - `src/service/pubsub_service.rs`: `PubsubServiceRequester::publisher`
@@ -1195,6 +1213,7 @@ must resolve.
 ### ISSUE-059: Replicated KV full sync accepts `None` as a fake continuation
 
 - Category: correctness, data consistency
+- Score: 80/100
 - Reviewer: `Boole`, confirmed.
 - Affected code:
   - `src/service/replicate_kv_service/remote_storage.rs`:
@@ -1220,6 +1239,7 @@ must resolve.
 ### ISSUE-060: Dropped services leave their service id permanently reserved
 
 - Category: correctness, API lifecycle stability
+- Score: 60/100
 - Reviewer: `Ampere`, confirmed.
 - Affected code:
   - `src/lib.rs`: `P2pNetwork::create_service` registers a service sender in
