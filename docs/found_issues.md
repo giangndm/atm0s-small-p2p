@@ -330,3 +330,23 @@ audited code.
   - `cargo test registering_same_alias_many_times_must_not_overflow_refcount -- --nocapture`
   - Failure summary: the 256th registration panics at the `u8` increment with
     `attempt to add with overflow`.
+
+### ISSUE-020: Pubsub RPC answers are accepted by `RpcId` only
+
+- Category: security, correctness
+- Reviewer: `Popper`, confirmed.
+- Affected code:
+  - `src/service/pubsub_service.rs`: inbound `PublishRpcAnswer(data, rpc_id)`
+    removes `publish_rpc_reqs[rpc_id]` and completes the caller without
+    checking the answering peer.
+  - `src/service/pubsub_service.rs`: inbound `FeedbackRpcAnswer(data, rpc_id)`
+    has the same behavior for feedback RPCs.
+  - `src/service/pubsub_service.rs`: pending request structs store only
+    timeout and response channel, not expected peer/channel/method metadata.
+- Impact: any connected peer that learns or races a valid `RpcId` can complete
+  another peer's pending pubsub RPC with attacker-controlled data.
+- Evidence test:
+  - `cargo test pubsub_publish_rpc_answer_must_be_bound_to_expected_responder -- --nocapture`
+  - Failure summary: node3 injects `PublishRpcAnswer(..., rpc_id)` and node1's
+    `publish_rpc` completes with `forged-rpc-answer` even though node3 was not
+    the subscriber handling the RPC.

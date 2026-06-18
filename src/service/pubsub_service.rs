@@ -99,6 +99,11 @@ enum PubsubMessage {
     FeedbackRpcAnswer(Vec<u8>, RpcId),
 }
 
+#[cfg(test)]
+pub(crate) fn encode_publish_rpc_answer_for_test(data: Vec<u8>, rpc_id: RpcId) -> Vec<u8> {
+    bincode::serialize(&PubsubMessage::PublishRpcAnswer(data, rpc_id)).expect("test message should serialize")
+}
+
 enum InternalMsg {
     PublisherCreated(PublisherLocalId, PubsubChannelId, UnboundedSender<PublisherEvent>),
     PublisherDestroyed(PublisherLocalId, PubsubChannelId),

@@ -3,7 +3,10 @@ use std::time::Duration;
 use test_log::test;
 use tokio::time::timeout;
 
-use crate::pubsub_service::{PeerSrc, PublisherEvent, PubsubChannelId, PubsubService, SubscriberEvent};
+use crate::{
+    msg::PeerMessage,
+    pubsub_service::{encode_publish_rpc_answer_for_test, PeerSrc, PublisherEvent, PubsubChannelId, PubsubService, SubscriberEvent},
+};
 
 use super::create_node;
 
@@ -640,6 +643,74 @@ async fn pubsub_publish_rpc_no_destination() {
     let channel_id: PubsubChannelId = 1000.into();
     let publisher = service1_requester.publisher(channel_id).await;
     assert!(publisher.requester().publish_rpc("ping", vec![1, 2, 3], Duration::from_secs(1)).await.is_err());
+}
+
+#[test(tokio::test)]
+async fn pubsub_publish_rpc_answer_must_be_bound_to_expected_responder() {
+    let (mut node1, addr1) = create_node(true, 1, vec![]).await;
+    let mut service1 = PubsubService::new(node1.create_service(0.into()));
+    let service1_requester = service1.requester();
+    tokio::spawn(async move { while node1.recv().await.is_ok() {} });
+    tokio::spawn(async move { service1.run_loop().await });
+
+    let (mut node2, _addr2) = create_node(false, 2, vec![addr1.clone()]).await;
+    let mut service2 = PubsubService::new(node2.create_service(0.into()));
+    let service2_requester = service2.requester();
+    tokio::spawn(async move { while node2.recv().await.is_ok() {} });
+    tokio::spawn(async move { service2.run_loop().await });
+
+    let (mut node3, addr3) = create_node(false, 3, vec![addr1.clone()]).await;
+    let node3_ctx = node3.ctx.clone();
+    tokio::spawn(async move { while node3.recv().await.is_ok() {} });
+
+    tokio::time::sleep(Duration::from_secs(1)).await;
+    let ttl = Duration::from_secs(1);
+    let channel_id: PubsubChannelId = 1000.into();
+    let mut publisher = service1_requester.publisher(channel_id).await;
+    let mut subscriber = service2_requester.subscriber(channel_id).await;
+
+    assert_eq!(
+        timeout(ttl, publisher.recv()).await.expect("should not timeout").expect("should recv"),
+        PublisherEvent::PeerJoined(PeerSrc::Remote(2.into()))
+    );
+
+    let publisher_requester = publisher.requester().clone();
+    let publish_task = tokio::spawn(async move { publisher_requester.publish_rpc("ping", vec![1, 2, 3], Duration::from_secs(2)).await });
+
+    let rpc_id = tokio::time::timeout(ttl, async {
+        loop {
+            if let SubscriberEvent::PublishRpc(_, rpc_id, _, PeerSrc::Remote(from)) = subscriber.recv().await.expect("should recv") {
+                assert_eq!(from, addr1.peer_id());
+                return rpc_id;
+            }
+        }
+    })
+    .await
+    .expect("subscriber should receive publish RPC request");
+
+    let conn = tokio::time::timeout(Duration::from_secs(3), async {
+        loop {
+            if let Some(conn) = node3_ctx.conns().into_iter().next() {
+                return conn;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .expect("node3 should connect to node1");
+
+    let fake_answer = b"forged-rpc-answer".to_vec();
+    let payload = encode_publish_rpc_answer_for_test(fake_answer.clone(), rpc_id);
+    conn.try_send(PeerMessage::Unicast(addr3.peer_id(), addr1.peer_id(), 0.into(), payload))
+        .expect("attacker should be able to inject a pubsub RPC answer");
+
+    if let Ok(joined) = timeout(Duration::from_millis(500), publish_task).await {
+        let result = joined.expect("publish task should not panic");
+        assert!(
+            !matches!(result, Ok(data) if data == fake_answer),
+            "publish_rpc must not complete from an answer sent by an unrelated peer"
+        );
+    }
 }
 
 #[test(tokio::test)]
