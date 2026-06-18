@@ -679,3 +679,25 @@ audited code.
   - `cargo test full_sync_must_reject_snapshot_next_key_past_biggest_key -- --nocapture`
   - Failure summary: a response with `next_key = 2` and `biggest_key = 1`
     makes the receiver emit `FetchSnapshot { from: Some(2), to: Some(1), ... }`.
+
+### ISSUE-038: Replicated KV full-sync consumer accepts empty continuation pages
+
+- Category: bad-network stability, correctness
+- Reviewer: `Beauvoir`, confirmed.
+- Affected code:
+  - `src/service/replicate_kv_service/remote_storage.rs`:
+    `SyncFullState::on_rpc_res` accepts untrusted
+    `RpcRes::FetchSnapshot(Some(snapshot), version)`.
+  - `src/service/replicate_kv_service/remote_storage.rs`: the code has a
+    `TODO check snapshot is not empty` but still accepts `slots: []` with
+    `next_key: Some(...)`.
+  - `src/service/replicate_kv_service/remote_storage.rs`: if `next_key` is
+    present, it emits another `FetchSnapshot` even though no slot was applied.
+- Impact: a malicious or buggy peer can keep a receiver in full sync forever
+  with empty continuation pages. The receiver repeatedly requests more snapshot
+  data without applying data or reaching `WorkingState`.
+- Evidence test:
+  - `cargo test full_sync_must_reject_empty_snapshot_page_with_next_key -- --nocapture`
+  - Failure summary: an empty snapshot page with `next_key: Some(1)` causes the
+    receiver to emit another `FetchSnapshot` instead of rejecting the
+    non-progressing page.

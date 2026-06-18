@@ -541,6 +541,39 @@ mod tests {
     }
 
     #[test]
+    fn full_sync_must_reject_empty_snapshot_page_with_next_key() {
+        let mut ctx: StateCtx<u16, u16, u16> = StateCtx {
+            remote: 1,
+            slots: BTreeMap::new(),
+            outs: VecDeque::new(),
+            next_state: None,
+        };
+
+        let now = Instant::now();
+        let mut state = SyncFullState::default();
+        state.init(&mut ctx, now);
+        ctx.outs.clear();
+
+        state.on_rpc_res(
+            &mut ctx,
+            now,
+            RpcRes::FetchSnapshot(
+                Some(SnapshotData {
+                    slots: vec![],
+                    next_key: Some(1),
+                    biggest_key: 1,
+                }),
+                Version(1),
+            ),
+        );
+
+        assert!(
+            ctx.outs.is_empty(),
+            "empty snapshot pages with next_key must be rejected because full sync cannot make progress"
+        );
+    }
+
+    #[test]
     fn test_restore_full_resend() {
         let mut ctx: StateCtx<u16, u16, u16> = StateCtx {
             remote: 1,
