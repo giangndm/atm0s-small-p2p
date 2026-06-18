@@ -176,3 +176,50 @@ async fn inbound_unicast_must_not_drop_when_service_queue_is_full() {
         "inbound unicast delivery must apply backpressure or otherwise preserve messages instead of silently dropping when the local service queue is full"
     );
 }
+
+#[test(tokio::test)]
+async fn inbound_broadcast_must_not_drop_when_service_queue_is_full() {
+    let (mut node1, addr1) = create_node(false, 1, vec![]).await;
+    let service1 = node1.create_service(0.into());
+    let requester1 = node1.requester();
+    tokio::spawn(async move { while node1.recv().await.is_ok() {} });
+
+    let (mut node2, addr2) = create_node(false, 2, vec![]).await;
+    let mut service2 = node2.create_service(0.into());
+    tokio::spawn(async move { while node2.recv().await.is_ok() {} });
+
+    requester1.connect(addr2.clone()).await.expect("connect should be queued");
+    tokio::time::timeout(Duration::from_secs(3), async {
+        loop {
+            if matches!(service1.router().action(&addr2.peer_id()), Some(RouteAction::Next(_))) {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .expect("route to node2 should become available");
+
+    let expected = 11usize;
+    for idx in 0..expected {
+        service1.send_broadcast(vec![idx as u8]).await;
+    }
+
+    tokio::time::sleep(Duration::from_millis(300)).await;
+
+    let mut received = Vec::new();
+    for _ in 0..expected {
+        match tokio::time::timeout(Duration::from_millis(100), service2.recv()).await {
+            Ok(Some(P2pServiceEvent::Broadcast(peer, data))) if peer == addr1.peer_id() => {
+                received.push(data)
+            }
+            _ => break,
+        }
+    }
+
+    assert_eq!(
+        received.len(),
+        expected,
+        "inbound broadcast delivery must apply backpressure or otherwise preserve messages instead of silently dropping when the local service queue is full"
+    );
+}

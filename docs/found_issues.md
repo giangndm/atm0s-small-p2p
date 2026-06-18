@@ -2698,3 +2698,34 @@ must resolve.
     `send service msg got error no available capacity` and only 10 messages can
     be drained from the service queue; expected all 11 to be preserved or
     backpressured instead of silently dropped.
+
+### ISSUE-120: Inbound broadcast is silently dropped when the local service queue is full
+
+- Category: correctness, reliability/stability under load, potential broadcast
+  data loss
+- Score: 74/100
+- Reviewer: `Confucius the 2nd`, confirmed.
+- Affected code:
+  - `src/service.rs`: each `P2pService` uses a bounded
+    `SERVICE_CHANNEL_SIZE` of 10 pending events.
+  - `src/peer/peer_internal.rs`: inbound `PeerMessage::Broadcast` calls
+    `service.try_send(P2pServiceEvent::Broadcast(source, data)).print_on_err(...)`
+    after duplicate suppression, and does not retry, backpressure, disconnect,
+    or signal local delivery failure.
+- Impact: when the destination local service is not draining quickly enough,
+  the 11th inbound broadcast is dropped after only a log message. The sender has
+  already returned from `send_broadcast`, so this creates silent broadcast data
+  loss under receiver-side local service backpressure. This is distinct from
+  ISSUE-119 because broadcast uses a different inbound path with duplicate
+  suppression and fanout semantics before local delivery. It is also distinct
+  from ISSUE-011/012 stream queue pressure, ISSUE-049/050 outbound peer-control
+  queue blocking, ISSUE-053/091 out-of-range service id panics, ISSUE-076 stale
+  requester lifecycle broadcast, ISSUE-017 duplicate suppression behavior, and
+  sender identity binding issues.
+- Evidence test:
+  - `cargo test inbound_broadcast_must_not_drop_when_service_queue_is_full -- --nocapture`
+  - Failure summary: after two connected nodes send 11 broadcasts to an
+    unconsumed destination service, the receiver logs
+    `send service msg got error no available capacity` and only 10 broadcast
+    events can be drained; expected all 11 to be preserved or backpressured
+    instead of silently dropped.
