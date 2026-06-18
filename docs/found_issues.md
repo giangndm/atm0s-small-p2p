@@ -636,3 +636,23 @@ audited code.
   - `cargo test duplicate_find_waiters_for_same_alias_must_be_bounded -- --nocapture`
   - Failure summary: 1,025 duplicate find waiters are stored for one alias,
     exceeding the test cap of 1,024.
+
+### ISSUE-036: Alias find timeout arithmetic overflows near maximum timestamp
+
+- Category: long-running stability, correctness
+- Reviewer: `Aristotle`, confirmed.
+- Affected code:
+  - `src/service/alias_service.rs`: `AliasServiceInternal::on_tick` checks
+    hint timeouts with `requested_at + HINT_TIMEOUT_MS <= now`.
+  - `src/service/alias_service.rs`: scan timeouts use
+    `requested_at + SCAN_TIMEOUT_MS <= now`.
+  - `src/service/alias_service.rs`: alias find state stores raw `now_ms()`
+    values in `FindRequestState`.
+- Impact: in a very long-running process or with internal time near
+  `u64::MAX`, alias find timeout checks panic in debug builds. In release
+  builds the deadline arithmetic can wrap and make timeout behavior incorrect.
+- Evidence test:
+  - `cargo test find_timeout_at_max_timestamp_must_not_overflow -- --nocapture`
+  - Failure summary: ticking a pending alias find created at `u64::MAX - 10`
+    panics at `src/service/alias_service.rs:244` with
+    `attempt to add with overflow`.

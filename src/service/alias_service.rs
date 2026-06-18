@@ -662,6 +662,21 @@ mod test {
     }
 
     #[test]
+    fn find_timeout_at_max_timestamp_must_not_overflow() {
+        let mut ctx = TestContext::new();
+        let alias_id = AliasId(1);
+        let (tx, _rx) = oneshot::channel();
+
+        ctx.internal.on_control(u64::MAX - 10, AliasControl::Find(alias_id, tx));
+
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            ctx.internal.on_tick(u64::MAX);
+        }));
+
+        assert!(result.is_ok(), "alias find timeout arithmetic must not panic or wrap near u64::MAX");
+    }
+
+    #[test]
     fn test_shutdown() {
         let mut ctx = TestContext::new();
         let alias_id = AliasId(1);
