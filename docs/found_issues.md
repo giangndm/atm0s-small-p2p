@@ -3173,3 +3173,29 @@ must resolve.
     `service.rx`, `AliasService::run_loop()` panics at
     `src/service/alias_service.rs` with `service channel should work`; expected
     `Ok(Err(_))` from the public `Result` API.
+
+### ISSUE-133: PeerStopped blocks the peer task when the main event queue is full
+
+- Category: high-load stability, shutdown stability, head-of-line blocking
+- Score: 71/100
+- Reviewer: `Pasteur the 2nd`, confirmed.
+- Affected code:
+  - `src/peer/peer_internal.rs`: `PeerConnectionInternal::on_msg` handles
+    `PeerMessage::PeerStopped(peer_id)`.
+  - `src/peer/peer_internal.rs`: after forwarding the stop signal to other
+    peer aliases, the handler awaits
+    `self.main_tx.send(MainEvent::PeerStopped(self.conn_id, peer_id)).await`
+    on the bounded main event queue.
+- Impact: when the main loop is saturated, a peer connection task can park
+  inside `PeerStopped` handling and stop processing later messages from that
+  connection. This turns graceful stop notification into head-of-line blocking
+  under load or slow main-loop processing, delaying unrelated unicast/broadcast
+  traffic and connection cleanup. This is distinct from ISSUE-001/004/051,
+  which cover forged or legitimate stop semantics, and from ISSUE-118, which
+  covers caller-side graceful shutdown latency while notifying congested peers.
+- Evidence test:
+  - `cargo test peer_stopped_must_not_block_connection_task_on_full_main_queue -- --nocapture`
+  - Failure summary: after filling node2's bounded main event queue and sending
+    `PeerStopped`, a later unicast over the same peer connection times out with
+    `Err(Elapsed(()))`; expected the connection task to keep processing traffic
+    instead of blocking on `main_tx.send`.
