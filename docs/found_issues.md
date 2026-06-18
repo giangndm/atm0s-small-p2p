@@ -1577,3 +1577,29 @@ audited code.
   - Failure summary: after dropping node1's `P2pService`, a cloned
     `P2pServiceRequester` sends `stale-service-broadcast`, and node2's service
     receives `P2pServiceEvent::Broadcast`.
+
+### ISSUE-077: Replicated KV zero changed batch size returns false empty success
+
+- Category: correctness, bad-network stability
+- Reviewer: `Peirce`, confirmed.
+- Affected code:
+  - `src/service/replicate_kv_service.rs`: `ReplicatedKvService::new` exposes
+    `max_compose_pkts` directly to callers without rejecting zero.
+  - `src/service/replicate_kv_service/local_storage.rs`:
+    `LocalStore::new` stores `compose_max_pkts` unchecked.
+  - `src/service/replicate_kv_service/local_storage.rs`:
+    `changeds_from_to` computes `to = from + count.min(compose_max_pkts)`.
+    When `compose_max_pkts` is zero, `to == from`, the range checks pass, and
+    an empty successful response is produced.
+- Impact: a node can reply to `FetchChanged { from, count }` with
+  `Ok(vec![])` even when the requested change exists. Receivers can treat the
+  repair response as successful while making no version progress, causing
+  changed-sync repair to stall under a valid but broken zero-batch
+  configuration. This is distinct from ISSUE-032, which covers zero snapshot
+  page size in full sync.
+- Evidence test:
+  - `cargo test zero_changed_batch_size_must_not_return_empty_success -- --nocapture`
+  - Failure summary: with `compose_max_pkts = 0` and version `1` present,
+    `FetchChanged { from: Version(1), count: 1 }` returns
+    `RpcRes::FetchChanged(Ok(vec![]))` instead of rejecting the request or
+    returning at least one change.
