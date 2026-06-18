@@ -15,7 +15,23 @@ pub enum MetricsServiceEvent {
 #[cfg(test)]
 mod test {
     use super::*;
+    use futures::FutureExt;
     use crate::{ctx::SharedCtx, msg::P2pServiceId, router::SharedRouterTable};
+
+    #[tokio::test]
+    async fn metrics_recv_after_base_service_close_must_not_panic() {
+        let ctx = SharedCtx::new(PeerId::from(1), SharedRouterTable::new(PeerId::from(1)));
+        let (base_service, service_tx) = P2pService::build(P2pServiceId::from(0), ctx);
+        let mut service = MetricsService::new(None, base_service, false);
+        drop(service_tx);
+
+        let result = std::panic::AssertUnwindSafe(service.recv()).catch_unwind().await;
+
+        assert!(
+            matches!(result, Ok(Err(_))),
+            "metrics recv must return an error when the base service channel closes instead of panicking"
+        );
+    }
 
     #[tokio::test]
     async fn metrics_info_batches_must_be_bounded() {

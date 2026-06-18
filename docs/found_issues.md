@@ -2931,3 +2931,27 @@ must resolve.
   - Failure summary: 1,025 `AliasServiceRequester::register(...)` calls leave
     1,025 pending messages in `service.rx`, exceeding the bounded
     control-backlog assertion.
+
+### ISSUE-128: Metrics recv panics when the base service channel closes
+
+- Category: correctness, shutdown stability, API stability
+- Score: 56/100
+- Reviewer: `Meitner the 2nd`, confirmed.
+- Affected code:
+  - `src/service/metrics_service.rs`: `MetricsService::recv` returns
+    `anyhow::Result<MetricsServiceEvent>`.
+  - `src/service/metrics_service.rs`: the `event = self.service.recv()` branch
+    calls `event.expect("should work")` when the underlying `P2pService`
+    receiver returns `None`.
+- Impact: if the base service channel closes during shutdown or teardown,
+  `MetricsService::recv()` unwinds instead of returning `Err`. This breaks the
+  public result-returning API and can turn an orderly service shutdown into a
+  task panic. This is distinct from ISSUE-028/029 stale requester send panics,
+  ISSUE-040 zero interval constructor panics, ISSUE-058 pubsub dead-on-arrival
+  handles, ISSUE-096 replicated-KV serialization panics, and the existing
+  metrics forged/disclosure/batch issues.
+- Evidence test:
+  - `cargo test metrics_recv_after_base_service_close_must_not_panic -- --nocapture`
+  - Failure summary: after dropping the underlying `P2pService` sender,
+    `MetricsService::recv()` panics at `src/service/metrics_service.rs` with
+    `should work`; expected `Ok(Err(_))` from the public `Result` API.
