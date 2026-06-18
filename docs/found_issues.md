@@ -1253,3 +1253,25 @@ audited code.
   - Failure summary: processing `MainEvent::PeerData(ConnectionId(404), ...)`
     for an unknown connection panics at `src/router.rs:76` with
     `should have direct metric with apply_sync`.
+
+### ISSUE-064: Stale peer stats events publish metrics for unknown connections
+
+- Category: correctness, monitoring stability
+- Reviewer: `Avicenna`, confirmed.
+- Affected code:
+  - `src/lib.rs`: `P2pNetwork::process_internal` handles
+    `MainEvent::PeerStats(conn, to_peer, metrics)` by directly calling
+    `ctx.update_metrics(&conn, to_peer, metrics)`.
+  - `src/ctx.rs`: `SharedCtxInternal::update_conn_metrics` inserts into
+    `conn_metrics` without checking whether `conn` exists in the live
+    connection map.
+- Impact: stale peer-task stats can create exported metrics for a connection
+  that was never registered or is no longer live. This pollutes monitoring
+  output even though the underlying connection alias/neighbour is absent. This
+  is distinct from ISSUE-057's stale route installation and ISSUE-063's stale
+  sync-data panic.
+- Evidence test:
+  - `cargo test stale_peer_stats_event_must_not_publish_metrics_for_unknown_connection -- --nocapture`
+  - Failure summary: processing `MainEvent::PeerStats(ConnectionId(404), ...)`
+    on a fresh node makes `node.ctx.metrics()` non-empty; expected stale stats
+    for an unknown connection to be ignored or rejected.

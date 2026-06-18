@@ -3,7 +3,8 @@ use std::{net::UdpSocket, time::Duration};
 use crate::{
     msg::{BroadcastMsgId, P2pServiceId, PeerMessage},
     router::RouteAction,
-    ConnectionId, MainEvent, P2pNetwork, P2pNetworkConfig, P2pNetworkEvent, P2pServiceEvent, PeerAddress, PeerId, PeerMainData, SharedKeyHandshake,
+    ConnectionId, MainEvent, P2pNetwork, P2pNetworkConfig, P2pNetworkEvent, P2pServiceEvent, PeerAddress, PeerConnectionMetric, PeerId, PeerMainData,
+    SharedKeyHandshake,
 };
 use futures::FutureExt;
 use rustls::pki_types::{CertificateDer, PrivatePkcs8KeyDer};
@@ -125,6 +126,31 @@ async fn stale_peer_data_event_must_not_panic_without_direct_route() {
     assert!(
         matches!(result, Ok(Ok(P2pNetworkEvent::Continue))),
         "PeerData for a stale connection id must be ignored or return an error instead of panicking"
+    );
+}
+
+#[tokio::test]
+async fn stale_peer_stats_event_must_not_publish_metrics_for_unknown_connection() {
+    let (mut node, _addr) = create_node(false, 1, vec![]).await;
+    let stale_conn = ConnectionId::from(404);
+    let peer = PeerId::from(2);
+    let metrics = PeerConnectionMetric {
+        uptime: 1,
+        rtt: 2,
+        sent_pkt: 3,
+        lost_pkt: 4,
+        lost_bytes: 5,
+        send_bytes: 6,
+        recv_bytes: 7,
+        current_mtu: 1200,
+    };
+
+    node.process_internal(100, MainEvent::PeerStats(stale_conn, peer, metrics))
+        .expect("stale peer stats event should process");
+
+    assert!(
+        node.ctx.metrics().is_empty(),
+        "PeerStats for an unknown connection id must not be exported as live connection metrics"
     );
 }
 
