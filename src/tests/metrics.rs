@@ -1,9 +1,9 @@
 use std::time::Duration;
 
 use crate::{
-    metrics_service::{encode_info_for_test, MetricsService, MetricsServiceEvent},
+    metrics_service::{encode_info_for_test, encode_scan_for_test, MetricsService, MetricsServiceEvent},
     msg::PeerMessage,
-    ConnectionId, PeerConnectionMetric, PeerId,
+    ConnectionId, P2pServiceEvent, PeerConnectionMetric, PeerId,
 };
 use test_log::test;
 
@@ -105,5 +105,39 @@ async fn metrics_info_must_not_be_accepted_without_scan_request() {
                 if peer == addr2.peer_id() && metrics == forged_metrics
         ),
         "metrics service must not accept unsolicited metric Info frames without a prior Scan request"
+    );
+}
+
+#[test(tokio::test)]
+async fn metrics_scan_must_not_disclose_metrics_to_non_collector() {
+    let (mut node1, addr1) = create_node(true, 1, vec![]).await;
+    let mut metrics1 = MetricsService::new(None, node1.create_service(0.into()), false);
+    tokio::spawn(async move { while node1.recv().await.is_ok() {} });
+    tokio::spawn(async move { while metrics1.recv().await.is_ok() {} });
+
+    let (mut node2, addr2) = create_node(false, 2, vec![addr1.clone()]).await;
+    let node2_ctx = node2.ctx.clone();
+    let mut service2 = node2.create_service(0.into());
+    tokio::spawn(async move { while node2.recv().await.is_ok() {} });
+
+    let conn = tokio::time::timeout(Duration::from_secs(3), async {
+        loop {
+            if let Some(conn) = node2_ctx.conns().into_iter().next() {
+                return conn;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .expect("node2 should connect to node1");
+
+    conn.try_send(PeerMessage::Unicast(addr2.peer_id(), addr1.peer_id(), 0.into(), encode_scan_for_test()))
+        .expect("attacker should be able to inject a metrics scan frame");
+
+    let delivered = tokio::time::timeout(Duration::from_millis(500), service2.recv()).await;
+
+    assert!(
+        !matches!(delivered, Ok(Some(P2pServiceEvent::Unicast(peer, _))) if peer == addr1.peer_id()),
+        "metrics service must not disclose metric Info frames to arbitrary peers that send Scan"
     );
 }

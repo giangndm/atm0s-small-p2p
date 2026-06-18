@@ -23,6 +23,11 @@ pub(crate) fn encode_info_for_test(metrics: Vec<(ConnectionId, PeerId, PeerConne
     bincode::serialize(&Message::Info(metrics)).expect("test message should serialize")
 }
 
+#[cfg(test)]
+pub(crate) fn encode_scan_for_test() -> Vec<u8> {
+    bincode::serialize(&Message::Scan).expect("test message should serialize")
+}
+
 const DEFAULT_COLLECTOR_INTERVAL: u64 = 1;
 
 pub struct MetricsService {

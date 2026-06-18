@@ -1603,3 +1603,24 @@ audited code.
     `FetchChanged { from: Version(1), count: 1 }` returns
     `RpcRes::FetchChanged(Ok(vec![]))` instead of rejecting the request or
     returning at least one change.
+
+### ISSUE-078: Metrics service discloses metrics to arbitrary scan requests
+
+- Category: security, monitoring integrity
+- Reviewer: `Euler`, confirmed.
+- Affected code:
+  - `src/service/metrics_service.rs`: `MetricsService::recv` accepts
+    `Message::Scan` from any unicast or broadcast sender.
+  - `src/service/metrics_service.rs`: the `Message::Scan` branch collects
+    `self.service.ctx.metrics()` and sends `Message::Info(metrics)` back to the
+    sender without checking `is_collector` or any pending request state.
+- Impact: any connected peer can send a metrics `Scan` frame to a non-collector
+  node and force it to disclose local connection metrics. This is distinct from
+  ISSUE-062, which covers accepting unsolicited forged `Info` and poisoning
+  metrics output; this issue is unauthorized metrics disclosure in response to
+  unsolicited `Scan`.
+- Evidence test:
+  - `cargo test metrics_scan_must_not_disclose_metrics_to_non_collector -- --nocapture`
+  - Failure summary: node2 injects a metrics `Scan` into node1's metrics
+    service, and node2's base service receives a unicast response from node1
+    containing a metrics `Info` frame.
