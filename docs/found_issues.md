@@ -384,3 +384,21 @@ audited code.
   - `cargo test shutdown_from_one_peer_must_not_clear_aliases_from_other_peers -- --nocapture`
   - Failure summary: an alias learned from `peer2` is removed after `peer1`
     sends `Shutdown`.
+
+### ISSUE-023: Replicated KV `FetchChanged` version arithmetic overflows
+
+- Category: security, correctness
+- Reviewer: `Dirac`, confirmed.
+- Affected code:
+  - `src/service/replicate_kv_service/local_storage.rs`: remote
+    `RpcReq::FetchChanged { from, count }` is passed to `changeds_from_to`.
+  - `src/service/replicate_kv_service/local_storage.rs`: `changeds_from_to`
+    computes `from + count.min(...)`.
+  - `src/service/replicate_kv_service/messages.rs`: `Version + u64` performs
+    raw `u64` addition.
+- Impact: a malicious peer can request changes from `Version(u64::MAX)` and
+  crash debug builds or trigger wrapped range logic in release builds.
+- Evidence test:
+  - `cargo test fetch_changed_with_overflowing_from_version_must_not_panic -- --nocapture`
+  - Failure summary: the remote fetch path panics at `Version::add` with
+    `attempt to add with overflow`.

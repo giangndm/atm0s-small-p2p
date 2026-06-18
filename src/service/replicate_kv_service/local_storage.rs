@@ -253,4 +253,16 @@ mod tests {
         store.on_tick();
         assert_eq!(store.pop_out(), Some(Event::NetEvent(NetEvent::Broadcast(BroadcastEvent::Version(Version(0))))));
     }
+
+    #[test]
+    fn fetch_changed_with_overflowing_from_version_must_not_panic() {
+        let mut store: LocalStore<u16, u16, u16> = LocalStore::new(10, 2);
+        store.set(1, 1);
+
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            store.on_rpc_req(2, RpcReq::FetchChanged { from: Version(u64::MAX), count: 1 });
+        }));
+
+        assert!(result.is_ok(), "untrusted FetchChanged version arithmetic must not panic or wrap");
+    }
 }
