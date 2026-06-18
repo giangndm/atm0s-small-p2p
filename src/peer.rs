@@ -241,10 +241,19 @@ mod tests {
         },
     };
 
+    use futures::SinkExt;
     use quinn::VarInt;
     use rustls::pki_types::{CertificateDer, PrivatePkcs8KeyDer};
+    use tokio_util::codec::Framed;
 
-    use crate::{neighbours::NetworkNeighbours, quic::make_server_endpoint, router::SharedRouterTable, NetworkAddress, P2pNetwork, P2pNetworkConfig, SharedKeyHandshake, CERT_DOMAIN_NAME};
+    use crate::{
+        discovery::PeerDiscovery,
+        neighbours::NetworkNeighbours,
+        quic::make_server_endpoint,
+        router::{RouteAction, SharedRouterTable},
+        stream::BincodeCodec,
+        NetworkAddress, P2pNetwork, P2pNetworkConfig, PeerMainData, SharedKeyHandshake, CERT_DOMAIN_NAME,
+    };
 
     const DEFAULT_CLUSTER_CERT: &[u8] = include_bytes!("../certs/dev.cluster.cert");
     const DEFAULT_CLUSTER_KEY: &[u8] = include_bytes!("../certs/dev.cluster.key");
@@ -353,6 +362,89 @@ mod tests {
         assert!(
             ctx.conn(&conn_id).is_none(),
             "authenticated peer alias must be unregistered when PeerConnected cannot be delivered to the closed main loop"
+        );
+    }
+
+    #[tokio::test]
+    async fn valid_sync_must_survive_full_main_event_queue() {
+        let _ = rustls::crypto::ring::default_provider().install_default();
+        let server_addr = UdpSocket::bind("127.0.0.1:0").expect("should bind server udp").local_addr().expect("should read server addr");
+        let client_addr = UdpSocket::bind("127.0.0.1:0").expect("should bind client udp").local_addr().expect("should read client addr");
+        let priv_key = PrivatePkcs8KeyDer::from(DEFAULT_CLUSTER_KEY.to_vec());
+        let cert = CertificateDer::from(DEFAULT_CLUSTER_CERT.to_vec());
+        let server = make_server_endpoint(server_addr, priv_key.clone_key(), cert.clone()).expect("server endpoint should build");
+        let client = make_server_endpoint(client_addr, priv_key, cert).expect("client endpoint should build");
+        let secure = Arc::new(SharedKeyHandshake::from("atm0s"));
+        let local_id = PeerId::from(1);
+        let remote_id = PeerId::from(2);
+        let advertised_peer = PeerId::from(4);
+        let ctx = SharedCtx::new(local_id, SharedRouterTable::new(local_id));
+        let (main_tx, mut main_rx) = channel(1);
+
+        let connecting = client.connect(server_addr, CERT_DOMAIN_NAME).expect("client should start connecting");
+        let incoming = server.accept().await.expect("server should accept incoming connection");
+        let conn = PeerConnection::new_incoming(secure.clone(), local_id, incoming, main_tx.clone(), ctx.clone());
+        let conn_id = conn.conn_id();
+        let connection = connecting.await.expect("client should connect");
+        let (mut send, mut recv) = connection.open_bi().await.expect("client should open control stream");
+
+        let auth = secure.create_request(remote_id, local_id, now_ms());
+        write_object::<_, _, MAX_CONTROL_PEER_PKT>(
+            &mut send,
+            &ConnectReq {
+                from: remote_id,
+                to: local_id,
+                auth,
+            },
+        )
+        .await
+        .expect("client should send connect request");
+        let _: ConnectRes = wait_object::<_, _, MAX_CONTROL_PEER_PKT>(&mut recv)
+            .await
+            .expect("client should receive connect response");
+
+        match main_rx.recv().await.expect("connected event should be delivered") {
+            MainEvent::PeerConnected(event_conn, event_peer, rtt) => ctx.router().set_direct(event_conn, event_peer, rtt),
+            _ => panic!("expected connected event"),
+        }
+
+        main_tx
+            .try_send(MainEvent::PeerStopped(ConnectionId::from(999), PeerId::from(999)))
+            .expect("test should fill the one-slot main queue");
+
+        let remote_router = SharedRouterTable::new(remote_id);
+        remote_router.set_direct(ConnectionId::from(20), advertised_peer, 5);
+        let route = remote_router.create_sync(&local_id);
+        let advertise = PeerDiscovery::new(vec![]).create_sync_for(now_ms(), &local_id);
+        let mut framed = Framed::new(P2pQuicStream::new(recv, send), BincodeCodec::<PeerMessage>::default());
+        framed
+            .send(PeerMessage::Sync { route, advertise })
+            .await
+            .expect("remote should send a valid sync frame");
+        tokio::time::sleep(Duration::from_millis(100)).await;
+
+        let _dummy = main_rx.recv().await.expect("dummy event should drain from the full queue");
+        let delivered = tokio::time::timeout(Duration::from_secs(1), async {
+            loop {
+                match main_rx.recv().await.expect("peer task should keep main event channel open") {
+                    MainEvent::PeerData(event_conn, remote_peer, PeerMainData::Sync { route, advertise }) => {
+                        assert_eq!(event_conn, conn_id, "sync must come from the authenticated connection");
+                        assert_eq!(remote_peer, remote_id, "sync must be attributed to the authenticated peer");
+                        ctx.router().apply_sync(event_conn, route);
+                        let _ = advertise;
+                        break;
+                    }
+                    _ => {}
+                }
+            }
+        })
+        .await;
+
+        assert!(delivered.is_ok(), "valid route/discovery sync must be queued or retried instead of dropped when the main event queue is briefly full");
+        assert_eq!(
+            ctx.router().action(&advertised_peer),
+            Some(RouteAction::Next(conn_id)),
+            "dropping the sync leaves a valid destination unreachable for later unicast or stream setup"
         );
     }
 

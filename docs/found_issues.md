@@ -3585,3 +3585,38 @@ must resolve.
   - Failure summary: a request token created at timestamp `1000` verifies at
     `1005` and then verifies again at `1010`; expected the second use of the
     same request blob to be rejected.
+
+### ISSUE-147: Valid route sync is dropped when the main event queue is full
+
+- Category: bad-network stability, route correctness, backpressure
+- Score: 73/100
+- Reviewer: `Hypatia the 2nd`, confirmed.
+- Affected code:
+  - `src/peer/peer_internal.rs`: `PeerConnectionInternal::on_msg` handles
+    inbound `PeerMessage::Sync` by calling
+    `self.main_tx.try_send(MainEvent::PeerData(...))`.
+  - `src/peer/peer_internal.rs`: when the bounded main queue is full, the
+    `PeerData` send failure is only logged as `queue main loop full`; the valid
+    route/discovery sync is not queued, retried, or coalesced.
+  - `src/lib.rs`: `P2pNetwork::process_internal` is the only path that applies
+    `PeerMainData::Sync` through `router.apply_sync` and
+    `discovery.apply_sync`.
+  - `src/ctx.rs`: unicast and stream setup depend on current router state, so a
+    dropped sync can leave a valid destination unreachable.
+- Impact: under main-loop backpressure, an authenticated peer can send a valid
+  route/discovery sync and have it silently lost before the network applies it.
+  The advertised destination remains unreachable for later unicast or stream
+  setup until another sync happens to arrive, creating avoidable route churn and
+  intermittent `route not found` behavior in high load or bad network
+  conditions. This is distinct from ISSUE-049/050/056, which cover outbound API
+  blocking on congested peer control queues; ISSUE-119/120, which cover inbound
+  service delivery drops; ISSUE-133/136, which cover lifecycle events blocked by
+  a full main queue; and ISSUE-145, which covers malformed `PeerData` being
+  accepted.
+- Evidence test:
+  - `cargo test valid_sync_must_survive_full_main_event_queue -- --nocapture`
+  - Failure summary: the test authenticates a real QUIC peer, drains the initial
+    `PeerConnected`, fills the one-slot main queue, and sends a valid
+    `PeerMessage::Sync` advertising `PeerId(4)`. After draining the dummy event,
+    no `MainEvent::PeerData` arrives within one second, so the advertised route
+    cannot be applied and `PeerId(4)` remains unreachable.
