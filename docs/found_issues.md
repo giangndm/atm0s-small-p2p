@@ -2637,3 +2637,32 @@ must resolve.
     bidirectional streams and sends no `StreamConnectReq`; all 17 are
     transport-accepted, exceeding the test's admission threshold of 16 idle
     stream-connect attempts.
+
+### ISSUE-118: Graceful shutdown waits one timeout per congested peer
+
+- Category: stability, graceful shutdown reliability under high load or
+  bad-network backpressure
+- Score: 72/100
+- Reviewer: `Bernoulli the 2nd`, confirmed.
+- Affected code:
+  - `src/lib.rs`: `P2pNetwork::shutdown_gracefully` collects
+    `self.ctx.conns()` and iterates over the peer aliases sequentially.
+  - `src/lib.rs`: each peer notification uses its own
+    `timeout(Duration::from_secs(1), conn.send_wait(PeerMessage::PeerStopped(local_id)))`.
+  - `src/peer/peer_alias.rs`: `PeerConnectionAlias::send_wait` first awaits
+    admission to the bounded peer control queue, then waits for the connection
+    task to write the message and answer.
+- Impact: each congested peer control queue can consume its own one-second
+  timeout before the next peer is attempted. With multiple congested or stalled
+  peers, `shutdown_gracefully()` latency scales roughly with peer count and can
+  delay `endpoint.close()` and process termination far beyond the apparent
+  one-second notification timeout. This is distinct from ISSUE-049's broadcast
+  fanout blocking, ISSUE-050's unicast blocking, ISSUE-056's stream-open queue
+  blocking, ISSUE-051's received `PeerStopped` cleanup, and ISSUE-117's idle
+  inbound stream-connect admission gap.
+- Evidence test:
+  - `cargo test shutdown_gracefully_must_not_wait_one_second_per_congested_peer -- --nocapture`
+  - Failure summary: two synthetic peer aliases with full bounded control
+    queues make `timeout(Duration::from_millis(1500), node.shutdown_gracefully())`
+    expire before shutdown completes; expected graceful shutdown to use a global
+    deadline or parallel/best-effort peer notification.

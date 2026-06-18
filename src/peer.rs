@@ -233,7 +233,14 @@ async fn run_connection<SECURE: HandshakeProtocol>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{neighbours::NetworkNeighbours, router::SharedRouterTable};
+    use std::net::UdpSocket;
+
+    use rustls::pki_types::{CertificateDer, PrivatePkcs8KeyDer};
+
+    use crate::{neighbours::NetworkNeighbours, router::SharedRouterTable, NetworkAddress, P2pNetwork, P2pNetworkConfig, SharedKeyHandshake};
+
+    const DEFAULT_CLUSTER_CERT: &[u8] = include_bytes!("../certs/dev.cluster.cert");
+    const DEFAULT_CLUSTER_KEY: &[u8] = include_bytes!("../certs/dev.cluster.key");
 
     #[test]
     fn stale_pending_outgoing_peer_does_not_suppress_reconnect() {
@@ -330,6 +337,50 @@ mod tests {
         assert!(
             result.is_ok(),
             "open_stream must not wait indefinitely on a congested peer control queue"
+        );
+    }
+
+    #[tokio::test]
+    async fn shutdown_gracefully_must_not_wait_one_second_per_congested_peer() {
+        let _ = rustls::crypto::ring::default_provider().install_default();
+        let listen_addr = UdpSocket::bind("127.0.0.1:0")
+            .expect("should bind test udp")
+            .local_addr()
+            .expect("should read test udp addr");
+        let priv_key = PrivatePkcs8KeyDer::from(DEFAULT_CLUSTER_KEY.to_vec());
+        let cert = CertificateDer::from(DEFAULT_CLUSTER_CERT.to_vec());
+        let mut node = P2pNetwork::new(P2pNetworkConfig {
+            peer_id: PeerId::from(1),
+            listen_addr,
+            advertise: Some(NetworkAddress::from(listen_addr)),
+            priv_key,
+            cert,
+            tick_ms: 100,
+            seeds: vec![],
+            secure: SharedKeyHandshake::from("atm0s"),
+        })
+        .await
+        .expect("should create test node");
+
+        let mut held_receivers = Vec::new();
+        for idx in 0..2 {
+            let (tx, rx) = channel(1);
+            tx.try_send(PeerConnectionControl::Send(PeerMessage::PeerStopped(PeerId::from(99)), None))
+                .expect("test peer control queue should be filled");
+            held_receivers.push(rx);
+
+            let conn = ConnectionId::from(100 + idx);
+            node.ctx.register_conn(
+                conn,
+                PeerConnectionAlias::new(PeerId::from(1), PeerId::from(10 + idx), conn, tx),
+            );
+        }
+
+        let result = tokio::time::timeout(Duration::from_millis(1500), node.shutdown_gracefully()).await;
+
+        assert!(
+            result.is_ok(),
+            "graceful shutdown must use a global deadline or parallel notification, not wait one second per congested peer"
         );
     }
 }
