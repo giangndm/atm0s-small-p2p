@@ -811,6 +811,35 @@ mod test {
     }
 
     #[tokio::test]
+    async fn empty_pubsub_channels_must_be_removed_after_last_local_handle_drops() {
+        const MAX_EMPTY_CHANNELS: usize = 1024;
+        let mut service = test_service();
+
+        for channel in 0..=MAX_EMPTY_CHANNELS {
+            let channel = PubsubChannelId(channel as u64 + 10);
+            let local_id = SubscriberLocalId::rand();
+            let (sub_tx, _sub_rx) = unbounded_channel();
+
+            service
+                .on_internal(InternalMsg::SubscriberCreated(local_id, channel, sub_tx))
+                .await
+                .expect("subscriber should be registered");
+            service.on_internal(InternalMsg::SubscriberDestroyed(local_id, channel)).await.expect("subscriber should be destroyed");
+        }
+
+        let empty_channels = service
+            .channels
+            .values()
+            .filter(|state| state.local_publishers.is_empty() && state.local_subscribers.is_empty() && state.remote_publishers.is_empty() && state.remote_subscribers.is_empty())
+            .count();
+
+        assert!(
+            empty_channels <= MAX_EMPTY_CHANNELS,
+            "empty pubsub channel state must be removed after last local handle drops, got {empty_channels}"
+        );
+    }
+
+    #[tokio::test]
     async fn pubsub_rpc_methods_must_be_bounded() {
         const MAX_METHOD_LEN: usize = 1024;
         let mut service = test_service();

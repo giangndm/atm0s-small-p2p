@@ -2336,3 +2336,30 @@ audited code.
   - Failure summary: a remote `PublishRpc` with a 1,025-byte method name is
     delivered unchanged to the local subscriber, exceeding the test cap of
     1,024 bytes.
+
+### ISSUE-108: Empty pubsub channel state is retained after local handle teardown
+
+- Category: high-load stability, lifecycle cleanup
+- Reviewer: `Euler the 2nd`, confirmed.
+- Affected code:
+  - `src/service/pubsub_service.rs`: `InternalMsg::PublisherDestroyed` uses
+    `self.channels.entry(channel).or_default()` and removes only the local
+    publisher id.
+  - `src/service/pubsub_service.rs`: `InternalMsg::SubscriberDestroyed` uses
+    `self.channels.entry(channel).or_default()` and removes only the local
+    subscriber id.
+  - `src/service/pubsub_service.rs`: neither branch prunes the channel entry
+    after local publishers, local subscribers, remote publishers, and remote
+    subscribers are all empty.
+- Impact: local channel churn can retain one empty `PubsubChannelState` per
+  channel id even after the final local handle is destroyed. Those empty
+  entries consume memory and are still iterated by heartbeat generation, so
+  repeated short-lived channels can grow retained state and periodic work. This
+  is distinct from ISSUE-026/080's stale remote heartbeat cleanup failures,
+  ISSUE-100's remote membership growth within a channel, ISSUE-106's heartbeat
+  batch row cap, and ISSUE-107's RPC method length validation.
+- Evidence test:
+  - `cargo test empty_pubsub_channels_must_be_removed_after_last_local_handle_drops -- --nocapture`
+  - Failure summary: after creating and destroying 1,025 distinct local
+    subscriber channels, the service still retains 1,025 fully empty channel
+    entries, exceeding the test cap of 1,024.
