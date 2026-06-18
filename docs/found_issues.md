@@ -441,3 +441,23 @@ audited code.
   - `cargo test fetch_snapshot_with_reversed_bounds_must_not_panic -- --nocapture`
   - Failure summary: `BTreeMap::range` panics with
     `range start is greater than range end`.
+
+### ISSUE-026: Pubsub heartbeat does not remove stale remote subscribers
+
+- Category: bad-network correctness, stability
+- Reviewer: `Euclid`, confirmed.
+- Affected code:
+  - `src/service/pubsub_service.rs`: the module comment says heartbeat repairs
+    out-of-sync channel state.
+  - `src/service/pubsub_service.rs`: inbound `Heartbeat` adds remote publishers
+    and subscribers when flags are true, but never removes existing remote state
+    when flags are false.
+  - `src/service/pubsub_service.rs`: explicit `SubscriberLeaved` removes and
+    emits `PeerLeaved`, so a lost leave message cannot be repaired by heartbeat.
+- Impact: after a lost leave message or bad network period, publishers can keep
+  stale remote subscriber destinations forever and never notify local users that
+  the peer left the channel.
+- Evidence test:
+  - `cargo test pubsub_heartbeat_must_remove_stale_remote_subscriber -- --nocapture`
+  - Failure summary: after node2 heartbeats `subscribe=false`, node1's
+    publisher times out waiting for `PeerLeaved(Remote(node2))`.

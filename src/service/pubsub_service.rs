@@ -104,6 +104,16 @@ pub(crate) fn encode_publish_rpc_answer_for_test(data: Vec<u8>, rpc_id: RpcId) -
     bincode::serialize(&PubsubMessage::PublishRpcAnswer(data, rpc_id)).expect("test message should serialize")
 }
 
+#[cfg(test)]
+pub(crate) fn encode_subscriber_joined_for_test(channel: PubsubChannelId) -> Vec<u8> {
+    bincode::serialize(&PubsubMessage::SubscriberJoined(channel)).expect("test message should serialize")
+}
+
+#[cfg(test)]
+pub(crate) fn encode_heartbeat_for_test(channel: PubsubChannelId, publish: bool, subscribe: bool) -> Vec<u8> {
+    bincode::serialize(&PubsubMessage::Heartbeat(vec![ChannelHeartbeat { channel, publish, subscribe }])).expect("test message should serialize")
+}
+
 enum InternalMsg {
     PublisherCreated(PublisherLocalId, PubsubChannelId, UnboundedSender<PublisherEvent>),
     PublisherDestroyed(PublisherLocalId, PubsubChannelId),
