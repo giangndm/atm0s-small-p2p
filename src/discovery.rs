@@ -295,6 +295,18 @@ mod test {
     }
 
     #[test_log::test]
+    fn configured_seed_with_local_peer_id_must_not_be_dial_candidate() {
+        let local = peer_addr("1@127.0.0.1:9000");
+        let mut discovery = PeerDiscovery::new(vec![local.clone()]);
+        discovery.enable_local(local.peer_id(), local.network_address().clone());
+
+        assert!(
+            discovery.remotes().all(|addr| addr.peer_id() != local.peer_id()),
+            "configured seeds with the local peer id must not be returned as remote dial candidates"
+        );
+    }
+
+    #[test_log::test]
     fn apply_sync_rejects_overflowing_future_timestamp() {
         let peer = peer_addr("2@127.0.0.1:9001");
         let mut discovery = PeerDiscovery::default();

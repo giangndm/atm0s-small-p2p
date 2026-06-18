@@ -2205,3 +2205,27 @@ audited code.
   - Failure summary: after 1,025 `Info` frames from distinct peer ids,
     `VisualizationService.neighbours.len()` is 1,025, exceeding the test cap of
     1,024.
+
+### ISSUE-103: Configured self seed is returned as a remote dial candidate
+
+- Category: correctness, configuration stability
+- Reviewer: `Carson the 2nd`, confirmed.
+- Affected code:
+  - `src/discovery.rs`: `PeerDiscovery::enable_local` records the local peer id
+    and address, but static seeds are stored separately.
+  - `src/discovery.rs`: `PeerDiscovery::remotes()` chains learned remotes with
+    `self.seeds.iter().cloned()` without filtering out the local peer id.
+  - `src/lib.rs`: `P2pNetwork::process_tick` enqueues `ControlCmd::Connect`
+    for every address returned by `discovery.remotes()`.
+- Impact: if static seed configuration contains this node's own peer id,
+  discovery returns that seed as a remote dial candidate. The learned discovery
+  path already has an invariant rejecting local-peer advertisements, but the
+  configured seed path bypasses it and can cause self-dial churn or self-route
+  setup attempts. This is distinct from ISSUE-005's learned local-peer
+  advertisements, ISSUE-055's learned advertisements for configured seed ids,
+  and ISSUE-006's router acceptance of local-peer routes.
+- Evidence test:
+  - `cargo test configured_seed_with_local_peer_id_must_not_be_dial_candidate -- --nocapture`
+  - Failure summary: after enabling local peer `1` with a configured seed
+    `1@127.0.0.1:9000`, `PeerDiscovery::remotes()` still returns peer `1` as a
+    remote candidate.
