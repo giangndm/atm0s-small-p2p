@@ -2789,3 +2789,32 @@ must resolve.
   - Failure summary: calling `PeerDiscovery::remove_remote` for 1,025 distinct
     unknown non-seed peer ids leaves 1,025 entries in `discovery.stopped`,
     exceeding the bounded-tombstone assertion.
+
+### ISSUE-123: Local pubsub subscriber event queues are unbounded
+
+- Category: high-load stability, resource exhaustion, pubsub reliability
+- Score: 72/100
+- Reviewer: `Heisenberg the 2nd`, confirmed.
+- Affected code:
+  - `src/service/pubsub_service/subscriber.rs`: `Subscriber::build` creates an
+    unbounded `mpsc::unbounded_channel` for each local subscriber event stream.
+  - `src/service/pubsub_service.rs`: remote and local pubsub delivery paths send
+    `SubscriberEvent` values into every matching local subscriber queue with
+    `sub_tx.send(...)` and no cardinality cap, backpressure, or drop/close
+    policy.
+- Impact: an undrained or slow local subscriber can accumulate one queued event
+  per incoming publish, publish RPC, guest publish, heartbeat membership change,
+  or lifecycle notification. Under high publish rate, bad-network replay, or a
+  stalled application consumer, this can grow memory without bound inside the
+  pubsub service even after the bounded P2P service queue has already accepted
+  and processed the inbound message. This is distinct from ISSUE-043, which
+  covers pending RPC request maps; ISSUE-100, which covers remote membership
+  sets; ISSUE-106, which covers heartbeat batch input size; ISSUE-119/120, which
+  cover bounded service ingress queue drops before pubsub handling; and the
+  stale requester lifecycle issues.
+- Evidence test:
+  - `cargo test local_subscriber_event_backlog_must_be_bounded -- --nocapture`
+  - Failure summary: sending 1,025 remote `Publish` messages to one registered
+    but undrained local subscriber leaves `sub_rx.len() == 1025`; expected the
+    local subscriber event backlog to be bounded, backpressured, or otherwise
+    controlled.

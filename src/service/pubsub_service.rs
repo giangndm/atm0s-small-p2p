@@ -779,6 +779,31 @@ mod test {
     }
 
     #[tokio::test]
+    async fn local_subscriber_event_backlog_must_be_bounded() {
+        const MAX_LOCAL_EVENT_BACKLOG: usize = 1024;
+        let mut service = test_service();
+        let channel = PubsubChannelId(1);
+        let from_peer = PeerId::from(2);
+        let (sub_tx, sub_rx) = unbounded_channel();
+
+        service
+            .on_internal(InternalMsg::SubscriberCreated(SubscriberLocalId::rand(), channel, sub_tx))
+            .await
+            .expect("subscriber should be registered");
+
+        for i in 0..=MAX_LOCAL_EVENT_BACKLOG {
+            let payload = bincode::serialize(&PubsubMessage::Publish(channel, vec![i as u8])).expect("test publish should serialize");
+            service.on_service(P2pServiceEvent::Unicast(from_peer, payload)).await.expect("publish should be processed");
+        }
+
+        assert!(
+            sub_rx.len() <= MAX_LOCAL_EVENT_BACKLOG,
+            "undrained local subscriber event backlog must be bounded, got {}",
+            sub_rx.len()
+        );
+    }
+
+    #[tokio::test]
     async fn pubsub_heartbeat_channel_batches_must_be_bounded() {
         const MAX_HEARTBEAT_CHANNELS: usize = 1024;
         let mut service = test_service();
