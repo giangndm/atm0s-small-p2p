@@ -496,6 +496,22 @@ mod test {
         );
     }
 
+    #[tokio::test]
+    async fn alias_run_loop_after_control_channel_close_must_not_panic() {
+        let ctx = SharedCtx::new(PeerId::from(1), SharedRouterTable::new(PeerId::from(1)));
+        let (base_service, _service_tx) = P2pService::build(P2pServiceId::from(0), ctx);
+        let mut service = AliasService::new(base_service);
+        let (replacement_tx, _replacement_rx) = unbounded_channel();
+        service.tx = replacement_tx;
+
+        let result = std::panic::AssertUnwindSafe(service.run_loop()).catch_unwind().await;
+
+        assert!(
+            matches!(result, Ok(Err(_))),
+            "closed alias control channel should make run_loop return Err instead of panicking, got {result:?}"
+        );
+    }
+
     #[test]
     fn test_register_alias() {
         let mut ctx = TestContext::new();

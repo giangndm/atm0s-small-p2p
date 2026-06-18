@@ -3033,3 +3033,28 @@ must resolve.
   - Failure summary: one `FetchSnapshot` response containing 1,025 slots is
     accepted into `ctx.slots`; expected full-sync snapshot pages to be capped at
     or below 1,024 slots.
+
+### ISSUE-132: Alias run loop panics when the internal control channel closes
+
+- Category: correctness, shutdown stability, API stability
+- Score: 57/100
+- Reviewer: `Halley the 2nd`, confirmed.
+- Affected code:
+  - `src/service/alias_service.rs`: `AliasService::run_loop` returns
+    `anyhow::Result<()>`.
+  - `src/service/alias_service.rs`: the `control = self.rx.recv()` branch calls
+    `control.expect("service channel should work")` when the alias control
+    receiver returns `None`.
+- Impact: if the alias service's internal control channel closes during
+  teardown, `run_loop()` unwinds instead of returning `Err`. This turns a normal
+  channel-close condition into a task panic and makes graceful alias service
+  shutdown noisy or unstable. This is distinct from ISSUE-127, which covers
+  alias control backlog while the channel is live; ISSUE-130, which covers the
+  base `P2pService` receive path closing; and ISSUE-029, which covers stale
+  requester/guard send panics after service drop.
+- Evidence test:
+  - `cargo test alias_run_loop_after_control_channel_close_must_not_panic -- --nocapture`
+  - Failure summary: after closing the alias control sender paired with
+    `service.rx`, `AliasService::run_loop()` panics at
+    `src/service/alias_service.rs` with `service channel should work`; expected
+    `Ok(Err(_))` from the public `Result` API.
