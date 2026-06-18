@@ -282,6 +282,21 @@ mod tests {
     }
 
     #[test]
+    fn fetch_changed_with_zero_count_must_not_return_empty_success() {
+        let mut store: LocalStore<u16, u16, u16> = LocalStore::new(10, 2);
+        store.set(1, 1);
+        while store.pop_out().is_some() {}
+
+        store.on_rpc_req(2, RpcReq::FetchChanged { from: Version(1), count: 0 });
+
+        assert_ne!(
+            store.pop_out(),
+            Some(Event::NetEvent(NetEvent::Unicast(2, RpcEvent::RpcRes(RpcRes::FetchChanged(Ok(vec![])))))),
+            "FetchChanged with zero count must be rejected instead of returning an empty success"
+        );
+    }
+
+    #[test]
     fn fetch_snapshot_with_reversed_bounds_must_not_panic() {
         let mut store: LocalStore<u16, u16, u16> = LocalStore::new(10, 2);
         store.set(1, 1);

@@ -2106,3 +2106,27 @@ audited code.
   - Failure summary: `write_object::<_, _, 100_000>` returns `Ok(())` for a
     70 KB payload even though the two-byte length prefix cannot represent it;
     expected a recoverable error.
+
+### ISSUE-099: Replicated KV accepts zero-count FetchChanged as successful repair
+
+- Category: correctness, bad-network stability
+- Reviewer: `Laplace the 2nd`, confirmed.
+- Affected code:
+  - `src/service/replicate_kv_service/local_storage.rs`:
+    `LocalStore::on_rpc_req` passes remote `RpcReq::FetchChanged { from,
+    count }` directly to `changeds_from_to`.
+  - `src/service/replicate_kv_service/local_storage.rs`:
+    `changeds_from_to` computes `to = from + count.min(compose_max_pkts)`.
+    With a remote-supplied `count = 0`, `to == from`; if `from` is retained,
+    the range checks pass and the empty range returns `Ok(vec![])`.
+- Impact: a malformed or malicious peer can make a node answer a repair request
+  with a successful empty `FetchChanged` response that makes no version
+  progress. This is distinct from ISSUE-077, which covers the local
+  `compose_max_pkts = 0` configuration; here the compose budget is valid and
+  the no-progress result is caused by unvalidated remote input.
+- Evidence test:
+  - `cargo test fetch_changed_with_zero_count_must_not_return_empty_success -- --nocapture`
+  - Failure summary: with `compose_max_pkts = 2` and version `1` retained,
+    `FetchChanged { from: Version(1), count: 0 }` returns
+    `RpcRes::FetchChanged(Ok(vec![]))` instead of rejecting the no-progress
+    request.
