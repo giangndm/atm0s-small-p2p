@@ -1,5 +1,6 @@
 use std::time::Duration;
 
+use futures::FutureExt;
 use test_log::test;
 
 use crate::alias_service::{AliasFoundLocation, AliasId, AliasService};
@@ -115,4 +116,17 @@ async fn alias_timeout() {
 
     let alias_id: AliasId = 1000.into();
     assert_eq!(service2_requester.find(alias_id).await, None);
+}
+
+#[tokio::test]
+async fn alias_find_after_service_drop_returns_none_not_panic() {
+    let (mut node, _addr) = create_node(true, 1, vec![]).await;
+    let service = AliasService::new(node.create_service(0.into()));
+    let requester = service.requester();
+    drop(service);
+    tokio::spawn(async move { while node.recv().await.is_ok() {} });
+
+    let result = std::panic::AssertUnwindSafe(requester.find(AliasId::from(1000))).catch_unwind().await;
+
+    assert!(matches!(result, Ok(None)), "find on a stale alias requester must return None instead of panicking");
 }

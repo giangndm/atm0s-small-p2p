@@ -498,3 +498,19 @@ audited code.
   - `cargo test requester_connect_after_network_drop_returns_error_not_panic -- --nocapture`
   - Failure summary: after dropping `P2pNetwork`, `requester.connect(...)`
     panics at `src/requester.rs:12` with `SendError`.
+
+### ISSUE-029: Stale alias requester panics after service drop
+
+- Category: correctness, API stability
+- Reviewer: `Singer`, confirmed.
+- Affected code:
+  - `src/service/alias_service.rs`: `AliasServiceRequester::register`,
+    `find`, and `shutdown` call `tx.send(...).expect(...)`.
+  - `src/service/alias_service.rs`: `AliasGuard::drop` also expects the
+    service control channel to remain open.
+- Impact: alias requester or guard handles can outlive `AliasService`; using or
+  dropping them after the service is gone panics through the public service API.
+- Evidence test:
+  - `cargo test alias_find_after_service_drop_returns_none_not_panic -- --nocapture`
+  - Failure summary: after dropping `AliasService`, `requester.find(...)`
+    panics at `src/service/alias_service.rs:99` with `SendError`.
