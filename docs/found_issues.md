@@ -1343,3 +1343,27 @@ audited code.
     processing `MainEvent::PeerConnected(ConnectionId(88), PeerId(99), 10)`
     emits `PeerConnected(ConnectionId(88), PeerId(99))`; expected the peer
     mismatch to be ignored as `Continue`.
+
+### ISSUE-068: PeerStats can relabel a known connection to the wrong peer
+
+- Category: correctness, observability integrity
+- Reviewer: `Curie`, confirmed.
+- Affected code:
+  - `src/lib.rs`: `P2pNetwork::process_internal` handles
+    `MainEvent::PeerStats(conn, to_peer, metrics)` by directly calling
+    `ctx.update_metrics(&conn, to_peer, metrics)` without checking that
+    `to_peer` matches the peer currently attached to `conn`.
+  - `src/ctx.rs`: `SharedCtxInternal::update_conn_metrics` stores the supplied
+    `(conn, peer, metrics)` tuple without validating the connection owner.
+- Impact: a stale, reordered, or malformed stats event for a live connection can
+  publish metrics under the wrong peer id. Applications and monitoring systems
+  can observe forged or corrupted peer-connection metrics even when the
+  connection id is otherwise valid. This is distinct from ISSUE-064, which
+  covers accepting stats for an unknown connection id; this issue covers a
+  known connection id with a mismatched peer id.
+- Evidence test:
+  - `cargo test peer_stats_must_validate_peer_matches_connection -- --nocapture`
+  - Failure summary: after prebinding `ConnectionId(66) -> PeerId(2)`,
+    processing `MainEvent::PeerStats(ConnectionId(66), PeerId(99), metrics)`
+    inserts exported metrics for `PeerId(99)`; expected the mismatched stats
+    event to be ignored.

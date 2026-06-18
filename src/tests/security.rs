@@ -185,6 +185,33 @@ async fn stale_peer_stats_event_must_not_publish_metrics_for_unknown_connection(
 }
 
 #[tokio::test]
+async fn peer_stats_must_validate_peer_matches_connection() {
+    let (mut node, _addr) = create_node(false, 1, vec![]).await;
+    let conn = ConnectionId::from(66);
+    let real_peer = PeerId::from(2);
+    let forged_peer = PeerId::from(99);
+    let metrics = PeerConnectionMetric {
+        uptime: 1,
+        rtt: 2,
+        sent_pkt: 3,
+        lost_pkt: 4,
+        lost_bytes: 5,
+        send_bytes: 6,
+        recv_bytes: 7,
+        current_mtu: 1200,
+    };
+
+    node.router.set_direct(conn, real_peer, 10);
+    node.process_internal(100, MainEvent::PeerStats(conn, forged_peer, metrics))
+        .expect("stats event should process");
+
+    assert!(
+        node.ctx.metrics().is_empty(),
+        "PeerStats must be ignored when the reported peer id does not match the connection owner"
+    );
+}
+
+#[tokio::test]
 async fn stale_peer_disconnected_event_must_not_emit_user_disconnect() {
     let (mut node, _addr) = create_node(false, 1, vec![]).await;
     let stale_conn = ConnectionId::from(404);
