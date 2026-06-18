@@ -3250,3 +3250,28 @@ must resolve.
     `MainEvent::PeerConnectError(live_conn, Some(node1), ...)` makes
     `node2.neighbours.has_peer(node1)` false; expected stale connect errors not
     to remove an already-live neighbour.
+
+### ISSUE-136: PeerDisconnected can block alias cleanup when the main event queue is full
+
+- Category: high-load stability, bad-network stability, connection lifecycle
+- Score: 67/100
+- Reviewer: `Dalton the 2nd`, confirmed.
+- Affected code:
+  - `src/peer.rs`: `run_connection` awaits
+    `main_tx.send(MainEvent::PeerDisconnected(conn_id, to_id))` after the peer
+    run loop ends.
+  - `src/peer.rs`: `ctx.unregister_conn(&conn_id)` and metric cleanup run only
+    after that bounded main-queue send completes.
+- Impact: if a peer disconnects while the main event queue is saturated, the
+  peer task can park before unregistering its alias and metrics. Local send,
+  stream, graceful-shutdown, or maintenance paths can still observe a stale
+  `ctx.conn(conn_id)` after the transport is gone, extending bad-network churn
+  into resource and lifecycle corruption. This is distinct from ISSUE-133,
+  which covers blocking while processing inbound `PeerStopped`; from
+  ISSUE-065/066, which cover stale or mismatched disconnect events in the main
+  loop; and from ISSUE-128/129/130/132, which cover service shutdown panics.
+- Evidence test:
+  - `cargo test peer_disconnected_must_not_block_alias_cleanup_on_full_main_queue -- --nocapture`
+  - Failure summary: after node2 connects to node1, the test fills node2's
+    bounded main event queue and closes node1; `node2.ctx.conn(live_conn)`
+    remains present after disconnect cleanup should have unregistered the alias.

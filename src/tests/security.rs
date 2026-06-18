@@ -214,6 +214,63 @@ async fn peer_stopped_must_not_block_connection_task_on_full_main_queue() {
 }
 
 #[tokio::test]
+async fn peer_disconnected_must_not_block_alias_cleanup_on_full_main_queue() {
+    let (mut node1, addr1) = create_node(true, 1, vec![]).await;
+    let (mut node2, _addr2) = create_node(false, 2, vec![addr1.clone()]).await;
+
+    let live_conn = tokio::time::timeout(Duration::from_secs(3), async {
+        loop {
+            tokio::select! {
+                _ = node1.recv() => {}
+                event = node2.recv() => {
+                    if let Ok(P2pNetworkEvent::PeerConnected(conn, peer)) = event {
+                        if peer == addr1.peer_id() {
+                            return conn;
+                        }
+                    }
+                }
+            }
+        }
+    })
+    .await
+    .expect("node2 should connect to node1");
+
+    assert!(
+        node2.ctx.conn(&live_conn).is_some(),
+        "test setup should have a registered live alias"
+    );
+
+    for idx in 0..10 {
+        node2
+            .main_tx
+            .try_send(MainEvent::PeerStats(
+                ConnectionId::from(3000 + idx),
+                PeerId::from(3000 + idx),
+                PeerConnectionMetric {
+                    uptime: 1,
+                    rtt: 1,
+                    sent_pkt: 0,
+                    lost_pkt: 0,
+                    lost_bytes: 0,
+                    send_bytes: 0,
+                    recv_bytes: 0,
+                    current_mtu: 1200,
+                },
+            ))
+            .expect("main queue should accept filler event");
+    }
+
+    node1.shutdown();
+
+    tokio::time::sleep(Duration::from_millis(200)).await;
+
+    assert!(
+        node2.ctx.conn(&live_conn).is_none(),
+        "disconnect cleanup must unregister the peer alias even when the bounded main event queue is full"
+    );
+}
+
+#[tokio::test]
 async fn stale_peer_connected_event_must_not_install_unusable_route() {
     let (mut node, _addr) = create_node(false, 1, vec![]).await;
     let stale_conn = ConnectionId::from(404);
