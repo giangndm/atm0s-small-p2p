@@ -12,6 +12,42 @@ pub enum MetricsServiceEvent {
     OnPeerConnectionMetric(PeerId, Vec<(ConnectionId, PeerId, PeerConnectionMetric)>),
 }
 
+#[cfg(test)]
+mod test {
+    use super::*;
+    use crate::{ctx::SharedCtx, msg::P2pServiceId, router::SharedRouterTable};
+
+    #[tokio::test]
+    async fn metrics_info_batches_must_be_bounded() {
+        const MAX_METRICS_PER_INFO: usize = 1024;
+        let ctx = SharedCtx::new(PeerId::from(1), SharedRouterTable::new(PeerId::from(1)));
+        let (base_service, service_tx) = P2pService::build(P2pServiceId::from(0), ctx);
+        let mut service = MetricsService::new(None, base_service, false);
+        let metric = PeerConnectionMetric {
+            uptime: 1,
+            rtt: 2,
+            sent_pkt: 3,
+            lost_pkt: 4,
+            lost_bytes: 5,
+            send_bytes: 6,
+            recv_bytes: 7,
+            current_mtu: 1200,
+        };
+        let metrics = (0..=MAX_METRICS_PER_INFO)
+            .map(|idx| (ConnectionId::from(idx as u64 + 10), PeerId::from(idx as u64 + 100), metric.clone()))
+            .collect::<Vec<_>>();
+
+        service_tx
+            .send(P2pServiceEvent::Unicast(PeerId::from(2), encode_info_for_test(metrics)))
+            .await
+            .expect("metrics service channel should accept test message");
+
+        let MetricsServiceEvent::OnPeerConnectionMetric(_, delivered) = service.recv().await.expect("metrics event should be emitted");
+
+        assert!(delivered.len() <= MAX_METRICS_PER_INFO, "metrics Info batches must be bounded, got {} rows", delivered.len());
+    }
+}
+
 #[derive(Deserialize, Serialize)]
 enum Message {
     Scan,

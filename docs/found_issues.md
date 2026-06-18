@@ -2229,3 +2229,29 @@ audited code.
   - Failure summary: after enabling local peer `1` with a configured seed
     `1@127.0.0.1:9000`, `PeerDiscovery::remotes()` still returns peer `1` as a
     remote candidate.
+
+### ISSUE-104: Metrics `Info` batches have no service-level row cap
+
+- Category: high-load stability, resource exhaustion
+- Reviewer: `Maxwell the 2nd`, confirmed.
+- Affected code:
+  - `src/service/metrics_service.rs`: `Message::Info` carries a
+    `Vec<(ConnectionId, PeerId, PeerConnectionMetric)>` with no semantic row
+    bound.
+  - `src/service/metrics_service.rs`: `MetricsService::recv` deserializes
+    metrics service messages from unicast or broadcast payloads.
+  - `src/service/metrics_service.rs`: `Message::Info(peer_metrics)` is
+    forwarded directly as
+    `MetricsServiceEvent::OnPeerConnectionMetric(from, peer_metrics)`.
+- Impact: a peer can send a metrics `Info` frame containing a large number of
+  metric rows, forcing deserialization and forwarding of an oversized batch.
+  The outer peer frame codec may impose a byte limit, but there is no
+  metrics-service row cap, validation, truncation, or rejection path. This is
+  distinct from ISSUE-062's forged/unsolicited metrics content, ISSUE-078's
+  unauthorized metrics disclosure via `Scan`, ISSUE-024's lower-level peer
+  frame-size cap gap, and ISSUE-010's route/discovery sync vector growth.
+- Evidence test:
+  - `cargo test metrics_info_batches_must_be_bounded -- --nocapture`
+  - Failure summary: a single metrics `Info` frame with 1,025 rows is delivered
+    as one `OnPeerConnectionMetric` event, exceeding the test cap of 1,024
+    rows.
