@@ -466,6 +466,40 @@ mod tests {
     }
 
     #[test]
+    fn full_sync_must_reject_snapshot_slot_newer_than_declared_version() {
+        let mut ctx: StateCtx<u16, u16, u16> = StateCtx {
+            remote: 1,
+            slots: BTreeMap::new(),
+            outs: VecDeque::new(),
+            next_state: None,
+        };
+
+        let now = Instant::now();
+        let mut state = SyncFullState::default();
+        state.init(&mut ctx, now);
+        ctx.outs.clear();
+
+        state.on_rpc_res(
+            &mut ctx,
+            now,
+            RpcRes::FetchSnapshot(
+                Some(SnapshotData {
+                    slots: vec![(1, Slot::new(1, Version(99)))],
+                    next_key: None,
+                    biggest_key: 1,
+                }),
+                Version(1),
+            ),
+        );
+
+        assert!(
+            ctx.slots.is_empty(),
+            "snapshot slots newer than the declared snapshot version must be rejected"
+        );
+        assert_eq!(ctx.outs.pop_front(), None, "invalid snapshot data must not be emitted as KvEvent::Set");
+    }
+
+    #[test]
     fn test_restore_full_resend() {
         let mut ctx: StateCtx<u16, u16, u16> = StateCtx {
             remote: 1,

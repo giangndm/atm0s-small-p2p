@@ -593,3 +593,26 @@ audited code.
   - `cargo test should_reject_overflowing_route_sync_metric_without_panic -- --nocapture`
   - Failure summary: applying a route sync with `(u8::MAX, u16::MAX)` panics at
     `src/router.rs:196` with `attempt to add with overflow`.
+
+### ISSUE-034: Replicated KV full sync accepts future-version snapshot slots
+
+- Category: security, correctness
+- Reviewer: `Zeno`, confirmed.
+- Affected code:
+  - `src/service/replicate_kv_service/remote_storage.rs`:
+    `SyncFullState::on_rpc_res` accepts untrusted
+    `RpcRes::FetchSnapshot(Some(snapshot), version)`.
+  - `src/service/replicate_kv_service/remote_storage.rs`: snapshot slots are
+    emitted as `KvEvent::Set` and inserted without validating
+    `slot.version <= version`.
+  - `src/service/replicate_kv_service/remote_storage.rs`: the receiver then
+    transitions to `WorkingState::new(version)`.
+- Impact: a malicious peer can declare a low snapshot version while including
+  slots from a higher future version. The receiver stores and emits the data
+  while believing the remote is still at the lower version, corrupting
+  replication state and later incremental-sync assumptions.
+- Evidence test:
+  - `cargo test full_sync_must_reject_snapshot_slot_newer_than_declared_version -- --nocapture`
+  - Failure summary: a snapshot response declaring `Version(1)` but containing
+    `Slot::new(..., Version(99))` is accepted, stored, and emitted instead of
+    being rejected.
