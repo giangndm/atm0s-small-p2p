@@ -224,6 +224,53 @@ async fn out_of_range_service_id_must_not_panic() {
 }
 
 #[tokio::test]
+async fn inbound_out_of_range_unicast_service_id_must_not_kill_connection() {
+    let (mut node1, addr1) = create_node(true, 1, vec![]).await;
+    let node1_ctx = node1.ctx.clone();
+    let _service1 = node1.create_service(0.into());
+    tokio::spawn(async move { while node1.recv().await.is_ok() {} });
+
+    let (mut node2, addr2) = create_node(false, 2, vec![addr1.clone()]).await;
+    let mut service2 = node2.create_service(0.into());
+    tokio::spawn(async move { while node2.recv().await.is_ok() {} });
+
+    let conn = tokio::time::timeout(Duration::from_secs(3), async {
+        loop {
+            if let Some(conn) = node1_ctx.conns().into_iter().next() {
+                return conn;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .expect("node1 should connect to node2");
+
+    conn.try_send(PeerMessage::Unicast(
+        addr1.peer_id(),
+        addr2.peer_id(),
+        P2pServiceId::from(256u16),
+        b"bad-service-id".to_vec(),
+    ))
+    .expect("out-of-range unicast should be sent over the authenticated connection");
+
+    let data = b"valid-after-bad-service-id".to_vec();
+    tokio::time::sleep(Duration::from_millis(50)).await;
+    conn.try_send(PeerMessage::Unicast(addr1.peer_id(), addr2.peer_id(), 0.into(), data.clone()))
+        .expect("connection task must survive an inbound unknown out-of-range service id");
+
+    let event = tokio::time::timeout(Duration::from_secs(1), service2.recv())
+        .await
+        .expect("valid follow-up unicast should still be delivered")
+        .expect("destination service channel should stay open");
+
+    assert_eq!(
+        event,
+        P2pServiceEvent::Unicast(addr1.peer_id(), data),
+        "inbound unknown out-of-range service id must be rejected without killing the connection"
+    );
+}
+
+#[tokio::test]
 async fn broadcast_dedup_must_include_source_not_only_message_id() {
     let (mut node1, addr1) = create_node(true, 1, vec![]).await;
     let node1_ctx = node1.ctx.clone();

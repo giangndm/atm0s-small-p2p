@@ -997,3 +997,26 @@ audited code.
   - Failure summary: `node.create_service(P2pServiceId::from(256u16))` panics
     at `src/ctx.rs:28` with `index out of bounds: the len is 256 but the index
     is 256`.
+
+### ISSUE-053: Inbound out-of-range service ids kill peer connection tasks
+
+- Category: security, bad-network stability
+- Reviewer: `Codex`, confirmed by source inspection and failing inbound test.
+- Affected code:
+  - `src/msg.rs`: `P2pServiceId` is deserialized from the wire as a `u16`,
+    including values outside the 256-slot service table.
+  - `src/peer/peer_internal.rs`: inbound `PeerMessage::Unicast` and
+    `PeerMessage::Broadcast` call `ctx.get_service(&service_id)` when the
+    message targets a local service.
+  - `src/ctx.rs`: `SharedCtxInternal::get_service` indexes
+    `services[service_id as usize]` without range validation.
+- Impact: an authenticated remote peer can send a unicast or broadcast with
+  `P2pServiceId(256)` or larger and panic the receiver's peer connection task.
+  This is distinct from ISSUE-052 because it is remote-triggerable through the
+  inbound lookup path, not local service registration.
+- Evidence test:
+  - `cargo test inbound_out_of_range_unicast_service_id_must_not_kill_connection -- --nocapture`
+  - Failure summary: an inbound unicast with `P2pServiceId(256)` panics at
+    `src/ctx.rs:33` with `index out of bounds: the len is 256 but the index is
+    256`, then a valid follow-up unicast on the same connection fails because
+    the peer connection channel is closed.
