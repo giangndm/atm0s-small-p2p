@@ -2955,3 +2955,29 @@ must resolve.
   - Failure summary: after dropping the underlying `P2pService` sender,
     `MetricsService::recv()` panics at `src/service/metrics_service.rs` with
     `should work`; expected `Ok(Err(_))` from the public `Result` API.
+
+### ISSUE-129: Visualization recv panics when the base service channel closes
+
+- Category: correctness, shutdown stability, API stability
+- Score: 56/100
+- Reviewer: `McClintock the 2nd`, confirmed.
+- Affected code:
+  - `src/service/visualization_service.rs`: `VisualizationService::recv`
+    returns `anyhow::Result<VisualizationServiceEvent>`.
+  - `src/service/visualization_service.rs`: the
+    `event = self.service.recv()` branch calls `event.expect("should work")`
+    when the underlying `P2pService` receiver returns `None`.
+- Impact: if the base service channel closes during shutdown or teardown,
+  `VisualizationService::recv()` unwinds instead of returning `Err`. This
+  breaks the public result-returning API and can turn an orderly visualization
+  service shutdown into a task panic. This is a close sibling of ISSUE-128, but
+  affects a separate public service type and shutdown path. It is distinct from
+  ISSUE-040 zero interval constructor panics, ISSUE-061/079/102/105
+  visualization forged/disclosure/resource issues, and stale requester send
+  panics.
+- Evidence test:
+  - `cargo test visualization_recv_after_base_service_close_must_not_panic -- --nocapture`
+  - Failure summary: after dropping the underlying `P2pService` sender,
+    `VisualizationService::recv()` panics at
+    `src/service/visualization_service.rs` with `should work`; expected
+    `Ok(Err(_))` from the public `Result` API.

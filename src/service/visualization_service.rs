@@ -131,7 +131,23 @@ impl VisualizationService {
 #[cfg(test)]
 mod test {
     use super::*;
+    use futures::FutureExt;
     use crate::{ctx::SharedCtx, msg::P2pServiceId, router::SharedRouterTable};
+
+    #[tokio::test]
+    async fn visualization_recv_after_base_service_close_must_not_panic() {
+        let ctx = SharedCtx::new(PeerId::from(1), SharedRouterTable::new(PeerId::from(1)));
+        let (base_service, service_tx) = P2pService::build(P2pServiceId::from(0), ctx);
+        let mut service = VisualizationService::new(None, false, base_service);
+        drop(service_tx);
+
+        let result = std::panic::AssertUnwindSafe(service.recv()).catch_unwind().await;
+
+        assert!(
+            matches!(result, Ok(Err(_))),
+            "visualization recv must return an error when the base service channel closes instead of panicking"
+        );
+    }
 
     #[test]
     fn visualization_peer_timeout_deadline_must_not_overflow() {
