@@ -2032,3 +2032,22 @@ audited code.
     `20` with `99`; after `Version(1)` fills the gap, the slot contains
     `Some(Slot { value: 99, version: Version(2) })` instead of preserving or
     rejecting the first accepted version.
+
+### ISSUE-096: Replicated KV recv panics on user value serialization failure
+
+- Category: correctness, API stability
+- Reviewer: `Meitner`, confirmed.
+- Affected code:
+  - `src/service/replicate_kv_service.rs`: `ReplicatedKvService::recv`
+    serializes outbound `BroadcastEvent` and `RpcEvent` with
+    `bincode::serialize(...).expect("should serialize")`.
+- Impact: caller-provided replicated-KV key/value types can implement
+  `Serialize` and legitimately return an error. A local `set` can then make
+  `recv()` unwind while producing outbound events instead of surfacing or
+  containing the serialization failure, breaking service API stability. This is
+  distinct from ISSUE-094, which covers pubsub object helper serialization.
+- Evidence test:
+  - `cargo test replicated_kv_recv_must_not_panic_on_value_serialize_failure -- --nocapture`
+  - Failure summary: `service.recv()` panics at
+    `src/service/replicate_kv_service.rs:163` when serializing a value whose
+    `Serialize` implementation returns a custom error.

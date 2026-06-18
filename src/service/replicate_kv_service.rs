@@ -200,9 +200,32 @@ where
 
 #[cfg(test)]
 mod tests {
+    use futures::FutureExt;
+    use serde::{Deserialize, Serializer};
+
+    use crate::{ctx::SharedCtx, msg::P2pServiceId, router::SharedRouterTable};
+
     use super::messages::Version;
 
     use super::*;
+
+    #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+    struct FailingSerializeValue(u16);
+
+    impl Serialize for FailingSerializeValue {
+        fn serialize<S>(&self, _serializer: S) -> Result<S::Ok, S::Error>
+        where
+            S: Serializer,
+        {
+            Err(serde::ser::Error::custom("intentional replicated kv serialization failure"))
+        }
+    }
+
+    fn test_service() -> P2pService {
+        let ctx = SharedCtx::new(PeerId::from(1), SharedRouterTable::new(PeerId::from(1)));
+        let (service, _tx) = P2pService::build(P2pServiceId::from(0), ctx);
+        service
+    }
 
     #[test]
     fn remote_store_creation_must_be_bounded() {
@@ -223,6 +246,19 @@ mod tests {
         assert!(
             queued_sync_requests <= MAX_REMOTES,
             "queued full-sync requests must be bounded, got {queued_sync_requests}"
+        );
+    }
+
+    #[tokio::test]
+    async fn replicated_kv_recv_must_not_panic_on_value_serialize_failure() {
+        let mut service = ReplicatedKvService::<u16, FailingSerializeValue>::new(test_service(), 10, 10);
+        service.set(1, FailingSerializeValue(7));
+
+        let result = std::panic::AssertUnwindSafe(service.recv()).catch_unwind().await;
+
+        assert!(
+            result.is_ok(),
+            "replicated KV service must not panic while serializing caller-provided values for outbound events"
         );
     }
 }
