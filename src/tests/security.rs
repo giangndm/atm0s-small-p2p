@@ -215,6 +215,20 @@ async fn requester_connect_after_network_drop_returns_error_not_panic() {
 }
 
 #[tokio::test]
+async fn requester_try_connect_after_network_drop_must_not_panic() {
+    let (mut node, _addr) = create_node(false, 1, vec![]).await;
+    let requester = node.requester();
+    drop(node);
+
+    let target: PeerAddress = "2@127.0.0.1:10000".parse().expect("test address should parse");
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        requester.try_connect(target);
+    }));
+
+    assert!(result.is_ok(), "try_connect on a stale requester must return or no-op instead of panicking");
+}
+
+#[tokio::test]
 async fn duplicate_service_creation_must_not_panic() {
     let (mut node, _addr) = create_node(false, 1, vec![]).await;
     let _first = node.create_service(0.into());

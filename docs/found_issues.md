@@ -498,6 +498,10 @@ audited code.
   - `cargo test requester_connect_after_network_drop_returns_error_not_panic -- --nocapture`
   - Failure summary: after dropping `P2pNetwork`, `requester.connect(...)`
     panics at `src/requester.rs:12` with `SendError`.
+  - Additional reviewed evidence from `Newton`:
+    `cargo test requester_try_connect_after_network_drop_must_not_panic -- --nocapture`
+  - Failure summary: after dropping `P2pNetwork`, `requester.try_connect(...)`
+    panics at `src/requester.rs:17` with `SendError`.
 
 ### ISSUE-029: Stale alias requester panics after service drop
 
