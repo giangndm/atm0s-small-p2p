@@ -112,6 +112,36 @@ async fn stale_peer_connected_event_must_not_install_unusable_route() {
 }
 
 #[tokio::test]
+async fn peer_connected_must_not_rebind_existing_connection_to_different_peer() {
+    let (mut node, _addr) = create_node(false, 1, vec![]).await;
+    let conn = ConnectionId::from(88);
+    let real_peer = PeerId::from(2);
+    let forged_peer = PeerId::from(99);
+
+    node.router.set_direct(conn, real_peer, 10);
+
+    let event = node
+        .process_internal(100, MainEvent::PeerConnected(conn, forged_peer, 10))
+        .expect("duplicate connected event should process");
+
+    assert_eq!(
+        event,
+        P2pNetworkEvent::Continue,
+        "PeerConnected for an already-bound connection must be ignored when the peer id changes"
+    );
+    assert_eq!(
+        node.router.action(&real_peer),
+        Some(RouteAction::Next(conn)),
+        "the original route owner must remain attached to the connection"
+    );
+    assert_eq!(
+        node.router.action(&forged_peer),
+        None,
+        "a duplicate PeerConnected event must not create a second direct route for the same connection"
+    );
+}
+
+#[tokio::test]
 async fn stale_peer_data_event_must_not_panic_without_direct_route() {
     let (mut node, _addr) = create_node(false, 1, vec![]).await;
     let stale_conn = ConnectionId::from(404);

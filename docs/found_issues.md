@@ -1320,3 +1320,26 @@ audited code.
     receives `MainEvent::PeerDisconnected(ConnectionId(77), PeerId(99))`;
     current code emits `PeerDisconnected(ConnectionId(77), PeerId(99))`
     instead of ignoring the peer mismatch.
+
+### ISSUE-067: PeerConnected can rebind an existing connection to a different peer
+
+- Category: correctness, routing stability
+- Reviewer: `Ptolemy`, confirmed.
+- Affected code:
+  - `src/lib.rs`: `P2pNetwork::process_internal` handles
+    `MainEvent::PeerConnected(conn, peer, ttl_ms)` by unconditionally calling
+    `router.set_direct(conn, peer, ttl_ms)` and emitting `PeerConnected`.
+  - `src/router.rs`: `RouterTable::set_direct` unconditionally inserts into
+    `directs` by `ConnectionId`, allowing an existing connection owner to be
+    replaced.
+- Impact: a duplicate, stale, or malformed connected event for an already-bound
+  connection can reassign that connection from the real peer to a different
+  peer. This corrupts direct routing state and emits a misleading public
+  connection event. This is distinct from ISSUE-057, which covers an unknown
+  connection id installing an unusable route.
+- Evidence test:
+  - `cargo test peer_connected_must_not_rebind_existing_connection_to_different_peer -- --nocapture`
+  - Failure summary: after prebinding `ConnectionId(88) -> PeerId(2)`,
+    processing `MainEvent::PeerConnected(ConnectionId(88), PeerId(99), 10)`
+    emits `PeerConnected(ConnectionId(88), PeerId(99))`; expected the peer
+    mismatch to be ignored as `Continue`.
