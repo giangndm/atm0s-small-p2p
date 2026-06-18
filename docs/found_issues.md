@@ -1183,3 +1183,25 @@ audited code.
   - Failure summary: after dropping the first `P2pService`, creating a
     replacement with the same id panics at `src/ctx.rs:28` with
     `Service ID already used`.
+
+### ISSUE-061: Visualization accepts unsolicited forged topology info
+
+- Category: security, topology correctness
+- Reviewer: `Halley`, confirmed.
+- Affected code:
+  - `src/service/visualization_service.rs`: `VisualizationService::recv`
+    accepts `Message::Info(neighbours)` from any unicast or broadcast sender
+    and immediately emits `PeerJoined` or `PeerUpdated`.
+  - `src/service/visualization_service.rs`: the service does not track pending
+    scan requests, expected responders, nonces, or validate supplied neighbour
+    data against known router state.
+- Impact: any connected peer can poison visualization topology by sending an
+  unsolicited `Info` frame with arbitrary connection ids, peer ids, and RTTs.
+  Downstream consumers can observe fake peer joins/updates without this node
+  requesting or validating that data. This is distinct from the visualization
+  timeout arithmetic issue and from pubsub channel-membership issues.
+- Evidence test:
+  - `cargo test visualization_info_must_not_be_accepted_without_scan_request -- --nocapture`
+  - Failure summary: node2 injects `Message::Info([(ConnectionId(999),
+    PeerId(123), 7)])` to node1, and node1 emits a matching `PeerJoined`
+    event even though it never requested a scan response.

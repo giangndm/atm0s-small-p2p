@@ -2,7 +2,11 @@ use std::time::Duration;
 
 use test_log::test;
 
-use crate::visualization_service::{VisualizationService, VisualizationServiceEvent};
+use crate::{
+    msg::PeerMessage,
+    visualization_service::{encode_info_for_test, VisualizationService, VisualizationServiceEvent},
+    ConnectionId, PeerId,
+};
 
 use super::create_node;
 
@@ -42,5 +46,47 @@ async fn discovery_new_node() {
             VisualizationServiceEvent::PeerJoined(addr1.peer_id(), vec![(0.into(), addr2.peer_id(), 0)]),
             VisualizationServiceEvent::PeerUpdated(addr1.peer_id(), vec![(0.into(), addr2.peer_id(), 0)]),
         ]
+    );
+}
+
+#[test(tokio::test)]
+async fn visualization_info_must_not_be_accepted_without_scan_request() {
+    let (mut node1, addr1) = create_node(true, 1, vec![]).await;
+    let mut service1 = VisualizationService::new(None, false, node1.create_service(0.into()));
+    tokio::spawn(async move { while node1.recv().await.is_ok() {} });
+
+    let (mut node2, addr2) = create_node(false, 2, vec![addr1.clone()]).await;
+    let node2_ctx = node2.ctx.clone();
+    tokio::spawn(async move { while node2.recv().await.is_ok() {} });
+
+    let conn = tokio::time::timeout(Duration::from_secs(3), async {
+        loop {
+            if let Some(conn) = node2_ctx.conns().into_iter().next() {
+                return conn;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .expect("node2 should connect to node1");
+
+    let forged_topology = vec![(ConnectionId::from(999), PeerId::from(123), 7)];
+    conn.try_send(PeerMessage::Unicast(
+        addr2.peer_id(),
+        addr1.peer_id(),
+        0.into(),
+        encode_info_for_test(forged_topology.clone()),
+    ))
+    .expect("attacker should be able to inject a visualization info frame");
+
+    let delivered = tokio::time::timeout(Duration::from_millis(500), service1.recv()).await;
+
+    assert!(
+        !matches!(
+            delivered,
+            Ok(Ok(VisualizationServiceEvent::PeerJoined(peer, neighbours)))
+                if peer == addr2.peer_id() && neighbours == forged_topology
+        ),
+        "visualization must not accept unsolicited topology Info frames without a prior Scan request"
     );
 }

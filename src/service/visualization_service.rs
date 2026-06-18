@@ -23,6 +23,11 @@ enum Message {
     Info(Vec<(ConnectionId, PeerId, u16)>),
 }
 
+#[cfg(test)]
+pub(crate) fn encode_info_for_test(neighbours: Vec<(ConnectionId, PeerId, u16)>) -> Vec<u8> {
+    bincode::serialize(&Message::Info(neighbours)).expect("test message should serialize")
+}
+
 pub struct VisualizationService {
     service: P2pService,
     neighbours: HashMap<PeerId, u64>,
