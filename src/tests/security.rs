@@ -3,7 +3,7 @@ use std::{net::UdpSocket, time::Duration};
 use crate::{
     msg::{BroadcastMsgId, P2pServiceId, PeerMessage},
     router::RouteAction,
-    ConnectionId, MainEvent, P2pNetwork, P2pNetworkConfig, P2pNetworkEvent, P2pServiceEvent, PeerAddress, PeerId, SharedKeyHandshake,
+    ConnectionId, MainEvent, P2pNetwork, P2pNetworkConfig, P2pNetworkEvent, P2pServiceEvent, PeerAddress, PeerId, PeerMainData, SharedKeyHandshake,
 };
 use futures::FutureExt;
 use rustls::pki_types::{CertificateDer, PrivatePkcs8KeyDer};
@@ -107,6 +107,24 @@ async fn stale_peer_connected_event_must_not_install_unusable_route() {
         node.router.action(&peer),
         None,
         "PeerConnected for an unknown connection id must not create a route without a live peer alias"
+    );
+}
+
+#[tokio::test]
+async fn stale_peer_data_event_must_not_panic_without_direct_route() {
+    let (mut node, _addr) = create_node(false, 1, vec![]).await;
+    let stale_conn = ConnectionId::from(404);
+    let peer = PeerId::from(2);
+    let route = node.router.create_sync(&peer);
+    let advertise = node.discovery.create_sync_for(100, &peer);
+
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        node.process_internal(100, MainEvent::PeerData(stale_conn, peer, PeerMainData::Sync { route, advertise }))
+    }));
+
+    assert!(
+        matches!(result, Ok(Ok(P2pNetworkEvent::Continue))),
+        "PeerData for a stale connection id must be ignored or return an error instead of panicking"
     );
 }
 

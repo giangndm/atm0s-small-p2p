@@ -1231,3 +1231,25 @@ audited code.
     `ConnectionId(999)` and fake metric counters; node1 emits the matching
     `OnPeerConnectionMetric` event even though it never requested a scan
     response.
+
+### ISSUE-063: Stale peer data events panic without a direct route
+
+- Category: correctness, async race stability
+- Reviewer: `Chandrasekhar`, confirmed.
+- Affected code:
+  - `src/lib.rs`: `P2pNetwork::process_internal` handles
+    `MainEvent::PeerData(conn, ..., PeerMainData::Sync { ... })` by calling
+    `router.apply_sync(conn, route)` without checking whether `conn` is still
+    known and directly connected.
+  - `src/router.rs`: `RouterTable::apply_sync` calls
+    `self.directs.get(&conn).expect("should have direct metric with apply_sync")`.
+- Impact: a stale peer task can deliver sync data after its direct connection
+  state has already been removed, crashing main network event processing
+  instead of ignoring the stale event or returning an error. This is distinct
+  from ISSUE-057, which installs an unusable route on stale `PeerConnected`;
+  this issue is a stale `PeerData::Sync` panic.
+- Evidence test:
+  - `cargo test stale_peer_data_event_must_not_panic_without_direct_route -- --nocapture`
+  - Failure summary: processing `MainEvent::PeerData(ConnectionId(404), ...)`
+    for an unknown connection panics at `src/router.rs:76` with
+    `should have direct metric with apply_sync`.
