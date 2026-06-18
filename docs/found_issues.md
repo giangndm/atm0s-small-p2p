@@ -1135,3 +1135,28 @@ audited code.
     returns a `Publisher`, but `publisher.recv()` returns immediately instead
     of waiting for events; expected handle creation to fail or avoid returning
     an already-closed publisher.
+
+### ISSUE-059: Replicated KV full sync accepts `None` as a fake continuation
+
+- Category: correctness, data consistency
+- Reviewer: `Boole`, confirmed.
+- Affected code:
+  - `src/service/replicate_kv_service/remote_storage.rs`:
+    `SyncFullState::on_rpc_res` accepts `RpcRes::FetchSnapshot(None, version)`
+    as a completed empty snapshot regardless of whether a prior snapshot page
+    advertised `next_key`.
+  - `src/service/replicate_kv_service/remote_storage.rs`: after a partial
+    `Some(snapshot)` page, the receiver stores slots and requests the next
+    range, but a later `None` response transitions directly to `WorkingState`.
+- Impact: a malicious or buggy peer can truncate a paginated full sync. The
+  receiver applies the first page, then accepts `None` as completion for the
+  continuation and starts working with incomplete remote data. This is distinct
+  from ISSUE-038's empty `Some(snapshot)` continuation loop and ISSUE-047's
+  mismatched continuation version because this path silently completes sync
+  with missing data.
+- Evidence test:
+  - `cargo test full_sync_must_reject_none_continuation_after_partial_snapshot -- --nocapture`
+  - Failure summary: after a first page with `next_key: Some(2)`, a
+    continuation response of `RpcRes::FetchSnapshot(None, Version(1))` sets
+    `ctx.next_state` to `Some(Working(...))`; expected the partial sync to stay
+    incomplete and reject the fake continuation.
