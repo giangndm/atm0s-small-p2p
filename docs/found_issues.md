@@ -2758,3 +2758,34 @@ must resolve.
     delivers a `PublishRpc` event that is intentionally not answered, but the
     task still has not completed after a 200 ms outer timeout because the
     service waits for its one-second RPC sweep before returning timeout.
+
+### ISSUE-122: Discovery records unbounded stop tombstones for unknown peers
+
+- Category: security, high-load stability, discovery resource exhaustion
+- Score: 68/100
+- Reviewer: `Aristotle the 2nd`, confirmed.
+- Affected code:
+  - `src/peer/peer_internal.rs`: inbound `PeerMessage::PeerStopped(peer_id)` is
+    converted into `MainEvent::PeerStopped(self.conn_id, peer_id)`.
+  - `src/lib.rs`: `P2pNetwork::process_internal` handles `PeerStopped` by
+    calling `discovery.remove_remote(now_ms, &peer)`.
+  - `src/discovery.rs`: `PeerDiscovery::remove_remote` inserts
+    `self.stopped.insert(*peer, now_ms)` for every non-seed peer id before
+    checking whether that peer was ever present in `remotes`.
+  - `src/discovery.rs`: `clear_timeout` retains stop tombstones for
+    `TIMEOUT_AFTER`.
+- Impact: forged or repeated `PeerStopped` messages for arbitrary unknown
+  non-seed peer ids can grow `PeerDiscovery::stopped` without a cardinality
+  bound. Tombstones persist for `TIMEOUT_AFTER` and are inserted even when no
+  remote discovery record existed, so a bad peer or noisy network can force
+  avoidable memory growth and extra discovery filtering work. This is amplified
+  by the existing forged third-party stop path because the sender does not need
+  to prove ownership of the stopped peer id. This is distinct from ISSUE-001,
+  which covers forged route/discovery removal of live peers; ISSUE-009, which
+  covers discovery timestamp overflow/immortal-peer arithmetic; and ISSUE-093,
+  which covers tombstones suppressing valid restart advertisements.
+- Evidence test:
+  - `cargo test graceful_stop_tombstones_must_be_bounded_for_unknown_peers -- --nocapture`
+  - Failure summary: calling `PeerDiscovery::remove_remote` for 1,025 distinct
+    unknown non-seed peer ids leaves 1,025 entries in `discovery.stopped`,
+    exceeding the bounded-tombstone assertion.

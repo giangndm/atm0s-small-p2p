@@ -234,6 +234,22 @@ mod test {
     }
 
     #[test_log::test]
+    fn graceful_stop_tombstones_must_be_bounded_for_unknown_peers() {
+        const MAX_STOPPED_TOMBSTONES: usize = 1024;
+        let mut discovery = PeerDiscovery::default();
+
+        for peer in 0..=MAX_STOPPED_TOMBSTONES {
+            discovery.remove_remote(100, &PeerId(peer as u64 + 10));
+        }
+
+        assert!(
+            discovery.stopped.len() <= MAX_STOPPED_TOMBSTONES,
+            "stopped-peer tombstones must be bounded even for unknown non-seed peers, got {}",
+            discovery.stopped.len()
+        );
+    }
+
+    #[test_log::test]
     fn apply_sync_must_not_duplicate_or_override_configured_seed() {
         let seed = peer_addr("1@127.0.0.1:9000");
         let advertised_seed = peer_addr("1@127.0.0.1:9001");
