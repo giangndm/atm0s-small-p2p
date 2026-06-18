@@ -723,3 +723,21 @@ audited code.
   - `cargo test pubsub_publish_must_require_remote_publisher_membership -- --nocapture`
   - Failure summary: node2 injects `PubsubMessage::Publish` into node1's
     subscriber without ever joining the channel as a publisher.
+
+### ISSUE-040: Metrics and visualization services panic on zero collection interval
+
+- Category: correctness, API stability
+- Reviewer: `Volta`, confirmed.
+- Affected code:
+  - `src/service/metrics_service.rs`: `MetricsService::new` passes
+    `collect_interval.unwrap_or(...)` directly to `tokio::time::interval`.
+  - `src/service/visualization_service.rs`: `VisualizationService::new` does
+    the same with its public `collect_interval`.
+- Impact: public service constructors accept `Some(Duration::ZERO)` but do not
+  validate it. Tokio panics synchronously for a zero interval, so a caller
+  configuration error unwinds construction instead of returning an error,
+  normalizing to a minimum, or using the default.
+- Evidence test:
+  - `cargo test metrics_service_zero_collect_interval_must_not_panic -- --nocapture`
+  - Failure summary: `MetricsService::new(Some(Duration::ZERO), ...)` panics at
+    `src/service/metrics_service.rs:32` with `` `period` must be non-zero. ``.

@@ -39,3 +39,15 @@ async fn metric_collect() {
 
     assert_eq!(event_from_peers, vec![(PeerId(1), 1), (PeerId(1), 1), (PeerId(2), 1), (PeerId(2), 1)]);
 }
+
+#[test(tokio::test)]
+async fn metrics_service_zero_collect_interval_must_not_panic() {
+    let (mut node, _addr) = create_node(true, 1, vec![]).await;
+    let service = node.create_service(0.into());
+
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let _metrics = MetricsService::new(Some(Duration::ZERO), service, true);
+    }));
+
+    assert!(result.is_ok(), "zero metrics collection interval must be rejected or normalized without panicking");
+}
