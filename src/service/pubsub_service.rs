@@ -779,6 +779,38 @@ mod test {
     }
 
     #[tokio::test]
+    async fn pubsub_heartbeat_channel_batches_must_be_bounded() {
+        const MAX_HEARTBEAT_CHANNELS: usize = 1024;
+        let mut service = test_service();
+        let from_peer = PeerId::from(2);
+        let mut heartbeats = Vec::new();
+
+        for channel in 0..=MAX_HEARTBEAT_CHANNELS {
+            let channel = PubsubChannelId(channel as u64 + 10);
+            let (sub_tx, _sub_rx) = unbounded_channel();
+            service
+                .on_internal(InternalMsg::SubscriberCreated(SubscriberLocalId::rand(), channel, sub_tx))
+                .await
+                .expect("subscriber should be registered");
+            heartbeats.push(ChannelHeartbeat {
+                channel,
+                publish: true,
+                subscribe: false,
+            });
+        }
+
+        let payload = bincode::serialize(&PubsubMessage::Heartbeat(heartbeats)).expect("test heartbeat should serialize");
+        service.on_service(P2pServiceEvent::Unicast(from_peer, payload)).await.expect("heartbeat should be processed");
+
+        let updated_channels = service.channels.values().filter(|state| state.remote_publishers.contains(&from_peer)).count();
+
+        assert!(
+            updated_channels <= MAX_HEARTBEAT_CHANNELS,
+            "pubsub heartbeat channel batches must be bounded, updated {updated_channels} channels"
+        );
+    }
+
+    #[tokio::test]
     async fn pubsub_guest_object_publish_must_return_error_on_serialize_failure() {
         let requester = test_service().requester();
 

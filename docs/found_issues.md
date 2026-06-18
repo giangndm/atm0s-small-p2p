@@ -2282,3 +2282,29 @@ audited code.
   - Failure summary: a single visualization `Info` frame with 1,025 topology
     rows is delivered as one `PeerJoined` event, exceeding the test cap of
     1,024 rows.
+
+### ISSUE-106: Pubsub heartbeat channel batches have no service-level row cap
+
+- Category: high-load stability, resource exhaustion
+- Reviewer: `Boyle the 2nd`, confirmed.
+- Affected code:
+  - `src/service/pubsub_service.rs`: `PubsubMessage::Heartbeat` carries a
+    `Vec<ChannelHeartbeat>` with no semantic channel-count bound.
+  - `src/service/pubsub_service.rs`: `PubsubService::on_service` deserializes
+    pubsub messages from unicast or broadcast payloads and iterates every
+    heartbeat entry.
+  - `src/service/pubsub_service.rs`: matching heartbeat entries can mutate
+    `remote_publishers` or `remote_subscribers` and emit local join events.
+- Impact: a peer can send one heartbeat frame containing a large channel vector
+  and force the receiver to process every entry, mutate many channel states,
+  and emit local events. Outer framing still has byte limits, but there is no
+  pubsub heartbeat row cap, validation, truncation, or rejection path. This is
+  distinct from ISSUE-026/080's stale heartbeat cleanup failures, ISSUE-100's
+  per-channel membership growth, ISSUE-104/105's metrics and visualization row
+  caps, ISSUE-024's lower-level peer frame-size cap gap, and ISSUE-010's
+  route/discovery sync vector growth.
+- Evidence test:
+  - `cargo test pubsub_heartbeat_channel_batches_must_be_bounded -- --nocapture`
+  - Failure summary: a single heartbeat with 1,025 channel entries updates
+    1,025 channel states for one remote peer, exceeding the test cap of 1,024
+    channels.
