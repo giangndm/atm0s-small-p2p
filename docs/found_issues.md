@@ -6,6 +6,9 @@ Acceptance rule: an issue is listed here only after reviewer confirmation and
 test-case evidence. The tests listed below are expected to fail on the current
 audited code.
 
+Issue score: 0 means low priority and not needed now; 100 means critical and
+must resolve.
+
 ## Audit Status
 
 - Current consecutive no-new-issue cycles: 0
@@ -2571,6 +2574,7 @@ audited code.
 ### ISSUE-116: Local pubsub feedback RPC answers are not bound to the publisher handle
 
 - Category: correctness, security, lifecycle stability
+- Score: 82/100
 - Reviewer: `Harvey the 2nd`, confirmed.
 - Affected code:
   - `src/service/pubsub_service/publisher.rs`:
@@ -2604,6 +2608,7 @@ audited code.
 
 - Category: stability, resource exhaustion under bad-network or malicious-peer
   conditions
+- Score: 78/100
 - Reviewer: `Plato the 2nd`, confirmed.
 - Affected code:
   - `src/peer/peer_internal.rs`: `PeerConnectionInternal::on_accept_bi`
