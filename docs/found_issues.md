@@ -461,3 +461,23 @@ audited code.
   - `cargo test pubsub_heartbeat_must_remove_stale_remote_subscriber -- --nocapture`
   - Failure summary: after node2 heartbeats `subscribe=false`, node1's
     publisher times out waiting for `PeerLeaved(Remote(node2))`.
+
+### ISSUE-027: Replicated KV stores unbounded future changed broadcasts
+
+- Category: high-load stability, resource exhaustion
+- Reviewer: `Socrates`, confirmed.
+- Affected code:
+  - `src/service/replicate_kv_service/remote_storage.rs`: `WorkingState`
+    stores future changes in `pendings: BTreeMap<Version, Changed<K, V>>`.
+  - `src/service/replicate_kv_service/remote_storage.rs`: inbound
+    `BroadcastEvent::Changed` inserts every version greater than the current
+    version before attempting to apply contiguous changes.
+  - `src/service/replicate_kv_service/remote_storage.rs`: discontinuities send
+    a `FetchChanged` request, but do not cap, compact, or resync pending
+    future entries.
+- Impact: a malicious or buggy peer can send many far-future change broadcasts
+  and force unbounded pending memory growth on receivers.
+- Evidence test:
+  - `cargo test working_state_must_cap_pending_future_changes -- --nocapture`
+  - Failure summary: 2,049 far-future changes remain pending, exceeding the
+    test cap of 1,024.

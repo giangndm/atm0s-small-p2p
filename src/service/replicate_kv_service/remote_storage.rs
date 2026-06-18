@@ -791,6 +791,36 @@ mod tests {
     }
 
     #[test]
+    fn working_state_must_cap_pending_future_changes() {
+        let mut ctx: StateCtx<u16, u16, u16> = StateCtx {
+            remote: 1,
+            slots: BTreeMap::new(),
+            outs: VecDeque::new(),
+            next_state: None,
+        };
+
+        let now = Instant::now();
+        let mut state = WorkingState::new(Version(0));
+
+        for version in 2..=2_050 {
+            state.on_broadcast(
+                &mut ctx,
+                now,
+                BroadcastEvent::Changed(Changed {
+                    key: version as u16,
+                    version: Version(version),
+                    action: Action::Set(version as u16),
+                }),
+            );
+        }
+
+        assert!(
+            state.pendings.len() <= 1024,
+            "future changed broadcasts from one remote must be capped to avoid unbounded memory growth"
+        );
+    }
+
+    #[test]
     fn destroy_remote_should_clear_slots() {
         let mut ctx: StateCtx<u16, u16, u16> = StateCtx {
             remote: 1,
