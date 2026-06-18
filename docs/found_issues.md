@@ -2182,3 +2182,26 @@ audited code.
   - Failure summary: after 1,025 `NotifySet` messages for one alias from
     distinct peer ids, the cached peer-hint set length is 1,025, exceeding the
     test cap of 1,024.
+
+### ISSUE-102: Visualization remote peer state is unbounded
+
+- Category: high-load stability, resource exhaustion
+- Reviewer: `Planck the 2nd`, confirmed.
+- Affected code:
+  - `src/service/visualization_service.rs`: `VisualizationService.neighbours`
+    is a `HashMap<PeerId, u64>` with no admission cap.
+  - `src/service/visualization_service.rs`: inbound `Message::Info` inserts
+    every sender peer id into `neighbours` and emits a joined or updated event.
+  - `src/service/visualization_service.rs`: timeout cleanup runs only inside
+    the ticker branch when `collect_interval` is `Some`; `new(None, ...)` has
+    no expiry path for retained remote peers.
+- Impact: malformed traffic, high churn, or spoofed source identities can grow
+  retained visualization peer state without bound. With collection disabled via
+  `collect_interval = None`, inserted peers never expire. This is distinct from
+  ISSUE-061's unsolicited topology poisoning, ISSUE-079's topology disclosure
+  on `Scan`, and the resource-bound issues in pubsub and alias services.
+- Evidence test:
+  - `cargo test visualization_remote_peers_must_be_bounded -- --nocapture`
+  - Failure summary: after 1,025 `Info` frames from distinct peer ids,
+    `VisualizationService.neighbours.len()` is 1,025, exceeding the test cap of
+    1,024.

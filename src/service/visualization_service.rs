@@ -131,6 +131,7 @@ impl VisualizationService {
 #[cfg(test)]
 mod test {
     use super::*;
+    use crate::{ctx::SharedCtx, msg::P2pServiceId, router::SharedRouterTable};
 
     #[test]
     fn visualization_peer_timeout_deadline_must_not_overflow() {
@@ -145,5 +146,25 @@ mod test {
             !result.expect("timeout calculation should not panic"),
             "visualization timeout deadline must not wrap and expire a peer before the mathematical deadline"
         );
+    }
+
+    #[tokio::test]
+    async fn visualization_remote_peers_must_be_bounded() {
+        const MAX_REMOTE_PEERS: usize = 1024;
+        let ctx = SharedCtx::new(PeerId::from(1), SharedRouterTable::new(PeerId::from(1)));
+        let (base_service, service_tx) = P2pService::build(P2pServiceId::from(0), ctx);
+        let mut service = VisualizationService::new(None, false, base_service);
+        let info = encode_info_for_test(vec![]);
+
+        for peer in 0..=MAX_REMOTE_PEERS {
+            service_tx
+                .send(P2pServiceEvent::Unicast(PeerId::from(peer as u64 + 10), info.clone()))
+                .await
+                .expect("visualization service channel should accept test message");
+            let _ = service.recv().await.expect("visualization event should be emitted");
+        }
+
+        let remote_peers = service.neighbours.len();
+        assert!(remote_peers <= MAX_REMOTE_PEERS, "visualization remote peer state must be bounded, got {remote_peers}");
     }
 }
