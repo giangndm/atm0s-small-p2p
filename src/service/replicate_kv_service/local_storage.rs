@@ -297,4 +297,17 @@ mod tests {
 
         assert!(result.is_ok(), "local version increment must not panic or wrap at u64::MAX");
     }
+
+    #[test]
+    fn snapshot_with_zero_compose_budget_must_make_progress() {
+        let mut store: LocalStore<u16, u16, u16> = LocalStore::new(10, 0);
+        store.set(1, 1);
+
+        let snapshot = store.snapshot(None, None, None).expect("snapshot should exist");
+
+        assert!(
+            !snapshot.slots.is_empty() || snapshot.next_key.is_none(),
+            "snapshot paging must not return an empty page with next_key because sync cannot advance"
+        );
+    }
 }

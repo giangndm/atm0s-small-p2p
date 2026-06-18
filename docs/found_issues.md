@@ -549,3 +549,27 @@ audited code.
   - Failure summary: `LocalStore::set` at `Version(u64::MAX)` panics at
     `src/service/replicate_kv_service/messages.rs:37` with
     `attempt to add with overflow`.
+
+### ISSUE-032: Replicated KV zero snapshot page size stalls full sync
+
+- Category: correctness, bad-network stability
+- Reviewer: `Sartre`, confirmed.
+- Affected code:
+  - `src/service/replicate_kv_service.rs`: `ReplicatedKvStore::new` accepts
+    `max_compose_pkts == 0`.
+  - `src/service/replicate_kv_service/local_storage.rs`: `LocalStore::new`
+    stores `compose_max_pkts` unchecked.
+  - `src/service/replicate_kv_service/local_storage.rs`: `snapshot` checks
+    `slots.len() >= self.compose_max_pkts` before pushing any slot, so a zero
+    page size returns an empty page with `next_key`.
+  - `src/service/replicate_kv_service/remote_storage.rs`: `SyncFullState`
+    treats an empty snapshot with `next_key` as progress and requests the same
+    page range again.
+- Impact: a valid public configuration can make full snapshot sync never
+  converge. Nodes can repeatedly exchange empty `FetchSnapshot` pages and retry
+  traffic without applying data.
+- Evidence test:
+  - `cargo test snapshot_with_zero_compose_budget_must_make_progress -- --nocapture`
+  - Failure summary: `LocalStore::snapshot` with `compose_max_pkts = 0`
+    returns `slots: []` and `next_key: Some(...)`, proving snapshot paging can
+    request continuation without advancing.
