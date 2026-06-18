@@ -3419,3 +3419,39 @@ must resolve.
     receives a valid partial success containing versions `1` and `2`, the test
     expects a follow-up `FetchChanged { from: Version(3), count: 3 }`; current
     code emits `None`.
+
+### ISSUE-142: New local pubsub handles miss already-known remote members
+
+- Category: correctness, pubsub membership stability, bad-network lifecycle
+- Score: 62/100
+- Reviewer: `Aquinas the 2nd`, confirmed.
+- Affected code:
+  - `src/service/pubsub_service.rs`: inbound `PublisherJoined` and heartbeat
+    repair add `remote_publishers` and notify only currently-existing local
+    subscribers.
+  - `src/service/pubsub_service.rs`: inbound `SubscriberJoined` and heartbeat
+    repair add `remote_subscribers` and notify only currently-existing local
+    publishers.
+  - `src/service/pubsub_service.rs`: `InternalMsg::PublisherCreated` registers
+    the new local publisher but only reports existing local subscribers, not
+    already-known `remote_subscribers`.
+  - `src/service/pubsub_service.rs`: `InternalMsg::SubscriberCreated` registers
+    the new local subscriber but only reports existing local publishers, not
+    already-known `remote_publishers`.
+- Impact: after remote membership is learned and local handles churn or are
+  created later, the new local publisher/subscriber can start with an incomplete
+  membership view. The service may still route publish/feedback using the stored
+  remote sets, but the handle's event stream omits expected
+  `PeerJoined(Remote(...))`, causing applications to make stale presence
+  decisions or miss remote availability until another remote join or heartbeat
+  transition arrives. This is distinct from ISSUE-026/080, which cover stale
+  remote membership removal; ISSUE-039/048, which cover membership
+  authorization bypass; ISSUE-100, which covers unbounded remote membership
+  sets; and ISSUE-108, which covers fully empty channel retention.
+- Evidence test:
+  - `cargo test new_local_pubsub_handles_must_observe_existing_remote_members`
+  - Failure summary: a channel seeded with `remote_subscribers = {PeerId(3)}`
+    and `remote_publishers = {PeerId(2)}` creates new local publisher/subscriber
+    handles; the publisher event backlog contains only `PeerJoined(Local)` and
+    no `PeerJoined(Remote(PeerId(3)))`, and the subscriber likewise misses the
+    existing remote publisher.

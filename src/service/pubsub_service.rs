@@ -847,6 +847,47 @@ mod test {
     }
 
     #[tokio::test]
+    async fn new_local_pubsub_handles_must_observe_existing_remote_members() {
+        let mut service = test_service();
+        let channel = PubsubChannelId(1);
+        let remote_publisher = PeerId::from(2);
+        let remote_subscriber = PeerId::from(3);
+        let (pub_tx, mut pub_rx) = unbounded_channel();
+        let (sub_tx, mut sub_rx) = unbounded_channel();
+
+        let state = service.channels.entry(channel).or_default();
+        state.remote_publishers.insert(remote_publisher);
+        state.remote_subscribers.insert(remote_subscriber);
+
+        service
+            .on_internal(InternalMsg::PublisherCreated(PublisherLocalId::rand(), channel, pub_tx))
+            .await
+            .expect("publisher should be registered");
+        service
+            .on_internal(InternalMsg::SubscriberCreated(SubscriberLocalId::rand(), channel, sub_tx))
+            .await
+            .expect("subscriber should be registered");
+
+        let mut publisher_events = Vec::new();
+        while let Ok(event) = pub_rx.try_recv() {
+            publisher_events.push(event);
+        }
+        let mut subscriber_events = Vec::new();
+        while let Ok(event) = sub_rx.try_recv() {
+            subscriber_events.push(event);
+        }
+
+        assert!(
+            publisher_events.contains(&PublisherEvent::PeerJoined(PeerSrc::Remote(remote_subscriber))),
+            "a new local publisher must observe already-known remote subscribers, got {publisher_events:?}"
+        );
+        assert!(
+            subscriber_events.contains(&SubscriberEvent::PeerJoined(PeerSrc::Remote(remote_publisher))),
+            "a new local subscriber must observe already-known remote publishers, got {subscriber_events:?}"
+        );
+    }
+
+    #[tokio::test]
     async fn pubsub_heartbeat_channel_batches_must_be_bounded() {
         const MAX_HEARTBEAT_CHANNELS: usize = 1024;
         let mut service = test_service();
