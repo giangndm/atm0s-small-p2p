@@ -395,6 +395,32 @@ async fn connect_must_fail_when_remote_peer_id_does_not_match_address() {
 }
 
 #[tokio::test]
+async fn connect_to_own_peer_address_must_fail() {
+    let (mut node, addr) = create_node(true, 1, vec![]).await;
+    let requester = node.requester();
+    let connect = requester.connect(addr.clone());
+    tokio::pin!(connect);
+
+    let result = tokio::time::timeout(Duration::from_secs(2), async {
+        loop {
+            tokio::select! {
+                res = &mut connect => return res,
+                event = node.recv() => {
+                    event.expect("node should keep running while self-connect is tested");
+                }
+            }
+        }
+    })
+    .await
+    .expect("self-connect attempt should finish");
+
+    assert!(
+        result.is_err(),
+        "connect() to the node's own advertised peer address must fail instead of creating a self connection"
+    );
+}
+
+#[tokio::test]
 async fn requester_connect_after_network_drop_returns_error_not_panic() {
     let (mut node, _addr) = create_node(false, 1, vec![]).await;
     let requester = node.requester();

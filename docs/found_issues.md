@@ -2446,3 +2446,30 @@ audited code.
   - Failure summary: after requesting `FetchChanged { from: Version(1), count:
     1 }`, an empty successful response clears the in-flight repair; the next
     timeout tick emits no retry and does not transition to full resync.
+
+### ISSUE-112: `connect()` accepts the node's own peer address
+
+- Category: correctness, input validation, configuration stability
+- Reviewer: `Parfit the 2nd`, confirmed.
+- Affected code:
+  - `src/requester.rs`: `P2pNetworkRequester::connect` forwards any
+    `PeerAddress` to the main loop.
+  - `src/lib.rs`: `P2pNetwork::process_control` checks only
+    `self.neighbours.has_peer(&addr.peer_id())` before dialing.
+  - `src/lib.rs`: the connect path does not reject
+    `addr.peer_id() == self.local_id`, so a node can dial its own advertised
+    socket address.
+- Impact: calling `connect()` with a `PeerAddress` whose peer id and socket
+  address belong to the local node starts a self-dial and returns `Ok(())`
+  instead of rejecting the input. The authenticated identity is the local node
+  itself, which can create self connection/neighbour state, loopback route
+  metrics, duplicate connection work, noisy events, and unstable behavior under
+  poisoned discovery, bad configuration, or direct API misuse. This is distinct
+  from ISSUE-005's learned local-peer advertisements, ISSUE-006's local route
+  storage, ISSUE-013's local stream panic, ISSUE-016's early connect success
+  before identity authentication, and ISSUE-103's configured self seed dial
+  candidate.
+- Evidence test:
+  - `cargo test connect_to_own_peer_address_must_fail -- --nocapture`
+  - Failure summary: `connect()` to the node's own advertised `PeerAddress`
+    returns `Ok(())`; expected the self-connect target to be rejected.
