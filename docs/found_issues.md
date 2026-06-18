@@ -1010,7 +1010,8 @@ audited code.
 ### ISSUE-053: Inbound out-of-range service ids kill peer connection tasks
 
 - Category: security, bad-network stability
-- Reviewer: `Hooke`, confirmed.
+- Reviewer: `Hooke`, confirmed. Additional fuzz evidence confirmed by
+  `Socrates the 2nd`.
 - Affected code:
   - `src/msg.rs`: `P2pServiceId` is deserialized from the wire as a `u16`,
     including values outside the 256-slot service table.
@@ -1029,6 +1030,13 @@ audited code.
     `src/ctx.rs:33` with `index out of bounds: the len is 256 but the index is
     256`, then a valid follow-up unicast on the same connection fails because
     the peer connection channel is closed.
+  - Additional fuzz evidence:
+    `cargo test fuzz_random_node_actions_must_not_panic_connection_tasks -- --nocapture`
+  - Failure summary: with default `P2P_FUZZ_NODES=5`,
+    `P2P_FUZZ_STEPS=120`, and `P2P_FUZZ_SEED=0x5eed`, the random action
+    harness reaches the broadcast variant of the same bug by injecting
+    `PeerMessage::Broadcast(..., P2pServiceId::from(256), ...)`, panicking a
+    background connection task at `src/ctx.rs:33`.
 
 ### ISSUE-054: Zero network tick interval panics node construction
 
