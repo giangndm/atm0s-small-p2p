@@ -311,3 +311,22 @@ audited code.
   - Failure summary: node2 receives
     `P2pServiceEvent::Stream(PeerId(99), ...)` from a stream opened over
     node1's authenticated connection.
+
+### ISSUE-019: Alias local registration refcount overflows after 255 guards
+
+- Category: high-load stability, correctness
+- Reviewer: `Ohm`, confirmed.
+- Affected code:
+  - `src/service/alias_service.rs`: local alias registrations are counted in
+    `HashMap<AliasId, u8>`.
+  - `src/service/alias_service.rs`: `AliasControl::Register` increments the
+    `u8` refcount with `*ref_count += 1`.
+  - `src/service/alias_service.rs`: `AliasControl::Unregister` relies on that
+    refcount to decide when to remove and broadcast `NotifyDel`.
+- Impact: 256 live guards for the same alias panic in debug builds and wrap in
+  release builds, corrupting alias lifetime accounting and causing later drops
+  to remove or advertise the alias incorrectly.
+- Evidence test:
+  - `cargo test registering_same_alias_many_times_must_not_overflow_refcount -- --nocapture`
+  - Failure summary: the 256th registration panics at the `u8` increment with
+    `attempt to add with overflow`.

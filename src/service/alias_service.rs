@@ -500,6 +500,20 @@ mod test {
     }
 
     #[test]
+    fn registering_same_alias_many_times_must_not_overflow_refcount() {
+        let mut ctx = TestContext::new();
+        let alias_id = AliasId(1);
+
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            for _ in 0..=u8::MAX {
+                ctx.internal.on_control(ctx.now, AliasControl::Register(alias_id));
+            }
+        }));
+
+        assert!(result.is_ok(), "alias registration refcount must not panic or wrap after 256 local guards");
+    }
+
+    #[test]
     fn test_find_local_alias() {
         let mut ctx = TestContext::new();
         let alias_id = AliasId(1);
