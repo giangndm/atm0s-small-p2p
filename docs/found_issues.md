@@ -1473,3 +1473,27 @@ audited code.
   - Failure summary: after dropping node1's `P2pService`, a cloned
     `P2pServiceRequester` sends `stale-service-unicast`, and node2's service
     receives `P2pServiceEvent::Unicast`.
+
+### ISSUE-073: Dropped service requesters can still open streams
+
+- Category: correctness, pipe lifecycle stability
+- Reviewer: `Parfit`, confirmed.
+- Affected code:
+  - `src/service.rs`: `P2pServiceRequester` is cloneable and keeps only
+    `service`, plus `SharedCtx`, so it outlives the owning `P2pService`.
+  - `src/service.rs`: `P2pServiceRequester::open_stream` delegates directly to
+    `SharedCtx::open_stream` without checking that the service receiver is
+    still alive.
+  - `src/ctx.rs`: `SharedCtx::open_stream` opens a routed stream with the
+    supplied service id as long as a route exists.
+- Impact: after a `P2pService` is dropped, a previously cloned requester can
+  still open streams under that service id. Remote peers receive
+  `P2pServiceEvent::Stream` from a service instance whose local owner has
+  already been destroyed. This is distinct from ISSUE-072, which covers stale
+  requester unicast, and from ISSUE-011/012/013/056, which cover other stream
+  delivery, panic, and backpressure failure modes.
+- Evidence test:
+  - `cargo test dropped_service_requester_must_not_continue_opening_streams -- --nocapture`
+  - Failure summary: after dropping node1's `P2pService`, a cloned
+    `P2pServiceRequester` opens `stale-service-stream`, and node2's service
+    receives `P2pServiceEvent::Stream`.
