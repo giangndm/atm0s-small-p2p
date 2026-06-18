@@ -2009,3 +2009,26 @@ audited code.
   - Failure summary: `publish_as_guest_ob(...)` unwinds at
     `src/service/pubsub_service.rs:658` when serialization returns a custom
     error; expected the helper to return `Ok(Err(_))` rather than panic.
+
+### ISSUE-095: Replicated KV duplicate future broadcasts overwrite pending changes
+
+- Category: correctness, security
+- Reviewer: `Pauli`, confirmed.
+- Affected code:
+  - `src/service/replicate_kv_service/remote_storage.rs`:
+    `WorkingState::on_broadcast` accepts future `BroadcastEvent::Changed`
+    values and stores them with
+    `self.pendings.insert(changed.version, changed)`.
+- Impact: a malicious or malformed peer can send two conflicting future
+  `Changed` broadcasts for the same version before the missing gap is filled.
+  The later duplicate silently overwrites the first pending value, and the
+  receiver later applies and emits the overwritten data as if it were the valid
+  change for that version. This is distinct from ISSUE-027, which covers
+  unbounded pending future broadcasts, and ISSUE-088/ISSUE-089, which cover
+  `FetchChanged` response validation.
+- Evidence test:
+  - `cargo test working_state_must_reject_duplicate_pending_changed_broadcast_versions -- --nocapture`
+  - Failure summary: duplicate pending broadcast `Version(2)` overwrites value
+    `20` with `99`; after `Version(1)` fills the gap, the slot contains
+    `Some(Slot { value: 99, version: Version(2) })` instead of preserving or
+    rejecting the first accepted version.

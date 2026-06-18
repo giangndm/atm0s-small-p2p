@@ -1430,6 +1430,53 @@ mod tests {
     }
 
     #[test]
+    fn working_state_must_reject_duplicate_pending_changed_broadcast_versions() {
+        let mut ctx: StateCtx<u16, u16, u16> = StateCtx {
+            remote: 1,
+            slots: BTreeMap::new(),
+            outs: VecDeque::new(),
+            next_state: None,
+        };
+
+        let now = Instant::now();
+        let mut state = WorkingState::new(Version(0));
+
+        state.on_broadcast(
+            &mut ctx,
+            now,
+            BroadcastEvent::Changed(Changed {
+                key: 7,
+                version: Version(2),
+                action: Action::Set(20),
+            }),
+        );
+        state.on_broadcast(
+            &mut ctx,
+            now,
+            BroadcastEvent::Changed(Changed {
+                key: 7,
+                version: Version(2),
+                action: Action::Set(99),
+            }),
+        );
+        state.on_broadcast(
+            &mut ctx,
+            now,
+            BroadcastEvent::Changed(Changed {
+                key: 7,
+                version: Version(1),
+                action: Action::Set(10),
+            }),
+        );
+
+        assert_eq!(
+            ctx.slots.get(&7),
+            Some(&Slot::new(20, Version(2))),
+            "duplicate pending Changed broadcasts must not overwrite the first accepted value for the same version"
+        );
+    }
+
+    #[test]
     fn working_state_must_cap_pending_fetch_changed_response() {
         let mut ctx: StateCtx<u16, u16, u16> = StateCtx {
             remote: 1,
