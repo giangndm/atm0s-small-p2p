@@ -2363,3 +2363,28 @@ audited code.
   - Failure summary: after creating and destroying 1,025 distinct local
     subscriber channels, the service still retains 1,025 fully empty channel
     entries, exceeding the test cap of 1,024.
+
+### ISSUE-109: Unsolicited alias `Found` messages create cache hints
+
+- Category: correctness, security, cache poisoning
+- Reviewer: `Lorentz the 2nd`, confirmed.
+- Affected code:
+  - `src/service/alias_service.rs`: `AliasServiceInternal::on_msg` handles
+    `AliasMessage::Found(alias_id)` by inserting the sender into
+    `self.cache[alias_id]`.
+  - `src/service/alias_service.rs`: this insertion happens before checking
+    whether a `FindRequest` exists for the alias.
+  - `src/service/alias_service.rs`: with no pending lookup, the message still
+    creates retained alias cache state for a future lookup.
+- Impact: a peer can send `Found(alias)` without receiving a prior `Check` or
+  `Scan` and seed this node's alias cache with an arbitrary alias-to-peer hint.
+  Later lookups can spend work checking that poisoned hint and may be steered
+  toward the unsolicited peer if it continues the protocol. This is distinct
+  from ISSUE-090, which covers an unchecked peer completing an active
+  cached-hint lookup, and from ISSUE-101, which covers unbounded per-alias
+  hint-set growth.
+- Evidence test:
+  - `cargo test unsolicited_found_must_not_create_alias_cache_hint -- --nocapture`
+  - Failure summary: a single unsolicited `Found(alias)` with no pending lookup
+    creates a cache entry for that alias; expected unsolicited `Found` messages
+    to be ignored.

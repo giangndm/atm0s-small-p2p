@@ -592,6 +592,20 @@ mod test {
     }
 
     #[test]
+    fn unsolicited_found_must_not_create_alias_cache_hint() {
+        let mut ctx = TestContext::new();
+        let alias_id = AliasId(1);
+        let unsolicited_peer = PeerId(2);
+
+        ctx.internal.on_msg(ctx.now, unsolicited_peer, AliasMessage::Found(alias_id));
+
+        assert!(
+            !ctx.internal.cache.contains(&alias_id),
+            "unsolicited Found messages without a pending lookup must not create alias cache hints"
+        );
+    }
+
+    #[test]
     fn cached_alias_peer_hints_must_be_bounded() {
         const MAX_PEERS_PER_ALIAS: usize = 1024;
         let mut ctx = TestContext::new();
