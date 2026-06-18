@@ -1777,6 +1777,7 @@ must resolve.
 ### ISSUE-081: Replicated KV full sync accepts an initial empty snapshot as nonzero complete state
 
 - Category: correctness, security
+- Score: 72/100
 - Reviewer: `Turing`, confirmed.
 - Affected code:
   - `src/service/replicate_kv_service/remote_storage.rs`:
@@ -1803,6 +1804,7 @@ must resolve.
 ### ISSUE-082: Replicated KV full sync accepts snapshot slots beyond biggest_key
 
 - Category: correctness, security
+- Score: 70/100
 - Reviewer: `Erdos`, confirmed.
 - Affected code:
   - `src/service/replicate_kv_service/remote_storage.rs`:
@@ -1826,6 +1828,7 @@ must resolve.
 ### ISSUE-083: Replicated KV full sync accepts continuation slots before requested key
 
 - Category: correctness, security
+- Score: 68/100
 - Reviewer: `Jason`, confirmed.
 - Affected code:
   - `src/service/replicate_kv_service/remote_storage.rs`:
@@ -1849,6 +1852,7 @@ must resolve.
 ### ISSUE-084: Replicated KV full sync accepts unsorted snapshot pages
 
 - Category: correctness, security
+- Score: 62/100
 - Reviewer: `Aquinas`, confirmed.
 - Affected code:
   - `src/service/replicate_kv_service/local_storage.rs`: valid snapshot pages
@@ -1869,6 +1873,7 @@ must resolve.
 ### ISSUE-085: Replicated KV full sync accepts duplicate keys in one snapshot page
 
 - Category: correctness, security
+- Score: 64/100
 - Reviewer: `Kepler`, confirmed.
 - Affected code:
   - `src/service/replicate_kv_service/local_storage.rs`: valid snapshot pages
@@ -1891,6 +1896,7 @@ must resolve.
 ### ISSUE-086: Replicated KV applies unsolicited FetchChanged success responses
 
 - Category: correctness, security
+- Score: 80/100
 - Reviewer: `Hegel`, confirmed.
 - Affected code:
   - `src/service/replicate_kv_service.rs`: any deserialized unicast
@@ -1916,6 +1922,7 @@ must resolve.
 ### ISSUE-087: Replicated KV accepts unsolicited FetchChanged errors as forced resyncs
 
 - Category: correctness, security, stability
+- Score: 78/100
 - Reviewer: `Bacon`, confirmed.
 - Affected code:
   - `src/service/replicate_kv_service.rs`: any deserialized unicast
@@ -1942,6 +1949,7 @@ must resolve.
 ### ISSUE-088: Replicated KV accepts duplicate versions in FetchChanged responses
 
 - Category: correctness, security
+- Score: 70/100
 - Reviewer: `Helmholtz`, confirmed.
 - Affected code:
   - `src/service/replicate_kv_service/local_storage.rs`:
@@ -1968,6 +1976,7 @@ must resolve.
 ### ISSUE-089: Replicated KV applies FetchChanged versions beyond the requested count
 
 - Category: correctness, security
+- Score: 72/100
 - Reviewer: `Planck`, confirmed.
 - Affected code:
   - `src/service/replicate_kv_service/local_storage.rs`:
@@ -1992,6 +2001,7 @@ must resolve.
 ### ISSUE-090: Alias cached hint lookup accepts Found from unchecked peers
 
 - Category: correctness, security
+- Score: 70/100
 - Reviewer: `Banach`, confirmed.
 - Affected code:
   - `src/service/alias_service.rs`: cached alias lookup sends
@@ -2015,6 +2025,7 @@ must resolve.
 ### ISSUE-091: Inbound out-of-range stream service ids panic accept tasks
 
 - Category: security, stability
+- Score: 84/100
 - Reviewer: `Laplace`, confirmed.
 - Affected code:
   - `src/msg.rs`: `StreamConnectReq.service` is a wire-controlled
@@ -2039,6 +2050,7 @@ must resolve.
 ### ISSUE-092: Discovery accepts stale advertisements over newer peer addresses
 
 - Category: correctness, security, stability
+- Score: 68/100
 - Reviewer: `Nash`, confirmed.
 - Affected code:
   - `src/discovery.rs`: `PeerDiscovery::apply_sync` accepts any non-expired
@@ -2063,6 +2075,7 @@ must resolve.
 ### ISSUE-093: Discovery tombstones suppress fresh restart advertisements
 
 - Category: correctness, stability under bad-network ordering
+- Score: 64/100
 - Reviewer: `Lagrange`, confirmed.
 - Affected code:
   - `src/discovery.rs`: `PeerDiscovery::remove_remote` records a stop tombstone
@@ -2086,6 +2099,7 @@ must resolve.
 ### ISSUE-094: Pubsub object helper panics on user serialization failure
 
 - Category: correctness, API stability
+- Score: 52/100
 - Reviewer: `Averroes`, confirmed.
 - Affected code:
   - `src/service/pubsub_service.rs`: `PubsubServiceRequester::publish_as_guest_ob`
@@ -2109,6 +2123,7 @@ must resolve.
 ### ISSUE-095: Replicated KV duplicate future broadcasts overwrite pending changes
 
 - Category: correctness, security
+- Score: 74/100
 - Reviewer: `Pauli`, confirmed.
 - Affected code:
   - `src/service/replicate_kv_service/remote_storage.rs`:
@@ -2132,6 +2147,7 @@ must resolve.
 ### ISSUE-096: Replicated KV recv panics on user value serialization failure
 
 - Category: correctness, API stability
+- Score: 55/100
 - Reviewer: `Meitner`, confirmed.
 - Affected code:
   - `src/service/replicate_kv_service.rs`: `ReplicatedKvService::recv`
@@ -2151,6 +2167,7 @@ must resolve.
 ### ISSUE-097: QUIC object writer panics on serialization failure
 
 - Category: correctness, API stability
+- Score: 58/100
 - Reviewer: `Poincare`, confirmed.
 - Affected code:
   - `src/stream.rs`: `write_object` returns `anyhow::Result<()>` but calls
@@ -2170,6 +2187,7 @@ must resolve.
 ### ISSUE-098: QUIC object writer truncates lengths above `u16::MAX`
 
 - Category: correctness, API stability
+- Score: 50/100
 - Reviewer: `Nash the 2nd`, confirmed.
 - Affected code:
   - `src/stream.rs`: `write_object` checks serialized size only against the
@@ -2193,6 +2211,7 @@ must resolve.
 ### ISSUE-099: Replicated KV accepts zero-count FetchChanged as successful repair
 
 - Category: correctness, bad-network stability
+- Score: 64/100
 - Reviewer: `Laplace the 2nd`, confirmed.
 - Affected code:
   - `src/service/replicate_kv_service/local_storage.rs`:
@@ -2217,6 +2236,7 @@ must resolve.
 ### ISSUE-100: Pubsub remote membership sets are unbounded per channel
 
 - Category: high-load stability, resource exhaustion
+- Score: 76/100
 - Reviewer: `Ramanujan the 2nd`, confirmed.
 - Affected code:
   - `src/service/pubsub_service.rs`: inbound `PublisherJoined` inserts
@@ -2242,6 +2262,7 @@ must resolve.
 ### ISSUE-101: Alias cache peer hints are unbounded per alias
 
 - Category: high-load stability, resource exhaustion
+- Score: 70/100
 - Reviewer: `Beauvoir the 2nd`, confirmed.
 - Affected code:
   - `src/service/alias_service.rs`: `AliasServiceInternal.cache` is an
@@ -2269,6 +2290,7 @@ must resolve.
 ### ISSUE-102: Visualization remote peer state is unbounded
 
 - Category: high-load stability, resource exhaustion
+- Score: 66/100
 - Reviewer: `Planck the 2nd`, confirmed.
 - Affected code:
   - `src/service/visualization_service.rs`: `VisualizationService.neighbours`
@@ -2292,6 +2314,7 @@ must resolve.
 ### ISSUE-103: Configured self seed is returned as a remote dial candidate
 
 - Category: correctness, configuration stability
+- Score: 58/100
 - Reviewer: `Carson the 2nd`, confirmed.
 - Affected code:
   - `src/discovery.rs`: `PeerDiscovery::enable_local` records the local peer id
@@ -2316,6 +2339,7 @@ must resolve.
 ### ISSUE-104: Metrics `Info` batches have no service-level row cap
 
 - Category: high-load stability, resource exhaustion
+- Score: 62/100
 - Reviewer: `Maxwell the 2nd`, confirmed.
 - Affected code:
   - `src/service/metrics_service.rs`: `Message::Info` carries a
@@ -2342,6 +2366,7 @@ must resolve.
 ### ISSUE-105: Visualization `Info` batches have no service-level row cap
 
 - Category: high-load stability, resource exhaustion
+- Score: 62/100
 - Reviewer: `Galileo the 2nd`, confirmed.
 - Affected code:
   - `src/service/visualization_service.rs`: `Message::Info` carries a
@@ -2369,6 +2394,7 @@ must resolve.
 ### ISSUE-106: Pubsub heartbeat channel batches have no service-level row cap
 
 - Category: high-load stability, resource exhaustion
+- Score: 68/100
 - Reviewer: `Boyle the 2nd`, confirmed.
 - Affected code:
   - `src/service/pubsub_service.rs`: `PubsubMessage::Heartbeat` carries a
@@ -2395,6 +2421,7 @@ must resolve.
 ### ISSUE-107: Pubsub RPC method names have no service-level length cap
 
 - Category: high-load stability, input validation
+- Score: 56/100
 - Reviewer: `Gibbs the 2nd`, confirmed.
 - Affected code:
   - `src/service/pubsub_service.rs`: `PubsubMessage::GuestPublishRpc`,
@@ -2423,6 +2450,7 @@ must resolve.
 ### ISSUE-108: Empty pubsub channel state is retained after local handle teardown
 
 - Category: high-load stability, lifecycle cleanup
+- Score: 60/100
 - Reviewer: `Euler the 2nd`, confirmed.
 - Affected code:
   - `src/service/pubsub_service.rs`: `InternalMsg::PublisherDestroyed` uses
@@ -2450,6 +2478,7 @@ must resolve.
 ### ISSUE-109: Unsolicited alias `Found` messages create cache hints
 
 - Category: correctness, security, cache poisoning
+- Score: 66/100
 - Reviewer: `Lorentz the 2nd`, confirmed.
 - Affected code:
   - `src/service/alias_service.rs`: `AliasServiceInternal::on_msg` handles
@@ -2475,6 +2504,7 @@ must resolve.
 ### ISSUE-110: Replicated KV snapshots can terminally omit keys updated past max_version
 
 - Category: correctness, bad-network/concurrent-write stability
+- Score: 78/100
 - Reviewer: `Bacon the 2nd`, confirmed.
 - Affected code:
   - `src/service/replicate_kv_service/local_storage.rs`:
@@ -2505,6 +2535,7 @@ must resolve.
 ### ISSUE-111: Replicated KV consumer cancels FetchChanged repair on empty success
 
 - Category: correctness, bad-network stability
+- Score: 72/100
 - Reviewer: `Kepler the 2nd`, confirmed.
 - Affected code:
   - `src/service/replicate_kv_service/remote_storage.rs`:
@@ -2533,6 +2564,7 @@ must resolve.
 ### ISSUE-112: `connect()` accepts the node's own peer address
 
 - Category: correctness, input validation, configuration stability
+- Score: 70/100
 - Reviewer: `Parfit the 2nd`, confirmed.
 - Affected code:
   - `src/requester.rs`: `P2pNetworkRequester::connect` forwards any
@@ -2560,6 +2592,7 @@ must resolve.
 ### ISSUE-113: concurrent `connect()` calls to the same peer are not coalesced
 
 - Category: correctness, high-load stability
+- Score: 74/100
 - Reviewer: `Dewey the 2nd`, confirmed.
 - Affected code:
   - `src/lib.rs`: `P2pNetwork::process_control` suppresses a new
@@ -2594,6 +2627,7 @@ must resolve.
 ### ISSUE-114: Inbound duplicate connections from the same peer are not coalesced
 
 - Category: correctness, high-load stability
+- Score: 76/100
 - Reviewer: `Fermat the 2nd`, confirmed.
 - Affected code:
   - `src/lib.rs`: `P2pNetwork::process_incoming` accepts every inbound QUIC
@@ -2624,6 +2658,7 @@ must resolve.
 ### ISSUE-115: Local pubsub publish RPC answers are not bound to the subscriber handle
 
 - Category: correctness, security, lifecycle stability
+- Score: 72/100
 - Reviewer: `Gauss the 2nd`, confirmed.
 - Affected code:
   - `src/service/pubsub_service/subscriber.rs`:
