@@ -155,6 +155,23 @@ async fn stale_peer_stats_event_must_not_publish_metrics_for_unknown_connection(
 }
 
 #[tokio::test]
+async fn stale_peer_disconnected_event_must_not_emit_user_disconnect() {
+    let (mut node, _addr) = create_node(false, 1, vec![]).await;
+    let stale_conn = ConnectionId::from(404);
+    let peer = PeerId::from(2);
+
+    let event = node
+        .process_internal(100, MainEvent::PeerDisconnected(stale_conn, peer))
+        .expect("stale disconnect event should process");
+
+    assert_eq!(
+        event,
+        P2pNetworkEvent::Continue,
+        "PeerDisconnected for an unknown connection id must be ignored instead of emitted to users"
+    );
+}
+
+#[tokio::test]
 async fn unicast_source_must_be_bound_to_authenticated_connection_peer() {
     let (mut node1, addr1) = create_node(true, 1, vec![]).await;
     let node1_ctx = node1.ctx.clone();

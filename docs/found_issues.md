@@ -1275,3 +1275,26 @@ audited code.
   - Failure summary: processing `MainEvent::PeerStats(ConnectionId(404), ...)`
     on a fresh node makes `node.ctx.metrics()` non-empty; expected stale stats
     for an unknown connection to be ignored or rejected.
+
+### ISSUE-065: Stale disconnect events are emitted to users
+
+- Category: correctness, API event stability
+- Reviewer: `Harvey`, confirmed.
+- Affected code:
+  - `src/lib.rs`: `P2pNetwork::process_internal` handles
+    `MainEvent::PeerDisconnected(conn, peer)` by attempting router/neighbour
+    cleanup and then unconditionally returning
+    `P2pNetworkEvent::PeerDisconnected(conn, peer)`.
+  - `src/neighbours.rs`: `NetworkNeighbours::remove` returns `None` for an
+    unknown connection id, but the caller ignores that result.
+- Impact: stale peer-task disconnect messages can surface as public disconnect
+  events even when the connection was never registered or already removed.
+  Applications can receive false peer-disconnected notifications and corrupt
+  their own connection state. This is distinct from the stale-event route,
+  sync, and metrics issues because it affects the public event stream.
+- Evidence test:
+  - `cargo test stale_peer_disconnected_event_must_not_emit_user_disconnect -- --nocapture`
+  - Failure summary: processing
+    `MainEvent::PeerDisconnected(ConnectionId(404), PeerId(2))` on a fresh
+    node returns `P2pNetworkEvent::PeerDisconnected(...)`; expected the stale
+    event to be ignored as `Continue`.
