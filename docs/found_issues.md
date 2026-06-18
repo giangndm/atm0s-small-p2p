@@ -20,6 +20,7 @@ must resolve.
 ### ISSUE-001: Forged third-party `PeerStopped` removes a live peer
 
 - Category: security, correctness
+- Score: 92/100
 - Reviewer: `Leibniz`, confirmed. Also confirmed by `Bernoulli`, `Wegener`,
   and `Carver`.
 - Affected code:
@@ -40,6 +41,7 @@ must resolve.
 ### ISSUE-002: Future-dated handshake timestamps are accepted
 
 - Category: security
+- Score: 74/100
 - Reviewer: `Goodall`, confirmed.
 - Affected code:
   - `src/secure.rs`: `validate_handshake` rejects only timestamps older than
@@ -54,6 +56,7 @@ must resolve.
 ### ISSUE-003: Active route flaps on tiny RTT jitter or equal-cost updates
 
 - Category: stability, bad-network correctness
+- Score: 68/100
 - Reviewer: `Wegener`, confirmed.
 - Affected code:
   - `src/peer/peer_internal.rs`: raw QUIC RTT is fed into routing every tick.
@@ -74,6 +77,7 @@ must resolve.
 ### ISSUE-004: `PeerStopped(seed)` preserves seed discovery but deletes seed route
 
 - Category: correctness, security
+- Score: 86/100
 - Reviewer: `Bernoulli`, confirmed.
 - Affected code:
   - `src/discovery.rs`: `remove_remote` ignores tombstones for configured seeds.
@@ -88,6 +92,7 @@ must resolve.
 ### ISSUE-005: Discovery accepts advertisements for the local peer id
 
 - Category: correctness, security
+- Score: 62/100
 - Reviewer: `Bernoulli`, confirmed.
 - Affected code:
   - `src/discovery.rs`: `apply_sync` inserts advertised peers without rejecting
@@ -102,6 +107,7 @@ must resolve.
 ### ISSUE-006: Router stores and advertises routes to the local peer
 
 - Category: correctness, route-poisoning stability
+- Score: 70/100
 - Reviewer: `Bernoulli`, confirmed.
 - Affected code:
   - `src/router.rs`: `apply_sync` stores every advertised peer and filters only
@@ -116,6 +122,7 @@ must resolve.
 ### ISSUE-007: Over-`MAX_HOPS` routes are still usable for forwarding
 
 - Category: correctness, stability under route loops
+- Score: 72/100
 - Reviewer: `Bernoulli`, confirmed.
 - Affected code:
   - `src/router.rs`: over-hop routes are filtered only in `create_sync`, not
@@ -131,6 +138,7 @@ must resolve.
 ### ISSUE-008: Routes learned from a peer are advertised back to that peer
 
 - Category: stability, bad-network loop risk
+- Score: 58/100
 - Reviewer: `Bernoulli`, confirmed.
 - Affected code:
   - `src/router.rs`: `create_sync(dest)` filters only `addr != dest` and hop
@@ -145,6 +153,7 @@ must resolve.
 ### ISSUE-009: Untrusted discovery timestamps can overflow or create immortal peers
 
 - Category: security, correctness
+- Score: 78/100
 - Reviewer: `Bernoulli`, confirmed.
 - Affected code:
   - `src/discovery.rs`: computes `last_updated + TIMEOUT_AFTER` and
@@ -159,6 +168,7 @@ must resolve.
 ### ISSUE-010: Route sync payloads are unbounded at application level
 
 - Category: high-load stability, resource exhaustion
+- Score: 84/100
 - Reviewer: `Bernoulli`, confirmed.
 - Affected code:
   - `src/stream.rs`: main control stream uses `LengthDelimitedCodec::default()`.
@@ -176,6 +186,7 @@ must resolve.
 ### ISSUE-011: `open_stream` succeeds after destination service receiver is closed
 
 - Category: correctness, pipe reliability
+- Score: 76/100
 - Reviewer: `Linnaeus`, confirmed.
 - Affected code:
   - `src/peer/peer_internal.rs`: local stream delivery uses
@@ -192,6 +203,7 @@ must resolve.
 ### ISSUE-012: `open_stream` succeeds when destination service queue is full
 
 - Category: high-load stability, pipe reliability
+- Score: 78/100
 - Reviewer: `Pasteur`, confirmed.
 - Affected code:
   - `src/peer/peer_internal.rs`: local stream delivery uses a bounded service
@@ -208,6 +220,7 @@ must resolve.
 ### ISSUE-013: `open_stream` to the local peer panics instead of returning an error
 
 - Category: correctness, API stability
+- Score: 57/100
 - Reviewer: `Kuhn`, confirmed.
 - Affected code:
   - `src/service.rs`: service `open_stream` APIs delegate directly to
@@ -225,6 +238,7 @@ must resolve.
 ### ISSUE-014: Unicast sender identity is not bound to the authenticated connection
 
 - Category: security, correctness
+- Score: 94/100
 - Reviewer: `Carson`, confirmed.
 - Affected code:
   - `src/msg.rs`: `PeerMessage::Unicast(source, dest, ...)` carries a
@@ -245,6 +259,7 @@ must resolve.
 ### ISSUE-015: Broadcast sender identity is not bound to the authenticated connection
 
 - Category: security, correctness
+- Score: 94/100
 - Reviewer: `Carson`, confirmed. Also confirmed by external review subagent
   `019eda94-71c2-73c1-b06f-0b40ff01a1a7`.
 - Affected code:
@@ -265,6 +280,7 @@ must resolve.
 ### ISSUE-016: `connect()` can report success before peer identity is authenticated
 
 - Category: correctness, API stability
+- Score: 72/100
 - Reviewer: `Maxwell`, confirmed.
 - Affected code:
   - `src/requester.rs`: `P2pNetworkRequester::connect` waits only for the
@@ -284,6 +300,7 @@ must resolve.
 ### ISSUE-017: Broadcast duplicate suppression is keyed only by message id
 
 - Category: security, correctness, bad-network stability
+- Score: 82/100
 - Reviewer: `Pascal`, confirmed.
 - Affected code:
   - `src/ctx.rs`: `received_broadcast_msg` is an `LruCache<BroadcastMsgId, ()>`.
@@ -304,6 +321,7 @@ must resolve.
 ### ISSUE-018: Stream sender identity is not bound to the authenticated connection
 
 - Category: security, correctness, pipe reliability
+- Score: 93/100
 - Reviewer: `Rawls`, confirmed.
 - Affected code:
   - `src/msg.rs`: `StreamConnectReq` carries a peer-controlled `source`.
@@ -323,6 +341,7 @@ must resolve.
 ### ISSUE-019: Alias local registration refcount overflows after 255 guards
 
 - Category: high-load stability, correctness
+- Score: 54/100
 - Reviewer: `Ohm`, confirmed.
 - Affected code:
   - `src/service/alias_service.rs`: local alias registrations are counted in
@@ -342,6 +361,7 @@ must resolve.
 ### ISSUE-020: Pubsub RPC answers are accepted by `RpcId` only
 
 - Category: security, correctness
+- Score: 88/100
 - Reviewer: `Popper`, confirmed.
 - Affected code:
   - `src/service/pubsub_service.rs`: inbound `PublishRpcAnswer(data, rpc_id)`
