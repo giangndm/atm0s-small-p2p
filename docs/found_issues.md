@@ -1810,3 +1810,29 @@ audited code.
     response containing `Changed { version: Version(1), ... }` advances
     `state.version` from `Version(0)` to `Version(1)`; expected it to be
     rejected.
+
+### ISSUE-087: Replicated KV accepts unsolicited FetchChanged errors as forced resyncs
+
+- Category: correctness, security, stability
+- Reviewer: `Bacon`, confirmed.
+- Affected code:
+  - `src/service/replicate_kv_service.rs`: any deserialized unicast
+    `RpcEvent::RpcRes` from a peer is forwarded to that peer's `RemoteStore`
+    without request correlation.
+  - `src/service/replicate_kv_service/remote_storage.rs`:
+    `WorkingState::on_rpc_res` accepts
+    `RpcRes::FetchChanged(Err(_))` without checking that `self.sending_req`
+    is waiting for a `FetchChanged` response, and schedules `SyncFull`.
+  - `src/service/replicate_kv_service/remote_storage.rs`:
+    `SyncFullState::init` clears all existing remote slots, emits deletes, and
+    queues a full snapshot request.
+- Impact: a peer can send a single unsolicited `FetchChanged` error and force
+  the receiver to leave working state, delete the peer's replicated slots, emit
+  local delete events, and start full-sync churn. This is distinct from
+  ISSUE-086, which covers unsolicited success responses advancing/mutating
+  state, and from ISSUE-046, which covers unbounded success-batch memory growth.
+- Evidence test:
+  - `cargo test working_state_must_reject_unsolicited_fetch_changed_error -- --nocapture`
+  - Failure summary: with no outstanding `FetchChanged` request, an unsolicited
+    `FetchChanged(Err(MissingData))` clears existing slot key `7`; expected the
+    remote store to remain in working state with its slots intact.

@@ -407,7 +407,7 @@ where
 mod tests {
     use std::time::Duration;
 
-    use super::super::messages::SnapshotData;
+    use super::super::messages::{FetchChangedError, SnapshotData};
 
     use super::*;
 
@@ -1225,6 +1225,39 @@ mod tests {
             ctx.outs.pop_front(),
             None,
             "unsolicited FetchChanged success must not emit local KvEvent changes"
+        );
+    }
+
+    #[test]
+    fn working_state_must_reject_unsolicited_fetch_changed_error() {
+        let now = Instant::now();
+        let mut remote: RemoteStore<u16, u16, u16> = RemoteStore {
+            ctx: StateCtx {
+                remote: 1,
+                slots: BTreeMap::from([(7, Slot::new(70, Version(1)))]),
+                outs: VecDeque::new(),
+                next_state: None,
+            },
+            state: RemoteStoreState::Working(WorkingState::new(Version(1))),
+            last_active: now,
+        };
+
+        remote.on_rpc_res(RpcRes::FetchChanged(Err(FetchChangedError::MissingData)));
+
+        assert_eq!(
+            remote.ctx.slots,
+            BTreeMap::from([(7, Slot::new(70, Version(1)))]),
+            "unsolicited FetchChanged errors must not clear existing remote slots"
+        );
+        assert_eq!(
+            remote.pop_out(),
+            None,
+            "unsolicited FetchChanged errors must not emit deletes or start a full resync"
+        );
+        assert_eq!(
+            remote.state,
+            RemoteStoreState::Working(WorkingState::new(Version(1))),
+            "unsolicited FetchChanged errors must not leave WorkingState"
         );
     }
 
