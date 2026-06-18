@@ -115,6 +115,11 @@ pub(crate) fn encode_publish_for_test(channel: PubsubChannelId, data: Vec<u8>) -
 }
 
 #[cfg(test)]
+pub(crate) fn encode_publish_rpc_for_test(channel: PubsubChannelId, data: Vec<u8>, rpc_id: RpcId, method: String) -> Vec<u8> {
+    bincode::serialize(&PubsubMessage::PublishRpc(channel, data, rpc_id, method)).expect("test message should serialize")
+}
+
+#[cfg(test)]
 pub(crate) fn encode_heartbeat_for_test(channel: PubsubChannelId, publish: bool, subscribe: bool) -> Vec<u8> {
     bincode::serialize(&PubsubMessage::Heartbeat(vec![ChannelHeartbeat { channel, publish, subscribe }])).expect("test message should serialize")
 }

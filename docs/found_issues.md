@@ -892,3 +892,23 @@ audited code.
   - Failure summary: after locking the snapshot at `Version(1)`, a continuation
     response declaring `Version(2)` stores key `2` instead of rejecting the
     mismatched page.
+
+### ISSUE-048: Pubsub RPC member messages bypass channel membership
+
+- Category: security, correctness
+- Reviewer: `Kierkegaard`, confirmed.
+- Affected code:
+  - `src/service/pubsub_service.rs`: inbound `PubsubMessage::PublishRpc`
+    delivers method, payload, `RpcId`, and remote source to local subscribers
+    without checking that `from_peer` is in `remote_publishers`.
+  - `src/service/pubsub_service.rs`: inbound `PubsubMessage::FeedbackRpc` has
+    the symmetric missing check against `remote_subscribers`.
+- Impact: any connected authenticated peer can invoke subscriber or publisher
+  RPC handlers for an existing channel without joining that channel. This is
+  related to ISSUE-039's ordinary `Publish`/`Feedback` data injection, but
+  distinct because it reaches RPC method handlers and can trigger side effects
+  and responses.
+- Evidence test:
+  - `cargo test pubsub_publish_rpc_must_require_remote_publisher_membership -- --nocapture`
+  - Failure summary: node2 injects `PubsubMessage::PublishRpc` into node1's
+    subscriber without ever joining the channel as a publisher.
