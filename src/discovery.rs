@@ -265,6 +265,23 @@ mod test {
     }
 
     #[test_log::test]
+    fn graceful_stop_tombstone_must_allow_fresh_restart_advertise() {
+        let stopped = peer_addr("2@127.0.0.1:9001");
+        let restarted = peer_addr("2@127.0.0.1:9002");
+        let mut discovery = PeerDiscovery::default();
+
+        discovery.apply_sync(100, PeerDiscoverySync(vec![(stopped.peer_id(), 100, stopped.network_address().clone())]));
+        discovery.remove_remote(110, &stopped.peer_id());
+        discovery.apply_sync(120, PeerDiscoverySync(vec![(restarted.peer_id(), 120, restarted.network_address().clone())]));
+
+        assert_eq!(
+            discovery.remotes().collect::<Vec<_>>(),
+            vec![restarted],
+            "fresh restart advertisements newer than the stop event must not be suppressed by the stale-stop tombstone"
+        );
+    }
+
+    #[test_log::test]
     fn apply_sync_rejects_local_peer_advertisement() {
         let local = PeerId(1);
         let local_addr = peer_addr("1@127.0.0.1:9000");

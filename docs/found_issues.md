@@ -1963,3 +1963,26 @@ audited code.
     `127.0.0.1:9001`, a later sync containing timestamp `100` and address
     `127.0.0.1:9000` overwrites the newer address; expected the stale
     advertisement to be ignored.
+
+### ISSUE-093: Discovery tombstones suppress fresh restart advertisements
+
+- Category: correctness, stability under bad-network ordering
+- Reviewer: `Lagrange`, confirmed.
+- Affected code:
+  - `src/discovery.rs`: `PeerDiscovery::remove_remote` records a stop tombstone
+    timestamp for non-seed peers.
+  - `src/discovery.rs`: `PeerDiscovery::apply_sync` rejects every advertisement
+    for a peer while the tombstone is fresh, without comparing the
+    advertisement's `last_updated` timestamp against the tombstone timestamp.
+- Impact: a non-seed node that gracefully stops and quickly restarts at a new
+  address can remain undiscoverable for `TIMEOUT_AFTER` despite fresh gossip.
+  This can delay reconnects and create churn in lossy or reordered networks.
+  This is distinct from ISSUE-051, which covers neighbour cleanup after
+  `PeerStopped`; ISSUE-055, which covers configured seed ids; and ISSUE-092,
+  which covers stale advertisements overwriting newer active discovery records.
+- Evidence test:
+  - `cargo test graceful_stop_tombstone_must_allow_fresh_restart_advertise -- --nocapture`
+  - Failure summary: after learning peer `2` at timestamp `100`, recording a
+    stop at timestamp `110`, and receiving a fresh restart advertisement at
+    timestamp `120` with address `127.0.0.1:9002`, `remotes()` stays empty;
+    expected the fresh restart advertisement to be accepted.
