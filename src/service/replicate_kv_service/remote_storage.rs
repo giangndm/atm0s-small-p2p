@@ -607,6 +607,43 @@ mod tests {
     }
 
     #[test]
+    fn full_sync_must_reject_snapshot_slot_past_biggest_key() {
+        let mut ctx: StateCtx<u16, u16, u16> = StateCtx {
+            remote: 1,
+            slots: BTreeMap::new(),
+            outs: VecDeque::new(),
+            next_state: None,
+        };
+
+        let now = Instant::now();
+        let mut state = SyncFullState::default();
+        state.init(&mut ctx, now);
+        ctx.outs.clear();
+
+        state.on_rpc_res(
+            &mut ctx,
+            now,
+            RpcRes::FetchSnapshot(
+                Some(SnapshotData {
+                    slots: vec![(2, Slot::new(2, Version(1)))],
+                    next_key: None,
+                    biggest_key: 1,
+                }),
+                Version(1),
+            ),
+        );
+
+        assert!(
+            !ctx.slots.contains_key(&2),
+            "snapshot slots beyond biggest_key must be rejected"
+        );
+        assert_eq!(
+            ctx.next_state, None,
+            "full sync must not complete after accepting a slot beyond biggest_key"
+        );
+    }
+
+    #[test]
     fn full_sync_must_reject_continuation_snapshot_version_mismatch() {
         let mut ctx: StateCtx<u16, u16, u16> = StateCtx {
             remote: 1,

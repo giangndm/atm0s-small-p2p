@@ -1697,3 +1697,26 @@ audited code.
     `RpcRes::FetchSnapshot(Some(SnapshotData { slots: vec![], next_key: None, ... }), Version(1))`
     sets `ctx.next_state` to `Working(Version(1))`; expected the invalid empty
     nonzero snapshot to be rejected.
+
+### ISSUE-082: Replicated KV full sync accepts snapshot slots beyond biggest_key
+
+- Category: correctness, security
+- Reviewer: `Erdos`, confirmed.
+- Affected code:
+  - `src/service/replicate_kv_service/remote_storage.rs`:
+    `SyncFullState::on_rpc_res` trusts `SnapshotData.biggest_key` for
+    pagination but does not validate returned slot keys against that bound.
+  - `src/service/replicate_kv_service/remote_storage.rs`: every
+    `snapshot.slots` entry is emitted and inserted into `ctx.slots` before any
+    range validation.
+- Impact: a malicious or malformed peer can send a snapshot page declaring
+  `biggest_key = 1` while including a slot for key `2`. The receiver stores
+  the out-of-range slot and can complete full sync with data that the advertised
+  snapshot range says should not exist. This is distinct from ISSUE-034, which
+  validates slot versions, and ISSUE-037, which covers invalid continuation
+  bounds.
+- Evidence test:
+  - `cargo test full_sync_must_reject_snapshot_slot_past_biggest_key -- --nocapture`
+  - Failure summary: a snapshot response with
+    `slots = [(2, Slot::new(2, Version(1)))]` and `biggest_key = 1` inserts key
+    `2` into `ctx.slots`; expected out-of-range snapshot slots to be rejected.
