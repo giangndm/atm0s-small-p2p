@@ -1451,6 +1451,51 @@ mod tests {
     }
 
     #[test]
+    fn working_state_must_continue_repair_after_partial_fetch_changed_success() {
+        let mut ctx: StateCtx<u16, u16, u16> = StateCtx {
+            remote: 1,
+            slots: BTreeMap::new(),
+            outs: VecDeque::new(),
+            next_state: None,
+        };
+
+        let now = Instant::now();
+        let mut state = WorkingState::new(Version(0));
+
+        state.on_broadcast(&mut ctx, now, BroadcastEvent::Version(Version(5)));
+        assert_eq!(
+            ctx.outs.pop_front(),
+            Some(Event::NetEvent(NetEvent::Unicast(1, RpcEvent::RpcReq(RpcReq::FetchChanged { from: Version(1), count: 5 }))))
+        );
+        assert_eq!(ctx.outs.pop_front(), None);
+
+        state.on_rpc_res(
+            &mut ctx,
+            now,
+            RpcRes::FetchChanged(Ok(vec![
+                Changed {
+                    key: 1,
+                    version: Version(1),
+                    action: Action::Set(10),
+                },
+                Changed {
+                    key: 2,
+                    version: Version(2),
+                    action: Action::Set(20),
+                },
+            ])),
+        );
+
+        assert_eq!(ctx.outs.pop_front(), Some(Event::KvEvent(KvEvent::Set(Some(1), 1, 10))));
+        assert_eq!(ctx.outs.pop_front(), Some(Event::KvEvent(KvEvent::Set(Some(1), 2, 20))));
+        assert_eq!(
+            ctx.outs.pop_front(),
+            Some(Event::NetEvent(NetEvent::Unicast(1, RpcEvent::RpcReq(RpcReq::FetchChanged { from: Version(3), count: 3 })))),
+            "partial FetchChanged success must continue repairing the remaining requested versions"
+        );
+    }
+
+    #[test]
     fn test_working_state_resend_timeout_fetch_changed() {
         let mut ctx: StateCtx<u16, u16, u16> = StateCtx {
             remote: 1,

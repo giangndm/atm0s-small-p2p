@@ -3386,3 +3386,36 @@ must resolve.
     `RpcRes::FetchSnapshot(None, Version(99))`; no output is produced, but
     `last_active` changes from the stale instant to `Instant::now()`, preventing
     timeout cleanup from recognizing the remote as inactive.
+
+### ISSUE-141: Replicated KV drops remaining repair range after partial FetchChanged success
+
+- Category: correctness, replication consistency, bad-network stability
+- Score: 64/100
+- Reviewer: `Darwin the 2nd`, confirmed.
+- Affected code:
+  - `src/service/replicate_kv_service/local_storage.rs`:
+    `LocalStore::changeds_from_to` caps a `FetchChanged` response to
+    `count.min(self.compose_max_pkts as u64)`, so non-empty partial repair
+    responses are valid producer behavior.
+  - `src/service/replicate_kv_service/remote_storage.rs`:
+    `WorkingState::on_broadcast` requests the whole missing version range when
+    it receives a higher `BroadcastEvent::Version`.
+  - `src/service/replicate_kv_service/remote_storage.rs`:
+    `WorkingState::on_rpc_res` applies returned `FetchChanged` entries and then
+    unconditionally clears `self.sending_req`, without continuing the remaining
+    requested range.
+- Impact: if a receiver asks for versions `1..=5` and the producer returns a
+  valid capped prefix such as versions `1` and `2`, the receiver advances to
+  version `2`, clears the in-flight repair, and emits no follow-up request for
+  versions `3..=5`. The replica can remain stale until another version
+  broadcast happens to re-trigger repair. This is distinct from ISSUE-111,
+  which covers empty successful responses with no progress; ISSUE-071, which
+  covers stale retries after broadcasts already fill the gap; ISSUE-077/099,
+  which cover producer-side empty success; and ISSUE-089, which covers applying
+  versions beyond the requested range.
+- Evidence test:
+  - `cargo test working_state_must_continue_repair_after_partial_fetch_changed_success`
+  - Failure summary: after `FetchChanged { from: Version(1), count: 5 }`
+    receives a valid partial success containing versions `1` and `2`, the test
+    expects a follow-up `FetchChanged { from: Version(3), count: 3 }`; current
+    code emits `None`.
