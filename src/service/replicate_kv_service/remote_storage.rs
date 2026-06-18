@@ -644,6 +644,45 @@ mod tests {
     }
 
     #[test]
+    fn full_sync_snapshot_pages_must_be_bounded() {
+        const MAX_SNAPSHOT_SLOTS_PER_PAGE: u16 = 1024;
+        let mut ctx: StateCtx<u16, u16, u16> = StateCtx {
+            remote: 1,
+            slots: BTreeMap::new(),
+            outs: VecDeque::new(),
+            next_state: None,
+        };
+
+        let now = Instant::now();
+        let mut state = SyncFullState::default();
+        state.init(&mut ctx, now);
+        ctx.outs.clear();
+
+        let slots = (0..=MAX_SNAPSHOT_SLOTS_PER_PAGE)
+            .map(|key| (key, Slot::new(key, Version(key as u64 + 1))))
+            .collect::<Vec<_>>();
+
+        state.on_rpc_res(
+            &mut ctx,
+            now,
+            RpcRes::FetchSnapshot(
+                Some(SnapshotData {
+                    slots,
+                    next_key: None,
+                    biggest_key: MAX_SNAPSHOT_SLOTS_PER_PAGE,
+                }),
+                Version(MAX_SNAPSHOT_SLOTS_PER_PAGE as u64 + 1),
+            ),
+        );
+
+        assert!(
+            ctx.slots.len() <= MAX_SNAPSHOT_SLOTS_PER_PAGE as usize,
+            "full-sync snapshot pages must be capped, got {} slots",
+            ctx.slots.len()
+        );
+    }
+
+    #[test]
     fn full_sync_must_reject_unsorted_snapshot_slots() {
         let mut ctx: StateCtx<u16, u16, u16> = StateCtx {
             remote: 1,

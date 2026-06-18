@@ -3007,3 +3007,29 @@ must resolve.
     `AliasService::run_loop()` panics at `src/service/alias_service.rs` with
     `service channel should work`; expected `Ok(Err(_))` from the public
     `Result` API.
+
+### ISSUE-131: Replicated KV full-sync snapshot pages are unbounded
+
+- Category: high-load stability, bad-network stability, resource exhaustion
+- Score: 62/100
+- Reviewer: `Erdos the 2nd`, confirmed.
+- Affected code:
+  - `src/service/replicate_kv_service/remote_storage.rs`:
+    `SyncFullState::on_rpc_res` handles
+    `RpcRes::FetchSnapshot(Some(snapshot), version)`.
+  - `src/service/replicate_kv_service/remote_storage.rs`: every
+    `snapshot.slots` entry is emitted as `KvEvent::Set` and inserted into
+    `ctx.slots` without an application-level per-page slot cap.
+- Impact: a malformed or adversarial peer can send a single full-sync snapshot
+  page with many small slots and force the receiver to allocate replicated
+  state and enqueue one local event per slot. Transport frame limits reduce the
+  absolute packet size but do not enforce the replicated-KV page budget or
+  event count, so this remains a memory/event-queue pressure issue under bad
+  network input. This is distinct from ISSUE-045, which covers unbounded remote
+  store count, and from ISSUE-081 through ISSUE-085, which cover invalid
+  snapshot contents such as empty, out-of-range, unsorted, or duplicate pages.
+- Evidence test:
+  - `cargo test full_sync_snapshot_pages_must_be_bounded -- --nocapture`
+  - Failure summary: one `FetchSnapshot` response containing 1,025 slots is
+    accepted into `ctx.slots`; expected full-sync snapshot pages to be capped at
+    or below 1,024 slots.
