@@ -649,6 +649,23 @@ async fn pubsub_publish_rpc_no_destination() {
 }
 
 #[test(tokio::test)]
+async fn pubsub_publisher_after_service_drop_must_not_be_dead_on_arrival() {
+    let (mut node, _addr) = create_node(true, 1, vec![]).await;
+    let service = PubsubService::new(node.create_service(0.into()));
+    let requester = service.requester();
+    drop(service);
+    tokio::spawn(async move { while node.recv().await.is_ok() {} });
+
+    let mut publisher = requester.publisher(PubsubChannelId::from(1000)).await;
+    let result = timeout(Duration::from_millis(50), publisher.recv()).await;
+
+    assert!(
+        result.is_err(),
+        "creating a publisher after PubsubService drop must fail instead of returning an immediately closed handle"
+    );
+}
+
+#[test(tokio::test)]
 async fn pubsub_publish_rpc_answer_must_be_bound_to_expected_responder() {
     let (mut node1, addr1) = create_node(true, 1, vec![]).await;
     let mut service1 = PubsubService::new(node1.create_service(0.into()));

@@ -1108,3 +1108,30 @@ audited code.
     `MainEvent::PeerConnected(ConnectionId(404), PeerId(2), 10)`, the router
     returns `Some(Next(ConnectionId(404)))`; expected no route because that
     connection id was never registered as a neighbour.
+
+### ISSUE-058: Pubsub requester can create dead-on-arrival handles
+
+- Category: correctness, API stability
+- Reviewer: `Kant`, confirmed.
+- Affected code:
+  - `src/service/pubsub_service.rs`: `PubsubServiceRequester::publisher`
+    always returns `Publisher::build(...)` and has no error path if the
+    `PubsubService` task/control receiver has gone away.
+  - `src/service/pubsub_service/publisher.rs`: `Publisher::build` ignores the
+    result of `control_tx.send(InternalMsg::PublisherCreated(...))`; when the
+    send fails, the registration sender is dropped and the returned
+    publisher's event receiver is already closed.
+  - `src/service/pubsub_service.rs` and
+    `src/service/pubsub_service/subscriber.rs`: `subscriber` uses the same
+    fire-and-forget registration shape.
+- Impact: a cloned `PubsubServiceRequester` can outlive `PubsubService` and
+  still manufacture publisher/subscriber handles that were never registered
+  with the service. Callers receive a normal-looking handle, but its event
+  channel is closed immediately and later operations fail through unrelated
+  internal-channel errors instead of creation returning a clear error.
+- Evidence test:
+  - `cargo test pubsub_publisher_after_service_drop_must_not_be_dead_on_arrival -- --nocapture`
+  - Failure summary: after dropping `PubsubService`, `requester.publisher(...)`
+    returns a `Publisher`, but `publisher.recv()` returns immediately instead
+    of waiting for events; expected handle creation to fail or avoid returning
+    an already-closed publisher.
