@@ -1449,3 +1449,27 @@ audited code.
     `Changed(version=1)` fills the gap and advances the state to `Version(2)`,
     but ticking after `REQUEST_TIMEOUT` still emits the obsolete
     `FetchChanged { from: Version(1), count: 1 }` instead of no retry.
+
+### ISSUE-072: Dropped service requesters can still send unicast
+
+- Category: correctness, service lifecycle stability
+- Reviewer: `Arendt`, confirmed.
+- Affected code:
+  - `src/service.rs`: `P2pServiceRequester` is cloneable and keeps only
+    `service`, plus `SharedCtx`, so it outlives the owning `P2pService`.
+  - `src/service.rs`: `P2pServiceRequester::send_unicast` delegates directly to
+    `SharedCtx::send_unicast` without checking that the service receiver is
+    still alive.
+  - `src/ctx.rs`: `SharedCtx::send_unicast` sends `PeerMessage::Unicast` with
+    the supplied service id as long as a route exists.
+- Impact: after a `P2pService` is dropped, a previously cloned requester can
+  still send unicast messages under that service id. Remote peers receive data
+  from a service instance whose local owner has already been destroyed. This is
+  distinct from ISSUE-060, which covers local service-id reservation after drop,
+  and from ISSUE-069/070, which cover pubsub-specific publisher/subscriber
+  requesters.
+- Evidence test:
+  - `cargo test dropped_service_requester_must_not_continue_sending_unicast -- --nocapture`
+  - Failure summary: after dropping node1's `P2pService`, a cloned
+    `P2pServiceRequester` sends `stale-service-unicast`, and node2's service
+    receives `P2pServiceEvent::Unicast`.
