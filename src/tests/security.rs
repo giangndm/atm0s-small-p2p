@@ -95,6 +95,22 @@ async fn peer_stopped_must_remove_stopped_neighbour_immediately() {
 }
 
 #[tokio::test]
+async fn stale_peer_connected_event_must_not_install_unusable_route() {
+    let (mut node, _addr) = create_node(false, 1, vec![]).await;
+    let stale_conn = ConnectionId::from(404);
+    let peer = PeerId::from(2);
+
+    node.process_internal(100, MainEvent::PeerConnected(stale_conn, peer, 10))
+        .expect("stale peer connected event should process");
+
+    assert_eq!(
+        node.router.action(&peer),
+        None,
+        "PeerConnected for an unknown connection id must not create a route without a live peer alias"
+    );
+}
+
+#[tokio::test]
 async fn unicast_source_must_be_bound_to_authenticated_connection_peer() {
     let (mut node1, addr1) = create_node(true, 1, vec![]).await;
     let node1_ctx = node1.ctx.clone();

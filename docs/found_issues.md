@@ -1082,3 +1082,25 @@ audited code.
   - Failure summary: the test fills a synthetic bounded peer control queue,
     then `SharedCtx::open_stream` fails the 50 ms timeout assertion because it
     is blocked while awaiting admission of `PeerConnectionControl::OpenStream`.
+
+### ISSUE-057: Stale peer-connected events install unusable routes
+
+- Category: correctness, async race stability
+- Reviewer: `Russell`, confirmed.
+- Affected code:
+  - `src/lib.rs`: `P2pNetwork::process_internal` handles
+    `MainEvent::PeerConnected` by calling `router.set_direct(conn, peer,
+    ttl_ms)` before checking whether the connection id exists in
+    `neighbours`.
+  - `src/neighbours.rs`: `NetworkNeighbours::mark_connected` returns `None`
+    for an unknown connection id, but the caller ignores that result.
+- Impact: a stale or otherwise unknown internal `PeerConnected` event can
+  install a direct router path to a connection id that has no live neighbour or
+  peer alias. Later traffic can observe a route but fail to find the underlying
+  connection, producing noisy path state and failed sends.
+- Evidence test:
+  - `cargo test stale_peer_connected_event_must_not_install_unusable_route -- --nocapture`
+  - Failure summary: after processing
+    `MainEvent::PeerConnected(ConnectionId(404), PeerId(2), 10)`, the router
+    returns `Some(Next(ConnectionId(404)))`; expected no route because that
+    connection id was never registered as a neighbour.
