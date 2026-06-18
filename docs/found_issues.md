@@ -934,3 +934,24 @@ audited code.
   - Failure summary: a full synthetic peer control channel makes
     `SharedCtx::send_broadcast` exceed the 50 ms timeout instead of completing
     without blocking on that peer.
+
+### ISSUE-050: Unicast send can block on a congested peer control queue
+
+- Category: high-load stability, bad-network stability
+- Reviewer: `Ramanujan`, confirmed.
+- Affected code:
+  - `src/ctx.rs`: `SharedCtx::send_unicast` awaits
+    `conn_alias.send(...)` for the selected next hop.
+  - `src/peer/peer_alias.rs`: `PeerConnectionAlias::send` awaits a bounded peer
+    control channel.
+  - `src/service/alias_service.rs`, `src/service/visualization_service.rs`,
+    and `src/service/pubsub_service.rs` use awaited unicast paths for replies
+    or directed member traffic.
+- Impact: a stalled or congested selected peer queue can block a service loop
+  on a single unicast. This is distinct from ISSUE-049, which covers broadcast
+  fanout and starvation of later peers.
+- Evidence test:
+  - `cargo test send_unicast_must_not_block_on_full_peer_control_queue -- --nocapture`
+  - Failure summary: a full synthetic peer control channel makes
+    `SharedCtx::send_unicast` exceed the 50 ms timeout instead of failing fast
+    or using the nonblocking unicast path.
