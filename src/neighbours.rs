@@ -13,7 +13,7 @@ impl NetworkNeighbours {
     }
 
     pub fn has_peer(&self, peer: &PeerId) -> bool {
-        self.conns.values().any(|c| c.peer_id().eq(&Some(*peer)))
+        self.conns.values().any(|c| c.is_connected() && c.peer_id().eq(&Some(*peer)))
     }
 
     pub fn mark_connected(&mut self, conn_id: &ConnectionId, peer: PeerId) -> Option<()> {

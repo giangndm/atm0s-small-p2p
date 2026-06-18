@@ -39,11 +39,17 @@ impl PeerConnectionAlias {
     }
 
     pub(crate) fn try_send(&self, msg: PeerMessage) -> anyhow::Result<()> {
-        Ok(self.control_tx.try_send(PeerConnectionControl::Send(msg))?)
+        Ok(self.control_tx.try_send(PeerConnectionControl::Send(msg, None))?)
     }
 
     pub(crate) async fn send(&self, msg: PeerMessage) -> anyhow::Result<()> {
-        Ok(self.control_tx.send(PeerConnectionControl::Send(msg)).await?)
+        Ok(self.control_tx.send(PeerConnectionControl::Send(msg, None)).await?)
+    }
+
+    pub(crate) async fn send_wait(&self, msg: PeerMessage) -> anyhow::Result<()> {
+        let (tx, rx) = oneshot::channel();
+        self.control_tx.send(PeerConnectionControl::Send(msg, Some(tx))).await?;
+        rx.await?
     }
 
     pub(crate) async fn open_stream(&self, service: P2pServiceId, source: PeerId, dest: PeerId, meta: Vec<u8>) -> anyhow::Result<P2pQuicStream> {

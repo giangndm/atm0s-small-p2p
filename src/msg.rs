@@ -18,6 +18,7 @@ impl BroadcastMsgId {
 #[derive(Debug, Serialize, Deserialize)]
 pub enum PeerMessage {
     Sync { route: RouterTableSync, advertise: PeerDiscoverySync },
+    PeerStopped(PeerId),
     Broadcast(PeerId, P2pServiceId, BroadcastMsgId, Vec<u8>),
     Unicast(PeerId, PeerId, P2pServiceId, Vec<u8>),
 }

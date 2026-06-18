@@ -138,6 +138,22 @@ impl RouterTable {
         self.peers.retain(|_k, v| v.best().is_some());
     }
 
+    fn del_peer(&mut self, peer: &PeerId) {
+        self.peers.remove(peer);
+
+        let direct_conns = self.directs.iter().filter_map(|(conn, (direct_peer, _))| direct_peer.eq(peer).then_some(*conn)).collect::<Vec<_>>();
+
+        for conn in direct_conns {
+            self.directs.remove(&conn);
+            for (route_peer, memory) in self.peers.iter_mut() {
+                if memory.paths.remove(&conn).is_some() {
+                    Self::select_best_for(route_peer, memory);
+                }
+            }
+        }
+        self.peers.retain(|_k, v| v.best().is_some());
+    }
+
     fn action(&self, dest: &PeerId) -> Option<RouteAction> {
         if self.peer_id.eq(dest) {
             Some(RouteAction::Local)
@@ -246,6 +262,10 @@ impl SharedRouterTable {
 
     pub fn del_direct(&self, conn: &ConnectionId) {
         self.table.write().del_direct(conn);
+    }
+
+    pub fn del_peer(&self, peer: &PeerId) {
+        self.table.write().del_peer(peer);
     }
 
     pub fn action(&self, dest: &PeerId) -> Option<RouteAction> {
@@ -359,5 +379,24 @@ mod tests {
 
         // we should not have peer2 anymore
         assert_eq!(table.next_remote(&peer2), None);
+    }
+
+    #[test_log::test]
+    fn should_remove_stopped_peer_path() {
+        let mut table = RouterTable::new(PeerId(0));
+
+        let peer1 = PeerId(1);
+        let conn1 = ConnectionId(1);
+        let peer2 = PeerId(2);
+
+        table.set_direct(conn1, peer1, 100);
+        table.apply_sync(conn1, RouterTableSync(vec![(peer2, (1, 200).into())]));
+
+        assert!(table.next_remote(&peer2).is_some());
+
+        table.del_peer(&peer2);
+
+        assert_eq!(table.next_remote(&peer2), None);
+        assert_eq!(table.next_remote(&peer1), Some((conn1, (0, 100).into())));
     }
 }

@@ -118,6 +118,7 @@ enum MainEvent {
     PeerConnected(ConnectionId, PeerId, u16),
     PeerConnectError(ConnectionId, Option<PeerId>, anyhow::Error),
     PeerData(ConnectionId, PeerId, PeerMainData),
+    PeerStopped(ConnectionId, PeerId),
     PeerStats(ConnectionId, PeerId, PeerConnectionMetric),
     PeerDisconnected(ConnectionId, PeerId),
 }
@@ -220,6 +221,19 @@ impl<SECURE: HandshakeProtocol> P2pNetwork<SECURE> {
         self.endpoint.close(VarInt::from_u32(0), "Shutdown".as_bytes());
     }
 
+    pub async fn shutdown_gracefully(&mut self) {
+        let conns = self.ctx.conns();
+        for conn in conns {
+            let local_id = self.local_id;
+            match tokio::time::timeout(Duration::from_secs(1), conn.send_wait(PeerMessage::PeerStopped(local_id))).await {
+                Ok(Ok(())) => {}
+                Ok(Err(err)) => log::warn!("[P2pNetwork] graceful shutdown notify failed: {err}"),
+                Err(err) => log::warn!("[P2pNetwork] graceful shutdown notify timeout: {err}"),
+            }
+        }
+        self.shutdown();
+    }
+
     fn process_tick(&mut self, now_ms: u64) -> anyhow::Result<P2pNetworkEvent> {
         self.discovery.clear_timeout(now_ms);
         for conn in self.neighbours.connected_conns() {
@@ -264,6 +278,12 @@ impl<SECURE: HandshakeProtocol> P2pNetwork<SECURE> {
                         self.discovery.apply_sync(now_ms, advertise);
                     }
                 }
+                Ok(P2pNetworkEvent::Continue)
+            }
+            MainEvent::PeerStopped(conn, peer) => {
+                log::info!("[P2pNetwork] connection {conn} reported peer {peer} stopped");
+                self.discovery.remove_remote(now_ms, &peer);
+                self.router.del_peer(&peer);
                 Ok(P2pNetworkEvent::Continue)
             }
             MainEvent::PeerConnectError(conn, peer, err) => {

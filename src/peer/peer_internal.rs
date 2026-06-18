@@ -143,7 +143,15 @@ impl PeerConnectionInternal {
 
     async fn on_control(&mut self, control: PeerConnectionControl) -> anyhow::Result<()> {
         match control {
-            PeerConnectionControl::Send(item) => Ok(self.framed.send(item).await?),
+            PeerConnectionControl::Send(item, tx) => {
+                let res = self.framed.send(item).await.map_err(Into::into);
+                if let Some(tx) = tx {
+                    let _ = tx.send(res);
+                    Ok(())
+                } else {
+                    res
+                }
+            }
             PeerConnectionControl::OpenStream(service, source, dest, meta, tx) => {
                 let remote = self.remote;
                 let connection = self.connection.clone();
@@ -166,6 +174,16 @@ impl PeerConnectionInternal {
         match msg {
             PeerMessage::Sync { route, advertise } => {
                 if let Err(_e) = self.main_tx.try_send(MainEvent::PeerData(self.conn_id, self.to_id, PeerMainData::Sync { route, advertise })) {
+                    log::warn!("[PeerConnectionInternal {}] queue main loop full", self.remote);
+                }
+            }
+            PeerMessage::PeerStopped(peer_id) => {
+                for conn in self.ctx.conns().into_iter().filter(|p| !self.to_id.eq(&p.to_id())) {
+                    conn.try_send(PeerMessage::PeerStopped(peer_id))
+                        .print_on_err("[PeerConnectionInternal] forward peer stopped over peer alias");
+                }
+
+                if let Err(_e) = self.main_tx.send(MainEvent::PeerStopped(self.conn_id, peer_id)).await {
                     log::warn!("[PeerConnectionInternal {}] queue main loop full", self.remote);
                 }
             }

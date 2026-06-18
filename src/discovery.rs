@@ -16,6 +16,7 @@ pub struct PeerDiscovery {
     seeds: Vec<PeerAddress>,
     local: Option<(PeerId, NetworkAddress)>,
     remotes: BTreeMap<PeerId, (u64, NetworkAddress)>,
+    stopped: BTreeMap<PeerId, u64>,
 }
 
 impl PeerDiscovery {
@@ -24,6 +25,7 @@ impl PeerDiscovery {
             seeds,
             local: None,
             remotes: Default::default(),
+            stopped: Default::default(),
         }
     }
 
@@ -41,6 +43,24 @@ impl PeerDiscovery {
                 false
             }
         });
+        self.stopped.retain(|peer, stopped_at| {
+            if *stopped_at + TIMEOUT_AFTER > now_ms {
+                true
+            } else {
+                log::info!("[PeerDiscovery] clear stopped tombstone {peer}");
+                false
+            }
+        });
+    }
+
+    pub fn remove_remote(&mut self, now_ms: u64, peer: &PeerId) {
+        if self.seeds.iter().any(|seed| seed.peer_id().eq(peer)) {
+            return;
+        }
+        self.stopped.insert(*peer, now_ms);
+        if self.remotes.remove(peer).is_some() {
+            log::info!("[PeerDiscovery] remove stopped peer {peer}");
+        }
     }
 
     pub fn create_sync_for(&self, now_ms: u64, dest: &PeerId) -> PeerDiscoverySync {
@@ -58,6 +78,9 @@ impl PeerDiscovery {
     pub fn apply_sync(&mut self, now_ms: u64, sync: PeerDiscoverySync) {
         log::debug!("[PeerDiscovery] apply sync with addrs: {:?}", sync.0);
         for (peer, last_updated, address) in sync.0.into_iter() {
+            if self.stopped.get(&peer).is_some_and(|stopped_at| *stopped_at + TIMEOUT_AFTER > now_ms) {
+                continue;
+            }
             if last_updated + TIMEOUT_AFTER > now_ms {
                 #[allow(clippy::collapsible_else_if)]
                 if self.remotes.insert(peer, (last_updated, address)).is_none() {
@@ -76,6 +99,10 @@ mod test {
     use crate::{discovery::PeerDiscoverySync, PeerAddress, PeerId};
 
     use super::{PeerDiscovery, TIMEOUT_AFTER};
+
+    fn peer_addr(addr: &str) -> PeerAddress {
+        addr.parse().expect("should parse peer address")
+    }
 
     #[test_log::test]
     fn create_local_sync() {
@@ -131,7 +158,7 @@ mod test {
         let mut discovery = PeerDiscovery::default();
 
         let peer1 = PeerId(1);
-        let peer1_addr: PeerAddress = "1@127.0.0.1:9000".parse().expect("should parse peer address");
+        let peer1_addr = peer_addr("1@127.0.0.1:9000");
 
         discovery.apply_sync(100, PeerDiscoverySync(vec![(peer1, 90, peer1_addr.network_address().clone())]));
 
@@ -140,5 +167,68 @@ mod test {
         discovery.clear_timeout(TIMEOUT_AFTER + 90);
 
         assert_eq!(discovery.remotes().next(), None);
+    }
+
+    #[test_log::test]
+    fn non_seed_discovered_peer_ages_out_but_seed_remains_retryable() {
+        let seed = peer_addr("1@127.0.0.1:9000");
+        let discovered = peer_addr("2@127.0.0.1:9001");
+        let mut discovery = PeerDiscovery::new(vec![seed.clone()]);
+
+        discovery.apply_sync(100, PeerDiscoverySync(vec![(discovered.peer_id(), 100, discovered.network_address().clone())]));
+
+        assert_eq!(discovery.remotes().collect::<Vec<_>>(), vec![discovered.clone(), seed.clone()]);
+
+        discovery.clear_timeout(100 + TIMEOUT_AFTER);
+
+        assert_eq!(
+            discovery.remotes().collect::<Vec<_>>(),
+            vec![seed],
+            "discovered non-seed peers should expire after a long outage, while seed peers remain available for retry"
+        );
+    }
+
+    #[test_log::test]
+    fn graceful_stop_tombstone_removes_discovered_non_seed_immediately() {
+        let stopped = peer_addr("2@127.0.0.1:9001");
+        let mut discovery = PeerDiscovery::default();
+
+        discovery.apply_sync(100, PeerDiscoverySync(vec![(stopped.peer_id(), 100, stopped.network_address().clone())]));
+
+        assert_eq!(discovery.remotes().collect::<Vec<_>>(), vec![stopped.clone()]);
+
+        discovery.remove_remote(110, &stopped.peer_id());
+
+        assert_eq!(
+            discovery.remotes().next(),
+            None,
+            "a graceful stop notification should evict a previously discovered non-seed peer without waiting for timeout"
+        );
+    }
+
+    #[test_log::test]
+    fn graceful_stop_tombstone_keeps_seed_retry_address() {
+        let seed = peer_addr("1@127.0.0.1:9000");
+        let mut discovery = PeerDiscovery::new(vec![seed.clone()]);
+
+        discovery.remove_remote(110, &seed.peer_id());
+
+        assert_eq!(discovery.remotes().collect::<Vec<_>>(), vec![seed], "seed peers should remain retryable even after a stop signal");
+    }
+
+    #[test_log::test]
+    fn graceful_stop_tombstone_ignores_stale_non_seed_advertise() {
+        let stopped = peer_addr("2@127.0.0.1:9001");
+        let mut discovery = PeerDiscovery::default();
+
+        discovery.apply_sync(100, PeerDiscoverySync(vec![(stopped.peer_id(), 100, stopped.network_address().clone())]));
+        discovery.remove_remote(110, &stopped.peer_id());
+        discovery.apply_sync(120, PeerDiscoverySync(vec![(stopped.peer_id(), 100, stopped.network_address().clone())]));
+
+        assert_eq!(
+            discovery.remotes().next(),
+            None,
+            "stale advertisements should not immediately re-add a gracefully stopped non-seed peer"
+        );
     }
 }

@@ -31,7 +31,7 @@ pub use peer_internal::PeerConnectionMetric;
 const MAX_CONTROL_PEER_PKT: usize = 60000;
 
 enum PeerConnectionControl {
-    Send(PeerMessage),
+    Send(PeerMessage, Option<oneshot::Sender<anyhow::Result<()>>>),
     OpenStream(P2pServiceId, PeerId, PeerId, Vec<u8>, oneshot::Sender<anyhow::Result<P2pQuicStream>>),
 }
 
@@ -53,8 +53,9 @@ impl PeerConnection {
                     log::info!("[PeerConnection {conn_id}] got connection from {remote}");
                     match connection.accept_bi().await {
                         Ok((send, recv)) => {
-                            if let Err(e) = run_connection(secure, ctx, remote, conn_id, local_id, PeerConnectionDirection::Incoming, &connection, send, recv, main_tx).await {
+                            if let Err(e) = run_connection(secure, ctx, remote, conn_id, local_id, PeerConnectionDirection::Incoming, &connection, send, recv, main_tx.clone()).await {
                                 log::error!("[PeerConnection {conn_id}] connection from {remote} error {e}");
+                                let _ = main_tx.send(MainEvent::PeerConnectError(conn_id, None, e)).await;
                                 let _ = tokio::time::timeout(Duration::from_secs(2), connection.closed()).await;
                             }
                         }
@@ -81,8 +82,22 @@ impl PeerConnection {
                     log::info!("[PeerConnection {conn_id}] connected to {remote}");
                     match connection.open_bi().await {
                         Ok((send, recv)) => {
-                            if let Err(e) = run_connection(secure, ctx, remote, conn_id, local_id, PeerConnectionDirection::Outgoing(to_peer), &connection, send, recv, main_tx).await {
+                            if let Err(e) = run_connection(
+                                secure,
+                                ctx,
+                                remote,
+                                conn_id,
+                                local_id,
+                                PeerConnectionDirection::Outgoing(to_peer),
+                                &connection,
+                                send,
+                                recv,
+                                main_tx.clone(),
+                            )
+                            .await
+                            {
                                 log::error!("[PeerConnection {conn_id}] connection to {remote} error {e}");
+                                let _ = main_tx.send(MainEvent::PeerConnectError(conn_id, Some(to_peer), e)).await;
                             }
                         }
                         Err(err) => main_tx.send(MainEvent::PeerConnectError(conn_id, Some(to_peer), err.into())).await.expect("should send to main"),
@@ -192,12 +207,15 @@ async fn run_connection<SECURE: HandshakeProtocol>(
     log::info!("[PeerConnection {conn_id}] started {remote}, rtt: {rtt_ms}");
     ctx.register_conn(conn_id, alias);
     gauge!(P2P_LIVE_CONNECTION_COUNT).increment(1);
-    main_tx.send(MainEvent::PeerConnected(conn_id, to_id, rtt_ms)).await.expect("should send to main");
+    if main_tx.send(MainEvent::PeerConnected(conn_id, to_id, rtt_ms)).await.is_err() {
+        log::warn!("[PeerConnection {conn_id}] main loop closed before connected event");
+        return Ok(());
+    }
     log::info!("[PeerConnection {conn_id}] run loop for {remote}");
     if let Err(e) = internal.run_loop().await {
         log::error!("[PeerConnection {conn_id}] {remote} error {e}");
     }
-    main_tx.send(MainEvent::PeerDisconnected(conn_id, to_id)).await.expect("should send to main");
+    let _ = main_tx.send(MainEvent::PeerDisconnected(conn_id, to_id)).await;
     log::info!("[PeerConnection {conn_id}] end loop for {remote}");
     ctx.unregister_conn(&conn_id);
     gauge!(P2P_LIVE_CONNECTION_COUNT).decrement(1);
@@ -210,4 +228,31 @@ async fn run_connection<SECURE: HandshakeProtocol>(
     counter!(P2P_CONNECTION_LOST_PKT, "peer_id" => local_id.to_string(), "connect_to" => format!("{to_id}")).absolute(0);
     counter!(P2P_CONNECTION_CONGESTION_EVENTS, "peer_id" => local_id.to_string(), "connect_to" => format!("{to_id}")).absolute(0);
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::neighbours::NetworkNeighbours;
+
+    #[test]
+    fn stale_pending_outgoing_peer_does_not_suppress_reconnect() {
+        let peer = PeerId::from(42);
+        let conn_id = ConnectionId::from(7);
+        let mut neighbours = NetworkNeighbours::default();
+
+        neighbours.insert(
+            conn_id,
+            PeerConnection {
+                conn_id,
+                peer_id: Some(peer),
+                is_connected: false,
+            },
+        );
+
+        assert!(
+            !neighbours.has_peer(&peer),
+            "an unconnected outgoing attempt must not make reconnect logic believe peer {peer} is already connected"
+        );
+    }
 }
