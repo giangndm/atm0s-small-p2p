@@ -530,3 +530,22 @@ audited code.
   - `cargo test duplicate_service_creation_must_not_panic -- --nocapture`
   - Failure summary: the second `create_service(0.into())` panics at
     `src/ctx.rs:28` with `Service ID already used`.
+
+### ISSUE-031: Replicated KV local version increment overflows
+
+- Category: long-running correctness, stability
+- Reviewer: `Sagan`, confirmed.
+- Affected code:
+  - `src/service/replicate_kv_service/local_storage.rs`: local `set` and `del`
+    both advance the store with `self.version = self.version + 1`.
+  - `src/service/replicate_kv_service/messages.rs`: `Version::add` uses raw
+    `u64` addition.
+- Impact: after enough local writes for the store version to reach
+  `u64::MAX`, the next write panics in debug builds. In release builds it can
+  wrap to zero, breaking monotonic version ordering and corrupting replication
+  sync assumptions.
+- Evidence test:
+  - `cargo test local_set_at_max_version_must_not_overflow -- --nocapture`
+  - Failure summary: `LocalStore::set` at `Version(u64::MAX)` panics at
+    `src/service/replicate_kv_service/messages.rs:37` with
+    `attempt to add with overflow`.

@@ -285,4 +285,16 @@ mod tests {
 
         assert!(result.is_ok(), "untrusted FetchSnapshot bounds must be rejected without panicking");
     }
+
+    #[test]
+    fn local_set_at_max_version_must_not_overflow() {
+        let mut store: LocalStore<u16, u16, u16> = LocalStore::new(10, 2);
+        store.version = Version(u64::MAX);
+
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            store.set(1, 1);
+        }));
+
+        assert!(result.is_ok(), "local version increment must not panic or wrap at u64::MAX");
+    }
 }
