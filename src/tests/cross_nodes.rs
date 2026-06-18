@@ -2,7 +2,7 @@ use std::time::Duration;
 
 use test_log::test;
 
-use crate::P2pServiceEvent;
+use crate::{router::RouteAction, P2pServiceEvent};
 
 use super::create_node;
 
@@ -127,4 +127,52 @@ async fn broadcast_relay() {
     service3.send_broadcast(data.clone()).await;
     assert_eq!(service1.recv().await, Some(P2pServiceEvent::Broadcast(addr3.peer_id(), data.clone())));
     assert_eq!(service2.recv().await, Some(P2pServiceEvent::Broadcast(addr3.peer_id(), data)));
+}
+
+#[test(tokio::test)]
+async fn inbound_unicast_must_not_drop_when_service_queue_is_full() {
+    let (mut node1, _addr1) = create_node(false, 1, vec![]).await;
+    let service1 = node1.create_service(0.into());
+    let requester1 = node1.requester();
+    tokio::spawn(async move { while node1.recv().await.is_ok() {} });
+
+    let (mut node2, addr2) = create_node(false, 2, vec![]).await;
+    let mut service2 = node2.create_service(0.into());
+    tokio::spawn(async move { while node2.recv().await.is_ok() {} });
+
+    requester1.connect(addr2.clone()).await.expect("connect should be queued");
+    tokio::time::timeout(Duration::from_secs(3), async {
+        loop {
+            if matches!(service1.router().action(&addr2.peer_id()), Some(RouteAction::Next(_))) {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .expect("route to node2 should become available");
+
+    let expected = 11usize;
+    for idx in 0..expected {
+        service1
+            .send_unicast(addr2.peer_id(), vec![idx as u8])
+            .await
+            .expect("sender should report queued unicast");
+    }
+
+    tokio::time::sleep(Duration::from_millis(300)).await;
+
+    let mut received = Vec::new();
+    for _ in 0..expected {
+        match tokio::time::timeout(Duration::from_millis(100), service2.recv()).await {
+            Ok(Some(P2pServiceEvent::Unicast(_, data))) => received.push(data),
+            _ => break,
+        }
+    }
+
+    assert_eq!(
+        received.len(),
+        expected,
+        "inbound unicast delivery must apply backpressure or otherwise preserve messages instead of silently dropping when the local service queue is full"
+    );
 }

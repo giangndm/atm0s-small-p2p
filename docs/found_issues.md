@@ -2666,3 +2666,35 @@ must resolve.
     queues make `timeout(Duration::from_millis(1500), node.shutdown_gracefully())`
     expire before shutdown completes; expected graceful shutdown to use a global
     deadline or parallel/best-effort peer notification.
+
+### ISSUE-119: Inbound unicast is silently dropped when the local service queue is full
+
+- Category: correctness, reliability/stability under load, potential data loss
+- Score: 76/100
+- Reviewer: `Bohr the 2nd`, confirmed.
+- Affected code:
+  - `src/service.rs`: each `P2pService` uses a bounded
+    `SERVICE_CHANNEL_SIZE` of 10 pending events.
+  - `src/peer/peer_internal.rs`: inbound `PeerMessage::Unicast` for a local
+    destination calls
+    `service.try_send(P2pServiceEvent::Unicast(source, data)).print_on_err(...)`
+    and does not retry, backpressure, close the stream, or signal delivery
+    failure to the sender.
+- Impact: when the destination local service is not draining quickly enough,
+  the 11th ordinary inbound unicast is dropped after only a log message. The
+  sender has already observed `send_unicast` success, so this creates silent
+  data loss under local service backpressure. This is distinct from
+  ISSUE-011/012, which cover stream delivery/open success under destination
+  queue pressure; ISSUE-049/050, which cover outbound peer control queue
+  blocking; ISSUE-053/091, which cover out-of-range service id handling;
+  ISSUE-072/076, which cover stale requester lifecycle sends; and the sender
+  identity binding issues. `PeerMessage::Broadcast` uses the same
+  `try_send(...).print_on_err(...)` local-delivery pattern, but this issue's
+  evidence is limited to ordinary unicast.
+- Evidence test:
+  - `cargo test inbound_unicast_must_not_drop_when_service_queue_is_full -- --nocapture`
+  - Failure summary: after two connected nodes send 11 unicast messages to an
+    unconsumed destination service, the receiver logs
+    `send service msg got error no available capacity` and only 10 messages can
+    be drained from the service queue; expected all 11 to be preserved or
+    backpressured instead of silently dropped.
