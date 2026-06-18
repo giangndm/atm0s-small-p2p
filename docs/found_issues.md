@@ -3620,3 +3620,35 @@ must resolve.
     `PeerMessage::Sync` advertising `PeerId(4)`. After draining the dummy event,
     no `MainEvent::PeerData` arrives within one second, so the advertised route
     cannot be applied and `PeerId(4)` remains unreachable.
+
+### ISSUE-148: Alias shutdown leaves pending cached-hint lookups stuck
+
+- Category: correctness, graceful-shutdown stability, alias failover
+- Score: 62/100
+- Reviewer: `Averroes the 2nd`, confirmed.
+- Affected code:
+  - `src/service/alias_service.rs`: cached alias lookup sends
+    `AliasMessage::Check(alias_id)` to cached peers and stores the pending
+    request as `FindRequestState::CheckHint(now, slot.clone())`.
+  - `src/service/alias_service.rs`: `AliasMessage::NotFound` removes the sender
+    from the pending hint set and broadcasts `Scan(alias_id)` when no checked
+    hint peers remain.
+  - `src/service/alias_service.rs`: `AliasMessage::Shutdown` clears cache
+    entries but does not update any in-flight `find_reqs` that are already
+    waiting on the stopped peer.
+- Impact: if an alias lookup is waiting on a cached hint and that peer
+  gracefully shuts down, the lookup is not immediately failed over to a network
+  scan or completed. It remains stuck until `HINT_TIMEOUT_MS`, adding avoidable
+  lookup latency and churn during graceful shutdown or bad-network conditions.
+  This is distinct from ISSUE-022, which covers shutdown evicting alias hints
+  learned from unrelated peers; ISSUE-035/041, which cover unbounded pending
+  find state; ISSUE-090, which covers unchecked `Found` replies; ISSUE-101,
+  which covers unbounded per-alias hints; and ISSUE-109, which covers
+  unsolicited cache poisoning.
+- Evidence test:
+  - `cargo test shutdown_from_cached_hint_must_unblock_pending_find -- --nocapture`
+  - Failure summary: after a cached-hint lookup sends
+    `Check(AliasId(1))` to `PeerId(2)`, `PeerId(2)` sends
+    `AliasMessage::Shutdown`. The service emits no output, but expected it to
+    immediately broadcast `Scan(AliasId(1))` or otherwise unblock the pending
+    lookup instead of waiting for hint timeout.

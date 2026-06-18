@@ -705,6 +705,32 @@ mod test {
     }
 
     #[test]
+    fn shutdown_from_cached_hint_must_unblock_pending_find() {
+        let mut ctx = TestContext::new();
+        let alias_id = AliasId(1);
+        let hinted_peer = PeerId(2);
+
+        ctx.internal.on_msg(ctx.now, hinted_peer, AliasMessage::NotifySet(alias_id));
+
+        let (tx, mut rx) = oneshot::channel();
+        ctx.internal.on_control(ctx.now, AliasControl::Find(alias_id, tx));
+
+        assert_eq!(ctx.collect_outputs(), vec![InternalOutput::Unicast(hinted_peer, AliasMessage::Check(alias_id))]);
+
+        ctx.internal.on_msg(ctx.now, hinted_peer, AliasMessage::Shutdown);
+
+        assert_eq!(
+            ctx.collect_outputs(),
+            vec![InternalOutput::Broadcast(AliasMessage::Scan(alias_id))],
+            "shutdown from the only cached hint must immediately fail over instead of waiting for hint timeout"
+        );
+        assert!(
+            rx.try_recv().is_err(),
+            "lookup should remain pending while it fails over to scan, not complete from a stopped hint"
+        );
+    }
+
+    #[test]
     fn pending_find_must_prefer_late_local_registration_over_remote_found() {
         let mut ctx = TestContext::new();
         let alias_id = AliasId(1);
