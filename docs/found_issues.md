@@ -1650,7 +1650,8 @@ audited code.
 ### ISSUE-080: Pubsub heartbeat does not remove stale remote publishers
 
 - Category: bad-network correctness, pubsub stability
-- Reviewer: `Plato`, confirmed.
+- Reviewer: `Plato`, confirmed. Additional omitted-channel heartbeat evidence
+  reviewed by `Bohr` as an ISSUE-080 variant.
 - Affected code:
   - `src/service/pubsub_service.rs`: inbound `Heartbeat` adds remote publishers
     when `heartbeat.publish` is true.
@@ -1669,6 +1670,11 @@ audited code.
   - `cargo test pubsub_heartbeat_must_remove_stale_remote_publisher -- --nocapture`
   - Failure summary: after injecting `PublisherJoined` from node2, a heartbeat
     with `publish=false` and `subscribe=false` does not produce
+    `SubscriberEvent::PeerLeaved(PeerSrc::Remote(node2))`; the test times out
+    waiting for the leave event.
+  - `cargo test pubsub_empty_heartbeat_must_remove_omitted_stale_remote_publisher -- --nocapture`
+  - Failure summary: after injecting `PublisherJoined` from node2, an empty
+    heartbeat omitting that channel does not produce
     `SubscriberEvent::PeerLeaved(PeerSrc::Remote(node2))`; the test times out
     waiting for the leave event.
 

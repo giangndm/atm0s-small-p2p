@@ -129,6 +129,11 @@ pub(crate) fn encode_heartbeat_for_test(channel: PubsubChannelId, publish: bool,
     bincode::serialize(&PubsubMessage::Heartbeat(vec![ChannelHeartbeat { channel, publish, subscribe }])).expect("test message should serialize")
 }
 
+#[cfg(test)]
+pub(crate) fn encode_empty_heartbeat_for_test() -> Vec<u8> {
+    bincode::serialize(&PubsubMessage::Heartbeat(vec![])).expect("test message should serialize")
+}
+
 enum InternalMsg {
     PublisherCreated(PublisherLocalId, PubsubChannelId, UnboundedSender<PublisherEvent>),
     PublisherDestroyed(PublisherLocalId, PubsubChannelId),
