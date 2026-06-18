@@ -1160,3 +1160,26 @@ audited code.
     continuation response of `RpcRes::FetchSnapshot(None, Version(1))` sets
     `ctx.next_state` to `Some(Working(...))`; expected the partial sync to stay
     incomplete and reject the fake continuation.
+
+### ISSUE-060: Dropped services leave their service id permanently reserved
+
+- Category: correctness, API lifecycle stability
+- Reviewer: `Ampere`, confirmed.
+- Affected code:
+  - `src/lib.rs`: `P2pNetwork::create_service` registers a service sender in
+    shared context but returns only `P2pService`.
+  - `src/ctx.rs`: `SharedCtxInternal::set_service` stores
+    `Some(Sender<P2pServiceEvent>)` in the 256-slot service table and never
+    clears it.
+  - `src/service.rs`: `P2pService` owns the receiver but has no `Drop` path to
+    unregister the service id.
+- Impact: after a service receiver is dropped, the service id remains reserved
+  for the lifetime of the node. A live node cannot restart or replace that
+  service id, and inbound messages for the dropped service still resolve to a
+  stale sender before being discarded. This is distinct from ISSUE-030, which
+  covers duplicate creation while the first service is still live.
+- Evidence test:
+  - `cargo test dropped_service_id_must_be_reusable -- --nocapture`
+  - Failure summary: after dropping the first `P2pService`, creating a
+    replacement with the same id panics at `src/ctx.rs:28` with
+    `Service ID already used`.

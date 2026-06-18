@@ -241,6 +241,22 @@ async fn duplicate_service_creation_must_not_panic() {
 }
 
 #[tokio::test]
+async fn dropped_service_id_must_be_reusable() {
+    let (mut node, _addr) = create_node(false, 1, vec![]).await;
+    let service = node.create_service(0.into());
+    drop(service);
+
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let _replacement = node.create_service(0.into());
+    }));
+
+    assert!(
+        result.is_ok(),
+        "dropping a service receiver must unregister the service id or allow a replacement without panicking"
+    );
+}
+
+#[tokio::test]
 async fn out_of_range_service_id_must_not_panic() {
     let (mut node, _addr) = create_node(false, 1, vec![]).await;
 
