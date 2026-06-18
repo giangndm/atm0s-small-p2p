@@ -1763,3 +1763,25 @@ audited code.
   - `cargo test full_sync_must_reject_unsorted_snapshot_slots -- --nocapture`
   - Failure summary: a snapshot response with slots ordered as keys `2, 1` is
     accepted and stored; expected unsorted snapshot pages to be rejected.
+
+### ISSUE-085: Replicated KV full sync accepts duplicate keys in one snapshot page
+
+- Category: correctness, security
+- Reviewer: `Kepler`, confirmed.
+- Affected code:
+  - `src/service/replicate_kv_service/local_storage.rs`: valid snapshot pages
+    are produced from a `BTreeMap` range, so a key can appear at most once per
+    page.
+  - `src/service/replicate_kv_service/remote_storage.rs`:
+    `SyncFullState::on_rpc_res` trusts remote `SnapshotData.slots`, emits each
+    slot, and inserts into `ctx.slots` without rejecting duplicate keys.
+- Impact: a malicious or malformed peer can send duplicate keys with
+  conflicting values in one snapshot page. The receiver emits multiple
+  `KvEvent::Set` events and silently keeps the last value while completing full
+  sync. This is distinct from ISSUE-084, which covers per-page ordering, and
+  from ISSUE-082/ISSUE-083, which cover upper/lower key bounds.
+- Evidence test:
+  - `cargo test full_sync_must_reject_duplicate_snapshot_keys -- --nocapture`
+  - Failure summary: a snapshot response with duplicate key `1` is accepted;
+    the second value overwrites the first in `ctx.slots`; expected duplicate-key
+    snapshot pages to be rejected.
