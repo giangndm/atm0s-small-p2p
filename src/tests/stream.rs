@@ -1,7 +1,13 @@
-use std::time::Duration;
+use std::{
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    },
+    time::Duration,
+};
 
 use super::create_node;
-use crate::{router::RouteAction, P2pServiceEvent, PeerId};
+use crate::{msg::P2pServiceId, router::RouteAction, P2pServiceEvent, PeerId};
 use futures::FutureExt;
 use test_log::test;
 
@@ -149,4 +155,65 @@ async fn stream_source_must_be_bound_to_authenticated_connection_peer() {
         }
         other => panic!("expected a stream event, got {other:?}"),
     }
+}
+
+#[tokio::test]
+async fn inbound_out_of_range_stream_service_id_must_not_panic_accept_task() {
+    let accept_task_panicked = Arc::new(AtomicBool::new(false));
+    let previous_hook = std::panic::take_hook();
+    let hook_flag = accept_task_panicked.clone();
+    std::panic::set_hook(Box::new(move |info| {
+        let message = info.to_string();
+        if message.contains("src/ctx.rs") && message.contains("index out of bounds") {
+            hook_flag.store(true, Ordering::SeqCst);
+        }
+    }));
+
+    let (mut node1, addr1) = create_node(true, 1, vec![]).await;
+    let node1_ctx = node1.ctx.clone();
+    let _service1 = node1.create_service(0.into());
+    tokio::spawn(async move { while node1.recv().await.is_ok() {} });
+
+    let (mut node2, addr2) = create_node(false, 2, vec![addr1.clone()]).await;
+    let mut service2 = node2.create_service(0.into());
+    tokio::spawn(async move { while node2.recv().await.is_ok() {} });
+
+    let conn = tokio::time::timeout(Duration::from_secs(3), async {
+        loop {
+            if let Some(conn) = node1_ctx.conns().into_iter().next() {
+                return conn;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .expect("node1 should connect to node2");
+
+    let invalid = conn.open_stream(P2pServiceId::from(256u16), addr1.peer_id(), addr2.peer_id(), b"bad-stream-service-id".to_vec()).await;
+
+    assert!(
+        invalid.is_err(),
+        "out-of-range stream service ids must be rejected with an error instead of panicking in the accept task"
+    );
+    std::panic::set_hook(previous_hook);
+    assert!(
+        !accept_task_panicked.load(Ordering::SeqCst),
+        "out-of-range stream service ids must not panic in the accept task"
+    );
+
+    let meta = b"valid-after-bad-stream-service-id".to_vec();
+    let _valid_stream = conn
+        .open_stream(0.into(), addr1.peer_id(), addr2.peer_id(), meta.clone())
+        .await
+        .expect("stream accept path must survive an inbound unknown out-of-range service id");
+
+    let event = tokio::time::timeout(Duration::from_secs(1), service2.recv())
+        .await
+        .expect("valid follow-up stream should still be delivered")
+        .expect("destination service channel should stay open");
+
+    assert!(
+        matches!(event, P2pServiceEvent::Stream(source, received_meta, _stream) if source == addr1.peer_id() && received_meta == meta),
+        "inbound unknown out-of-range stream service id must be rejected without killing later valid stream delivery"
+    );
 }

@@ -1909,3 +1909,27 @@ audited code.
   - Failure summary: after a cached lookup checks only `PeerId(1)`, a
     `Found(alias)` from `PeerId(2)` completes the lookup; expected unchecked
     peers to be ignored during `CheckHint`.
+
+### ISSUE-091: Inbound out-of-range stream service ids panic accept tasks
+
+- Category: security, stability
+- Reviewer: `Laplace`, confirmed.
+- Affected code:
+  - `src/msg.rs`: `StreamConnectReq.service` is a wire-controlled
+    `P2pServiceId(u16)`.
+  - `src/peer/peer_internal.rs`: `accept_bi` handles every inbound
+    bidirectional stream and calls `ctx.get_service(&service)` for local stream
+    destinations.
+  - `src/ctx.rs`: `SharedCtxInternal::get_service` indexes the 256-slot service
+    table with `services[*service_id as usize]` without validating the `u16`
+    value.
+- Impact: an authenticated peer can open a bidirectional stream with
+  `P2pServiceId(256)` and trigger an out-of-bounds panic in the receiver's
+  stream accept task. This is distinct from ISSUE-053, which covers
+  out-of-range service ids on the main peer-message unicast/broadcast path; this
+  issue covers the separate `StreamConnectReq`/bidirectional-stream path.
+- Evidence test:
+  - `cargo test inbound_out_of_range_stream_service_id_must_not_panic_accept_task -- --nocapture`
+  - Failure summary: the test's panic hook observes an out-of-bounds panic at
+    `src/ctx.rs` after opening a stream with service id `256`; expected the
+    invalid stream request to be rejected without panicking in the accept task.
