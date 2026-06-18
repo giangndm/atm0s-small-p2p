@@ -745,31 +745,44 @@ mod test {
         for _ in 0..=MAX_PENDING_RPCS {
             let (tx, _rx) = oneshot::channel();
             service
-                .on_internal(InternalMsg::GuestPublishRpc(
-                    channel,
-                    vec![1],
-                    "hold".to_string(),
-                    tx,
-                    Duration::from_secs(3600),
-                ))
+                .on_internal(InternalMsg::GuestPublishRpc(channel, vec![1], "hold".to_string(), tx, Duration::from_secs(3600)))
                 .await
                 .expect("publish RPC should be accepted");
         }
 
         let pending_rpcs = service.publish_rpc_reqs.len();
-        assert!(
-            pending_rpcs <= MAX_PENDING_RPCS,
-            "pending publish RPC requests must be bounded, got {pending_rpcs}"
-        );
+        assert!(pending_rpcs <= MAX_PENDING_RPCS, "pending publish RPC requests must be bounded, got {pending_rpcs}");
+    }
+
+    #[tokio::test]
+    async fn remote_publisher_memberships_must_be_bounded() {
+        const MAX_REMOTE_MEMBERS: usize = 1024;
+        let mut service = test_service();
+        let channel = PubsubChannelId(1);
+        let (sub_tx, _sub_rx) = unbounded_channel();
+        let joined = bincode::serialize(&PubsubMessage::PublisherJoined(channel)).expect("test message should serialize");
+
+        service
+            .on_internal(InternalMsg::SubscriberCreated(SubscriberLocalId::rand(), channel, sub_tx))
+            .await
+            .expect("subscriber should be registered");
+
+        for peer in 0..=MAX_REMOTE_MEMBERS {
+            service
+                .on_service(P2pServiceEvent::Unicast(PeerId::from(peer as u64 + 10), joined.clone()))
+                .await
+                .expect("remote publisher join should be processed");
+        }
+
+        let remote_publishers = service.channels.get(&channel).expect("channel should exist").remote_publishers.len();
+        assert!(remote_publishers <= MAX_REMOTE_MEMBERS, "remote publisher memberships must be bounded, got {remote_publishers}");
     }
 
     #[tokio::test]
     async fn pubsub_guest_object_publish_must_return_error_on_serialize_failure() {
         let requester = test_service().requester();
 
-        let result = std::panic::AssertUnwindSafe(requester.publish_as_guest_ob(PubsubChannelId(1), FailingSerialize))
-            .catch_unwind()
-            .await;
+        let result = std::panic::AssertUnwindSafe(requester.publish_as_guest_ob(PubsubChannelId(1), FailingSerialize)).catch_unwind().await;
 
         assert!(
             matches!(result, Ok(Err(_))),

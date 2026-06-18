@@ -2130,3 +2130,28 @@ audited code.
     `FetchChanged { from: Version(1), count: 0 }` returns
     `RpcRes::FetchChanged(Ok(vec![]))` instead of rejecting the no-progress
     request.
+
+### ISSUE-100: Pubsub remote membership sets are unbounded per channel
+
+- Category: high-load stability, resource exhaustion
+- Reviewer: `Ramanujan the 2nd`, confirmed.
+- Affected code:
+  - `src/service/pubsub_service.rs`: inbound `PublisherJoined` inserts
+    `from_peer` into `state.remote_publishers`.
+  - `src/service/pubsub_service.rs`: inbound `SubscriberJoined` inserts
+    `from_peer` into `state.remote_subscribers`.
+  - `src/service/pubsub_service.rs`: inbound `Heartbeat` can also insert
+    remote publisher and subscriber membership for the advertised channel.
+- Impact: pubsub retains remote membership peer ids in per-channel `HashSet`s
+  with no cap, eviction policy, or admission limit. High churn or malformed
+  traffic can grow `remote_publishers`/`remote_subscribers` without bound and
+  increase later fanout work. Lower-layer source-identity spoofing can amplify
+  the issue, but the primary failure is the missing resource bound on retained
+  pubsub membership state. This is distinct from ISSUE-039/048's membership
+  authorization bypass, ISSUE-026/080's stale heartbeat cleanup failures, and
+  ISSUE-014/015's lower-layer source identity binding failures.
+- Evidence test:
+  - `cargo test remote_publisher_memberships_must_be_bounded -- --nocapture`
+  - Failure summary: after 1,025 distinct `PublisherJoined` events for one
+    channel, `remote_publishers.len()` is 1,025, exceeding the test cap of
+    1,024.
