@@ -230,6 +230,46 @@ async fn stale_peer_connected_event_must_not_install_unusable_route() {
 }
 
 #[tokio::test]
+async fn stale_peer_connect_error_must_not_remove_live_neighbour() {
+    let (mut node1, addr1) = create_node(true, 1, vec![]).await;
+    let (mut node2, _addr2) = create_node(false, 2, vec![addr1.clone()]).await;
+
+    let live_conn = tokio::time::timeout(Duration::from_secs(3), async {
+        loop {
+            tokio::select! {
+                _ = node1.recv() => {}
+                event = node2.recv() => {
+                    if let Ok(P2pNetworkEvent::PeerConnected(conn, peer)) = event {
+                        if peer == addr1.peer_id() {
+                            return conn;
+                        }
+                    }
+                }
+            }
+        }
+    })
+    .await
+    .expect("node2 should connect to node1");
+
+    assert!(
+        node2.neighbours.has_peer(&addr1.peer_id()),
+        "test setup should have a live connected neighbour"
+    );
+
+    node2
+        .process_internal(
+            100,
+            MainEvent::PeerConnectError(live_conn, Some(addr1.peer_id()), anyhow::anyhow!("stale connect error")),
+        )
+        .expect("stale connect error should process");
+
+    assert!(
+        node2.neighbours.has_peer(&addr1.peer_id()),
+        "PeerConnectError for an already-connected neighbour must be ignored instead of removing the live connection"
+    );
+}
+
+#[tokio::test]
 async fn peer_connected_must_not_rebind_existing_connection_to_different_peer() {
     let (mut node, _addr) = create_node(false, 1, vec![]).await;
     let conn = ConnectionId::from(88);

@@ -3225,3 +3225,28 @@ must resolve.
   - Failure summary: 17 raw QUIC clients connect to a node and never open the
     P2P main control stream; all are accepted, exceeding the test's admission
     threshold of 16 pending unauthenticated connections.
+
+### ISSUE-135: Stale PeerConnectError removes a live neighbour
+
+- Category: correctness, async race stability, connection lifecycle
+- Score: 62/100
+- Reviewer: `Pauli the 2nd`, confirmed.
+- Affected code:
+  - `src/lib.rs`: `P2pNetwork::process_internal` handles
+    `MainEvent::PeerConnectError(conn, peer, err)`.
+  - `src/lib.rs`: the handler unconditionally calls
+    `self.neighbours.remove(&conn)` without checking whether `conn` is still a
+    pending outgoing attempt or already authenticated and connected.
+- Impact: a stale connect-error event can remove a live neighbour entry for the
+  same connection id after authentication. The router and peer task can still
+  contain direct route or alias state, while neighbour iteration no longer
+  treats the peer as connected, corrupting connection lifecycle state and
+  suppressing later neighbour-driven maintenance. This is distinct from
+  ISSUE-057/063/064/065/066/067/068 because those cover other internal event
+  types, not `PeerConnectError` removing an authenticated live neighbour.
+- Evidence test:
+  - `cargo test stale_peer_connect_error_must_not_remove_live_neighbour -- --nocapture`
+  - Failure summary: after node2 connects to node1, injecting
+    `MainEvent::PeerConnectError(live_conn, Some(node1), ...)` makes
+    `node2.neighbours.has_peer(node1)` false; expected stale connect errors not
+    to remove an already-live neighbour.
