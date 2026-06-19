@@ -5,10 +5,10 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Audit Status
 
-- Accepted issues: 198
+- Accepted issues: 199
 - Missing issue scores: 0
 - Current consecutive no-new-issue cycles: 0
-- Stop condition: reset by ISSUE-198. Continue RED-team review and randomized
+- Stop condition: reset by ISSUE-199. Continue RED-team review and randomized
   fuzz tests over node actions.
 
 ## Root Cause Summary
@@ -52,15 +52,16 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 - Representative issues: ISSUE-049, ISSUE-050, ISSUE-056, ISSUE-118,
   ISSUE-119, ISSUE-120, ISSUE-123, ISSUE-124, ISSUE-125, ISSUE-126,
   ISSUE-127, ISSUE-133, ISSUE-136, ISSUE-147, ISSUE-153, ISSUE-157,
-  ISSUE-163, ISSUE-164, ISSUE-178, ISSUE-182, ISSUE-184, ISSUE-198.
+  ISSUE-163, ISSUE-164, ISSUE-178, ISSUE-182, ISSUE-184, ISSUE-198,
+  ISSUE-199.
 - Pattern: some paths drop on `try_send`, some await bounded sends from
   critical tasks, and others use unbounded queues or duplicate internal control
   work. Under load this causes silent loss, head-of-line blocking, unreported
-  total fanout failure, or unbounded memory. RPC fanout can also count failed
-  local or remote delivery attempts as live destinations. Transport config can
-  also admit unused stream classes that no application task drains. Repair
-  state machines can also duplicate in-flight repair requests before timeout or
-  response.
+  total fanout failure for failed awaited or nonblocking sends, or unbounded
+  memory. RPC fanout can also count failed local or remote delivery attempts as
+  live destinations. Transport config can also admit unused stream classes that
+  no application task drains. Repair state machines can also duplicate
+  in-flight repair requests before timeout or response.
 - Minimal fix proposal: define a channel policy by event class; lifecycle and
   route updates need bounded retry/coalescing, service payload delivery needs
   explicit backpressure errors including zero-recipient fanout errors, and peer
@@ -226,6 +227,8 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   connection. Reviewer: Lagrange the 3rd.
 - ISSUE-198, score 54: `try_send_broadcast` silently loses all copies under
   peer queue pressure. Reviewer: Dewey the 3rd.
+- ISSUE-199, score 52: `send_broadcast` silently succeeds when every peer send
+  fails. Reviewer: Maxwell the 3rd.
 
 ## Next Candidate To Validate
 

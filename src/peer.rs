@@ -843,6 +843,26 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn send_broadcast_must_report_when_all_peer_channels_are_closed() {
+        let ctx = SharedCtx::new(PeerId::from(0), SharedRouterTable::new(PeerId::from(0)));
+        let (tx1, rx1) = channel(1);
+        let (tx2, rx2) = channel(1);
+        drop(rx1);
+        drop(rx2);
+
+        ctx.register_conn(ConnectionId::from(1), PeerConnectionAlias::new(PeerId::from(0), PeerId::from(1), ConnectionId::from(1), tx1));
+        ctx.register_conn(ConnectionId::from(2), PeerConnectionAlias::new(PeerId::from(0), PeerId::from(2), ConnectionId::from(2), tx2));
+
+        let result = ctx.send_broadcast(P2pServiceId::from(1), b"lost-broadcast".to_vec()).await;
+
+        assert_ne!(
+            std::any::type_name_of_val(&result),
+            "()",
+            "send_broadcast must return a delivery result so callers can observe when every peer control channel is closed"
+        );
+    }
+
+    #[tokio::test]
     async fn try_send_broadcast_must_report_when_all_peer_queues_reject() {
         let ctx = SharedCtx::new(PeerId::from(0), SharedRouterTable::new(PeerId::from(0)));
         let (tx1, mut rx1) = channel(1);

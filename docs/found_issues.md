@@ -62,15 +62,17 @@ the source of truth for evidence and reviewer decisions.
 - Representative issues: ISSUE-049, ISSUE-050, ISSUE-056, ISSUE-118,
   ISSUE-119, ISSUE-120, ISSUE-123, ISSUE-124, ISSUE-125, ISSUE-126,
   ISSUE-127, ISSUE-133, ISSUE-136, ISSUE-147, ISSUE-153, ISSUE-157,
-  ISSUE-163, ISSUE-164, ISSUE-178, ISSUE-182, ISSUE-184, ISSUE-198.
+  ISSUE-163, ISSUE-164, ISSUE-178, ISSUE-182, ISSUE-184, ISSUE-198,
+  ISSUE-199.
 - Pattern: some paths use bounded channels and drop on `try_send`, some await
   bounded sends from critical tasks, and others use unbounded queues or produce
   duplicate internal control work. Under load this causes silent data loss,
-  head-of-line blocking, unreported total fanout failure, or unbounded memory.
-  RPC fanout can also count failed local or remote delivery attempts as live
-  destinations. Transport config can also admit unused stream classes that no
-  application task drains. Repair state machines can emit duplicate in-flight
-  repair requests without waiting for timeout or response.
+  head-of-line blocking, unreported total fanout failure for failed awaited or
+  nonblocking sends, or unbounded memory. RPC fanout can also count failed
+  local or remote delivery attempts as live destinations. Transport config can
+  also admit unused stream classes that no application task drains. Repair
+  state machines can emit duplicate in-flight repair requests without waiting
+  for timeout or response.
 - Minimal fix proposal: define channel policy by event class: lifecycle and
   route updates must use bounded retry/coalescing; service payload delivery must
   return explicit backpressure errors, including zero-recipient fanout errors;
@@ -5558,6 +5560,40 @@ the source of truth for evidence and reviewer decisions.
     while returning no error. The test fails at `src/peer.rs:870` because no
     queue preserves the broadcast and the API cannot report the total fanout
     failure.
+
+### ISSUE-199: `send_broadcast` silently succeeds when every peer send fails
+
+- Category: high-load stability, broadcast reliability, API error reporting
+- Score: 52/100
+- Reviewer: `Maxwell the 3rd`, confirmed after `Chandrasekhar the 3rd`
+  discovery.
+- Affected code:
+  - `src/ctx.rs`: `SharedCtx::send_broadcast` awaits each
+    `conn_alias.send(...)` result, but calls `print_on_err(...)` and returns
+    `()` even if every peer send fails.
+  - `src/service.rs`: `P2pService::send_broadcast` and
+    `P2pServiceRequester::send_broadcast` expose this success-shaped `()` API.
+  - `src/peer/peer_alias.rs`: `PeerConnectionAlias::send` can return an error
+    when the peer-control receiver is closed, but broadcast fanout discards
+    that error.
+- Impact: when all connected peer control channels are already closed or
+  otherwise immediately reject awaited sends, an outbound broadcast is delivered
+  to no peer while the caller has no failure signal. This is distinct from
+  ISSUE-049, which covers awaited `send_broadcast` blocking behind a full peer
+  queue; ISSUE-198, which covers the nonblocking `try_send_broadcast` path
+  losing all copies under queue pressure; ISSUE-119/120, which cover inbound
+  local service delivery drops; and ISSUE-163/178, which cover pubsub RPC
+  destination accounting.
+- Minimal fix proposal: change `SharedCtx::send_broadcast` and public wrappers
+  to return a delivery result such as `anyhow::Result<usize>` or a small enum.
+  Count successful peer-control sends; if zero peers accept the broadcast,
+  return an error. Keep per-peer logging as diagnostics.
+- Evidence test:
+  - `cargo test send_broadcast_must_report_when_all_peer_channels_are_closed -- --nocapture`
+  - Failure summary: two registered peer-control receiver halves are dropped,
+    so every `PeerConnectionAlias::send(...).await` fails immediately. The test
+    fails at `src/peer.rs:858` because `ctx.send_broadcast(...).await` returns
+    unit `()`, leaving callers unable to observe total fanout failure.
 
 ## No-New-Issue Audit Cycles
 
