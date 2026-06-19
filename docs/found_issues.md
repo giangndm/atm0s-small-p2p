@@ -11,7 +11,7 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 39
+- Current consecutive no-new-issue cycles: 40
 - Stop condition requested by user: continue until 5 consecutive cycles find no
   new accepted issue.
 
@@ -5783,6 +5783,26 @@ the source of truth for evidence and reviewer decisions.
     `src/peer.rs:1092` with `got 2`.
 
 ## No-New-Issue Audit Cycles
+
+### Cycle after ISSUE-204 no-new cycle 40: unused unidirectional stream duplicate
+
+- Result: no accepted non-duplicate issue.
+- Reviewer: `Hegel the 4th`, forked subagent review, confirmed
+  duplicate-only no-new classification.
+- Source and test evidence reviewed:
+  - `src/quic.rs`
+  - `cargo test unused_unidirectional_streams_must_not_be_admitted -- --nocapture`
+    failed at `src/quic.rs:128:9`; the raw client opened 17 unidirectional
+    streams while the expected admitted count was zero.
+- Duplicate or too-close symptoms rejected:
+  - both client and server transport configs still allow
+    `max_concurrent_uni_streams(10_000_u32.into())`.
+  - this maps directly to ISSUE-182 because production P2P code has no
+    `accept_uni` path, so the transport admits unused unidirectional streams
+    that no application task drains or rejects.
+- Root-cause summary impact: no new root cause; this focused transport
+  admission cycle strengthens existing ISSUE-182 evidence under RC-3 resource
+  admission/backpressure without adding ISSUE-205.
 
 ### Cycle after ISSUE-204 no-new cycle 39: idle inbound stream admission duplicate
 

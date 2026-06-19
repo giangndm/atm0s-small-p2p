@@ -7,9 +7,9 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Accepted issues: 204
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 39
+- Current consecutive no-new-issue cycles: 40
 - Stop condition: continue until 5 consecutive cycles find no new accepted
-  issue; currently 39/5 after ISSUE-204.
+  issue; currently 40/5 after ISSUE-204.
 
 ## Root Cause Summary
 
@@ -256,6 +256,12 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Recent Fuzz Evidence
 
+- Focused unused unidirectional stream review:
+  `cargo test unused_unidirectional_streams_must_not_be_admitted -- --nocapture`
+  failed with duplicate evidence for ISSUE-182. Reviewer `Hegel the 4th`
+  confirmed QUIC still admits unused uni streams because transport config
+  allows `max_concurrent_uni_streams(10_000)` while the P2P protocol has no
+  `accept_uni` path.
 - Focused idle inbound stream admission review:
   `cargo test idle_inbound_stream_connects_must_be_admission_bounded -- --nocapture`
   failed with duplicate evidence for ISSUE-117. Reviewer `Avicenna the 4th`
