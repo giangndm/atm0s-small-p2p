@@ -11,7 +11,7 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 23
+- Current consecutive no-new-issue cycles: 24
 - Stop condition requested by user: continue until 5 consecutive cycles find no
   new accepted issue.
 
@@ -5783,6 +5783,27 @@ the source of truth for evidence and reviewer decisions.
     `src/peer.rs:1092` with `got 2`.
 
 ## No-New-Issue Audit Cycles
+
+### Cycle after ISSUE-204 no-new cycle 24: pubsub short RPC timeout duplicate
+
+- Result: no accepted non-duplicate issue.
+- Reviewer: `Dirac the 4th`, forked subagent review, confirmed
+  duplicate-only no-new classification.
+- Source and test evidence reviewed:
+  - `src/tests/pubsub.rs`
+  - `src/service/pubsub_service.rs`
+  - `cargo test pubsub_publish_rpc_must_respect_short_timeout -- --nocapture`
+    failed with duplicate evidence for ISSUE-121.
+- Duplicate or too-close symptoms rejected:
+  - the failure at `src/tests/pubsub.rs:618:10` shows a caller-supplied 20 ms
+    `publish_rpc` timeout still waiting past the 200 ms outer test timeout.
+  - `RPC_TICK_INTERVAL_MS` remains fixed at 1,000 ms, and `on_rpc_tick` remains
+    the only path that expires `publish_rpc_reqs` and `feedback_rpc_reqs`
+    against caller-supplied timeouts; this is the exact accepted source
+    behavior and failing evidence for ISSUE-121.
+- Root-cause summary impact: no new root cause; this source/test cycle
+  strengthens existing ISSUE-121 evidence under RC-4 timeout granularity gaps
+  without adding ISSUE-205.
 
 ### Cycle after ISSUE-204 no-new cycle 23: broadcast queue-full fixed
 

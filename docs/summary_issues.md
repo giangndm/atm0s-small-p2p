@@ -7,9 +7,9 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Accepted issues: 204
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 23
+- Current consecutive no-new-issue cycles: 24
 - Stop condition: continue until 5 consecutive cycles find no new accepted
-  issue; currently 23/5 after ISSUE-204.
+  issue; currently 24/5 after ISSUE-204.
 
 ## Root Cause Summary
 
@@ -256,6 +256,11 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Recent Fuzz Evidence
 
+- Focused pubsub timeout source/test review:
+  `cargo test pubsub_publish_rpc_must_respect_short_timeout -- --nocapture`
+  failed with duplicate evidence for ISSUE-121. Reviewer `Dirac the 4th`
+  confirmed the `src/tests/pubsub.rs:618` timeout is the already-accepted
+  one-second pubsub RPC sweep granularity flaw under RC-4.
 - Focused cross-node broadcast delivery review:
   `cargo test inbound_broadcast_must_not_drop_when_service_queue_is_full -- --nocapture`
   now passes. Reviewer `Hilbert the 4th` classified this as existing-issue
