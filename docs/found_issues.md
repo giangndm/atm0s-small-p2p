@@ -11,7 +11,7 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 26
+- Current consecutive no-new-issue cycles: 27
 - Stop condition requested by user: continue until 5 consecutive cycles find no
   new accepted issue.
 
@@ -5783,6 +5783,26 @@ the source of truth for evidence and reviewer decisions.
     `src/peer.rs:1092` with `got 2`.
 
 ## No-New-Issue Audit Cycles
+
+### Cycle after ISSUE-204 no-new cycle 27: sanitized churn duplicate peer-connect panic
+
+- Result: no accepted non-duplicate issue.
+- Reviewer: `Ptolemy the 4th`, forked subagent review, confirmed
+  duplicate-only no-new classification.
+- Fuzz evidence reviewed:
+  - `RUST_LOG=error P2P_FUZZ_SEED=2180001 P2P_FUZZ_NODES=9 P2P_FUZZ_STEPS=2200 cargo test fuzz_random_sanitized_node_churn_actions_must_not_panic_connection_tasks -- --nocapture`
+    failed with duplicate evidence for ISSUE-139. The churn harness clamps the
+    requested node count to 8, so the assertion reported `nodes=8`.
+- Duplicate or too-close symptoms rejected:
+  - background panics at `src/peer.rs:92:104` with
+    `should send to main: SendError { .. }` map directly to ISSUE-139's
+    unchecked `PeerConnectError` reporting after the main loop is closed.
+  - connection-loss, `queue main loop full`, and `forward peer stopped ... no
+    available capacity` logs are churn pressure/noise overlapping existing
+    ISSUE-170 and RC-3/RC-6 shutdown-lifecycle patterns, but this run's
+    accepted failing assertion is the already-recorded ISSUE-139 panic.
+- Root-cause summary impact: no new root cause; this fuzz cycle strengthens
+  existing ISSUE-139 sanitized-churn evidence without adding ISSUE-205.
 
 ### Cycle after ISSUE-204 no-new cycle 26: discovery fresh-restart tombstone duplicate
 

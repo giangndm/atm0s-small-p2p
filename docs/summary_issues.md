@@ -7,9 +7,9 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Accepted issues: 204
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 26
+- Current consecutive no-new-issue cycles: 27
 - Stop condition: continue until 5 consecutive cycles find no new accepted
-  issue; currently 26/5 after ISSUE-204.
+  issue; currently 27/5 after ISSUE-204.
 
 ## Root Cause Summary
 
@@ -256,6 +256,12 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Recent Fuzz Evidence
 
+- Extended sanitized churn fuzz:
+  `RUST_LOG=error P2P_FUZZ_SEED=2180001 P2P_FUZZ_NODES=9 P2P_FUZZ_STEPS=2200 cargo test fuzz_random_sanitized_node_churn_actions_must_not_panic_connection_tasks -- --nocapture`
+  failed with duplicate evidence for ISSUE-139. Reviewer `Ptolemy the 4th`
+  confirmed the `src/peer.rs:92` send-to-main panic is the already-accepted
+  early `PeerConnectError` reporting panic after main-loop shutdown; churn
+  queue/stop-forwarding logs were supporting noise, not a new issue.
 - Focused discovery freshness source/test review:
   `cargo test graceful_stop_tombstone_must_allow_fresh_restart_advertise -- --nocapture`
   failed with duplicate evidence for ISSUE-093. Reviewer `Confucius the 4th`
