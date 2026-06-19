@@ -114,19 +114,21 @@ the source of truth for evidence and reviewer decisions.
   ISSUE-060, ISSUE-064, ISSUE-065, ISSUE-069 through ISSUE-076, ISSUE-108,
   ISSUE-128 through ISSUE-132, ISSUE-135, ISSUE-139, ISSUE-142, ISSUE-144,
   ISSUE-148, ISSUE-150, ISSUE-151, ISSUE-161, ISSUE-162, ISSUE-165,
-  ISSUE-167, ISSUE-168, ISSUE-170, ISSUE-179, ISSUE-183, ISSUE-185.
+  ISSUE-167, ISSUE-168, ISSUE-170, ISSUE-179, ISSUE-183, ISSUE-185,
+  ISSUE-187.
 - Pattern: requesters, services, peer aliases, channel state, and cached hints
   can outlive the owner they represent, while shutdown paths may panic, leak,
   emit false public events, or keep stale routes/cache entries. Some shutdown
   controls announce owner teardown without clearing local authority, and
-  peer lifecycle events do not consistently reach service-owned membership.
+  peer lifecycle events do not consistently reach service-owned membership or
+  public network-event consumers.
 - Minimal fix proposal: add generation or liveness tokens to cloned requesters
   and local handles, make closed channels return `Err` instead of panicking, and
   centralize owner teardown so aliases, metrics, routes, caches, and service ids
   are cleared together. Shutdown controls should also enter an explicit
   terminal state so later register/find operations are rejected or no-op.
   Peer stopped/disconnected events should be fanned out to services that own
-  per-peer state.
+  per-peer state and surfaced through the public network event API.
 
 ### RC-7: Routing and discovery accept unstable or self-referential topology
 
@@ -4181,6 +4183,40 @@ the source of truth for evidence and reviewer decisions.
     produced, but `last_active` changes from the stale instant to
     `Instant::now()`, preventing timeout cleanup from recognizing the remote as
     inactive.
+
+### ISSUE-187: Graceful PeerStopped is hidden from public network events
+
+- Category: correctness, graceful-shutdown stability, public API lifecycle
+- Score: 49/100
+- Reviewer: `Mendel the 3rd`, confirmed after `Godel the 3rd` discovery.
+- Affected code:
+  - `src/lib.rs`: `P2pNetworkEvent` exposes `PeerConnected`,
+    `PeerDisconnected`, and `Continue`, but has no explicit graceful-stop
+    event.
+  - `src/lib.rs`: `P2pNetwork::process_internal` handles
+    `MainEvent::PeerStopped(conn, peer)` by updating discovery/router state
+    and then returning `P2pNetworkEvent::Continue`.
+- Impact: applications that maintain their own live-peer set from
+  `P2pNetwork::recv()` cannot observe an accepted graceful shutdown when the
+  stop control message is processed. They can keep the stopped peer live until
+  a later transport disconnect event, or miss the graceful lifecycle transition
+  entirely if they rely on `PeerStopped` as the authoritative shutdown signal.
+  This is distinct from ISSUE-051, which covers internal neighbour cleanup;
+  ISSUE-065 and ISSUE-066, which cover stale or mismatched disconnect events;
+  ISSUE-162, ISSUE-165, and ISSUE-185, which cover service-specific lifecycle
+  fanout; and ISSUE-001/004, which cover forged or seed `PeerStopped` handling.
+- Minimal fix proposal: for a validated `MainEvent::PeerStopped(conn, peer)`,
+  perform stopped-neighbour/context cleanup and return
+  `P2pNetworkEvent::PeerDisconnected(conn, peer)`. If the API needs to
+  distinguish graceful stop from transport loss, add
+  `P2pNetworkEvent::PeerStopped(conn, peer)` and emit that instead.
+- Evidence test:
+  - `cargo test peer_stopped_must_emit_public_disconnect_event -- --nocapture`
+  - Failure summary: after node2 establishes a real connection to node1,
+    processing `MainEvent::PeerStopped(stopped_conn, node1)` returns
+    `P2pNetworkEvent::Continue`; expected a visible
+    `P2pNetworkEvent::PeerDisconnected(stopped_conn, node1)` lifecycle event
+    for public consumers.
 
 ### ISSUE-155: Stale pubsub leave removes membership confirmed by newer heartbeat
 

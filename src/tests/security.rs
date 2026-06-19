@@ -115,6 +115,39 @@ async fn peer_stopped_must_remove_stopped_neighbour_immediately() {
 }
 
 #[tokio::test]
+async fn peer_stopped_must_emit_public_disconnect_event() {
+    let (mut node1, addr1) = create_node(true, 1, vec![]).await;
+    let (mut node2, _addr2) = create_node(false, 2, vec![addr1.clone()]).await;
+
+    let stopped_conn = tokio::time::timeout(Duration::from_secs(3), async {
+        loop {
+            tokio::select! {
+                _ = node1.recv() => {}
+                event = node2.recv() => {
+                    if let Ok(P2pNetworkEvent::PeerConnected(conn, peer)) = event {
+                        if peer == addr1.peer_id() {
+                            return conn;
+                        }
+                    }
+                }
+            }
+        }
+    })
+    .await
+    .expect("node2 should connect to node1");
+
+    let event = node2
+        .process_internal(100, MainEvent::PeerStopped(stopped_conn, addr1.peer_id()))
+        .expect("peer stopped event should process");
+
+    assert_eq!(
+        event,
+        P2pNetworkEvent::PeerDisconnected(stopped_conn, addr1.peer_id()),
+        "a legitimate graceful PeerStopped must be visible to P2pNetworkEvent consumers"
+    );
+}
+
+#[tokio::test]
 async fn peer_stopped_route_must_not_be_resurrected_by_connection_ticker() {
     let (mut node1, addr1) = create_node(true, 1, vec![]).await;
     let (mut node2, _addr2) = create_node(false, 2, vec![addr1.clone()]).await;

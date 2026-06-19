@@ -5,7 +5,7 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Audit Status
 
-- Accepted issues: 186
+- Accepted issues: 187
 - Missing issue scores: 0
 - Current consecutive no-new-issue cycles: 0
 - Stop condition: continue until 5 consecutive cycles find no new accepted
@@ -97,18 +97,21 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   ISSUE-060, ISSUE-064, ISSUE-065, ISSUE-069 through ISSUE-076, ISSUE-108,
   ISSUE-128 through ISSUE-132, ISSUE-135, ISSUE-139, ISSUE-142, ISSUE-144,
   ISSUE-148, ISSUE-150, ISSUE-151, ISSUE-161, ISSUE-162, ISSUE-165,
-  ISSUE-167, ISSUE-168, ISSUE-170, ISSUE-179, ISSUE-183, ISSUE-185.
+  ISSUE-167, ISSUE-168, ISSUE-170, ISSUE-179, ISSUE-183, ISSUE-185,
+  ISSUE-187.
 - Pattern: requesters, services, peer aliases, channel state, and cached hints
   can outlive the owner they represent; shutdown paths can panic, leak, emit
   false public events, keep stale routes/cache entries, or announce shutdown
   while local authority remains active. Peer lifecycle events also do not
-  consistently reach service-owned per-peer membership.
+  consistently reach service-owned per-peer membership or public network-event
+  consumers.
 - Minimal fix proposal: add generation or liveness tokens to cloned requesters
   and local handles, make closed channels return `Err`, and centralize teardown
   for aliases, metrics, routes, caches, and service ids. Shutdown controls
   should enter an explicit terminal state so later register/find operations are
   rejected or no-op. Fan out accepted peer stopped/disconnected events to
-  services that own per-peer state.
+  services that own per-peer state and surface them through the public network
+  event API.
 
 ### RC-7: Routing/discovery accepts unstable topology
 
@@ -171,11 +174,11 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   peer stop. Reviewer: Popper the 3rd.
 - ISSUE-186, score 54: ignored replicated-KV broadcasts refresh stale remote
   activity. Reviewer: Nietzsche the 3rd.
+- ISSUE-187, score 49: graceful PeerStopped is hidden from public network
+  events. Reviewer: Mendel the 3rd.
 
 ## Next Candidate To Validate
 
-- Queued for possible next validation: public `P2pNetworkEvent` hides accepted
-  graceful `PeerStopped` as `Continue`. ISSUE-186 kept the no-new counter at 0.
-  Continue fresh source
+- None queued. ISSUE-187 kept the no-new counter at 0. Continue fresh source
   review; if five consecutive cycles find no issue, switch to randomized fuzz
   tests over node actions.
