@@ -7,9 +7,9 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Accepted issues: 204
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 20
+- Current consecutive no-new-issue cycles: 21
 - Stop condition: continue until 5 consecutive cycles find no new accepted
-  issue; currently 20/5 after ISSUE-204.
+  issue; currently 21/5 after ISSUE-204.
 
 ## Root Cause Summary
 
@@ -256,6 +256,12 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Recent Fuzz Evidence
 
+- Focused visualization resource-bound source/test review:
+  `cargo test visualization_info_batches_must_be_bounded -- --nocapture`
+  failed with duplicate evidence for ISSUE-105. Reviewer `Popper the 4th`
+  confirmed the `src/service/visualization_service.rs:248` assertion is the
+  already-accepted missing service-level row cap for visualization `Info`
+  batches under RC-5.
 - Focused alias backpressure source/test review:
   `cargo test alias_internal_control_backlog_must_be_bounded -- --nocapture`
   failed with duplicate evidence for ISSUE-127. Reviewer `Euclid the 4th`

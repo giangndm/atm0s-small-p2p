@@ -11,7 +11,7 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 20
+- Current consecutive no-new-issue cycles: 21
 - Stop condition requested by user: continue until 5 consecutive cycles find no
   new accepted issue.
 
@@ -5768,6 +5768,26 @@ the source of truth for evidence and reviewer decisions.
     `src/peer.rs:1092` with `got 2`.
 
 ## No-New-Issue Audit Cycles
+
+### Cycle after ISSUE-204 no-new cycle 21: visualization info batch duplicate
+
+- Result: no accepted non-duplicate issue.
+- Reviewer: `Popper the 4th`, forked subagent review, confirmed
+  duplicate-only no-new classification.
+- Source and test evidence reviewed:
+  - `src/service/visualization_service.rs`
+  - `cargo test visualization_info_batches_must_be_bounded -- --nocapture`
+    failed with duplicate evidence for ISSUE-105.
+- Duplicate or too-close symptoms rejected:
+  - the failure at `src/service/visualization_service.rs:248:9` delivered
+    1,025 topology rows from one `Info` frame, exceeding the test cap of 1,024
+    rows.
+  - `VisualizationService::recv` still forwards `Message::Info(neighbours)`
+    directly as `VisualizationServiceEvent::PeerJoined` or `PeerUpdated`, which
+    is the exact accepted source behavior and failing evidence for ISSUE-105.
+- Root-cause summary impact: no new root cause; this source/test cycle
+  strengthens existing ISSUE-105 evidence under RC-5 application-level
+  resource limits without adding ISSUE-205.
 
 ### Cycle after ISSUE-204 no-new cycle 20: alias internal-control backlog duplicate
 
