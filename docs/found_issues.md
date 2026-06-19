@@ -11,7 +11,7 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 44
+- Current consecutive no-new-issue cycles: 45
 - Stop condition requested by user: continue until 5 consecutive cycles find no
   new accepted issue.
 
@@ -5783,6 +5783,28 @@ the source of truth for evidence and reviewer decisions.
     `src/peer.rs:1092` with `got 2`.
 
 ## No-New-Issue Audit Cycles
+
+### Cycle after ISSUE-204 no-new cycle 45: sanitized churn duplicate peer-connect panic
+
+- Result: no accepted non-duplicate issue.
+- Reviewer: `Pasteur the 4th`, forked subagent review, confirmed
+  duplicate-only no-new classification.
+- Source and test evidence reviewed:
+  - `src/tests/fuzz.rs`
+  - `src/peer.rs`
+  - `P2P_FUZZ_SEED=1 P2P_FUZZ_NODES=6 P2P_FUZZ_STEPS=700 cargo test fuzz_random_sanitized_node_churn_actions_must_not_panic_connection_tasks -- --nocapture`
+    failed at `src/tests/fuzz.rs:372:5`.
+- Duplicate or too-close symptoms rejected:
+  - sanitized random churn closed or dropped owning network loops while spawned
+    connection tasks were still reporting QUIC setup failures.
+  - background tasks panicked at `src/peer.rs:92:104` and
+    `src/peer.rs:133:113` with `should send to main: SendError { .. }`.
+  - this maps directly to ISSUE-139: early incoming/outgoing
+    `PeerConnectError` reporting still sends to `main_tx` with
+    `.expect("should send to main")` after the main event receiver may already
+    be closed.
+- Root-cause summary impact: no new root cause; this fuzz cycle strengthens
+  existing ISSUE-139 churn evidence under RC-6 without adding ISSUE-205.
 
 ### Cycle after ISSUE-204 no-new cycle 44: inbound ConnectRes write-stall duplicate
 
