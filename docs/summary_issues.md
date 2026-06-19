@@ -7,9 +7,9 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Accepted issues: 204
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 41
+- Current consecutive no-new-issue cycles: 42
 - Stop condition: continue until 5 consecutive cycles find no new accepted
-  issue; currently 41/5 after ISSUE-204.
+  issue; currently 42/5 after ISSUE-204.
 
 ## Root Cause Summary
 
@@ -256,6 +256,12 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Recent Fuzz Evidence
 
+- Focused outbound control-stream setup review:
+  `cargo test outbound_peer_setup_must_timeout_when_main_control_stream_cannot_open -- --nocapture`
+  failed with duplicate evidence for ISSUE-159. Reviewer `Pascal the 4th`
+  confirmed outbound setup still awaits `connection.open_bi().await` without a
+  setup timeout, so no `PeerConnectError` is emitted and the pending neighbour
+  remains uncleared.
 - Focused unauthenticated inbound connection review:
   `cargo test unauthenticated_inbound_connections_must_be_admission_bounded -- --nocapture`
   failed with duplicate evidence for ISSUE-134. Reviewer `Newton the 4th`

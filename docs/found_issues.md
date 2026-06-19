@@ -11,7 +11,7 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 41
+- Current consecutive no-new-issue cycles: 42
 - Stop condition requested by user: continue until 5 consecutive cycles find no
   new accepted issue.
 
@@ -5783,6 +5783,27 @@ the source of truth for evidence and reviewer decisions.
     `src/peer.rs:1092` with `got 2`.
 
 ## No-New-Issue Audit Cycles
+
+### Cycle after ISSUE-204 no-new cycle 42: outbound control-stream setup duplicate
+
+- Result: no accepted non-duplicate issue.
+- Reviewer: `Pascal the 4th`, forked subagent review, confirmed
+  duplicate-only no-new classification.
+- Source and test evidence reviewed:
+  - `src/tests/security.rs`
+  - `src/peer.rs`
+  - `cargo test outbound_peer_setup_must_timeout_when_main_control_stream_cannot_open -- --nocapture`
+    failed at `src/tests/security.rs:544:5` with one pending neighbour left.
+- Duplicate or too-close symptoms rejected:
+  - a raw QUIC server accepts the transport connection while advertising zero
+    bidirectional streams; outbound setup never opens the P2P control stream
+    and the pending neighbour remains after the cleanup window.
+  - this maps directly to ISSUE-159: outbound setup awaits
+    `connection.open_bi().await` without a setup timeout, so no
+    `MainEvent::PeerConnectError` is emitted for pending-neighbour cleanup.
+- Root-cause summary impact: no new root cause; this focused outbound setup
+  timeout cycle strengthens existing ISSUE-159 evidence under RC-4 without
+  adding ISSUE-205.
 
 ### Cycle after ISSUE-204 no-new cycle 41: unauthenticated inbound connection duplicate
 
