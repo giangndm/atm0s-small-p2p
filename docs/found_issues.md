@@ -5661,6 +5661,42 @@ the source of truth for evidence and reviewer decisions.
     `src/peer.rs:930` with `got 2`, proving visualization scans accumulate
     while a prior broadcast remains backpressured.
 
+### ISSUE-202: metrics scan responses are dropped under peer-control backpressure
+
+- Category: high-load stability, metrics response reliability, API
+  backpressure
+- Score: 55/100
+- Reviewer: `Ramanujan the 3rd`, confirmed after `Aquinas the 3rd` discovery.
+- Affected code:
+  - `src/service/metrics_service.rs`: when a `Message::Scan` arrives, the
+    service gathers metrics and spawns a detached response task.
+  - `src/service/metrics_service.rs`: that task calls
+    `requester.try_send_unicast(...)` and only logs errors.
+  - `src/ctx.rs`: `SharedCtx::try_send_unicast` delegates to the next-hop
+    peer alias and returns an error immediately if the bounded peer-control
+    queue is full.
+  - `src/peer/peer_alias.rs`: `PeerConnectionAlias::try_send` uses bounded
+    channel `try_send`.
+- Impact: after a metrics `Scan` is accepted, a transiently full next-hop
+  peer-control queue drops the `Info` response immediately. The sender gets no
+  retry, backpressure, or observable failure from the metrics service. This is
+  distinct from ISSUE-050, which covers direct awaited `send_unicast`
+  blocking; ISSUE-119/120, which cover local service ingress queue drops;
+  ISSUE-198, which covers broadcast `try_send_broadcast`; ISSUE-200/201, which
+  cover duplicate collector scan scheduling; and ISSUE-078, which covers
+  unauthorized metrics disclosure.
+- Minimal fix proposal: do not use fire-and-forget `try_send_unicast` for
+  metrics `Scan` responses. Use an awaited send with timeout, or keep a small
+  bounded retry/coalescing state for pending metrics responses. Surface
+  delivery failure so the service can retry, account for the drop, or apply
+  caller-visible backpressure.
+- Evidence test:
+  - `cargo test metrics_scan_response_must_not_be_dropped_when_peer_control_queue_is_full -- --nocapture`
+  - Failure summary: the test injects a metrics `Scan` while the selected
+    next-hop peer-control queue is full, yields while the queue remains full,
+    then drains the filler item. No `PeerMessage::Unicast` metrics response is
+    observed afterward, and the test fails at `src/peer.rs:977`.
+
 ## No-New-Issue Audit Cycles
 
 ### Cycle after ISSUE-193 no-new cycle 4: public API, examples, fuzz harness, config

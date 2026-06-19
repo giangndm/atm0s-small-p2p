@@ -254,7 +254,11 @@ mod tests {
         neighbours::NetworkNeighbours,
         quic::make_server_endpoint,
         router::{RouteAction, SharedRouterTable},
-        service::{metrics_service::MetricsService, visualization_service::VisualizationService, P2pService},
+        service::{
+            metrics_service::{encode_scan_for_test as encode_metrics_scan_for_test, MetricsService},
+            visualization_service::VisualizationService,
+            P2pService, P2pServiceEvent,
+        },
         stream::BincodeCodec,
         NetworkAddress, P2pNetwork, P2pNetworkConfig, PeerMainData, SharedKeyHandshake, CERT_DOMAIN_NAME,
     };
@@ -930,6 +934,49 @@ mod tests {
         assert!(
             duplicate_scans <= 1,
             "visualization collector must coalesce scan broadcasts while the previous broadcast is still backpressured; got {duplicate_scans}"
+        );
+    }
+
+    #[tokio::test]
+    async fn metrics_scan_response_must_not_be_dropped_when_peer_control_queue_is_full() {
+        let router = SharedRouterTable::new(PeerId::from(0));
+        let ctx = SharedCtx::new(PeerId::from(0), router.clone());
+        let conn = ConnectionId::from(1);
+        let peer = PeerId::from(1);
+        let (tx, mut rx) = channel(1);
+
+        router.set_direct(conn, peer, 0);
+        tx.try_send(PeerConnectionControl::Send(PeerMessage::PeerStopped(PeerId::from(99)), None))
+            .expect("test control queue should accept filler message");
+        ctx.register_conn(conn, PeerConnectionAlias::new(PeerId::from(0), peer, conn, tx));
+
+        let (base_service, service_tx) = P2pService::build(P2pServiceId::from(9), ctx);
+        let mut metrics = MetricsService::new(None, base_service, false);
+        service_tx
+            .send(P2pServiceEvent::Unicast(peer, encode_metrics_scan_for_test()))
+            .await
+            .expect("test service queue should accept scan");
+
+        let _ = tokio::time::timeout(Duration::from_millis(20), metrics.recv()).await;
+        for _ in 0..8 {
+            tokio::task::yield_now().await;
+        }
+
+        let _filler = rx.recv().await.expect("filler should drain");
+        let found = tokio::time::timeout(Duration::from_millis(100), async {
+            while let Some(control) = rx.recv().await {
+                if matches!(control, PeerConnectionControl::Send(PeerMessage::Unicast(_, _, _, _), None)) {
+                    return true;
+                }
+            }
+            false
+        })
+        .await
+        .unwrap_or(false);
+
+        assert!(
+            found,
+            "metrics Scan response must be queued, retried, or backpressured instead of dropped when the peer control queue is briefly full"
         );
     }
 
