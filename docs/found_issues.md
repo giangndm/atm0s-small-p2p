@@ -11,7 +11,7 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 3
+- Current consecutive no-new-issue cycles: 4
 - Stop condition requested by user: continue until 5 consecutive cycles find no
   new accepted issue.
 
@@ -5358,6 +5358,45 @@ the source of truth for evidence and reviewer decisions.
     teardown must not emit RTT as a counter.
 
 ## No-New-Issue Audit Cycles
+
+### Cycle after ISSUE-193 no-new cycle 3: alias, metrics, visualization, service boundaries
+
+- Result: no accepted non-duplicate issue.
+- Reviewer/explorer: `Bacon the 3rd`; local review by main agent.
+- Local/source areas reviewed:
+  - `src/service/alias_service.rs`,
+    `src/service/metrics_service.rs`,
+    `src/service/visualization_service.rs`, and existing alias, metrics, and
+    visualization tests.
+  - `src/service.rs`, `src/ctx.rs`, `src/msg.rs`, `src/stream.rs`,
+    `src/peer/peer_alias.rs`, and existing service boundary, stream codec, and
+    peer-alias evidence tests.
+- Duplicate or too-close candidates rejected:
+  - alias requester/guard panics after close, refcount overflow, find waiter
+    growth, unique pending-find growth, internal control backlog, and run-loop
+    closed-channel panics: ISSUE-019, ISSUE-029, ISSUE-035, ISSUE-041,
+    ISSUE-127, ISSUE-130, and ISSUE-132.
+  - alias cache poisoning, stale cache mutation via `Found`, `NotFound`,
+    `NotifySet`, and `Shutdown`, plus shutdown still serving aliases or leaving
+    pending find waiters alive: ISSUE-022, ISSUE-090, ISSUE-109, ISSUE-148,
+    ISSUE-152, ISSUE-158, ISSUE-179, and ISSUE-183.
+  - metrics and visualization zero-interval or closed-service panics, forged
+    `Info`, arbitrary `Scan`, retained state, oversized batches, and graceful
+    stop lag: ISSUE-040, ISSUE-061, ISSUE-062, ISSUE-078, ISSUE-079,
+    ISSUE-102, ISSUE-104, ISSUE-105, ISSUE-128, ISSUE-129, and ISSUE-165.
+  - repeated collector scans building up behind congested peer queues maps to
+    the existing awaited broadcast/unicast backpressure findings:
+    ISSUE-049 and ISSUE-050.
+  - service boundary stale requesters, dropped services, local delivery queue
+    loss, out-of-range service ids, broadcast replay, and open-stream-to-local
+    panic: ISSUE-013, ISSUE-053, ISSUE-060, ISSUE-072, ISSUE-073, ISSUE-076,
+    ISSUE-091, ISSUE-119, ISSUE-120, and ISSUE-181.
+  - stream codec serialization failure, length-prefix truncation, actual-size
+    mismatch, setup stalls, and peer-alias blocking/backpressure:
+    ISSUE-097, ISSUE-098, ISSUE-117, ISSUE-118, ISSUE-134, ISSUE-149,
+    ISSUE-156, ISSUE-159, ISSUE-169, ISSUE-172, ISSUE-173, and ISSUE-174.
+- Root-cause summary impact: no new root cause; rejected candidates map to
+  RC-1, RC-2, RC-3, RC-4, RC-5, RC-6, and RC-7.
 
 ### Cycle after ISSUE-193 no-new cycle 2: pubsub lifecycle and replicated-KV storage
 
