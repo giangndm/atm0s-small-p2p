@@ -5,10 +5,10 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Audit Status
 
-- Accepted issues: 199
+- Accepted issues: 200
 - Missing issue scores: 0
 - Current consecutive no-new-issue cycles: 0
-- Stop condition: reset by ISSUE-199. Continue RED-team review and randomized
+- Stop condition: reset by ISSUE-200. Continue RED-team review and randomized
   fuzz tests over node actions.
 
 ## Root Cause Summary
@@ -53,7 +53,7 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   ISSUE-119, ISSUE-120, ISSUE-123, ISSUE-124, ISSUE-125, ISSUE-126,
   ISSUE-127, ISSUE-133, ISSUE-136, ISSUE-147, ISSUE-153, ISSUE-157,
   ISSUE-163, ISSUE-164, ISSUE-178, ISSUE-182, ISSUE-184, ISSUE-198,
-  ISSUE-199.
+  ISSUE-199, ISSUE-200.
 - Pattern: some paths drop on `try_send`, some await bounded sends from
   critical tasks, and others use unbounded queues or duplicate internal control
   work. Under load this causes silent loss, head-of-line blocking, unreported
@@ -70,7 +70,9 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   one successful local or remote fanout. Disable unused QUIC stream classes or
   add explicit admission plus drain/reject handlers. Repair requests need typed
   pending descriptors and duplicate suppression until timeout or a matching
-  response changes the range.
+  response changes the range. Periodic collectors should keep explicit
+  in-flight scan state and coalesce ticks while an earlier scan broadcast is
+  still backpressured.
 
 ### RC-4: Timeouts and setup cancellation are incomplete
 
@@ -229,14 +231,15 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   peer queue pressure. Reviewer: Dewey the 3rd.
 - ISSUE-199, score 52: `send_broadcast` silently succeeds when every peer send
   fails. Reviewer: Maxwell the 3rd.
+- ISSUE-200, score 58: metrics collector duplicates scan broadcasts behind
+  hidden backpressure. Reviewer: Bohr the 3rd.
 
 ## Next Candidate To Validate
 
-- Randomized node-action churn fuzzing has started. The first invalid-input
-  churn run rediscovered ISSUE-053; the first valid-only churn run rediscovered
-  ISSUE-063; sanitized churn rediscovered ISSUE-139. A steady-valid fuzz pass
-  bypassed those duplicate blockers and found no new issue. Continue expanding
-  randomized fuzzing from that passing baseline.
+- Continue RED-team review around service collectors, visualization scan
+  scheduling, and high-load backpressure. Randomized node-action churn fuzzing
+  has already started and should continue from the steady-valid passing
+  baseline when five consecutive no-new cycles accumulate again.
 
 ## Recent Fuzz Evidence
 

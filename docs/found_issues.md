@@ -5595,6 +5595,38 @@ the source of truth for evidence and reviewer decisions.
     fails at `src/peer.rs:858` because `ctx.send_broadcast(...).await` returns
     unit `()`, leaving callers unable to observe total fanout failure.
 
+### ISSUE-200: metrics collector duplicates scan broadcasts behind hidden backpressure
+
+- Category: high-load stability, collector backpressure, duplicate work
+- Score: 58/100
+- Reviewer: `Bohr the 3rd`, confirmed after `Meitner the 3rd` discovery.
+- Affected code:
+  - `src/service/metrics_service.rs`: each collector tick pushes local metrics
+    and then `tokio::spawn`s a detached task that awaits
+    `requester.send_broadcast(Message::Scan)`.
+  - `src/ctx.rs`: `SharedCtx::send_broadcast` awaits bounded peer-control
+    sends sequentially.
+  - `src/peer/peer_alias.rs`: `PeerConnectionAlias::send` awaits the bounded
+    peer-control channel.
+- Impact: when a peer-control queue is full, the metrics collector loop remains
+  responsive because the broadcast is hidden in a detached task. Subsequent
+  ticks spawn more blocked scan tasks for the same periodic work, so once
+  pressure clears the peer can receive duplicate stale scans. This is distinct
+  from ISSUE-049/050, which cover callers directly blocking on awaited sends,
+  and from ISSUE-198/199, which cover broadcast delivery/result reporting.
+- Minimal fix proposal: add explicit in-flight scan state to `MetricsService`
+  and skip or coalesce collector ticks while the previous scan broadcast is
+  still pending. A small fix is a `JoinHandle` or flag tracked by the service;
+  a longer-term fix should use a bounded, observable broadcast API so
+  coalescing can react to delivery status.
+- Evidence test:
+  - `cargo test metrics_collector_must_not_spawn_duplicate_scans_when_previous_broadcast_is_backpressured -- --nocapture`
+  - Failure summary: the test keeps a synthetic peer-control queue full across
+    eight 1 ms collector ticks, drains the filler item, and observes more than
+    one queued `PeerMessage::Broadcast` scan. It fails at `src/peer.rs:895`
+    with `got 2`, proving scans accumulate while a prior broadcast remains
+    backpressured.
+
 ## No-New-Issue Audit Cycles
 
 ### Cycle after ISSUE-193 no-new cycle 4: public API, examples, fuzz harness, config
@@ -5663,9 +5695,9 @@ the source of truth for evidence and reviewer decisions.
     `Info`, arbitrary `Scan`, retained state, oversized batches, and graceful
     stop lag: ISSUE-040, ISSUE-061, ISSUE-062, ISSUE-078, ISSUE-079,
     ISSUE-102, ISSUE-104, ISSUE-105, ISSUE-128, ISSUE-129, and ISSUE-165.
-  - repeated collector scans building up behind congested peer queues maps to
-    the existing awaited broadcast/unicast backpressure findings:
-    ISSUE-049 and ISSUE-050.
+  - repeated collector scans building up behind congested peer queues has since
+    been accepted as ISSUE-200 after focused failing evidence showed detached
+    periodic scan tasks accumulating rather than direct caller blocking.
   - service boundary stale requesters, dropped services, local delivery queue
     loss, out-of-range service ids, broadcast replay, and open-stream-to-local
     panic: ISSUE-013, ISSUE-053, ISSUE-060, ISSUE-072, ISSUE-073, ISSUE-076,
