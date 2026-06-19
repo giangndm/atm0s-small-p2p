@@ -11,7 +11,7 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 7
+- Current consecutive no-new-issue cycles: 8
 - Stop condition requested by user: continue until 5 consecutive cycles find no
   new accepted issue.
 
@@ -5768,6 +5768,26 @@ the source of truth for evidence and reviewer decisions.
     `src/peer.rs:1092` with `got 2`.
 
 ## No-New-Issue Audit Cycles
+
+### Cycle after ISSUE-204 no-new cycle 8: sanitized churn duplicate connect-error panic
+
+- Result: no accepted non-duplicate issue.
+- Reviewer: `Faraday the 4th`, forked subagent review, confirmed
+  duplicate-only no-new classification.
+- Fuzz evidence reviewed:
+  - `P2P_FUZZ_SEED=0x205201 P2P_FUZZ_NODES=8 P2P_FUZZ_STEPS=1200 cargo test fuzz_random_sanitized_node_churn_actions_must_not_panic_connection_tasks -- --nocapture`
+    failed with duplicate evidence for ISSUE-139.
+- Duplicate or too-close symptoms rejected:
+  - background panics at `src/peer.rs:133:113` with
+    `should send to main: SendError { .. }` map directly to ISSUE-139, where
+    early `PeerConnectError` reporting uses `expect("should send to main")`
+    after the main loop may already be shut down.
+  - shutdown, refused connection, and endpoint-close churn are the bad-network
+    lifecycle conditions ISSUE-139 already covers.
+  - temporary `path to X not found`, connection-lost, and endpoint shutdown
+    logs map to existing route/lifecycle entries rather than a new issue.
+- Root-cause summary impact: no new root cause; this run strengthens existing
+  ISSUE-139 fuzz evidence but does not add ISSUE-205.
 
 ### Cycle after ISSUE-204 no-new cycle 7: valid-action fuzz duplicate stale sync
 

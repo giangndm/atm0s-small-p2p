@@ -7,9 +7,9 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Accepted issues: 204
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 7
+- Current consecutive no-new-issue cycles: 8
 - Stop condition: continue until 5 consecutive cycles find no new accepted
-  issue; currently 7/5 after ISSUE-204.
+  issue; currently 8/5 after ISSUE-204.
 
 ## Root Cause Summary
 
@@ -270,6 +270,12 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 - Sanitized churn fuzz:
   `P2P_FUZZ_NODES=3 P2P_FUZZ_STEPS=120 cargo test fuzz_random_sanitized_node_churn_actions_must_not_panic_connection_tasks -- --nocapture`
   panics at `src/peer.rs:106`, duplicate evidence for ISSUE-139.
+- Extended sanitized churn fuzz:
+  `P2P_FUZZ_SEED=0x205201 P2P_FUZZ_NODES=8 P2P_FUZZ_STEPS=1200 cargo test fuzz_random_sanitized_node_churn_actions_must_not_panic_connection_tasks -- --nocapture`
+  panics at `src/peer.rs:133`, duplicate evidence for ISSUE-139. Reviewer
+  `Faraday the 4th` confirmed this is the outbound early `PeerConnectError`
+  path using `expect("should send to main")` after main-loop shutdown, not a
+  new accepted issue.
 - Steady valid fuzz:
   `P2P_FUZZ_NODES=3 P2P_FUZZ_STEPS=150 cargo test fuzz_random_steady_valid_node_actions_must_not_panic_connection_tasks -- --nocapture`
   passed after bypassing invalid service ids, forged `PeerStopped`, and
@@ -329,6 +335,13 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Recent No-New Audit
 
+- Cycle after ISSUE-204 no-new cycle 8 ran an eight-node sanitized churn fuzz
+  pass with forked reviewer `Faraday the 4th`. The run failed, but the failure
+  was duplicate evidence for ISSUE-139: the outbound early
+  `PeerConnectError` path panicked at `src/peer.rs:133` while sending to a
+  closed main loop. Shutdown/refused-connect churn and temporary route/lifecycle
+  logs mapped to existing RC-6 and RC-7 entries, so no accepted issue or
+  summary root-cause change was recorded.
 - Cycle after ISSUE-204 no-new cycle 7 ran an eight-node valid-action fuzz
   pass with forked reviewer `Planck the 4th`. The run failed, but the failure
   was duplicate evidence for ISSUE-063: stale `PeerData::Sync` reached
