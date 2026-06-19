@@ -11,7 +11,7 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 1
+- Current consecutive no-new-issue cycles: 2
 - Stop condition requested by user: continue until 5 consecutive cycles find no
   new accepted issue.
 
@@ -5358,6 +5358,42 @@ the source of truth for evidence and reviewer decisions.
     teardown must not emit RTT as a counter.
 
 ## No-New-Issue Audit Cycles
+
+### Cycle after ISSUE-193 no-new cycle 1: public control, routing/discovery, transport admission
+
+- Result: no accepted non-duplicate issue.
+- Reviewer/explorer: `Mencius the 3rd`; local review by main agent.
+- Local/source areas reviewed:
+  - `src/lib.rs`, especially `P2pNetwork::recv`, `process_tick`,
+    `process_internal`, `process_control`, `shutdown`, and
+    `shutdown_gracefully`.
+  - `src/router.rs`, `src/discovery.rs`, `src/neighbours.rs`,
+    `src/requester.rs`, and existing route/discovery/security tests.
+  - `src/quic.rs`, `src/secure.rs`, `src/peer.rs`,
+    `src/peer/peer_internal.rs`, and existing handshake/stream admission
+    evidence tests.
+- Duplicate or too-close candidates rejected:
+  - zero network tick panic: ISSUE-054.
+  - slow or blocking graceful shutdown notify: ISSUE-118.
+  - stale requester panic after network drop: ISSUE-028.
+  - `connect()` success before authentication or for a different address:
+    ISSUE-016 and ISSUE-177.
+  - duplicate discovery tick connect backlog: ISSUE-153.
+  - hidden graceful `PeerStopped` from public events: ISSUE-187.
+  - stale or mismatched internal lifecycle events:
+    ISSUE-057, ISSUE-063 through ISSUE-068, ISSUE-135, and ISSUE-145.
+  - unauthenticated QUIC admission, idle stream admission, and unused
+    unidirectional streams: ISSUE-117, ISSUE-134, and ISSUE-182.
+  - shared-key future timestamp, replay, overflow, and self-id handshake
+    problems: ISSUE-002, ISSUE-146, ISSUE-176, and ISSUE-189.
+  - local stream panic, relay loop, stalled setup, and upstream cancellation
+    failures: ISSUE-013, ISSUE-117, ISSUE-149, ISSUE-156, ISSUE-169, and
+    ISSUE-180.
+  - route/discovery jitter, duplicate rows, direct-route replacement, seed
+    handling, stale advertisements, stopped tombstones, and overflow
+    candidates were already covered by existing route/discovery ledger entries.
+- Root-cause summary impact: no new root cause; rejected candidates map to
+  RC-3, RC-4, RC-6, and RC-7.
 
 ### Cycle after ISSUE-193: metrics/visualization, fuzz, malformed wire paths, alias state
 

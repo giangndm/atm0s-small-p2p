@@ -7,7 +7,7 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Accepted issues: 193
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 1
+- Current consecutive no-new-issue cycles: 2
 - Stop condition: continue until 5 consecutive cycles find no new accepted
   issue; after that, continue with randomized fuzz tests over node actions.
 
@@ -211,12 +211,17 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Next Candidate To Validate
 
-- None queued. One consecutive no-new issue cycle is recorded after ISSUE-193.
+- None queued. Two consecutive no-new issue cycles are recorded after ISSUE-193.
   Continue fresh source review until five consecutive no-new cycles, then
   switch to randomized fuzz tests over node actions.
 
 ## Recent No-New Audit
 
+- Cycle after ISSUE-193 no-new cycle 1 reviewed public network
+  control/shutdown, router/discovery/neighbour tick paths, requesters,
+  QUIC/secure handshake admission, and peer stream admission. Rejected
+  candidates mapped to existing RC-3, RC-4, RC-6, and RC-7 patterns, so no
+  root-cause summary change was needed.
 - Cycle after ISSUE-193 reviewed metrics/visualization internals, the fuzz
   harness, malformed wire paths, and alias state. Rejected candidates mapped to
   existing RC-1, RC-2, RC-3, RC-4, RC-5, and RC-6 patterns, so no root-cause
