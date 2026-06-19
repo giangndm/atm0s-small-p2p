@@ -32,3 +32,28 @@ pub struct StreamConnectReq {
 }
 
 pub type StreamConnectRes = Result<(), String>;
+
+#[cfg(test)]
+mod tests {
+    use crate::{ctx::SharedCtx, router::SharedRouterTable};
+
+    use super::*;
+
+    #[test]
+    fn broadcast_replay_must_not_be_accepted_after_dedup_cache_eviction() {
+        let ctx = SharedCtx::new(PeerId::from(1), SharedRouterTable::new(PeerId::from(1)));
+        let replayed = BroadcastMsgId(7);
+
+        assert!(ctx.check_broadcast_msg(replayed));
+        assert!(!ctx.check_broadcast_msg(replayed));
+
+        for id in 8..(8 + 8192) {
+            assert!(ctx.check_broadcast_msg(BroadcastMsgId(id)));
+        }
+
+        assert!(
+            !ctx.check_broadcast_msg(replayed),
+            "an already accepted broadcast id must be rejected within the configured freshness window after cache churn"
+        );
+    }
+}

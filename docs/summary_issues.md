@@ -5,9 +5,9 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Audit Status
 
-- Accepted issues: 165
+- Accepted issues: 166
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 2
+- Current consecutive no-new-issue cycles: 0
 - Stop condition: continue until 5 consecutive cycles find no new accepted
   issue; after that, continue with randomized fuzz tests over node actions.
 
@@ -30,7 +30,7 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 - Representative issues: ISSUE-034, ISSUE-037, ISSUE-038, ISSUE-047,
   ISSUE-059, ISSUE-071, ISSUE-081 through ISSUE-089, ISSUE-095, ISSUE-099,
   ISSUE-110, ISSUE-111, ISSUE-138, ISSUE-141, ISSUE-143, ISSUE-152,
-  ISSUE-154, ISSUE-155, ISSUE-158.
+  ISSUE-154, ISSUE-155, ISSUE-158, ISSUE-166.
 - Pattern: replicated-KV, alias, metrics, visualization, and pubsub flows accept
   stale, unsolicited, reordered, or mismatched responses because handlers do
   not verify request shape, bounds, version, continuation key, expected phase,
@@ -107,8 +107,6 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Recent Accepted Issues
 
-- ISSUE-160, score 68: relayed route replaces a direct authenticated peer
-  route. Reviewer: Wegener the 2nd.
 - ISSUE-161, score 64: stopped peer route resurrects through third-party route
   sync. Reviewer: Epicurus the 2nd.
 - ISSUE-162, score 63: replicated KV keeps stopped peer data until idle
@@ -119,14 +117,11 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   control queue is full. Reviewer: Archimedes the 2nd.
 - ISSUE-165, score 54: visualization keeps a gracefully stopped peer until
   timeout. Reviewer: Hubble the 2nd.
+- ISSUE-166, score 58: broadcast replay is accepted again after dedup cache
+  eviction. Reviewer: Avicenna the 3rd.
 
 ## Next Candidate To Validate
 
-- None queued. Two consecutive cycles found no accepted non-duplicate issue.
-  The latest cycle reviewed serialization/framing, malformed service payloads,
-  replicated-KV pagination/state boundaries, pubsub RPC method/data parsing,
-  and public API panic/error boundaries. Rejected candidates mapped to existing
-  ISSUE-010, ISSUE-024, ISSUE-029, ISSUE-094, ISSUE-097/098,
-  ISSUE-100 through ISSUE-108, ISSUE-115/116, and ISSUE-122. Continue fresh
-  source review; if three more consecutive cycles find no issue, switch to
-  randomized fuzz tests over node actions.
+- None queued. ISSUE-166 reset the no-new counter to 0. Continue fresh source
+  review; if five consecutive cycles find no issue, switch to randomized fuzz
+  tests over node actions.

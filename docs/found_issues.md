@@ -11,7 +11,7 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 2
+- Current consecutive no-new-issue cycles: 0
 - Stop condition requested by user: continue until 5 consecutive cycles find no
   new accepted issue.
 
@@ -39,7 +39,7 @@ the source of truth for evidence and reviewer decisions.
 - Representative issues: ISSUE-034, ISSUE-037, ISSUE-038, ISSUE-047,
   ISSUE-059, ISSUE-071, ISSUE-081 through ISSUE-089, ISSUE-095, ISSUE-099,
   ISSUE-110, ISSUE-111, ISSUE-138, ISSUE-141, ISSUE-143, ISSUE-152,
-  ISSUE-154, ISSUE-155, ISSUE-158.
+  ISSUE-154, ISSUE-155, ISSUE-158, ISSUE-166.
 - Pattern: replicated-KV full sync, changed repair, alias lookup, metrics,
   visualization, and pubsub flows accept stale, unsolicited, reordered, or
   mismatched responses because response handlers do not verify outstanding
@@ -4344,6 +4344,39 @@ the source of truth for evidence and reviewer decisions.
     `PeerStopped`/disconnect, but `VisualizationService` does not emit
     `PeerLeaved(node2)` within the prompt leave window; expected lifecycle
     propagation instead of waiting for the timeout sweep.
+
+### ISSUE-166: Broadcast replay is accepted again after dedup cache eviction
+
+- Category: security, replay resistance, bad-network correctness
+- Score: 58/100
+- Reviewer: `Avicenna the 3rd`, confirmed after `Bernoulli the 3rd`
+  discovery.
+- Affected code:
+  - `src/msg.rs`: `BroadcastMsgId` is the only replay/duplicate token carried
+    by broadcast frames.
+  - `src/ctx.rs`: `received_broadcast_msg` is an
+    `LruCache<BroadcastMsgId, ()>` with a fixed capacity.
+  - `src/ctx.rs`: `check_broadcast_msg` accepts the same id again after it has
+    been evicted from the LRU.
+  - `src/peer/peer_internal.rs`: accepted broadcasts are forwarded and
+    delivered locally after passing `check_broadcast_msg`.
+- Impact: broadcast replay protection is pure cache residency. After enough
+  other broadcast ids churn the LRU, an identical already-accepted broadcast id
+  is treated as new and can be forwarded or delivered again. This is distinct
+  from ISSUE-017, which is false duplicate suppression across different
+  sources/services because the key omits source and service; this issue is the
+  opposite failure mode, where the same replay becomes accepted again after
+  eviction.
+- Minimal fix proposal: replace pure LRU dedupe with freshness-aware replay
+  state. At minimum, key by `(source, service, msg_id)` and enforce a bounded
+  epoch/timestamp or per-source sequence window so old broadcasts are rejected
+  after cache churn while memory remains bounded.
+- Evidence test:
+  - `cargo test broadcast_replay_must_not_be_accepted_after_dedup_cache_eviction -- --nocapture`
+  - Failure summary: the test accepts `BroadcastMsgId(7)`, verifies the
+    immediate duplicate is rejected, then inserts 8,192 distinct ids. The same
+    original id is accepted again after eviction; expected replays inside the
+    configured freshness window to remain rejected.
 
 ## No-New-Issue Audit Cycles
 
