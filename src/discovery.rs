@@ -122,6 +122,22 @@ mod test {
     }
 
     #[test_log::test]
+    fn local_sync_must_not_advertise_unroutable_wildcard_address() {
+        let mut discovery = PeerDiscovery::default();
+        let local = PeerId(1);
+        let remote = PeerId(2);
+        let wildcard: PeerAddress = "1@0.0.0.0:0".parse().expect("wildcard address should parse");
+
+        discovery.enable_local(local, wildcard.network_address().clone());
+
+        assert_eq!(
+            discovery.create_sync_for(100, &remote),
+            PeerDiscoverySync(vec![]),
+            "unroutable wildcard or port-zero local advertise addresses must not be gossiped as dial candidates"
+        );
+    }
+
+    #[test_log::test]
     fn apply_sync() {
         let mut discovery = PeerDiscovery::default();
 

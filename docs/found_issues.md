@@ -119,20 +119,22 @@ the source of truth for evidence and reviewer decisions.
 - Representative issues: ISSUE-003, ISSUE-005, ISSUE-006, ISSUE-007,
   ISSUE-008, ISSUE-033, ISSUE-044, ISSUE-055, ISSUE-092, ISSUE-103,
   ISSUE-112 through ISSUE-114, ISSUE-160, ISSUE-161, ISSUE-164, ISSUE-167,
-  ISSUE-177, ISSUE-180.
+  ISSUE-177, ISSUE-180, ISSUE-181.
 - Pattern: route/discovery inputs can include local ids, self seeds, stale
   addresses, overflowed metrics, over-hop routes, duplicate connection races, or
   explicit connect addresses that are ignored by peer-id-only fast paths, or
   tiny RTT jitter that changes active paths too aggressively. Stream relay setup
   also trusts route choices without checking whether the next hop is the same
-  ingress connection.
+  ingress connection, and local advertise config can gossip non-dialable
+  addresses.
 - Minimal fix proposal: add route/discovery sanitization before insertion:
   reject local/self candidates and over-hop routes, pin authenticated direct
   paths for their peer ids, use checked metric math, ignore stale discovery
   timestamps, coalesce duplicate connects, validate already-connected peer
   addresses, add a small hysteresis threshold before switching active paths,
   and reject relay stream hops that would forward back to their ingress
-  connection.
+  connection. Validate configured local advertise addresses before gossiping
+  them.
 
 ## Accepted Issues
 
@@ -4468,6 +4470,35 @@ the source of truth for evidence and reviewer decisions.
     routes through each other. `service1.open_stream(PeerId(99), ...)` does not
     return an error within 500 ms and the test fails with `Elapsed(())`;
     expected prompt rejection instead of recursive relay setup.
+
+### ISSUE-181: Local advertise config can gossip unroutable wildcard addresses
+
+- Category: correctness, discovery stability, config validation
+- Score: 45/100
+- Reviewer: `Nash the 3rd`, confirmed after `Schrodinger the 3rd` discovery.
+- Affected code:
+  - `src/lib.rs`: `P2pNetworkConfig::advertise` accepts any `NetworkAddress`.
+  - `src/lib.rs`: `P2pNetwork::new` passes configured `advertise` directly to
+    discovery with `discovery.enable_local(...)`.
+  - `src/discovery.rs`: `PeerDiscovery::enable_local` stores the address
+    unchanged, and `create_sync_for` gossips it to peers.
+- Impact: a node can be configured with `0.0.0.0:0` or another non-dialable
+  local advertise address and then publish that address through discovery sync.
+  Other peers can learn a useless dial candidate and repeatedly attempt failed
+  connections under churn. This is distinct from ISSUE-005/055 learned bad
+  advertisements; ISSUE-092/093 stale discovery timestamps and tombstones;
+  ISSUE-103/112/177 self or incorrect connect candidates; ISSUE-153 duplicate
+  retry enqueueing; and ISSUE-180 stream relay loop handling.
+- Minimal fix proposal: validate `cfg.advertise` before `enable_local`, or make
+  `PeerDiscovery::enable_local` reject/suppress non-dialable addresses. At
+  minimum reject `ip().is_unspecified()` and `port() == 0`; return a config
+  error if strict behavior is preferred.
+- Evidence test:
+  - `cargo test local_sync_must_not_advertise_unroutable_wildcard_address -- --nocapture`
+  - Failure summary: after `enable_local(PeerId(1), 0.0.0.0:0)`,
+    `create_sync_for` returns
+    `PeerDiscoverySync([(PeerId(1), 100, NetworkAddress(0.0.0.0:0))])`;
+    expected empty sync so non-dialable local addresses are not gossiped.
 
 ### ISSUE-164: Tick route/discovery sync is dropped when peer control queue is full
 
