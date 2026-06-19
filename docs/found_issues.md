@@ -54,7 +54,8 @@ the source of truth for evidence and reviewer decisions.
 
 - Representative issues: ISSUE-049, ISSUE-050, ISSUE-056, ISSUE-118,
   ISSUE-119, ISSUE-120, ISSUE-123, ISSUE-124, ISSUE-125, ISSUE-126,
-  ISSUE-127, ISSUE-133, ISSUE-136, ISSUE-147, ISSUE-153, ISSUE-157.
+  ISSUE-127, ISSUE-133, ISSUE-136, ISSUE-147, ISSUE-153, ISSUE-157,
+  ISSUE-163.
 - Pattern: some paths use bounded channels and drop on `try_send`, some await
   bounded sends from critical tasks, and others use unbounded queues or produce
   duplicate internal control work. Under load this causes silent data loss,
@@ -4240,3 +4241,38 @@ the source of truth for evidence and reviewer decisions.
     `KvEvent::Del(Some(node1), 7)` is emitted within the 3-second graceful-stop
     window; expected replicated KV to remove explicitly stopped peer data
     promptly instead of waiting for `REMOTE_TIMEOUT_MS`.
+
+### ISSUE-163: Pubsub RPC waits for timeout after every remote send fails
+
+- Category: correctness, pubsub RPC stability, bad-network delivery failure
+- Score: 61/100
+- Reviewer: `Einstein the 2nd`, confirmed after `Descartes the 2nd` discovery.
+- Affected code:
+  - `src/service/pubsub_service.rs`: `GuestPublishRpc` and the mirrored RPC
+    paths treat non-empty remote membership sets as valid destinations.
+  - `src/service/pubsub_service.rs`: each remote RPC send calls `send_to`, but
+    the caller does not learn whether delivery succeeded.
+  - `src/service/pubsub_service.rs`: pending RPC state is inserted even if every
+    remote send failed immediately.
+  - `src/service/pubsub_service.rs`: `send_to` logs `send_unicast` errors and
+    returns no status.
+  - `src/ctx.rs`: `send_unicast` can fail synchronously with `route not found`
+    or `peer not found`.
+- Impact: stale remote membership can make a pubsub RPC appear to have a
+  destination, but if all sends fail immediately, the caller still waits until
+  the RPC timeout sweep instead of receiving `NoDestination`. This ties up caller
+  tasks and pending RPC state under churn or bad network conditions. This is
+  distinct from ISSUE-043, which covers unbounded pending RPC retention;
+  ISSUE-121, which covers coarse timeout granularity; and ISSUE-026/155, which
+  cover stale membership cleanup.
+- Minimal fix proposal: make `send_to` return `anyhow::Result<()>`; for RPC
+  paths, count reached local destinations plus successful remote sends, and
+  send `PubsubRpcError::NoDestination` without inserting pending state when the
+  success count is zero. Keep timeout behavior only for RPCs delivered to at
+  least one destination.
+- Evidence test:
+  - `cargo test pubsub_rpc_must_return_no_destination_when_all_remote_sends_fail -- --nocapture`
+  - Failure summary: a channel has only stale remote subscriber `PeerId(99)` and
+    no route. `GuestPublishRpc` calls `send_unicast`, which fails immediately,
+    but `rx.try_recv()` remains `Err(Empty)` and `publish_rpc_reqs` retains the
+    request; expected immediate `Err(NoDestination)` and no pending RPC.

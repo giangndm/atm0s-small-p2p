@@ -708,7 +708,7 @@ impl PubsubServiceRequester {
 mod test {
     use futures::FutureExt;
     use serde::Serializer;
-    use tokio::sync::mpsc::unbounded_channel;
+    use tokio::sync::{mpsc::unbounded_channel, oneshot};
 
     use super::*;
     use crate::{ctx::SharedCtx, msg::P2pServiceId, router::SharedRouterTable};
@@ -770,6 +770,38 @@ mod test {
 
         let pending_rpcs = service.publish_rpc_reqs.len();
         assert!(pending_rpcs <= MAX_PENDING_RPCS, "pending publish RPC requests must be bounded, got {pending_rpcs}");
+    }
+
+    #[tokio::test]
+    async fn pubsub_rpc_must_return_no_destination_when_all_remote_sends_fail() {
+        let mut service = test_service();
+        let channel = PubsubChannelId(1);
+        let stale_remote = PeerId::from(99);
+
+        service.channels.entry(channel).or_default().remote_subscribers.insert(stale_remote);
+
+        let (tx, mut rx) = oneshot::channel();
+
+        service
+            .on_internal(InternalMsg::GuestPublishRpc(
+                channel,
+                b"payload".to_vec(),
+                "method".to_string(),
+                tx,
+                Duration::from_secs(60),
+            ))
+            .await
+            .expect("RPC should process");
+
+        assert_eq!(
+            rx.try_recv(),
+            Ok(Err(PubsubRpcError::NoDestination)),
+            "if every remote send fails immediately, RPC must fail as NoDestination instead of waiting for timeout"
+        );
+        assert!(
+            service.publish_rpc_reqs.is_empty(),
+            "failed fanout must not leave a pending RPC request"
+        );
     }
 
     #[tokio::test]

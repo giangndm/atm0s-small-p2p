@@ -5,7 +5,7 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Audit Status
 
-- Accepted issues: 162
+- Accepted issues: 163
 - Missing issue scores: 0
 - Current consecutive no-new-issue cycles: 0
 - Stop condition: continue until 5 consecutive cycles find no new accepted
@@ -43,7 +43,8 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Representative issues: ISSUE-049, ISSUE-050, ISSUE-056, ISSUE-118,
   ISSUE-119, ISSUE-120, ISSUE-123, ISSUE-124, ISSUE-125, ISSUE-126,
-  ISSUE-127, ISSUE-133, ISSUE-136, ISSUE-147, ISSUE-153, ISSUE-157.
+  ISSUE-127, ISSUE-133, ISSUE-136, ISSUE-147, ISSUE-153, ISSUE-157,
+  ISSUE-163.
 - Pattern: some paths drop on `try_send`, some await bounded sends from
   critical tasks, and others use unbounded queues or duplicate internal control
   work. Under load this causes silent loss, head-of-line blocking, or unbounded
@@ -106,8 +107,6 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Recent Accepted Issues
 
-- ISSUE-157, score 66: `PeerConnected` backpressure stalls an authenticated
-  peer run loop. Reviewer: Avicenna the 2nd.
 - ISSUE-158, score 62: stale alias `NotifySet` resurrects a hint after a newer
   `NotifyDel`. Reviewer: Dirac the 2nd.
 - ISSUE-159, score 67: outbound peer setup hangs before the main control stream
@@ -118,6 +117,8 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   sync. Reviewer: Epicurus the 2nd.
 - ISSUE-162, score 63: replicated KV keeps stopped peer data until idle
   timeout. Reviewer: Franklin the 2nd.
+- ISSUE-163, score 61: pubsub RPC waits for timeout after every remote send
+  fails. Reviewer: Einstein the 2nd.
 
 ## Next Candidate To Validate
 
