@@ -11,7 +11,7 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 43
+- Current consecutive no-new-issue cycles: 44
 - Stop condition requested by user: continue until 5 consecutive cycles find no
   new accepted issue.
 
@@ -5783,6 +5783,28 @@ the source of truth for evidence and reviewer decisions.
     `src/peer.rs:1092` with `got 2`.
 
 ## No-New-Issue Audit Cycles
+
+### Cycle after ISSUE-204 no-new cycle 44: inbound ConnectRes write-stall duplicate
+
+- Result: no accepted non-duplicate issue.
+- Reviewer: `Curie the 4th`, forked subagent review, confirmed
+  duplicate-only no-new classification.
+- Source and test evidence reviewed:
+  - `src/peer.rs`
+  - `src/stream.rs`
+  - `cargo test inbound_peer_setup_must_timeout_when_connect_response_write_stalls -- --nocapture`
+    failed at `src/peer.rs:855:9`.
+- Duplicate or too-close symptoms rejected:
+  - a raw client with a tiny receive window sends a valid `ConnectReq` and then
+    does not read the large `ConnectRes`; no `PeerConnectError(_, None, _)`
+    arrives within the setup window.
+  - this maps directly to ISSUE-173: inbound `run_connection` writes
+    `ConnectRes` through `write_object`, whose `write_all` calls have no setup
+    timeout, so stalled receive-side flow control can hang setup and prevent
+    error reporting.
+- Root-cause summary impact: no new root cause; this focused inbound setup
+  timeout cycle strengthens existing ISSUE-173 evidence under RC-4 without
+  adding ISSUE-205.
 
 ### Cycle after ISSUE-204 no-new cycle 43: outbound ConnectReq write-stall duplicate
 

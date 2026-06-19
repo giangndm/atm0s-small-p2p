@@ -7,9 +7,9 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Accepted issues: 204
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 43
+- Current consecutive no-new-issue cycles: 44
 - Stop condition: continue until 5 consecutive cycles find no new accepted
-  issue; currently 43/5 after ISSUE-204.
+  issue; currently 44/5 after ISSUE-204.
 
 ## Root Cause Summary
 
@@ -256,6 +256,12 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Recent Fuzz Evidence
 
+- Focused inbound ConnectRes write-stall review:
+  `cargo test inbound_peer_setup_must_timeout_when_connect_response_write_stalls -- --nocapture`
+  failed with duplicate evidence for ISSUE-173. Reviewer `Curie the 4th`
+  confirmed inbound `run_connection` still writes `ConnectRes` through
+  `write_object` without a setup timeout, so stalled receive-side flow control
+  can hang setup and prevent `PeerConnectError`.
 - Focused outbound ConnectReq write-stall review:
   `cargo test outbound_peer_setup_must_timeout_when_connect_request_write_stalls -- --nocapture`
   failed with duplicate evidence for ISSUE-172. Reviewer `Kant the 4th`
