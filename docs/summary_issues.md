@@ -5,9 +5,9 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Audit Status
 
-- Accepted issues: 163
+- Accepted issues: 164
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 1
+- Current consecutive no-new-issue cycles: 0
 - Stop condition: continue until 5 consecutive cycles find no new accepted
   issue; after that, continue with randomized fuzz tests over node actions.
 
@@ -44,7 +44,7 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 - Representative issues: ISSUE-049, ISSUE-050, ISSUE-056, ISSUE-118,
   ISSUE-119, ISSUE-120, ISSUE-123, ISSUE-124, ISSUE-125, ISSUE-126,
   ISSUE-127, ISSUE-133, ISSUE-136, ISSUE-147, ISSUE-153, ISSUE-157,
-  ISSUE-163.
+  ISSUE-163, ISSUE-164.
 - Pattern: some paths drop on `try_send`, some await bounded sends from
   critical tasks, and others use unbounded queues or duplicate internal control
   work. Under load this causes silent loss, head-of-line blocking, or unbounded
@@ -96,7 +96,7 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Representative issues: ISSUE-003, ISSUE-005, ISSUE-006, ISSUE-007,
   ISSUE-008, ISSUE-033, ISSUE-044, ISSUE-055, ISSUE-092, ISSUE-103,
-  ISSUE-112 through ISSUE-114, ISSUE-160, ISSUE-161.
+  ISSUE-112 through ISSUE-114, ISSUE-160, ISSUE-161, ISSUE-164.
 - Pattern: route/discovery inputs can include local ids, self seeds, stale
   addresses, overflowed metrics, over-hop routes, duplicate connection races,
   or tiny RTT jitter that changes active paths too aggressively.
@@ -107,8 +107,6 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Recent Accepted Issues
 
-- ISSUE-158, score 62: stale alias `NotifySet` resurrects a hint after a newer
-  `NotifyDel`. Reviewer: Dirac the 2nd.
 - ISSUE-159, score 67: outbound peer setup hangs before the main control stream
   opens. Reviewer: Pascal the 2nd.
 - ISSUE-160, score 68: relayed route replaces a direct authenticated peer
@@ -119,6 +117,8 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   timeout. Reviewer: Franklin the 2nd.
 - ISSUE-163, score 61: pubsub RPC waits for timeout after every remote send
   fails. Reviewer: Einstein the 2nd.
+- ISSUE-164, score 57: tick route/discovery sync is dropped when the peer
+  control queue is full. Reviewer: Archimedes the 2nd.
 
 ## Next Candidate To Validate
 

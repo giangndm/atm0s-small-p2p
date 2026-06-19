@@ -11,7 +11,7 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 1
+- Current consecutive no-new-issue cycles: 0
 - Stop condition requested by user: continue until 5 consecutive cycles find no
   new accepted issue.
 
@@ -55,7 +55,7 @@ the source of truth for evidence and reviewer decisions.
 - Representative issues: ISSUE-049, ISSUE-050, ISSUE-056, ISSUE-118,
   ISSUE-119, ISSUE-120, ISSUE-123, ISSUE-124, ISSUE-125, ISSUE-126,
   ISSUE-127, ISSUE-133, ISSUE-136, ISSUE-147, ISSUE-153, ISSUE-157,
-  ISSUE-163.
+  ISSUE-163, ISSUE-164.
 - Pattern: some paths use bounded channels and drop on `try_send`, some await
   bounded sends from critical tasks, and others use unbounded queues or produce
   duplicate internal control work. Under load this causes silent data loss,
@@ -113,7 +113,7 @@ the source of truth for evidence and reviewer decisions.
 
 - Representative issues: ISSUE-003, ISSUE-005, ISSUE-006, ISSUE-007,
   ISSUE-008, ISSUE-033, ISSUE-044, ISSUE-055, ISSUE-092, ISSUE-103,
-  ISSUE-112 through ISSUE-114, ISSUE-160, ISSUE-161.
+  ISSUE-112 through ISSUE-114, ISSUE-160, ISSUE-161, ISSUE-164.
 - Pattern: route/discovery inputs can include local ids, self seeds, stale
   addresses, overflowed metrics, over-hop routes, duplicate connection races, or
   tiny RTT jitter that changes active paths too aggressively.
@@ -4276,3 +4276,37 @@ the source of truth for evidence and reviewer decisions.
     no route. `GuestPublishRpc` calls `send_unicast`, which fails immediately,
     but `rx.try_recv()` remains `Err(Empty)` and `publish_rpc_reqs` retains the
     request; expected immediate `Err(NoDestination)` and no pending RPC.
+
+### ISSUE-164: Tick route/discovery sync is dropped when peer control queue is full
+
+- Category: stability, routing/discovery freshness, high-load backpressure
+- Score: 57/100
+- Reviewer: `Archimedes the 2nd`, confirmed after `Turing the 2nd` discovery.
+- Affected code:
+  - `src/lib.rs`: `process_tick` builds a `PeerMessage::Sync` containing
+    route and discovery state for each connected neighbour.
+  - `src/lib.rs`: tick delivery uses `alias.try_send(...)` and only logs when
+    the peer control queue is full.
+  - `src/peer/peer_alias.rs`: `PeerConnectionAlias::try_send` delegates to
+    bounded `control_tx.try_send`, so full queues reject immediately.
+  - `src/peer.rs`: inbound sync is what updates the remote main loop's route
+    and discovery state.
+- Impact: route/discovery maintenance sync is fire-and-forget. If a connected
+  peer's control queue is briefly full during a tick, the latest route and
+  discovery snapshot is silently lost with no pending-sync slot, coalescing, or
+  retry marker. A later tick may repair the state, but sustained load or a slow
+  peer loop can repeatedly drop maintenance sync and leave neighbours with stale
+  topology, causing noisy active-path selection and failed pipe setup. This is
+  distinct from caller API blocking on congested peer queues, graceful shutdown
+  delay, inbound sync dropped on the main queue, and pubsub RPC timeout after
+  failed sends.
+- Minimal fix proposal: keep one bounded pending sync slot per peer/connection.
+  When `try_send` fails because the queue is full, store the latest
+  `(route, advertise)` and retry it on the next tick before creating a fresh
+  sync, replacing older pending state with newer state.
+- Evidence test:
+  - `cargo test tick_sync_must_not_be_dropped_when_peer_control_queue_is_full -- --nocapture`
+  - Failure summary: the test fills a connected peer's control queue, runs
+    `process_tick`, then drains the queue. No `PeerMessage::Sync` is delivered
+    afterward; expected route/discovery sync to be queued, coalesced, or retried
+    instead of dropped during transient queue pressure.

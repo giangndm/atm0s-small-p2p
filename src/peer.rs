@@ -526,6 +526,63 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn tick_sync_must_not_be_dropped_when_peer_control_queue_is_full() {
+        let _ = rustls::crypto::ring::default_provider().install_default();
+        let listen_addr = UdpSocket::bind("127.0.0.1:0")
+            .expect("should bind test udp")
+            .local_addr()
+            .expect("should read test udp addr");
+        let priv_key = PrivatePkcs8KeyDer::from(DEFAULT_CLUSTER_KEY.to_vec());
+        let cert = CertificateDer::from(DEFAULT_CLUSTER_CERT.to_vec());
+        let mut node = P2pNetwork::new(P2pNetworkConfig {
+            peer_id: PeerId::from(1),
+            listen_addr,
+            advertise: None,
+            priv_key,
+            cert,
+            tick_ms: 100,
+            seeds: vec![],
+            secure: SharedKeyHandshake::from("atm0s"),
+        })
+        .await
+        .expect("should create test node");
+        let conn = ConnectionId::from(10);
+        let peer = PeerId::from(2);
+
+        let (tx, mut rx) = channel(1);
+        tx.try_send(PeerConnectionControl::Send(PeerMessage::PeerStopped(PeerId::from(99)), None))
+            .expect("test should fill peer control queue");
+
+        node.neighbours.insert(
+            conn,
+            PeerConnection {
+                conn_id: conn,
+                peer_id: Some(peer),
+                is_connected: true,
+            },
+        );
+        node.router.set_direct(conn, peer, 10);
+        node.ctx.register_conn(conn, PeerConnectionAlias::new(node.local_id, peer, conn, tx));
+
+        node.process_tick(100).expect("tick should process");
+
+        let _dummy = rx.recv().await.expect("dummy should drain");
+        let delivered = tokio::time::timeout(Duration::from_millis(100), async {
+            while let Some(control) = rx.recv().await {
+                if matches!(control, PeerConnectionControl::Send(PeerMessage::Sync { .. }, None)) {
+                    break;
+                }
+            }
+        })
+        .await;
+
+        assert!(
+            delivered.is_ok(),
+            "route/discovery tick sync must be queued, coalesced, or retried instead of dropped when the peer control queue is briefly full"
+        );
+    }
+
+    #[tokio::test]
     async fn shutdown_gracefully_must_not_wait_one_second_per_congested_peer() {
         let _ = rustls::crypto::ring::default_provider().install_default();
         let listen_addr = UdpSocket::bind("127.0.0.1:0")
