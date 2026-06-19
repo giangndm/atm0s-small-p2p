@@ -159,6 +159,18 @@ the source of truth for evidence and reviewer decisions.
   hops that would forward back to their ingress connection. Validate configured
   local advertise addresses before gossiping them.
 
+### RC-8: Public examples are not compile-checked against the API
+
+- Representative issues: ISSUE-191.
+- Pattern: documentation snippets can drift from the exported API because they
+  are not compiled as examples, doctests, or compile tests. This lets onboarding
+  code demonstrate invalid result handling or mutability even when maintained
+  examples still compile.
+- Minimal fix proposal: make README snippets executable examples or doctests,
+  and add a focused compile gate for the getting-started path. Keep snippets
+  using real `Result` handling and mutable bindings where the API requires
+  mutation.
+
 ## Accepted Issues
 
 ### ISSUE-001: Forged third-party `PeerStopped` removes a live peer
@@ -5245,6 +5257,38 @@ the source of truth for evidence and reviewer decisions.
     last row and installs `Some((ConnectionId(1), PathMetric { relay_hops: 1,
     rtt_ms: 11 }))`; expected duplicate destination rows to be rejected so no
     route to `PeerId(9)` is installed.
+
+### ISSUE-191: README getting-started public API example does not compile
+
+- Category: documentation correctness, public API usability
+- Score: 18/100
+- Reviewer: `Halley the 3rd`, confirmed by failing compile-test evidence.
+- Affected code:
+  - `README.md`: the setup snippet stores
+    `P2pNetwork::new(P2pNetworkConfig { ... }).await` in `network` without
+    handling the returned `anyhow::Result`.
+  - `README.md`: the following service snippet calls
+    `network.create_service(1.into())`, but `create_service` exists on mutable
+    `P2pNetwork`, not on `Result<P2pNetwork<_>, anyhow::Error>`.
+  - `README.md`: the setup snippet also derives a `PeerId` from an address-like
+    string literal, which is misleading for the public `PeerId(u64)` API even
+    if type inference can hide it until runtime.
+- Impact: a new user following the documented getting-started path cannot
+  compile the public API example as written. This blocks onboarding and can
+  produce wrong cargo guidance around `P2pNetwork::new` result handling and
+  service creation mutability. This is distinct from ISSUE-030/052/054 runtime
+  service API validation, ISSUE-112/177 connect-address behavior, and ISSUE-181
+  advertise-address validation.
+- Minimal fix proposal: update the README snippet to use a numeric peer id,
+  bind `let mut network = P2pNetwork::new(...).await?;`, and make the snippet
+  part of a doctest, example, or focused compile test so it cannot drift again.
+- Evidence test:
+  - `cargo test readme_getting_started_snippet_must_compile -- --nocapture`
+  - Failure summary: the test runs `cargo check --example
+    readme_getting_started` against a mirror of the README setup snippet.
+    Current compilation fails with `no method named create_service found for
+    enum Result<T, E>` because the snippet calls `create_service` on the
+    unhandled `Result<P2pNetwork<SharedKeyHandshake>, anyhow::Error>`.
 
 ## No-New-Issue Audit Cycles
 

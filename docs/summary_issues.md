@@ -5,7 +5,7 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Audit Status
 
-- Accepted issues: 190
+- Accepted issues: 191
 - Missing issue scores: 0
 - Current consecutive no-new-issue cycles: 0
 - Stop condition: continue until 5 consecutive cycles find no new accepted
@@ -138,6 +138,18 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   paths, and reject relay stream hops that point back to the ingress connection.
   Validate configured local advertise addresses before gossiping them.
 
+### RC-8: Public examples are not compile-checked
+
+- Representative issues: ISSUE-191.
+- Pattern: documentation snippets can drift from the exported API because they
+  are not compiled as examples, doctests, or compile tests. This can leave the
+  getting-started path with invalid result handling, mutability, or type usage
+  even when maintained examples still compile.
+- Minimal fix proposal: make README snippets executable examples or doctests,
+  and add a focused compile gate for the getting-started path. Keep snippets
+  using real `Result` handling and mutable bindings where the API requires
+  mutation.
+
 ## Recent Accepted Issues
 
 - ISSUE-168, score 44: duplicate pubsub local ids detach live publisher and
@@ -187,10 +199,12 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   local peer id. Reviewer: Zeno the 3rd.
 - ISSUE-190, score 43: duplicate route-sync destinations silently keep the
   last metric. Reviewer: Epicurus the 3rd.
+- ISSUE-191, score 18: README getting-started public API example does not
+  compile. Reviewer: Halley the 3rd.
 
 ## Next Candidate To Validate
 
-- None queued. ISSUE-190 reset the no-new counter to 0. Continue fresh source
+- None queued. ISSUE-191 reset the no-new counter to 0. Continue fresh source
   review until five consecutive no-new cycles, then switch to randomized fuzz
   tests over node actions.
 

@@ -10,6 +10,7 @@ mod discovery;
 mod fuzz;
 mod metrics;
 mod pubsub;
+mod readme;
 mod replicate_kv;
 mod security;
 mod stream;
