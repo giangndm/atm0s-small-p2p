@@ -7,9 +7,9 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Accepted issues: 204
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 14
+- Current consecutive no-new-issue cycles: 15
 - Stop condition: continue until 5 consecutive cycles find no new accepted
-  issue; currently 14/5 after ISSUE-204.
+  issue; currently 15/5 after ISSUE-204.
 
 ## Root Cause Summary
 
@@ -256,6 +256,11 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Recent Fuzz Evidence
 
+- Focused handshake source/test review:
+  `cargo test inbound_handshake_must_reject_peer_claiming_third_party_id -- --nocapture`
+  failed with duplicate evidence for ISSUE-194. Reviewer `Zeno the 4th`
+  confirmed the `src/peer.rs:683` assertion is the already-accepted
+  shared-key third-party `PeerId` admission flaw covered by RC-1.
 - Focused replicated-KV source/test review:
   `cargo test full_sync_must_reject_stale_terminal_snapshot_after_continuation_request -- --nocapture`
   failed with duplicate evidence for ISSUE-143. Reviewer `Sagan the 4th`
@@ -370,6 +375,12 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Recent No-New Audit
 
+- Cycle after ISSUE-204 no-new cycle 15 reviewed handshake/authentication and
+  peer admission with forked reviewer `Zeno the 4th`. The focused
+  third-party-id handshake test failed with exit code 101, but it was
+  duplicate evidence for ISSUE-194: inbound `run_connection` trusts a
+  shared-key holder's caller-supplied `req.from` as the authenticated peer
+  identity. No accepted issue or summary root-cause change was recorded.
 - Cycle after ISSUE-204 no-new cycle 14 reviewed replicated-KV remote/local
   storage and message handling with forked reviewer `Sagan the 4th`. The
   focused stale-terminal-snapshot test failed with exit code 101, but it was

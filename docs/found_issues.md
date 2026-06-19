@@ -11,7 +11,7 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 14
+- Current consecutive no-new-issue cycles: 15
 - Stop condition requested by user: continue until 5 consecutive cycles find no
   new accepted issue.
 
@@ -5768,6 +5768,26 @@ the source of truth for evidence and reviewer decisions.
     `src/peer.rs:1092` with `got 2`.
 
 ## No-New-Issue Audit Cycles
+
+### Cycle after ISSUE-204 no-new cycle 15: handshake third-party identity duplicate
+
+- Result: no accepted non-duplicate issue.
+- Reviewer: `Zeno the 4th`, forked subagent review, confirmed
+  duplicate-only no-new classification.
+- Source and test evidence reviewed:
+  - `src/secure.rs`
+  - `src/peer.rs`
+  - `src/tests/security.rs`
+  - `src/tests/stream.rs`
+  - `cargo test inbound_handshake_must_reject_peer_claiming_third_party_id -- --nocapture`
+    failed with duplicate evidence for ISSUE-194.
+- Duplicate or too-close symptoms rejected:
+  - the failure at `src/peer.rs:683:9` shows inbound handshake admission
+    accepting a shared-key holder's caller-supplied third-party `PeerId` claim.
+  - the same test, assertion, and root cause are already the accepted evidence
+    for ISSUE-194 and RC-1's non-authoritative authenticated identity pattern.
+- Root-cause summary impact: no new root cause; this source/test cycle
+  strengthens existing ISSUE-194 evidence but does not add ISSUE-205.
 
 ### Cycle after ISSUE-204 no-new cycle 14: replicated-KV stale terminal snapshot duplicate
 
