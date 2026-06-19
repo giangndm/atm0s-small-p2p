@@ -15,8 +15,8 @@ pub enum MetricsServiceEvent {
 #[cfg(test)]
 mod test {
     use super::*;
-    use futures::FutureExt;
     use crate::{ctx::SharedCtx, msg::P2pServiceId, router::SharedRouterTable};
+    use futures::FutureExt;
 
     #[tokio::test]
     async fn metrics_recv_after_base_service_close_must_not_panic() {
@@ -81,6 +81,7 @@ pub(crate) fn encode_scan_for_test() -> Vec<u8> {
 }
 
 const DEFAULT_COLLECTOR_INTERVAL: u64 = 1;
+const SCAN_RESPONSE_SEND_TIMEOUT: Duration = Duration::from_secs(1);
 
 pub struct MetricsService {
     is_collector: bool,
@@ -127,9 +128,13 @@ impl MetricsService {
                                     let metrics = self.service.ctx.metrics();
                                     let requester = self.service.requester();
                                     tokio::spawn(async move {
-                                        requester.try_send_unicast(from, bincode::serialize(&Message::Info(metrics)).expect("should convert to buf"))
-                                            .await
-                                            .print_on_err("send metrics info to collector error");
+                                        let data = bincode::serialize(&Message::Info(metrics)).expect("should convert to buf");
+                                        // Wait through transient peer-control backpressure, but do not keep
+                                        // a detached response task alive forever for a stuck peer.
+                                        match tokio::time::timeout(SCAN_RESPONSE_SEND_TIMEOUT, requester.send_unicast(from, data)).await {
+                                            Ok(result) => result.print_on_err("send metrics info to collector error"),
+                                            Err(_) => log::warn!("send metrics info to collector timed out"),
+                                        }
                                     });
                                 }
                                 Message::Info(peer_metrics) => {
