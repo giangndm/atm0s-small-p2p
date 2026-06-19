@@ -50,6 +50,53 @@ async fn discovery_new_node() {
 }
 
 #[test(tokio::test)]
+async fn visualization_must_emit_peer_leaved_on_graceful_peer_stop() {
+    let (mut node1, addr1) = create_node(true, 1, vec![]).await;
+    let mut service1 = VisualizationService::new(Some(Duration::from_secs(1)), false, node1.create_service(0.into()));
+
+    let (mut node2, addr2) = create_node(false, 2, vec![addr1.clone()]).await;
+    let mut service2 = VisualizationService::new(Some(Duration::from_secs(1)), false, node2.create_service(0.into()));
+
+    tokio::time::timeout(Duration::from_secs(5), async {
+        loop {
+            tokio::select! {
+                _ = node1.recv() => {}
+                _ = node2.recv() => {}
+                _ = service2.recv() => {}
+                event = service1.recv() => {
+                    if matches!(event, Ok(VisualizationServiceEvent::PeerJoined(peer, _)) if peer == addr2.peer_id()) {
+                        break;
+                    }
+                }
+            }
+        }
+    })
+    .await
+    .expect("collector should learn node2 before shutdown");
+
+    node2.shutdown_gracefully().await;
+
+    let leaved = tokio::time::timeout(Duration::from_millis(500), async {
+        loop {
+            tokio::select! {
+                _ = node1.recv() => {}
+                event = service1.recv() => {
+                    if matches!(event, Ok(VisualizationServiceEvent::PeerLeaved(peer)) if peer == addr2.peer_id()) {
+                        break;
+                    }
+                }
+            }
+        }
+    })
+    .await;
+
+    assert!(
+        leaved.is_ok(),
+        "visualization must emit PeerLeaved promptly after graceful PeerStopped instead of waiting for timeout"
+    );
+}
+
+#[test(tokio::test)]
 async fn visualization_info_must_not_be_accepted_without_scan_request() {
     let (mut node1, addr1) = create_node(true, 1, vec![]).await;
     let mut service1 = VisualizationService::new(None, false, node1.create_service(0.into()));

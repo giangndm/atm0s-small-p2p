@@ -100,7 +100,7 @@ the source of truth for evidence and reviewer decisions.
 - Representative issues: ISSUE-028, ISSUE-029, ISSUE-051, ISSUE-057,
   ISSUE-060, ISSUE-064, ISSUE-065, ISSUE-069 through ISSUE-076, ISSUE-108,
   ISSUE-128 through ISSUE-132, ISSUE-135, ISSUE-139, ISSUE-142, ISSUE-144,
-  ISSUE-148, ISSUE-150, ISSUE-151, ISSUE-161, ISSUE-162.
+  ISSUE-148, ISSUE-150, ISSUE-151, ISSUE-161, ISSUE-162, ISSUE-165.
 - Pattern: requesters, services, peer aliases, channel state, and cached hints
   can outlive the owner they represent, while shutdown paths may panic, leak,
   emit false public events, or keep stale routes/cache entries.
@@ -4310,3 +4310,37 @@ the source of truth for evidence and reviewer decisions.
     `process_tick`, then drains the queue. No `PeerMessage::Sync` is delivered
     afterward; expected route/discovery sync to be queued, coalesced, or retried
     instead of dropped during transient queue pressure.
+
+### ISSUE-165: Visualization keeps gracefully stopped peer until timeout
+
+- Category: correctness, graceful-shutdown stability, service lifecycle
+- Score: 54/100
+- Reviewer: `Hubble the 2nd`, confirmed after `Faraday the 2nd` discovery.
+- Affected code:
+  - `src/lib.rs`: `shutdown_gracefully` sends `PeerStopped` before closing the
+    endpoint.
+  - `src/lib.rs`: `PeerStopped` and `PeerDisconnected` handling updates
+    discovery, routing, and neighbour state only.
+  - `src/service.rs`: `P2pServiceEvent` has payload and stream variants, but no
+    peer lifecycle event for services.
+  - `src/service/visualization_service.rs`: `VisualizationService` emits
+    `PeerLeaved` only from its timeout sweep.
+- Impact: when a peer gracefully stops and the network loop processes
+  `PeerStopped`/`PeerDisconnected`, visualization consumers do not learn that
+  the peer left until the collection timeout expires. This keeps monitoring or
+  topology UIs stale after an explicit shutdown and can mislead operators about
+  active peers. This is close to ISSUE-162's replicated-KV lifecycle gap, but
+  distinct because it covers `VisualizationServiceEvent::PeerLeaved` semantics;
+  existing visualization issues cover forged topology, topology disclosure,
+  resource bounds, timeout arithmetic, and channel-close panic.
+- Minimal fix proposal: add a peer lifecycle event such as
+  `P2pServiceEvent::PeerStopped(PeerId)` or `PeerDisconnected(PeerId)`, fan it
+  out from `P2pNetwork::process_internal` when graceful stop/disconnect is
+  accepted, and have visualization remove the peer and emit `PeerLeaved`
+  immediately. Keep timeout cleanup as fallback for silent network loss.
+- Evidence test:
+  - `cargo test visualization_must_emit_peer_leaved_on_graceful_peer_stop -- --nocapture`
+  - Failure summary: node1's network loop logs and processes node2's graceful
+    `PeerStopped`/disconnect, but `VisualizationService` does not emit
+    `PeerLeaved(node2)` within the prompt leave window; expected lifecycle
+    propagation instead of waiting for the timeout sweep.

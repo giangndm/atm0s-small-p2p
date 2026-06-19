@@ -5,7 +5,7 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Audit Status
 
-- Accepted issues: 164
+- Accepted issues: 165
 - Missing issue scores: 0
 - Current consecutive no-new-issue cycles: 0
 - Stop condition: continue until 5 consecutive cycles find no new accepted
@@ -84,7 +84,7 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 - Representative issues: ISSUE-028, ISSUE-029, ISSUE-051, ISSUE-057,
   ISSUE-060, ISSUE-064, ISSUE-065, ISSUE-069 through ISSUE-076, ISSUE-108,
   ISSUE-128 through ISSUE-132, ISSUE-135, ISSUE-139, ISSUE-142, ISSUE-144,
-  ISSUE-148, ISSUE-150, ISSUE-151, ISSUE-161, ISSUE-162.
+  ISSUE-148, ISSUE-150, ISSUE-151, ISSUE-161, ISSUE-162, ISSUE-165.
 - Pattern: requesters, services, peer aliases, channel state, and cached hints
   can outlive the owner they represent; shutdown paths can panic, leak, emit
   false public events, or keep stale routes/cache entries.
@@ -107,8 +107,6 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Recent Accepted Issues
 
-- ISSUE-159, score 67: outbound peer setup hangs before the main control stream
-  opens. Reviewer: Pascal the 2nd.
 - ISSUE-160, score 68: relayed route replaces a direct authenticated peer
   route. Reviewer: Wegener the 2nd.
 - ISSUE-161, score 64: stopped peer route resurrects through third-party route
@@ -119,6 +117,8 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   fails. Reviewer: Einstein the 2nd.
 - ISSUE-164, score 57: tick route/discovery sync is dropped when the peer
   control queue is full. Reviewer: Archimedes the 2nd.
+- ISSUE-165, score 54: visualization keeps a gracefully stopped peer until
+  timeout. Reviewer: Hubble the 2nd.
 
 ## Next Candidate To Validate
 
