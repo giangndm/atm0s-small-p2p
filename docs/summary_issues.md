@@ -7,9 +7,9 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Accepted issues: 204
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 18
+- Current consecutive no-new-issue cycles: 19
 - Stop condition: continue until 5 consecutive cycles find no new accepted
-  issue; currently 18/5 after ISSUE-204.
+  issue; currently 19/5 after ISSUE-204.
 
 ## Root Cause Summary
 
@@ -256,6 +256,11 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Recent Fuzz Evidence
 
+- Focused pubsub backpressure source/test review:
+  `cargo test pubsub_internal_control_backlog_must_be_bounded -- --nocapture`
+  failed with duplicate evidence for ISSUE-126. Reviewer `Nietzsche the 4th`
+  confirmed the `src/service/pubsub_service.rs:754` assertion is the
+  already-accepted unbounded pubsub internal control backlog under RC-3.
 - Focused metrics resource-bound source/test review:
   `cargo test metrics_info_batches_must_be_bounded -- --nocapture`
   failed with duplicate evidence for ISSUE-104. Reviewer `Bernoulli the 4th`

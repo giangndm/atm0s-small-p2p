@@ -11,7 +11,7 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 18
+- Current consecutive no-new-issue cycles: 19
 - Stop condition requested by user: continue until 5 consecutive cycles find no
   new accepted issue.
 
@@ -5768,6 +5768,27 @@ the source of truth for evidence and reviewer decisions.
     `src/peer.rs:1092` with `got 2`.
 
 ## No-New-Issue Audit Cycles
+
+### Cycle after ISSUE-204 no-new cycle 19: pubsub internal-control backlog duplicate
+
+- Result: no accepted non-duplicate issue.
+- Reviewer: `Nietzsche the 4th`, forked subagent review, confirmed
+  duplicate-only no-new classification.
+- Source and test evidence reviewed:
+  - `src/service/pubsub_service.rs`
+  - `cargo test pubsub_internal_control_backlog_must_be_bounded -- --nocapture`
+    failed with duplicate evidence for ISSUE-126.
+- Duplicate or too-close symptoms rejected:
+  - the failure at `src/service/pubsub_service.rs:754:9` observed 1,025
+    pending pubsub internal control messages, exceeding the bounded-backlog
+    assertion.
+  - `PubsubService::new` still uses an unbounded `internal_tx/internal_rx`
+    channel, and requester handle creation can enqueue registration messages
+    without admission control; this is the exact accepted source behavior and
+    failing evidence for ISSUE-126.
+- Root-cause summary impact: no new root cause; this source/test cycle
+  strengthens existing ISSUE-126 evidence under RC-3 backpressure policy gaps
+  without adding ISSUE-205.
 
 ### Cycle after ISSUE-204 no-new cycle 18: metrics info batch duplicate
 
