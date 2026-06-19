@@ -7,9 +7,9 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Accepted issues: 204
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 34
+- Current consecutive no-new-issue cycles: 35
 - Stop condition: continue until 5 consecutive cycles find no new accepted
-  issue; currently 34/5 after ISSUE-204.
+  issue; currently 35/5 after ISSUE-204.
 
 ## Root Cause Summary
 
@@ -256,6 +256,13 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Recent Fuzz Evidence
 
+- Focused unicast ingress-loop review:
+  `cargo test unicast_relay_must_not_forward_back_to_ingress_peer -- --nocapture`
+  now passes. Reviewer `Mill the 4th` classified this as existing-issue
+  fixed/no-new evidence for ISSUE-197: unicast relay now detects
+  `RouteAction::Next(next) == ingress` via `DropIngressLoop` and drops/logs
+  instead of forwarding back to the sender. This does not prove stream relay
+  loop handling is fixed; ISSUE-180 remains open.
 - Focused relay stream ingress-loop review:
   `cargo test relay_stream_must_not_forward_back_to_ingress_peer -- --nocapture`
   failed with duplicate evidence for ISSUE-180. Reviewer `Socrates the 4th`

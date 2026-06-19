@@ -11,7 +11,7 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 34
+- Current consecutive no-new-issue cycles: 35
 - Stop condition requested by user: continue until 5 consecutive cycles find no
   new accepted issue.
 
@@ -5783,6 +5783,26 @@ the source of truth for evidence and reviewer decisions.
     `src/peer.rs:1092` with `got 2`.
 
 ## No-New-Issue Audit Cycles
+
+### Cycle after ISSUE-204 no-new cycle 35: unicast ingress-loop fixed
+
+- Result: no accepted non-duplicate issue.
+- Reviewer: `Mill the 4th`, forked subagent review, confirmed
+  existing-issue fixed/no-new classification.
+- Source and test evidence reviewed:
+  - `src/peer/peer_internal.rs`
+  - `cargo test unicast_relay_must_not_forward_back_to_ingress_peer -- --nocapture`
+    passed with `1 passed; 0 failed`.
+- Existing issue status:
+  - ISSUE-197's focused unicast ingress-loop evidence is fixed: the unicast
+    relay path now calls `unicast_route_decision(..., self.conn_id)`, maps
+    `RouteAction::Next(next)` where `next == ingress` to
+    `UnicastRouteDecision::DropIngressLoop`, and drops/logs instead of
+    forwarding the packet back to the sender.
+  - this does not prove broader route-loop handling is fixed for stream setup
+    or other control-plane paths; ISSUE-180 remains separately evidenced.
+- Root-cause summary impact: no new root cause; this cycle records a focused
+  fix for ISSUE-197's unicast ingress-loop case without adding ISSUE-205.
 
 ### Cycle after ISSUE-204 no-new cycle 34: relay stream ingress-loop duplicate
 
