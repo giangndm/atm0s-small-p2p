@@ -11,7 +11,7 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 32
+- Current consecutive no-new-issue cycles: 33
 - Stop condition requested by user: continue until 5 consecutive cycles find no
   new accepted issue.
 
@@ -5783,6 +5783,27 @@ the source of truth for evidence and reviewer decisions.
     `src/peer.rs:1092` with `got 2`.
 
 ## No-New-Issue Audit Cycles
+
+### Cycle after ISSUE-204 no-new cycle 33: local open-stream panic duplicate
+
+- Result: no accepted non-duplicate issue.
+- Reviewer: `Helmholtz the 4th`, forked subagent review, confirmed
+  duplicate-only no-new classification.
+- Source and test evidence reviewed:
+  - `src/tests/stream.rs`
+  - `src/ctx.rs`
+  - `cargo test open_stream_to_local_returns_error_not_panic -- --nocapture`
+    failed with a panic at `src/ctx.rs:235:17` and final assertion at
+    `src/tests/stream.rs:110:5`.
+- Duplicate or too-close symptoms rejected:
+  - `SharedCtx::open_stream` still maps `RouteAction::Local` to
+    `panic!("unsupported open_stream to local node")` instead of returning a
+    recoverable `Err`.
+  - this maps directly to ISSUE-013; the current panic line is
+    `src/ctx.rs:235` after source-line drift from the original ledger entry.
+- Root-cause summary impact: no new root cause; this focused stream API
+  stability cycle strengthens existing ISSUE-013 evidence under API stability
+  and local-route validation without adding ISSUE-205.
 
 ### Cycle after ISSUE-204 no-new cycle 32: queue-full stream duplicate
 

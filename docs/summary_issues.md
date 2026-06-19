@@ -7,9 +7,9 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Accepted issues: 204
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 32
+- Current consecutive no-new-issue cycles: 33
 - Stop condition: continue until 5 consecutive cycles find no new accepted
-  issue; currently 32/5 after ISSUE-204.
+  issue; currently 33/5 after ISSUE-204.
 
 ## Root Cause Summary
 
@@ -256,6 +256,11 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Recent Fuzz Evidence
 
+- Focused local open-stream API review:
+  `cargo test open_stream_to_local_returns_error_not_panic -- --nocapture`
+  failed with duplicate evidence for ISSUE-013. Reviewer `Helmholtz the 4th`
+  confirmed `SharedCtx::open_stream` still panics at `src/ctx.rs:235` for
+  `RouteAction::Local` instead of returning a recoverable error.
 - Focused queue-full stream review:
   `cargo test open_stream_does_not_succeed_when_destination_service_queue_is_full -- --nocapture`
   failed with duplicate evidence for ISSUE-012. Reviewer `Wegener the 4th`
