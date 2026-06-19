@@ -5,11 +5,11 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Audit Status
 
-- Accepted issues: 193
+- Accepted issues: 194
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 5
-- Stop condition: reached. Continue with randomized fuzz tests over node
-  actions.
+- Current consecutive no-new-issue cycles: 0
+- Stop condition: reset by ISSUE-194. Continue RED-team review and randomized
+  fuzz tests over node actions.
 
 ## Root Cause Summary
 
@@ -17,15 +17,18 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Representative issues: ISSUE-001, ISSUE-004, ISSUE-014, ISSUE-015,
   ISSUE-018, ISSUE-020, ISSUE-039, ISSUE-048, ISSUE-066, ISSUE-067,
-  ISSUE-068, ISSUE-090, ISSUE-115, ISSUE-116, ISSUE-145, ISSUE-189.
+  ISSUE-068, ISSUE-090, ISSUE-115, ISSUE-116, ISSUE-145, ISSUE-189,
+  ISSUE-194.
 - Pattern: message payloads and internal events carry peer ids, RPC ids, or
   source identities that are trusted without binding them to the live
   authenticated connection, local handle, expected responder, channel role, or
-  the invariant that a remote peer may not authenticate as the local node.
+  the invariant that a shared-key holder may not authenticate as the local node
+  or an arbitrary third-party peer.
 - Minimal fix proposal: derive source identity from authenticated connections,
   validate `(ConnectionId, PeerId)` before processing main events, reject
-  self-identity peer admission before aliases are registered, and store expected
-  responder/handle metadata before accepting answers.
+  self-identity and unauthorized third-party peer admission before aliases are
+  registered, and store expected responder/handle metadata before accepting
+  answers.
 
 ### RC-2: Protocol state machines lack correlation/freshness checks
 
@@ -208,6 +211,8 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   address. Reviewer: Arendt the 3rd.
 - ISSUE-193, score 31: connection teardown emits RTT as both gauge and counter.
   Reviewer: Copernicus the 3rd.
+- ISSUE-194, score 88: inbound handshake accepts arbitrary third-party peer-id
+  claims. Reviewer: Confucius the 3rd.
 
 ## Next Candidate To Validate
 
@@ -253,6 +258,10 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   passed with no new issue. The alternate action ordering reproduced route
   reselection noise and bounded queue pressure warnings without a new failing
   assertion.
+- Ten-node extended steady valid fuzz:
+  `P2P_FUZZ_SEED=0xdecafbad P2P_FUZZ_NODES=10 P2P_FUZZ_STEPS=2500 cargo test fuzz_random_steady_valid_node_actions_must_not_panic_connection_tasks -- --nocapture`
+  passed with no new issue. Output still showed active-path reselection noise
+  and bounded queue pressure warnings, but no panic or failing assertion.
 
 ## Recent No-New Audit
 

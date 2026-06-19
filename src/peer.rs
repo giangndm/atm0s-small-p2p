@@ -478,16 +478,9 @@ mod tests {
         let (mut send, mut recv) = connection.open_bi().await.expect("client should open control stream");
 
         let auth = secure.create_request(remote_id, local_id, now_ms());
-        write_object::<_, _, MAX_CONTROL_PEER_PKT>(
-            &mut send,
-            &ConnectReq {
-                from: remote_id,
-                to: local_id,
-                auth,
-            },
-        )
-        .await
-        .expect("client should send connect request");
+        write_object::<_, _, MAX_CONTROL_PEER_PKT>(&mut send, &ConnectReq { from: remote_id, to: local_id, auth })
+            .await
+            .expect("client should send connect request");
         let _ = tokio::time::timeout(Duration::from_millis(200), wait_object::<_, ConnectRes, MAX_CONTROL_PEER_PKT>(&mut recv)).await;
 
         let deadline = tokio::time::Instant::now() + Duration::from_secs(1);
@@ -523,24 +516,12 @@ mod tests {
         let (mut send, mut recv) = connection.open_bi().await.expect("client should open control stream");
 
         let auth = secure.create_request(local_id, local_id, now_ms());
-        write_object::<_, _, MAX_CONTROL_PEER_PKT>(
-            &mut send,
-            &ConnectReq {
-                from: local_id,
-                to: local_id,
-                auth,
-            },
-        )
-        .await
-        .expect("client should send self-identity connect request");
-
-        let response: ConnectRes = wait_object::<_, _, MAX_CONTROL_PEER_PKT>(&mut recv)
+        write_object::<_, _, MAX_CONTROL_PEER_PKT>(&mut send, &ConnectReq { from: local_id, to: local_id, auth })
             .await
-            .expect("server should answer the rejected connect request");
-        assert!(
-            response.result.is_err(),
-            "inbound handshake must reject a remote peer claiming the receiver's own PeerId"
-        );
+            .expect("client should send self-identity connect request");
+
+        let response: ConnectRes = wait_object::<_, _, MAX_CONTROL_PEER_PKT>(&mut recv).await.expect("server should answer the rejected connect request");
+        assert!(response.result.is_err(), "inbound handshake must reject a remote peer claiming the receiver's own PeerId");
 
         let event = tokio::time::timeout(Duration::from_millis(200), main_rx.recv()).await;
         assert!(
@@ -548,6 +529,51 @@ mod tests {
             "self-identity handshake must not emit PeerConnected for the local PeerId"
         );
         assert!(ctx.conn(&conn_id).is_none(), "self-identity handshake must not register a peer alias");
+    }
+
+    #[tokio::test]
+    async fn inbound_handshake_must_reject_peer_claiming_third_party_id() {
+        let _ = rustls::crypto::ring::default_provider().install_default();
+        let server_addr = UdpSocket::bind("127.0.0.1:0").expect("should bind server udp").local_addr().expect("should read server addr");
+        let client_addr = UdpSocket::bind("127.0.0.1:0").expect("should bind client udp").local_addr().expect("should read client addr");
+        let priv_key = PrivatePkcs8KeyDer::from(DEFAULT_CLUSTER_KEY.to_vec());
+        let cert = CertificateDer::from(DEFAULT_CLUSTER_CERT.to_vec());
+        let server = make_server_endpoint(server_addr, priv_key.clone_key(), cert.clone()).expect("server endpoint should build");
+        let client = make_server_endpoint(client_addr, priv_key, cert).expect("client endpoint should build");
+        let secure = Arc::new(SharedKeyHandshake::from("atm0s"));
+        let local_id = PeerId::from(1);
+        let claimed_peer = PeerId::from(99);
+        let ctx = SharedCtx::new(local_id, SharedRouterTable::new(local_id));
+        let (main_tx, mut main_rx) = channel(1);
+
+        let connecting = client.connect(server_addr, CERT_DOMAIN_NAME).expect("client should start connecting");
+        let incoming = server.accept().await.expect("server should accept incoming connection");
+        let conn = PeerConnection::new_incoming(secure.clone(), local_id, incoming, main_tx, ctx.clone());
+        let conn_id = conn.conn_id();
+        let connection = connecting.await.expect("client should connect");
+        let (mut send, mut recv) = connection.open_bi().await.expect("client should open control stream");
+
+        let auth = secure.create_request(claimed_peer, local_id, now_ms());
+        write_object::<_, _, MAX_CONTROL_PEER_PKT>(
+            &mut send,
+            &ConnectReq {
+                from: claimed_peer,
+                to: local_id,
+                auth,
+            },
+        )
+        .await
+        .expect("client should send third-party identity connect request");
+
+        let response: ConnectRes = wait_object::<_, _, MAX_CONTROL_PEER_PKT>(&mut recv).await.expect("server should answer the rejected connect request");
+        assert!(response.result.is_err(), "inbound handshake must reject a remote peer claiming an arbitrary third-party PeerId");
+
+        let event = tokio::time::timeout(Duration::from_millis(200), main_rx.recv()).await;
+        assert!(
+            !matches!(event, Ok(Some(MainEvent::PeerConnected(_, peer, _))) if peer == claimed_peer),
+            "third-party identity handshake must not emit PeerConnected for the claimed PeerId"
+        );
+        assert!(ctx.conn(&conn_id).is_none(), "third-party identity handshake must not register a peer alias");
     }
 
     #[tokio::test]
@@ -574,19 +600,10 @@ mod tests {
         let (mut send, mut recv) = connection.open_bi().await.expect("client should open control stream");
 
         let auth = secure.create_request(remote_id, local_id, now_ms());
-        write_object::<_, _, MAX_CONTROL_PEER_PKT>(
-            &mut send,
-            &ConnectReq {
-                from: remote_id,
-                to: local_id,
-                auth,
-            },
-        )
-        .await
-        .expect("client should send connect request");
-        let _: ConnectRes = wait_object::<_, _, MAX_CONTROL_PEER_PKT>(&mut recv)
+        write_object::<_, _, MAX_CONTROL_PEER_PKT>(&mut send, &ConnectReq { from: remote_id, to: local_id, auth })
             .await
-            .expect("client should receive connect response");
+            .expect("client should send connect request");
+        let _: ConnectRes = wait_object::<_, _, MAX_CONTROL_PEER_PKT>(&mut recv).await.expect("client should receive connect response");
 
         match main_rx.recv().await.expect("connected event should be delivered") {
             MainEvent::PeerConnected(event_conn, event_peer, rtt) => ctx.router().set_direct(event_conn, event_peer, rtt),
@@ -602,10 +619,7 @@ mod tests {
         let route = remote_router.create_sync(&local_id);
         let advertise = PeerDiscovery::new(vec![]).create_sync_for(now_ms(), &local_id);
         let mut framed = Framed::new(P2pQuicStream::new(recv, send), BincodeCodec::<PeerMessage>::default());
-        framed
-            .send(PeerMessage::Sync { route, advertise })
-            .await
-            .expect("remote should send a valid sync frame");
+        framed.send(PeerMessage::Sync { route, advertise }).await.expect("remote should send a valid sync frame");
         tokio::time::sleep(Duration::from_millis(100)).await;
 
         let _dummy = main_rx.recv().await.expect("dummy event should drain from the full queue");
@@ -625,7 +639,10 @@ mod tests {
         })
         .await;
 
-        assert!(delivered.is_ok(), "valid route/discovery sync must be queued or retried instead of dropped when the main event queue is briefly full");
+        assert!(
+            delivered.is_ok(),
+            "valid route/discovery sync must be queued or retried instead of dropped when the main event queue is briefly full"
+        );
         assert_eq!(
             ctx.router().action(&advertised_peer),
             Some(RouteAction::Next(conn_id)),
@@ -636,14 +653,8 @@ mod tests {
     #[tokio::test]
     async fn outbound_peer_setup_must_timeout_when_connect_request_write_stalls() {
         let _ = rustls::crypto::ring::default_provider().install_default();
-        let listen_addr = UdpSocket::bind("127.0.0.1:0")
-            .expect("should bind node udp")
-            .local_addr()
-            .expect("should read node addr");
-        let raw_addr = UdpSocket::bind("127.0.0.1:0")
-            .expect("should bind raw peer udp")
-            .local_addr()
-            .expect("should read raw peer addr");
+        let listen_addr = UdpSocket::bind("127.0.0.1:0").expect("should bind node udp").local_addr().expect("should read node addr");
+        let raw_addr = UdpSocket::bind("127.0.0.1:0").expect("should bind raw peer udp").local_addr().expect("should read raw peer addr");
         let raw_peer = make_small_stream_receive_endpoint(raw_addr, 37).expect("raw peer endpoint should build");
         let raw_peer_id = PeerId::from(2);
         let (stream_accepted_tx, mut stream_accepted_rx) = tokio::sync::oneshot::channel();
@@ -703,14 +714,8 @@ mod tests {
     #[tokio::test]
     async fn inbound_peer_setup_must_timeout_when_connect_response_write_stalls() {
         let _ = rustls::crypto::ring::default_provider().install_default();
-        let server_addr = UdpSocket::bind("127.0.0.1:0")
-            .expect("should bind server udp")
-            .local_addr()
-            .expect("should read server addr");
-        let client_addr = UdpSocket::bind("127.0.0.1:0")
-            .expect("should bind raw client udp")
-            .local_addr()
-            .expect("should read raw client addr");
+        let server_addr = UdpSocket::bind("127.0.0.1:0").expect("should bind server udp").local_addr().expect("should read server addr");
+        let client_addr = UdpSocket::bind("127.0.0.1:0").expect("should bind raw client udp").local_addr().expect("should read raw client addr");
         let server_priv_key = PrivatePkcs8KeyDer::from(DEFAULT_CLUSTER_KEY.to_vec());
         let server_cert = CertificateDer::from(DEFAULT_CLUSTER_CERT.to_vec());
         let server = make_server_endpoint(server_addr, server_priv_key, server_cert.clone()).expect("server endpoint should build");
@@ -726,16 +731,9 @@ mod tests {
         let connection = connecting.await.expect("raw client should complete transport");
         let (mut send, recv) = connection.open_bi().await.expect("raw client should open p2p control stream");
         let auth = LargeResponseHandshake.create_request(remote_id, local_id, now_ms());
-        write_object::<_, _, MAX_CONTROL_PEER_PKT>(
-            &mut send,
-            &ConnectReq {
-                from: remote_id,
-                to: local_id,
-                auth,
-            },
-        )
-        .await
-        .expect("raw client should send connect request");
+        write_object::<_, _, MAX_CONTROL_PEER_PKT>(&mut send, &ConnectReq { from: remote_id, to: local_id, auth })
+            .await
+            .expect("raw client should send connect request");
         let _held_recv = recv;
 
         let event = tokio::time::timeout(Duration::from_millis(2500), main_rx.recv()).await;
@@ -757,16 +755,9 @@ mod tests {
         let alias = PeerConnectionAlias::new(PeerId::from(0), PeerId::from(1), ConnectionId::from(1), tx);
         ctx.register_conn(ConnectionId::from(1), alias);
 
-        let result = tokio::time::timeout(
-            Duration::from_millis(50),
-            ctx.send_broadcast(P2pServiceId::from(1), vec![1, 2, 3]),
-        )
-        .await;
+        let result = tokio::time::timeout(Duration::from_millis(50), ctx.send_broadcast(P2pServiceId::from(1), vec![1, 2, 3])).await;
 
-        assert!(
-            result.is_ok(),
-            "send_broadcast must not wait indefinitely on a congested peer control queue"
-        );
+        assert!(result.is_ok(), "send_broadcast must not wait indefinitely on a congested peer control queue");
     }
 
     #[tokio::test]
@@ -784,16 +775,9 @@ mod tests {
         let alias = PeerConnectionAlias::new(PeerId::from(0), peer, conn, tx);
         ctx.register_conn(conn, alias);
 
-        let result = tokio::time::timeout(
-            Duration::from_millis(50),
-            ctx.send_unicast(P2pServiceId::from(1), peer, vec![1, 2, 3]),
-        )
-        .await;
+        let result = tokio::time::timeout(Duration::from_millis(50), ctx.send_unicast(P2pServiceId::from(1), peer, vec![1, 2, 3])).await;
 
-        assert!(
-            result.is_ok(),
-            "send_unicast must not wait indefinitely on a congested peer control queue"
-        );
+        assert!(result.is_ok(), "send_unicast must not wait indefinitely on a congested peer control queue");
     }
 
     #[tokio::test]
@@ -811,25 +795,15 @@ mod tests {
         let alias = PeerConnectionAlias::new(PeerId::from(0), peer, conn, tx);
         ctx.register_conn(conn, alias);
 
-        let result = tokio::time::timeout(
-            Duration::from_millis(50),
-            ctx.open_stream(P2pServiceId::from(1), peer, b"meta".to_vec()),
-        )
-        .await;
+        let result = tokio::time::timeout(Duration::from_millis(50), ctx.open_stream(P2pServiceId::from(1), peer, b"meta".to_vec())).await;
 
-        assert!(
-            result.is_ok(),
-            "open_stream must not wait indefinitely on a congested peer control queue"
-        );
+        assert!(result.is_ok(), "open_stream must not wait indefinitely on a congested peer control queue");
     }
 
     #[tokio::test]
     async fn tick_sync_must_not_be_dropped_when_peer_control_queue_is_full() {
         let _ = rustls::crypto::ring::default_provider().install_default();
-        let listen_addr = UdpSocket::bind("127.0.0.1:0")
-            .expect("should bind test udp")
-            .local_addr()
-            .expect("should read test udp addr");
+        let listen_addr = UdpSocket::bind("127.0.0.1:0").expect("should bind test udp").local_addr().expect("should read test udp addr");
         let priv_key = PrivatePkcs8KeyDer::from(DEFAULT_CLUSTER_KEY.to_vec());
         let cert = CertificateDer::from(DEFAULT_CLUSTER_CERT.to_vec());
         let mut node = P2pNetwork::new(P2pNetworkConfig {
@@ -883,10 +857,7 @@ mod tests {
     #[tokio::test]
     async fn shutdown_gracefully_must_not_wait_one_second_per_congested_peer() {
         let _ = rustls::crypto::ring::default_provider().install_default();
-        let listen_addr = UdpSocket::bind("127.0.0.1:0")
-            .expect("should bind test udp")
-            .local_addr()
-            .expect("should read test udp addr");
+        let listen_addr = UdpSocket::bind("127.0.0.1:0").expect("should bind test udp").local_addr().expect("should read test udp addr");
         let priv_key = PrivatePkcs8KeyDer::from(DEFAULT_CLUSTER_KEY.to_vec());
         let cert = CertificateDer::from(DEFAULT_CLUSTER_CERT.to_vec());
         let mut node = P2pNetwork::new(P2pNetworkConfig {
@@ -910,10 +881,7 @@ mod tests {
             held_receivers.push(rx);
 
             let conn = ConnectionId::from(100 + idx);
-            node.ctx.register_conn(
-                conn,
-                PeerConnectionAlias::new(PeerId::from(1), PeerId::from(10 + idx), conn, tx),
-            );
+            node.ctx.register_conn(conn, PeerConnectionAlias::new(PeerId::from(1), PeerId::from(10 + idx), conn, tx));
         }
 
         let result = tokio::time::timeout(Duration::from_millis(1500), node.shutdown_gracefully()).await;

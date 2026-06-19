@@ -11,7 +11,7 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 5
+- Current consecutive no-new-issue cycles: 0
 - Stop condition requested by user: continue until 5 consecutive cycles find no
   new accepted issue.
 
@@ -24,17 +24,19 @@ the source of truth for evidence and reviewer decisions.
 
 - Representative issues: ISSUE-001, ISSUE-004, ISSUE-014, ISSUE-015,
   ISSUE-018, ISSUE-020, ISSUE-039, ISSUE-048, ISSUE-066, ISSUE-067,
-  ISSUE-068, ISSUE-090, ISSUE-115, ISSUE-116, ISSUE-145, ISSUE-189.
+  ISSUE-068, ISSUE-090, ISSUE-115, ISSUE-116, ISSUE-145, ISSUE-189,
+  ISSUE-194.
 - Pattern: message payloads and internal events carry peer ids, RPC ids, or
   source identities that are trusted without binding them back to the live
   authenticated connection, local handle, expected responder, channel role, or
-  the invariant that a remote peer may not authenticate as the local node.
+  the invariant that a shared-key holder may not authenticate as the local node
+  or an arbitrary third-party peer.
 - Minimal fix proposal: add one validation layer at each ingress boundary:
   derive `source` from the authenticated connection, validate
   `(ConnectionId, PeerId)` against neighbour state before processing main
-  events, reject self-identity peer admission before aliases are registered,
-  and store expected responder/handle metadata in pending RPC/find records
-  before accepting answers.
+  events, reject self-identity and unauthorized third-party peer admission
+  before aliases are registered, and store expected responder/handle metadata
+  in pending RPC/find records before accepting answers.
 
 ### RC-2: Protocol state machines lack request correlation and monotonicity checks
 
@@ -5377,6 +5379,45 @@ the source of truth for evidence and reviewer decisions.
     exercises the teardown reset sequence. The recorder observes the same RTT
     key as both gauge and counter, so the test fails with the assertion that
     teardown must not emit RTT as a counter.
+
+### ISSUE-194: Inbound handshake accepts arbitrary third-party peer-id claims
+
+- Category: security, peer admission, identity validation
+- Score: 88/100
+- Reviewer: `Confucius the 3rd`, confirmed after `Euclid the 3rd` discovery.
+- Affected code:
+  - `src/secure.rs`: `SharedKeyHandshake` authenticates the caller-supplied
+    `(from, to, timestamp, role)` tuple with the cluster shared key, not a
+    per-peer credential.
+  - `src/peer.rs`: inbound `run_connection` verifies `req.auth` against
+    peer-controlled `req.from` and `req.to`, then accepts `req.from` as the
+    authenticated `to_id`.
+  - `src/peer.rs`: after accepting the claim, the peer task registers a
+    `PeerConnectionAlias` and emits `MainEvent::PeerConnected(conn_id,
+    req.from, rtt_ms)`.
+- Impact: any node with the shared key can open an inbound connection and claim
+  to be any third-party peer id, for example `PeerId(99)`, without replaying an
+  old token or owning that identity. That poisons the authenticated connection
+  identity before application messages are processed, causing neighbour,
+  router, metrics, stream, and shutdown paths to treat the attacker as the
+  claimed peer. This is distinct from ISSUE-014/015/018, which spoof
+  application-message source fields after admission; ISSUE-146/176, which cover
+  replayable handshake tokens; and ISSUE-189, which is the narrower
+  `req.from == local_id` self-identity admission case.
+- Minimal fix proposal: do not treat inbound `req.from` as authoritative merely
+  because it is signed by the cluster-wide shared key. Reject unauthorized
+  claimed peer ids before sending `ConnectRes { result: Ok(_) }`, registering
+  aliases, or emitting `PeerConnected`; the smallest immediate mitigation is
+  an expected-peer/admission check for inbound claims plus the existing self-id
+  rejection, with the stronger fix being per-peer credentials or another
+  identity proof that binds the transport peer to the claimed `PeerId`.
+- Evidence test:
+  - `cargo test inbound_handshake_must_reject_peer_claiming_third_party_id -- --nocapture`
+  - Failure summary: a raw client sends a fresh valid shared-key `ConnectReq`
+    with `from == PeerId(99)` and `to == PeerId(1)` to a node whose local id is
+    `PeerId(1)`; current code returns `ConnectRes { result: Ok(_) }`, so the
+    test fails because the claimed third-party id is admitted as the
+    authenticated connection identity.
 
 ## No-New-Issue Audit Cycles
 
