@@ -7,9 +7,9 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Accepted issues: 204
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 17
+- Current consecutive no-new-issue cycles: 18
 - Stop condition: continue until 5 consecutive cycles find no new accepted
-  issue; currently 17/5 after ISSUE-204.
+  issue; currently 18/5 after ISSUE-204.
 
 ## Root Cause Summary
 
@@ -256,6 +256,12 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Recent Fuzz Evidence
 
+- Focused metrics resource-bound source/test review:
+  `cargo test metrics_info_batches_must_be_bounded -- --nocapture`
+  failed with duplicate evidence for ISSUE-104. Reviewer `Bernoulli the 4th`
+  confirmed the `src/service/metrics_service.rs:67` assertion is the
+  already-accepted missing service-level row cap for metrics `Info` batches
+  under RC-5.
 - Focused discovery graceful-stop source/test review:
   `cargo test graceful_shutdown_removes_stopped_non_seed -- --nocapture`
   passed. Reviewer `Gibbs the 4th` confirmed the repeated reconnect and route
