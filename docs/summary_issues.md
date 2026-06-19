@@ -7,7 +7,7 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Accepted issues: 165
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 0
+- Current consecutive no-new-issue cycles: 1
 - Stop condition: continue until 5 consecutive cycles find no new accepted
   issue; after that, continue with randomized fuzz tests over node actions.
 
@@ -122,5 +122,11 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Next Candidate To Validate
 
-- None queued. Start the next RED-team cycle with fresh source review and
-  forked exploration.
+- None queued. Last cycle found no accepted non-duplicate issue after reviewing
+  requester/control APIs, connection lifecycle, route/discovery, stream
+  admission, and metrics/service lifecycle variants. Rejected candidates mapped
+  to existing ISSUE-028, ISSUE-011/012/013, ISSUE-049/050/056/118/164,
+  ISSUE-057/063-068/135/136/145, ISSUE-112-114, ISSUE-117/134/149/156/159,
+  ISSUE-162, and ISSUE-165. Continue fresh source review; if four more
+  consecutive cycles find no issue, switch to randomized fuzz tests over node
+  actions.

@@ -11,7 +11,7 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 0
+- Current consecutive no-new-issue cycles: 1
 - Stop condition requested by user: continue until 5 consecutive cycles find no
   new accepted issue.
 
@@ -4344,3 +4344,29 @@ the source of truth for evidence and reviewer decisions.
     `PeerStopped`/disconnect, but `VisualizationService` does not emit
     `PeerLeaved(node2)` within the prompt leave window; expected lifecycle
     propagation instead of waiting for the timeout sweep.
+
+## No-New-Issue Audit Cycles
+
+### Cycle after ISSUE-165: requester/control, lifecycle, route/discovery
+
+- Result: no accepted non-duplicate issue.
+- Reviewer/explorer: `Mendel the 2nd`.
+- Local/source areas reviewed:
+  - `src/requester.rs`, `src/lib.rs`, `src/ctx.rs`,
+    `src/peer/peer_alias.rs`
+  - `src/peer.rs`, `src/peer/peer_internal.rs`, `src/neighbours.rs`
+  - `src/router.rs`, `src/discovery.rs`, stream-control tests, metrics tests,
+    and existing ledger entries.
+- Duplicate or too-close candidates rejected:
+  - stale `P2pNetworkRequester` panic after network drop: ISSUE-028.
+  - self-connect and local-route failures: ISSUE-112, ISSUE-013,
+    ISSUE-005/006/103.
+  - peer control queue blocking or dropped maintenance sync:
+    ISSUE-049/050/056/118/164.
+  - duplicate connection races: ISSUE-113/114.
+  - stale internal lifecycle event validation: ISSUE-057/063/064/065/066/067/068/135/136/145.
+  - stream setup/admission failures: ISSUE-011/012/117/134/149/156/159.
+  - service lifecycle propagation variants without distinct impact from
+    ISSUE-162 or ISSUE-165.
+- Root-cause summary impact: no change; rejected candidates map to existing
+  RC-3, RC-4, RC-6, and RC-7 patterns.
