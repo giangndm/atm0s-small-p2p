@@ -3885,7 +3885,7 @@ the source of truth for evidence and reviewer decisions.
 
 - Category: high-load stability, resource exhaustion, discovery backpressure
 - Score: 71/100
-- Reviewer: `Carver the 2nd`, confirmed by independent forked discovery.
+- Reviewer: `Curie the 2nd`, confirmed after `Carver the 2nd` discovery.
 - Affected code:
   - `src/lib.rs`: `P2pNetwork::process_tick` iterates every
     `discovery.remotes()` entry and sends `ControlCmd::Connect` into
@@ -3920,7 +3920,7 @@ the source of truth for evidence and reviewer decisions.
 
 - Category: correctness, replicated-KV repair stability, bad-network ordering
 - Score: 66/100
-- Reviewer: `Linnaeus the 2nd`, confirmed by independent forked discovery.
+- Reviewer: `Curie the 2nd`, confirmed after `Linnaeus the 2nd` discovery.
 - Affected code:
   - `src/service/replicate_kv_service/remote_storage.rs`:
     `WorkingState::on_broadcast` stores the current repair request in
