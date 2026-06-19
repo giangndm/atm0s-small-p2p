@@ -11,7 +11,7 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 27
+- Current consecutive no-new-issue cycles: 28
 - Stop condition requested by user: continue until 5 consecutive cycles find no
   new accepted issue.
 
@@ -5783,6 +5783,21 @@ the source of truth for evidence and reviewer decisions.
     `src/peer.rs:1092` with `got 2`.
 
 ## No-New-Issue Audit Cycles
+
+### Cycle after ISSUE-204 no-new cycle 28: steady-valid fuzz pass
+
+- Result: no accepted issue; fuzz command passed.
+- Reviewer classification: `NO_NEW_PASS`; no failing test evidence exists in
+  this cycle, so there is no accepted issue to add.
+- Fuzz evidence reviewed:
+  - `RUST_LOG=error P2P_FUZZ_SEED=2181001 P2P_FUZZ_NODES=8 P2P_FUZZ_STEPS=2600 cargo test fuzz_random_steady_valid_node_actions_must_not_panic_connection_tasks -- --nocapture`
+    passed with `1 passed; 0 failed; 289 filtered out; finished in 16.84s`.
+  - `src/tests/fuzz.rs:378-456` runs steady-valid random actions across live
+    nodes: connects, unicast, try_unicast, broadcast, open_stream, and raw
+    valid unicast, then asserts no background connection/service task panic.
+- Root-cause summary impact: no new root cause and no existing failing issue
+  strengthened; this is continued pass coverage for steady valid-node action
+  fuzzing without failing evidence for ISSUE-205.
 
 ### Cycle after ISSUE-204 no-new cycle 27: sanitized churn duplicate peer-connect panic
 

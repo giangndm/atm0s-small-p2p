@@ -7,9 +7,9 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Accepted issues: 204
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 27
+- Current consecutive no-new-issue cycles: 28
 - Stop condition: continue until 5 consecutive cycles find no new accepted
-  issue; currently 27/5 after ISSUE-204.
+  issue; currently 28/5 after ISSUE-204.
 
 ## Root Cause Summary
 
@@ -256,6 +256,11 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Recent Fuzz Evidence
 
+- Steady-valid random action fuzz pass:
+  `RUST_LOG=error P2P_FUZZ_SEED=2181001 P2P_FUZZ_NODES=8 P2P_FUZZ_STEPS=2600 cargo test fuzz_random_steady_valid_node_actions_must_not_panic_connection_tasks -- --nocapture`
+  passed with `1 passed; 0 failed; 289 filtered out; finished in 16.84s`.
+  Classification was `NO_NEW_PASS`; because the cycle had no failing evidence,
+  it adds no accepted issue and no root-cause impact.
 - Extended sanitized churn fuzz:
   `RUST_LOG=error P2P_FUZZ_SEED=2180001 P2P_FUZZ_NODES=9 P2P_FUZZ_STEPS=2200 cargo test fuzz_random_sanitized_node_churn_actions_must_not_panic_connection_tasks -- --nocapture`
   failed with duplicate evidence for ISSUE-139. Reviewer `Ptolemy the 4th`
