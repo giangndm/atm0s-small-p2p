@@ -1,7 +1,7 @@
 use std::{collections::VecDeque, time::Duration};
 
 use serde::{Deserialize, Serialize};
-use tokio::{select, time::Interval};
+use tokio::{select, task::JoinHandle, time::Interval};
 
 use crate::{peer::PeerConnectionMetric, ConnectionId, ErrorExt, P2pServiceEvent, PeerId};
 
@@ -82,12 +82,14 @@ pub(crate) fn encode_scan_for_test() -> Vec<u8> {
 
 const DEFAULT_COLLECTOR_INTERVAL: u64 = 1;
 const SCAN_RESPONSE_SEND_TIMEOUT: Duration = Duration::from_secs(1);
+const SCAN_BROADCAST_SEND_TIMEOUT: Duration = Duration::from_secs(1);
 
 pub struct MetricsService {
     is_collector: bool,
     service: P2pService,
     ticker: Interval,
     outs: VecDeque<MetricsServiceEvent>,
+    pending_scan_broadcast: Option<JoinHandle<()>>,
 }
 
 impl MetricsService {
@@ -99,6 +101,7 @@ impl MetricsService {
             ticker,
             service,
             outs: VecDeque::new(),
+            pending_scan_broadcast: None,
         }
     }
 
@@ -107,6 +110,13 @@ impl MetricsService {
             if let Some(out) = self.outs.pop_front() {
                 return Ok(out);
             }
+            if self.pending_scan_broadcast.as_ref().is_some_and(|task| task.is_finished()) {
+                if let Some(task) = self.pending_scan_broadcast.take() {
+                    if let Err(err) = task.await {
+                        log::warn!("metrics scan broadcast task failed: {err}");
+                    }
+                }
+            }
 
             select! {
                 _ = self.ticker.tick() => {
@@ -114,10 +124,16 @@ impl MetricsService {
                         let metrics = self.service.ctx.metrics();
                         self.outs.push_back(MetricsServiceEvent::OnPeerConnectionMetric(self.service.router().local_id(), metrics));
 
-                        let requester = self.service.requester();
-                        tokio::spawn(async move {
-                            requester.send_broadcast(bincode::serialize(&Message::Scan).expect("should convert to buf")).await;
-                        });
+                        if self.pending_scan_broadcast.is_none() {
+                            let requester = self.service.requester();
+                            let data = bincode::serialize(&Message::Scan).expect("should convert to buf");
+                            self.pending_scan_broadcast = Some(tokio::spawn(async move {
+                                match tokio::time::timeout(SCAN_BROADCAST_SEND_TIMEOUT, requester.send_broadcast(data)).await {
+                                    Ok(()) => {}
+                                    Err(_) => log::warn!("metrics scan broadcast timed out"),
+                                }
+                            }));
+                        }
                     }
                 }
                 event = self.service.recv() => match event {
