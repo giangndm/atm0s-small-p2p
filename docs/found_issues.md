@@ -11,7 +11,7 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 0
+- Current consecutive no-new-issue cycles: 1
 - Stop condition requested by user: continue until 5 consecutive cycles find no
   new accepted issue.
 
@@ -5284,3 +5284,37 @@ the source of truth for evidence and reviewer decisions.
     registration with ignored local-delivery failure.
 - Root-cause summary impact: no new root cause; supplemental evidence maps to
   RC-3 and RC-6.
+
+### Cycle after ISSUE-189: replicated-KV, service/control, and malformed service inputs
+
+- Result: no accepted non-duplicate issue.
+- Reviewer/explorer: `Erdos the 3rd`; local review by main agent.
+- Local/source areas reviewed:
+  - `src/service/replicate_kv_service.rs`,
+    `src/service/replicate_kv_service/local_storage.rs`,
+    `src/service/replicate_kv_service/remote_storage.rs`,
+    `src/service/replicate_kv_service/messages.rs`
+  - `src/requester.rs`, `src/service.rs`, `src/ctx.rs`, `src/lib.rs`,
+    `src/msg.rs`, `src/quic.rs`, `src/stream.rs`
+  - existing security, stream, replicated-KV, malformed-input, and service
+    lifecycle tests and ledger entries.
+- Duplicate or too-close candidates rejected:
+  - arbitrary inbound replicated-KV RPC can create `RemoteStore` and queue full
+    sync: ISSUE-045.
+  - pubsub `Publish`/`Feedback` accepts unauthenticated membership state:
+    ISSUE-039 and ISSUE-048.
+  - `StreamConnectReq.source` is trusted without connection binding:
+    ISSUE-018.
+  - alias hint timeout arithmetic can overflow near `u64::MAX`: ISSUE-036.
+  - metrics and visualization accept unsolicited `Info`/`Scan` updates:
+    ISSUE-061, ISSUE-062, ISSUE-078, and ISSUE-079.
+  - replicated-KV malformed snapshot/change/version/repair candidates map to
+    existing evidence under ISSUE-034, ISSUE-037, ISSUE-038, ISSUE-047,
+    ISSUE-081 through ISSUE-089, ISSUE-111, ISSUE-138, ISSUE-141,
+    ISSUE-143, ISSUE-154, ISSUE-171, ISSUE-175, ISSUE-184, and ISSUE-186.
+  - public service/control stale requester, panic, service-id, and serialization
+    candidates map to ISSUE-013, ISSUE-028, ISSUE-030, ISSUE-052,
+    ISSUE-053, ISSUE-054, ISSUE-060, ISSUE-072, ISSUE-073, ISSUE-076,
+    ISSUE-091, ISSUE-096, ISSUE-097, ISSUE-098, and ISSUE-174.
+- Root-cause summary impact: no new root cause; rejected candidates map to
+  RC-1, RC-2, RC-3, RC-5, RC-6, and RC-7.

@@ -7,7 +7,7 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Accepted issues: 189
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 0
+- Current consecutive no-new-issue cycles: 1
 - Stop condition: continue until 5 consecutive cycles find no new accepted
   issue; after that, continue with randomized fuzz tests over node actions.
 
@@ -186,6 +186,13 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Next Candidate To Validate
 
-- None queued. ISSUE-189 kept the no-new counter at 0. Continue fresh source
-  review; if five consecutive cycles find no issue, switch to randomized fuzz
-  tests over node actions.
+- None queued. One consecutive no-new issue cycle is recorded after ISSUE-189.
+  Continue fresh source review until five consecutive no-new cycles, then
+  switch to randomized fuzz tests over node actions.
+
+## Recent No-New Audit
+
+- Cycle after ISSUE-189 reviewed replicated-KV, service/control, and malformed
+  service-input paths. Rejected candidates mapped to existing RC-1, RC-2,
+  RC-3, RC-5, RC-6, and RC-7 patterns, so no root-cause summary change was
+  needed.
