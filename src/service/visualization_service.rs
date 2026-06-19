@@ -115,8 +115,8 @@ impl VisualizationService {
                         }
                     }
                 }
-                event = self.service.recv() => match event.expect("should work") {
-                    P2pServiceEvent::Unicast(from, data) | P2pServiceEvent::Broadcast(from, data) => {
+                event = self.service.recv() => match event {
+                    Some(P2pServiceEvent::Unicast(from, data) | P2pServiceEvent::Broadcast(from, data)) => {
                         if let Ok(msg) = bincode::deserialize::<Message>(&data) {
                             match msg {
                                 Message::Scan => {
@@ -144,7 +144,8 @@ impl VisualizationService {
                             }
                         }
                     }
-                    P2pServiceEvent::Stream(..) => {}
+                    Some(P2pServiceEvent::Stream(..)) => {}
+                    None => anyhow::bail!("visualization base service channel closed"),
                 }
             }
         }
