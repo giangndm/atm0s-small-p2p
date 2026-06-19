@@ -107,14 +107,16 @@ the source of truth for evidence and reviewer decisions.
   ISSUE-060, ISSUE-064, ISSUE-065, ISSUE-069 through ISSUE-076, ISSUE-108,
   ISSUE-128 through ISSUE-132, ISSUE-135, ISSUE-139, ISSUE-142, ISSUE-144,
   ISSUE-148, ISSUE-150, ISSUE-151, ISSUE-161, ISSUE-162, ISSUE-165,
-  ISSUE-167, ISSUE-168, ISSUE-170, ISSUE-179.
+  ISSUE-167, ISSUE-168, ISSUE-170, ISSUE-179, ISSUE-183.
 - Pattern: requesters, services, peer aliases, channel state, and cached hints
   can outlive the owner they represent, while shutdown paths may panic, leak,
-  emit false public events, or keep stale routes/cache entries.
+  emit false public events, or keep stale routes/cache entries. Some shutdown
+  controls announce owner teardown without clearing local authority.
 - Minimal fix proposal: add generation or liveness tokens to cloned requesters
   and local handles, make closed channels return `Err` instead of panicking, and
   centralize owner teardown so aliases, metrics, routes, caches, and service ids
-  are cleared together.
+  are cleared together. Shutdown controls should also enter an explicit
+  terminal state so later register/find operations are rejected or no-op.
 
 ### RC-7: Routing and discovery accept unstable or self-referential topology
 
@@ -4439,6 +4441,38 @@ the source of truth for evidence and reviewer decisions.
     `AliasControl::Shutdown` broadcasts `Shutdown` but `rx.try_recv()` remains
     `Err(Empty)` and `find_reqs` still contains the alias; expected immediate
     `Ok(None)` and cleared pending state.
+
+### ISSUE-183: Local alias shutdown keeps serving local aliases
+
+- Category: lifecycle stability, graceful shutdown, alias authority
+- Score: 53/100
+- Reviewer: `Newton the 3rd`, confirmed after `Cicero the 3rd` discovery.
+- Affected code:
+  - `src/service/alias_service.rs`: `AliasControl::Shutdown` only queues
+    `Broadcast(AliasMessage::Shutdown)`.
+  - `src/service/alias_service.rs`: `AliasControl::Find` later checks
+    `self.local.contains_key(&alias_id)` and returns
+    `Some(AliasFoundLocation::Local)`.
+  - `src/service/alias_service.rs`: `AliasControl::Register` remains accepted
+    after shutdown, so new local alias ownership can be created after the
+    service announces shutdown.
+- Impact: a local alias service can broadcast a graceful shutdown notification
+  but continue to act as the authoritative local owner for registered aliases.
+  Later callers can resolve the alias as `Local` even though the service has
+  announced that it stopped. This is distinct from ISSUE-179, which covers
+  pending missing-alias waiters that already exist at shutdown; ISSUE-022/148,
+  which cover remote `AliasMessage::Shutdown` cache and hint behavior; and
+  ISSUE-029/130/132, which cover stale requester or run-loop panic surfaces.
+- Minimal fix proposal: in `AliasControl::Shutdown`, clear `self.local`, drain
+  pending finds with `None`, and set a `shutting_down` flag. Later `Register`
+  should no-op or fail, and later `Find` should immediately return `None`,
+  while preserving a single shutdown broadcast.
+- Evidence test:
+  - `cargo test local_shutdown_must_stop_serving_local_aliases -- --nocapture`
+  - Failure summary: after registering an alias and processing
+    `AliasControl::Shutdown`, a later `Find` returns `Ok(Some(Local))` and
+    `self.local` still contains the alias; expected `Ok(None)` and cleared
+    local ownership.
 
 ### ISSUE-180: Relay stream setup can forward back to the ingress peer
 

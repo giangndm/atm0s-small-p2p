@@ -5,7 +5,7 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Audit Status
 
-- Accepted issues: 182
+- Accepted issues: 183
 - Missing issue scores: 0
 - Current consecutive no-new-issue cycles: 0
 - Stop condition: continue until 5 consecutive cycles find no new accepted
@@ -92,13 +92,16 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   ISSUE-060, ISSUE-064, ISSUE-065, ISSUE-069 through ISSUE-076, ISSUE-108,
   ISSUE-128 through ISSUE-132, ISSUE-135, ISSUE-139, ISSUE-142, ISSUE-144,
   ISSUE-148, ISSUE-150, ISSUE-151, ISSUE-161, ISSUE-162, ISSUE-165,
-  ISSUE-167, ISSUE-168, ISSUE-170, ISSUE-179.
+  ISSUE-167, ISSUE-168, ISSUE-170, ISSUE-179, ISSUE-183.
 - Pattern: requesters, services, peer aliases, channel state, and cached hints
   can outlive the owner they represent; shutdown paths can panic, leak, emit
-  false public events, or keep stale routes/cache entries.
+  false public events, keep stale routes/cache entries, or announce shutdown
+  while local authority remains active.
 - Minimal fix proposal: add generation or liveness tokens to cloned requesters
   and local handles, make closed channels return `Err`, and centralize teardown
-  for aliases, metrics, routes, caches, and service ids.
+  for aliases, metrics, routes, caches, and service ids. Shutdown controls
+  should enter an explicit terminal state so later register/find operations are
+  rejected or no-op.
 
 ### RC-7: Routing/discovery accepts unstable topology
 
@@ -153,9 +156,11 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   addresses. Reviewer: Nash the 3rd.
 - ISSUE-182, score 52: QUIC admits unused unidirectional streams. Reviewer:
   Pascal the 3rd.
+- ISSUE-183, score 53: local alias shutdown keeps serving local aliases.
+  Reviewer: Newton the 3rd.
 
 ## Next Candidate To Validate
 
-- None queued. ISSUE-182 kept the no-new counter at 0. Continue fresh source
+- None queued. ISSUE-183 kept the no-new counter at 0. Continue fresh source
   review; if five consecutive cycles find no issue, switch to randomized fuzz
   tests over node actions.

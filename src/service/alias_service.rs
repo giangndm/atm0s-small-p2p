@@ -933,6 +933,32 @@ mod test {
     }
 
     #[test]
+    fn local_shutdown_must_stop_serving_local_aliases() {
+        let mut ctx = TestContext::new();
+        let alias_id = AliasId(1);
+
+        ctx.internal.on_control(ctx.now, AliasControl::Register(alias_id));
+        assert!(ctx.internal.local.contains_key(&alias_id), "test setup should register local alias ownership");
+        assert_eq!(ctx.collect_outputs(), vec![InternalOutput::Broadcast(AliasMessage::NotifySet(alias_id))]);
+
+        ctx.internal.on_control(ctx.now + 1, AliasControl::Shutdown);
+        assert_eq!(ctx.collect_outputs(), vec![InternalOutput::Broadcast(AliasMessage::Shutdown)]);
+
+        let (tx, mut rx) = oneshot::channel();
+        ctx.internal.on_control(ctx.now + 2, AliasControl::Find(alias_id, tx));
+
+        assert_eq!(
+            rx.try_recv(),
+            Ok(None),
+            "after local shutdown, alias service must not keep resolving aliases as local"
+        );
+        assert!(
+            !ctx.internal.local.contains_key(&alias_id),
+            "local alias shutdown must clear local alias ownership"
+        );
+    }
+
+    #[test]
     fn test_shutdown() {
         let mut ctx = TestContext::new();
         let alias_id = AliasId(1);
