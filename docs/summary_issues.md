@@ -7,9 +7,9 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Accepted issues: 204
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 8
+- Current consecutive no-new-issue cycles: 9
 - Stop condition: continue until 5 consecutive cycles find no new accepted
-  issue; currently 8/5 after ISSUE-204.
+  issue; currently 9/5 after ISSUE-204.
 
 ## Root Cause Summary
 
@@ -256,6 +256,12 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Recent Fuzz Evidence
 
+- Extended invalid-wire action fuzz:
+  `P2P_FUZZ_SEED=0x205301 P2P_FUZZ_NODES=8 P2P_FUZZ_STEPS=1000 cargo test fuzz_random_node_actions_must_not_panic_connection_tasks -- --nocapture`
+  panics at `src/ctx.rs:34`, duplicate evidence for ISSUE-053. Reviewer
+  `Hooke the 4th` confirmed the invalid service-id action hits the same fixed
+  service-array bounds bug; the harness reported `seed=24301` because hex env
+  seeds fall back to the current default.
 - Churn fuzz with invalid wire actions:
   `P2P_FUZZ_NODES=3 P2P_FUZZ_STEPS=40 cargo test fuzz_random_node_churn_actions_must_not_panic_connection_tasks -- --nocapture`
   panics at `src/ctx.rs:33`, duplicate evidence for ISSUE-053.
@@ -335,6 +341,13 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Recent No-New Audit
 
+- Cycle after ISSUE-204 no-new cycle 9 ran an eight-node invalid-wire action
+  fuzz pass with forked reviewer `Hooke the 4th`. The run failed, but the
+  failure was duplicate evidence for ISSUE-053: an invalid service id
+  `P2pServiceId(256)` reached the fixed service array and panicked at
+  `src/ctx.rs:34`. The hex seed literal was ignored by the current fuzz env
+  parser and the harness reported default `seed=24301`; this was recorded as
+  an evidence-handling observation, not a new accepted issue.
 - Cycle after ISSUE-204 no-new cycle 8 ran an eight-node sanitized churn fuzz
   pass with forked reviewer `Faraday the 4th`. The run failed, but the failure
   was duplicate evidence for ISSUE-139: the outbound early

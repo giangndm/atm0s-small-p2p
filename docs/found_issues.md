@@ -11,7 +11,7 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 8
+- Current consecutive no-new-issue cycles: 9
 - Stop condition requested by user: continue until 5 consecutive cycles find no
   new accepted issue.
 
@@ -5768,6 +5768,26 @@ the source of truth for evidence and reviewer decisions.
     `src/peer.rs:1092` with `got 2`.
 
 ## No-New-Issue Audit Cycles
+
+### Cycle after ISSUE-204 no-new cycle 9: invalid-wire action fuzz duplicate service-id panic
+
+- Result: no accepted non-duplicate issue.
+- Reviewer: `Hooke the 4th`, forked subagent review, confirmed
+  duplicate-only no-new classification.
+- Fuzz evidence reviewed:
+  - `P2P_FUZZ_SEED=0x205301 P2P_FUZZ_NODES=8 P2P_FUZZ_STEPS=1000 cargo test fuzz_random_node_actions_must_not_panic_connection_tasks -- --nocapture`
+    failed with duplicate evidence for ISSUE-053. The harness reported
+    `seed=24301` because the current fuzz env parser falls back to its default
+    when given a hex seed literal.
+- Duplicate or too-close symptoms rejected:
+  - background panics at `src/ctx.rs:34:9` with
+    `index out of bounds: the len is 256 but the index is 256` map directly to
+    ISSUE-053, where an inbound out-of-range `P2pServiceId(256)` indexes the
+    fixed 256-service array.
+  - route churn, temporary path lookup failures, and channel-close logs map to
+    existing route/lifecycle entries rather than a new issue.
+- Root-cause summary impact: no new root cause; this run strengthens existing
+  ISSUE-053 fuzz evidence but does not add ISSUE-205.
 
 ### Cycle after ISSUE-204 no-new cycle 8: sanitized churn duplicate connect-error panic
 
