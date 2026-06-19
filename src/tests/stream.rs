@@ -14,7 +14,7 @@ use crate::{
     router::RouteAction,
     secure::HandshakeProtocol,
     stream::{wait_object, write_object, P2pQuicStream},
-    P2pServiceEvent, PeerId, SharedKeyHandshake, CERT_DOMAIN_NAME,
+    ConnectionId, P2pNetworkEvent, P2pServiceEvent, PeerId, SharedKeyHandshake, SharedRouterTable, CERT_DOMAIN_NAME,
 };
 use futures::FutureExt;
 use quinn::{Endpoint, ServerConfig, TransportConfig, VarInt};
@@ -115,6 +115,63 @@ async fn open_stream_to_local_returns_error_not_panic() {
     let result = std::panic::AssertUnwindSafe(service.open_stream(addr.peer_id(), vec![])).catch_unwind().await;
 
     assert!(matches!(result, Ok(Err(_))), "open_stream to local node must return Err, not panic");
+}
+
+#[tokio::test]
+async fn relay_stream_must_not_forward_back_to_ingress_peer() {
+    let (mut node1, addr1) = create_node(true, 1, vec![]).await;
+    let service1 = node1.create_service(0.into());
+    let (mut node2, addr2) = create_node(false, 2, vec![addr1.clone()]).await;
+
+    let (mut node1_to_node2, mut node2_to_node1) = (None, None);
+    tokio::time::timeout(Duration::from_secs(3), async {
+        loop {
+            tokio::select! {
+                event = node1.recv() => {
+                    if let Ok(P2pNetworkEvent::PeerConnected(conn, peer)) = event {
+                        if peer == addr2.peer_id() {
+                            node1_to_node2 = Some(conn);
+                        }
+                    }
+                }
+                event = node2.recv() => {
+                    if let Ok(P2pNetworkEvent::PeerConnected(conn, peer)) = event {
+                        if peer == addr1.peer_id() {
+                            node2_to_node1 = Some(conn);
+                        }
+                    }
+                }
+            }
+
+            if node1_to_node2.is_some() && node2_to_node1.is_some() {
+                break;
+            }
+        }
+    })
+    .await
+    .expect("nodes should connect");
+
+    let ghost = PeerId::from(99);
+    let node1_to_node2 = node1_to_node2.expect("node1 should have conn to node2");
+    let node2_to_node1 = node2_to_node1.expect("node2 should have conn to node1");
+
+    let node2_advertised_routes = SharedRouterTable::new(addr2.peer_id());
+    node2_advertised_routes.set_direct(ConnectionId::from(200), ghost, 1);
+    node1
+        .router
+        .apply_sync(node1_to_node2, node2_advertised_routes.create_sync(&addr1.peer_id()));
+
+    let node1_advertised_routes = SharedRouterTable::new(addr1.peer_id());
+    node1_advertised_routes.set_direct(ConnectionId::from(100), ghost, 1);
+    node2
+        .router
+        .apply_sync(node2_to_node1, node1_advertised_routes.create_sync(&addr2.peer_id()));
+
+    let result = tokio::time::timeout(Duration::from_millis(500), service1.open_stream(ghost, b"loop".to_vec()))
+        .await
+        .expect("relay stream loop should be rejected promptly instead of recursively opening relayed streams");
+
+    assert!(result.is_err(), "relay must reject forwarding a stream back to its ingress peer");
 }
 
 #[tokio::test]

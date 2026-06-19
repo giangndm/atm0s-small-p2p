@@ -119,16 +119,20 @@ the source of truth for evidence and reviewer decisions.
 - Representative issues: ISSUE-003, ISSUE-005, ISSUE-006, ISSUE-007,
   ISSUE-008, ISSUE-033, ISSUE-044, ISSUE-055, ISSUE-092, ISSUE-103,
   ISSUE-112 through ISSUE-114, ISSUE-160, ISSUE-161, ISSUE-164, ISSUE-167,
-  ISSUE-177.
+  ISSUE-177, ISSUE-180.
 - Pattern: route/discovery inputs can include local ids, self seeds, stale
   addresses, overflowed metrics, over-hop routes, duplicate connection races, or
   explicit connect addresses that are ignored by peer-id-only fast paths, or
-  tiny RTT jitter that changes active paths too aggressively.
+  tiny RTT jitter that changes active paths too aggressively. Stream relay setup
+  also trusts route choices without checking whether the next hop is the same
+  ingress connection.
 - Minimal fix proposal: add route/discovery sanitization before insertion:
   reject local/self candidates and over-hop routes, pin authenticated direct
   paths for their peer ids, use checked metric math, ignore stale discovery
   timestamps, coalesce duplicate connects, validate already-connected peer
-  addresses, and add a small hysteresis threshold before switching active paths.
+  addresses, add a small hysteresis threshold before switching active paths,
+  and reject relay stream hops that would forward back to their ingress
+  connection.
 
 ## Accepted Issues
 
@@ -4431,6 +4435,39 @@ the source of truth for evidence and reviewer decisions.
     `AliasControl::Shutdown` broadcasts `Shutdown` but `rx.try_recv()` remains
     `Err(Empty)` and `find_reqs` still contains the alias; expected immediate
     `Ok(None)` and cleared pending state.
+
+### ISSUE-180: Relay stream setup can forward back to the ingress peer
+
+- Category: correctness, stream relay stability, route-loop handling
+- Score: 64/100
+- Reviewer: `Carver the 3rd`, confirmed after `Heisenberg the 3rd` discovery.
+- Affected code:
+  - `src/peer/peer_internal.rs`: `PeerConnectionInternal::on_accept_bi`
+    spawns `accept_bi` without passing the ingress `ConnectionId`.
+  - `src/peer/peer_internal.rs`: `accept_bi` handles
+    `RouteAction::Next(next)` by blindly calling `alias.open_stream(...)`.
+  - `src/router.rs`: `SharedRouterTable::action` returns only the selected
+    next connection and cannot exclude the connection that delivered the
+    current stream setup request.
+- Impact: if route state forms a two-node loop for a destination, a relay can
+  receive a `StreamConnectReq` and open the next stream back over the same peer
+  direction that sent the request. The opener does not receive a prompt
+  `route loop`/`route not found` error and instead waits while both peers
+  recursively create relayed stream setup attempts. This is distinct from
+  ISSUE-003/160/161 route selection and stale-route issues; ISSUE-007/008 route
+  table loop acceptance/advertisement; ISSUE-011/012 local service delivery
+  false success; ISSUE-117/149/159/169/172/173 setup timeout/stall issues; and
+  ISSUE-156 downstream orphan delivery after upstream closes.
+- Minimal fix proposal: pass the ingress `ConnectionId` into `accept_bi`; when
+  `RouteAction::Next(next)` equals that ingress connection, write
+  `Err("route loop")` to the upstream stream and return. A broader hardening
+  can add a hop limit or visited-path token to `StreamConnectReq`.
+- Evidence test:
+  - `cargo test relay_stream_must_not_forward_back_to_ingress_peer -- --nocapture`
+  - Failure summary: node1 and node2 are given route state where `PeerId(99)`
+    routes through each other. `service1.open_stream(PeerId(99), ...)` does not
+    return an error within 500 ms and the test fails with `Elapsed(())`;
+    expected prompt rejection instead of recursive relay setup.
 
 ### ISSUE-164: Tick route/discovery sync is dropped when peer control queue is full
 
