@@ -7,9 +7,9 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Accepted issues: 204
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 1
+- Current consecutive no-new-issue cycles: 2
 - Stop condition: continue until 5 consecutive cycles find no new accepted
-  issue; currently 1/5 after ISSUE-204.
+  issue; currently 2/5 after ISSUE-204.
 
 ## Root Cause Summary
 
@@ -302,6 +302,11 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Recent No-New Audit
 
+- Cycle after ISSUE-204 no-new cycle 2 reviewed shared-key handshake
+  validation, QUIC transport admission, stream/object codec helpers, and
+  public constructor/config validation with forked reviewer `Turing the 4th`.
+  Rejected candidates mapped to existing RC-3, RC-4, RC-6, and RC-7 patterns;
+  no accepted issue or summary root-cause change.
 - Cycle after ISSUE-204 no-new cycle 1 reviewed pubsub directed
   response/fanout paths, replicated-KV malformed snapshot/repair/resource and
   lifecycle paths, alias lookup/shutdown/find backlog behavior, and

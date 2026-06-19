@@ -11,7 +11,7 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 1
+- Current consecutive no-new-issue cycles: 2
 - Stop condition requested by user: continue until 5 consecutive cycles find no
   new accepted issue.
 
@@ -5768,6 +5768,33 @@ the source of truth for evidence and reviewer decisions.
     `src/peer.rs:1092` with `got 2`.
 
 ## No-New-Issue Audit Cycles
+
+### Cycle after ISSUE-204 no-new cycle 2: security, transport, stream codec, config
+
+- Result: no accepted non-duplicate issue.
+- Reviewer: `Turing the 4th`, forked subagent review, confirmed no-new
+  classification.
+- Local/source areas reviewed:
+  - `src/secure.rs`, `src/quic.rs`, `src/stream.rs`, `src/lib.rs`
+  - public network and service constructors, plus existing stream/security
+    tests and ledger entries.
+- Duplicate or too-close candidates rejected:
+  - shared-key future timestamp, overflow, replay, self-id, and third-party-id
+    handshake variants map to ISSUE-002, ISSUE-021, ISSUE-146, ISSUE-176,
+    ISSUE-189, and ISSUE-194.
+  - unused QUIC unidirectional streams, stream admission/setup stalls, relay
+    stream loops, and upstream/downstream cancellation gaps map to ISSUE-117,
+    ISSUE-134, ISSUE-149, ISSUE-156, ISSUE-159, ISSUE-169, ISSUE-172,
+    ISSUE-173, ISSUE-180, and ISSUE-182.
+  - codec frame limits and QUIC object writer serialization/size bugs map to
+    ISSUE-010, ISSUE-024, ISSUE-097, ISSUE-098, and ISSUE-174.
+  - zero network tick and metrics/visualization collection interval panics map
+    to ISSUE-040 and ISSUE-054.
+  - seed, advertise, discovery timestamp, and malformed route/discovery sync
+    config/input behavior maps to ISSUE-009, ISSUE-033, ISSUE-044, ISSUE-055,
+    ISSUE-092, ISSUE-103, ISSUE-167, ISSUE-181, ISSUE-190, and ISSUE-192.
+- Root-cause summary impact: no new root cause; rejected candidates map to
+  existing RC-3, RC-4, RC-6, and RC-7 patterns.
 
 ### Cycle after ISSUE-204 no-new cycle 1: pubsub, replicated-KV, alias, route/discovery
 
