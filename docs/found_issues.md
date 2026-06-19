@@ -101,7 +101,7 @@ the source of truth for evidence and reviewer decisions.
   ISSUE-060, ISSUE-064, ISSUE-065, ISSUE-069 through ISSUE-076, ISSUE-108,
   ISSUE-128 through ISSUE-132, ISSUE-135, ISSUE-139, ISSUE-142, ISSUE-144,
   ISSUE-148, ISSUE-150, ISSUE-151, ISSUE-161, ISSUE-162, ISSUE-165,
-  ISSUE-167, ISSUE-168.
+  ISSUE-167, ISSUE-168, ISSUE-170.
 - Pattern: requesters, services, peer aliases, channel state, and cached hints
   can outlive the owner they represent, while shutdown paths may panic, leak,
   emit false public events, or keep stale routes/cache entries.
@@ -4481,6 +4481,38 @@ the source of truth for evidence and reviewer decisions.
     bidirectional stream with a tiny receive window and then never reads it.
     The caller's `open_stream` task does not return within 2.5 seconds, so the
     test aborts it and fails; expected stream setup to return `Err`.
+
+### ISSUE-170: PeerStopped forwarding loops indefinitely in cyclic meshes
+
+- Category: correctness, graceful-shutdown stability, mesh control traffic
+- Score: 62/100
+- Reviewer: `Banach the 3rd`, confirmed after `Lorentz the 3rd` discovery.
+- Affected code:
+  - `src/peer/peer_internal.rs`: `PeerMessage::PeerStopped(peer_id)` is
+    forwarded to every other connection except the sender each time it is
+    received.
+  - `src/peer/peer_internal.rs`: stopped-peer forwarding has no dedupe, TTL, or
+    tombstone check before re-forwarding.
+  - `src/lib.rs`: `MainEvent::PeerStopped` cleanup is idempotent but does not
+    suppress duplicate peer-task forwarding in a mesh cycle.
+- Impact: one legitimate graceful stop can circulate repeatedly through a
+  cyclic mesh, generating thousands of duplicate `PeerStopped` events and
+  control messages in less than a second. This wastes bandwidth and CPU during
+  shutdown churn and can amplify a normal stop into a control-plane storm. This
+  is distinct from ISSUE-001, which covers forged stop authority; ISSUE-051,
+  ISSUE-151, ISSUE-161, ISSUE-165, and ISSUE-167, which cover cleanup effects
+  after a stop; and ISSUE-133, which covers blocking while reporting one stop.
+- Minimal fix proposal: add a bounded recent-stop dedupe set keyed by stopped
+  `PeerId` in the peer/network forwarding path. Process local cleanup
+  idempotently, but suppress forwarding when the stopped peer id was already
+  seen recently. A hop limit or TTL would also work, but dedupe is the smaller
+  change.
+- Evidence test:
+  - `cargo test peer_stopped_forwarding_must_be_deduplicated_in_mesh -- --nocapture`
+  - Failure summary: one `shutdown_gracefully` from a stopped node connected to
+    a live `B-C-D-B` mesh produces thousands of
+    `MainEvent::PeerStopped(_, stopped)` events in 500 ms; expected at most one
+    observation per live node.
 
 ## No-New-Issue Audit Cycles
 

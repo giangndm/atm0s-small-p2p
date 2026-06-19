@@ -269,6 +269,80 @@ async fn forged_peer_stopped_must_not_be_forwarded_to_other_neighbours() {
 }
 
 #[tokio::test]
+async fn peer_stopped_forwarding_must_be_deduplicated_in_mesh() {
+    let (mut stopped, stopped_addr) = create_node(false, 1, vec![]).await;
+    let stopped_requester = stopped.requester();
+
+    let (mut node_b, addr_b) = create_node(false, 2, vec![]).await;
+    let requester_b = node_b.requester();
+    let (mut node_c, addr_c) = create_node(false, 3, vec![]).await;
+    let requester_c = node_c.requester();
+    let (mut node_d, addr_d) = create_node(false, 4, vec![]).await;
+    let requester_d = node_d.requester();
+
+    stopped_requester.try_connect(addr_b.clone());
+    requester_b.try_connect(addr_c.clone());
+    requester_c.try_connect(addr_d.clone());
+    requester_d.try_connect(addr_b.clone());
+
+    tokio::time::timeout(Duration::from_secs(5), async {
+        loop {
+            if matches!(stopped.router.action(&addr_b.peer_id()), Some(RouteAction::Next(_)))
+                && matches!(node_b.router.action(&addr_c.peer_id()), Some(RouteAction::Next(_)))
+                && matches!(node_c.router.action(&addr_d.peer_id()), Some(RouteAction::Next(_)))
+                && matches!(node_d.router.action(&addr_b.peer_id()), Some(RouteAction::Next(_)))
+            {
+                break;
+            }
+
+            tokio::select! {
+                _ = stopped.recv() => {}
+                _ = node_b.recv() => {}
+                _ = node_c.recv() => {}
+                _ = node_d.recv() => {}
+            }
+        }
+    })
+    .await
+    .expect("test mesh should become connected");
+
+    while stopped.main_rx.try_recv().is_ok() {}
+    while node_b.main_rx.try_recv().is_ok() {}
+    while node_c.main_rx.try_recv().is_ok() {}
+    while node_d.main_rx.try_recv().is_ok() {}
+
+    stopped.shutdown_gracefully().await;
+
+    let mut stopped_events = 0usize;
+    let deadline = tokio::time::Instant::now() + Duration::from_millis(500);
+    loop {
+        tokio::select! {
+            _ = tokio::time::sleep_until(deadline) => break,
+            event = node_b.main_rx.recv() => {
+                if matches!(event, Some(MainEvent::PeerStopped(_, peer)) if peer == stopped_addr.peer_id()) {
+                    stopped_events += 1;
+                }
+            }
+            event = node_c.main_rx.recv() => {
+                if matches!(event, Some(MainEvent::PeerStopped(_, peer)) if peer == stopped_addr.peer_id()) {
+                    stopped_events += 1;
+                }
+            }
+            event = node_d.main_rx.recv() => {
+                if matches!(event, Some(MainEvent::PeerStopped(_, peer)) if peer == stopped_addr.peer_id()) {
+                    stopped_events += 1;
+                }
+            }
+        }
+    }
+
+    assert!(
+        stopped_events <= 3,
+        "one graceful stop should be forwarded at most once per live node, got {stopped_events} PeerStopped events"
+    );
+}
+
+#[tokio::test]
 async fn peer_stopped_must_not_block_connection_task_on_full_main_queue() {
     let (mut node1, addr1) = create_node(true, 1, vec![]).await;
     let service1 = node1.create_service(0.into());
