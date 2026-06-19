@@ -3652,3 +3652,35 @@ must resolve.
     `AliasMessage::Shutdown`. The service emits no output, but expected it to
     immediately broadcast `Scan(AliasId(1))` or otherwise unblock the pending
     lookup instead of waiting for hint timeout.
+
+### ISSUE-149: Stream open waits forever if the peer withholds `StreamConnectRes`
+
+- Category: bad-network stability, stream setup, timeout correctness
+- Score: 74/100
+- Reviewer: `Ptolemy the 2nd`, confirmed.
+- Affected code:
+  - `src/peer/peer_internal.rs`: `open_bi` wraps only
+    `connection.open_bi()` in `OPEN_BI_TIMEOUT`.
+  - `src/peer/peer_internal.rs`: after writing `StreamConnectReq`, `open_bi`
+    awaits `wait_object::<_, StreamConnectRes, ...>` with no timeout.
+  - `src/peer/peer_alias.rs`: `PeerConnectionAlias::open_stream` waits on the
+    spawned `open_bi` task result, so callers can wait indefinitely for the
+    missing response.
+  - `src/peer/peer_internal.rs`: relay forwarding also awaits downstream
+    `alias.open_stream(...)` before answering the upstream opener, so a
+    downstream non-response can stall the upstream pipe setup too.
+- Impact: a connected peer can accept a bidirectional stream, read the
+  `StreamConnectReq`, and then keep the stream open without ever sending
+  `StreamConnectRes`. The opener has no setup deadline after the QUIC stream is
+  created, so `open_stream` can hang indefinitely and retain the spawned open
+  task. This is distinct from ISSUE-056, which blocks before the peer task
+  receives `OpenStream`; ISSUE-117, which covers inbound streams that never send
+  `StreamConnectReq`; and ISSUE-011/012, which cover false success after
+  destination service delivery fails.
+- Evidence test:
+  - `cargo test open_stream_must_timeout_when_peer_withholds_connect_response -- --nocapture`
+  - Failure summary: a raw authenticated peer accepts the stream-open
+    bidirectional stream and reads `StreamConnectReq`, but withholds
+    `StreamConnectRes`. The caller's `open_stream` task does not return within
+    2.5 seconds, so the test aborts it and fails; expected stream setup to
+    return `Err` within the setup timeout instead of hanging.
