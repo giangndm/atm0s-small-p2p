@@ -843,6 +843,37 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn try_send_broadcast_must_report_when_all_peer_queues_reject() {
+        let ctx = SharedCtx::new(PeerId::from(0), SharedRouterTable::new(PeerId::from(0)));
+        let (tx1, mut rx1) = channel(1);
+        let (tx2, mut rx2) = channel(1);
+
+        tx1.try_send(PeerConnectionControl::Send(PeerMessage::PeerStopped(PeerId::from(91)), None))
+            .expect("test control queue should accept first filler message");
+        tx2.try_send(PeerConnectionControl::Send(PeerMessage::PeerStopped(PeerId::from(92)), None))
+            .expect("test control queue should accept second filler message");
+
+        ctx.register_conn(ConnectionId::from(1), PeerConnectionAlias::new(PeerId::from(0), PeerId::from(1), ConnectionId::from(1), tx1));
+        ctx.register_conn(ConnectionId::from(2), PeerConnectionAlias::new(PeerId::from(0), PeerId::from(2), ConnectionId::from(2), tx2));
+
+        ctx.try_send_broadcast(P2pServiceId::from(1), b"lost-broadcast".to_vec());
+
+        let mut delivered = 0;
+        for rx in [&mut rx1, &mut rx2] {
+            while let Ok(control) = rx.try_recv() {
+                if matches!(control, PeerConnectionControl::Send(PeerMessage::Broadcast(..), _)) {
+                    delivered += 1;
+                }
+            }
+        }
+
+        assert!(
+            delivered > 0,
+            "try_send_broadcast must report an error or preserve at least one copy when every peer control queue rejects the broadcast"
+        );
+    }
+
+    #[tokio::test]
     async fn send_unicast_must_not_block_on_full_peer_control_queue() {
         let router = SharedRouterTable::new(PeerId::from(0));
         let ctx = SharedCtx::new(PeerId::from(0), router.clone());

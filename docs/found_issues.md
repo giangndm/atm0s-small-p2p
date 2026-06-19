@@ -62,20 +62,21 @@ the source of truth for evidence and reviewer decisions.
 - Representative issues: ISSUE-049, ISSUE-050, ISSUE-056, ISSUE-118,
   ISSUE-119, ISSUE-120, ISSUE-123, ISSUE-124, ISSUE-125, ISSUE-126,
   ISSUE-127, ISSUE-133, ISSUE-136, ISSUE-147, ISSUE-153, ISSUE-157,
-  ISSUE-163, ISSUE-164, ISSUE-178, ISSUE-182, ISSUE-184.
+  ISSUE-163, ISSUE-164, ISSUE-178, ISSUE-182, ISSUE-184, ISSUE-198.
 - Pattern: some paths use bounded channels and drop on `try_send`, some await
   bounded sends from critical tasks, and others use unbounded queues or produce
   duplicate internal control work. Under load this causes silent data loss,
-  head-of-line blocking, or unbounded memory. RPC fanout can also count failed
-  local or remote delivery attempts as live destinations. Transport config can
-  also admit unused stream classes that no application task drains. Repair
-  state machines can emit duplicate in-flight repair requests without waiting
-  for timeout or response.
+  head-of-line blocking, unreported total fanout failure, or unbounded memory.
+  RPC fanout can also count failed local or remote delivery attempts as live
+  destinations. Transport config can also admit unused stream classes that no
+  application task drains. Repair state machines can emit duplicate in-flight
+  repair requests without waiting for timeout or response.
 - Minimal fix proposal: define channel policy by event class: lifecycle and
   route updates must use bounded retry/coalescing; service payload delivery must
-  return explicit backpressure errors; public and internal request/control
-  queues need fixed admission limits and per-target coalescing; peer tasks must
-  not await bounded lifecycle reporting before they can process traffic or
+  return explicit backpressure errors, including zero-recipient fanout errors;
+  public and internal request/control queues need fixed admission limits and
+  per-target coalescing; peer tasks must not await bounded lifecycle reporting
+  before they can process traffic or
   cleanup. RPC paths should insert pending state only after at least one
   successful local or remote fanout. Disable unused QUIC stream classes or add
   explicit admission plus drain/reject handlers. Repair requests should keep a
@@ -5523,6 +5524,40 @@ the source of truth for evidence and reviewer decisions.
     `ctx.router().action(&PeerId(99))` return
     `Some(RouteAction::Next(ingress_conn))`, proving that the current unicast
     forwarding branch would send the packet back over the ingress connection.
+
+### ISSUE-198: `try_send_broadcast` silently loses all copies under peer queue pressure
+
+- Category: high-load stability, broadcast reliability, API backpressure
+- Score: 54/100
+- Reviewer: `Dewey the 3rd`, confirmed after `Goodall the 3rd` discovery.
+- Affected code:
+  - `src/ctx.rs`: `SharedCtx::try_send_broadcast` creates and marks a broadcast
+    id as seen, iterates peer aliases, calls `conn_alias.try_send(...)`, and
+    logs each failure without returning any delivery result.
+  - `src/service.rs`: `P2pService::try_send_broadcast` and
+    `P2pServiceRequester::try_send_broadcast` expose this as a public
+    success-shaped `()` API.
+  - `src/peer/peer_alias.rs`: `PeerConnectionAlias::try_send` delegates to a
+    bounded peer-control `try_send`, so a full peer queue rejects immediately.
+- Impact: under high load or a stalled peer task, every connected peer queue
+  can reject an outbound broadcast while the caller receives no error and no
+  copy is preserved for retry. This is distinct from ISSUE-049, which covers
+  awaited `send_broadcast` blocking on one congested peer queue; ISSUE-119/120,
+  which cover inbound local service queue drops; ISSUE-164, which covers
+  maintenance route/discovery sync drops; ISSUE-163/178, which cover pubsub RPC
+  destination accounting; and ISSUE-196, which covers replicated-KV outbound
+  queue growth.
+- Minimal fix proposal: change `SharedCtx::try_send_broadcast` and public
+  wrappers to return a delivery result such as `anyhow::Result<usize>` or a
+  small enum. Count successful peer-queue admissions; if zero peers accept the
+  broadcast, return an error. Keep per-peer logging as secondary diagnostics.
+- Evidence test:
+  - `cargo test try_send_broadcast_must_report_when_all_peer_queues_reject -- --nocapture`
+  - Failure summary: two registered peer-control queues are prefilled, so
+    `ctx.try_send_broadcast(...)` enqueues zero `PeerMessage::Broadcast` copies
+    while returning no error. The test fails at `src/peer.rs:870` because no
+    queue preserves the broadcast and the API cannot report the total fanout
+    failure.
 
 ## No-New-Issue Audit Cycles
 
