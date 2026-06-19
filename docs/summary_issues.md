@@ -5,7 +5,7 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Audit Status
 
-- Accepted issues: 157
+- Accepted issues: 158
 - Missing issue scores: 0
 - Current consecutive no-new-issue cycles: 0
 - Stop condition: continue until 5 consecutive cycles find no new accepted
@@ -30,7 +30,7 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 - Representative issues: ISSUE-034, ISSUE-037, ISSUE-038, ISSUE-047,
   ISSUE-059, ISSUE-071, ISSUE-081 through ISSUE-089, ISSUE-095, ISSUE-099,
   ISSUE-110, ISSUE-111, ISSUE-138, ISSUE-141, ISSUE-143, ISSUE-152,
-  ISSUE-154, ISSUE-155.
+  ISSUE-154, ISSUE-155, ISSUE-158.
 - Pattern: replicated-KV, alias, metrics, visualization, and pubsub flows accept
   stale, unsolicited, reordered, or mismatched responses because handlers do
   not verify request shape, bounds, version, continuation key, expected phase,
@@ -116,9 +116,10 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   setup closes. Reviewer: Herschel the 2nd.
 - ISSUE-157, score 66: `PeerConnected` backpressure stalls an authenticated
   peer run loop. Reviewer: Avicenna the 2nd.
+- ISSUE-158, score 62: stale alias `NotifySet` resurrects a hint after a newer
+  `NotifyDel`. Reviewer: Dirac the 2nd.
 
 ## Next Candidate To Validate
 
-- Stale alias `NotifySet` can resurrect a hint after a newer `NotifyDel`.
-  Explorer: Nietzsche the 2nd. Proposed score: 62. Needs failing test and an
-  independent reviewer before adding to the ledger.
+- None queued. Start the next RED-team cycle with fresh source review and
+  forked exploration.

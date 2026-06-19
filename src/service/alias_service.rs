@@ -687,6 +687,35 @@ mod test {
     }
 
     #[test]
+    fn stale_notify_set_must_not_resurrect_alias_after_newer_notify_del() {
+        let mut ctx = TestContext::new();
+        let alias_id = AliasId(7);
+        let peer = PeerId(2);
+
+        ctx.internal.on_msg(ctx.now, peer, AliasMessage::NotifySet(alias_id));
+        assert!(ctx.internal.cache.get(&alias_id).is_some_and(|peers| peers.contains(&peer)));
+
+        ctx.internal.on_msg(ctx.now + 1, peer, AliasMessage::NotifyDel(alias_id));
+        assert!(!ctx.internal.cache.contains(&alias_id));
+
+        ctx.internal.on_msg(ctx.now + 2, peer, AliasMessage::NotifySet(alias_id));
+
+        assert!(
+            !ctx.internal.cache.contains(&alias_id),
+            "stale NotifySet must not resurrect an alias hint removed by a newer NotifyDel"
+        );
+
+        let (tx, _rx) = oneshot::channel();
+        ctx.internal.on_control(ctx.now + 3, AliasControl::Find(alias_id, tx));
+
+        assert_eq!(
+            ctx.collect_outputs(),
+            vec![InternalOutput::Broadcast(AliasMessage::Scan(alias_id))],
+            "find must not use a resurrected stale hint"
+        );
+    }
+
+    #[test]
     fn cached_alias_peer_hints_must_be_bounded() {
         const MAX_PEERS_PER_ALIAS: usize = 1024;
         let mut ctx = TestContext::new();

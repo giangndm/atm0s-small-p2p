@@ -39,7 +39,7 @@ the source of truth for evidence and reviewer decisions.
 - Representative issues: ISSUE-034, ISSUE-037, ISSUE-038, ISSUE-047,
   ISSUE-059, ISSUE-071, ISSUE-081 through ISSUE-089, ISSUE-095, ISSUE-099,
   ISSUE-110, ISSUE-111, ISSUE-138, ISSUE-141, ISSUE-143, ISSUE-152,
-  ISSUE-154, ISSUE-155.
+  ISSUE-154, ISSUE-155, ISSUE-158.
 - Pattern: replicated-KV full sync, changed repair, alias lookup, metrics,
   visualization, and pubsub flows accept stale, unsolicited, reordered, or
   mismatched responses because response handlers do not verify outstanding
@@ -4066,3 +4066,40 @@ the source of truth for evidence and reviewer decisions.
     filled, node2 has a registered alias and enqueues a unicast to node1, but
     node1's service receive times out. The authenticated node1 peer task is
     parked on `main_tx.send(PeerConnected)` and has not entered `run_loop`.
+
+### ISSUE-158: Stale alias NotifySet resurrects hint after newer NotifyDel
+
+- Category: correctness, alias cache stability, bad-network ordering
+- Score: 62/100
+- Reviewer: `Dirac the 2nd`, confirmed after `Nietzsche the 2nd` discovery.
+- Affected code:
+  - `src/service/alias_service.rs`: `AliasMessage::NotifySet(AliasId)` and
+    `NotifyDel(AliasId)` carry no epoch, generation, or timestamp.
+  - `src/service/alias_service.rs`: `NotifySet` unconditionally inserts the
+    sender into `self.cache[alias_id]`.
+  - `src/service/alias_service.rs`: `NotifyDel` removes the sender from the
+    cache, but stores no tombstone or freshness marker.
+  - `src/service/alias_service.rs`: later `Find` trusts the resurrected cache
+    entry and sends `Check(alias_id)` to the stale peer.
+- Impact: under delayed or reordered alias lifecycle messages, an older
+  `NotifySet` can arrive after a newer `NotifyDel` from the same peer and
+  recreate a stale cache hint. Later lookups waste work checking that stale
+  peer instead of doing a fresh scan, adding lookup latency and noisy failed
+  checks during churn. This is distinct from ISSUE-022, which covers
+  `Shutdown` clearing unrelated aliases; ISSUE-090 and ISSUE-109, which cover
+  unchecked or unsolicited `Found`; ISSUE-148, which covers shutdown not
+  advancing a pending cached-hint lookup; ISSUE-152, which covers stale
+  `NotFound` evicting valid hints; and ISSUE-155, which covers the same
+  freshness pattern in pubsub membership rather than alias hints.
+- Minimal fix proposal: add per-peer/per-alias generation values to
+  `NotifySet` and `NotifyDel`, store the latest observed generation, and ignore
+  lifecycle messages older than the stored generation. As a smaller interim
+  mitigation, keep a short-lived `(peer, alias)` delete tombstone and ignore
+  same-peer `NotifySet` during that grace window.
+- Evidence test:
+  - `cargo test stale_notify_set_must_not_resurrect_alias_after_newer_notify_del -- --nocapture`
+  - Failure summary: after `NotifySet(AliasId(7))` from `PeerId(2)` creates a
+    cache hint and `NotifyDel(AliasId(7))` removes it, a delayed
+    `NotifySet(AliasId(7))` from the same peer re-inserts the cache entry;
+    expected the stale set to be ignored and a later find to broadcast
+    `Scan(AliasId(7))` instead of checking the stale peer.
