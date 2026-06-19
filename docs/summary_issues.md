@@ -7,9 +7,9 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Accepted issues: 204
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 35
+- Current consecutive no-new-issue cycles: 36
 - Stop condition: continue until 5 consecutive cycles find no new accepted
-  issue; currently 35/5 after ISSUE-204.
+  issue; currently 36/5 after ISSUE-204.
 
 ## Root Cause Summary
 
@@ -256,6 +256,11 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Recent Fuzz Evidence
 
+- Focused withheld stream-response review:
+  `cargo test open_stream_must_timeout_when_peer_withholds_connect_response -- --nocapture`
+  failed with duplicate evidence for ISSUE-149. Reviewer `Halley the 4th`
+  confirmed `open_bi` still times out only `connection.open_bi()`, then awaits
+  `StreamConnectRes` without a setup deadline after writing `StreamConnectReq`.
 - Focused unicast ingress-loop review:
   `cargo test unicast_relay_must_not_forward_back_to_ingress_peer -- --nocapture`
   now passes. Reviewer `Mill the 4th` classified this as existing-issue

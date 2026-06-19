@@ -11,7 +11,7 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 35
+- Current consecutive no-new-issue cycles: 36
 - Stop condition requested by user: continue until 5 consecutive cycles find no
   new accepted issue.
 
@@ -5783,6 +5783,27 @@ the source of truth for evidence and reviewer decisions.
     `src/peer.rs:1092` with `got 2`.
 
 ## No-New-Issue Audit Cycles
+
+### Cycle after ISSUE-204 no-new cycle 36: withheld stream response duplicate
+
+- Result: no accepted non-duplicate issue.
+- Reviewer: `Halley the 4th`, forked subagent review, confirmed
+  duplicate-only no-new classification.
+- Source and test evidence reviewed:
+  - `src/tests/stream.rs`
+  - `src/peer/peer_internal.rs`
+  - `cargo test open_stream_must_timeout_when_peer_withholds_connect_response -- --nocapture`
+    failed at `src/tests/stream.rs:380:5`.
+- Duplicate or too-close symptoms rejected:
+  - a raw authenticated peer accepts the stream-open bidirectional stream,
+    reads `StreamConnectReq`, withholds `StreamConnectRes`, and the caller's
+    `open_stream` does not return `Ok(Err(_))` within 2.5 seconds.
+  - this maps directly to ISSUE-149: `open_bi` times out only
+    `connection.open_bi()`, writes `StreamConnectReq`, and then awaits
+    `wait_object::<_, StreamConnectRes, ...>` without a setup deadline.
+- Root-cause summary impact: no new root cause; this focused stream setup
+  timeout cycle strengthens existing ISSUE-149 evidence under RC-4 without
+  adding ISSUE-205.
 
 ### Cycle after ISSUE-204 no-new cycle 35: unicast ingress-loop fixed
 
