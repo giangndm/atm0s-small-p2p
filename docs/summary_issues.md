@@ -7,9 +7,9 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Accepted issues: 204
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 5
+- Current consecutive no-new-issue cycles: 6
 - Stop condition: continue until 5 consecutive cycles find no new accepted
-  issue; currently 5/5 after ISSUE-204.
+  issue; currently 6/5 after ISSUE-204.
 
 ## Root Cause Summary
 
@@ -315,9 +315,21 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   reselection, high-load queue pressure, temporary path-not-found, and
   successful stream-processing logs to existing RC-3 and RC-7/stale-route
   entries.
+- Fifteen-node post-stop-condition steady valid fuzz:
+  `P2P_FUZZ_SEED=0x205001 P2P_FUZZ_NODES=15 P2P_FUZZ_STEPS=5000 cargo test fuzz_random_steady_valid_node_actions_must_not_panic_connection_tasks -- --nocapture`
+  passed with no new issue. Reviewer `Peirce the 4th` mapped route
+  reselection, high-load queue pressure, temporary path-not-found, and
+  successful stream-processing logs to existing RC-3 and RC-7/stale-route
+  entries.
 
 ## Recent No-New Audit
 
+- Cycle after ISSUE-204 no-new cycle 6 ran a fifteen-node steady-valid fuzz
+  pass after the prior 5/5 threshold, with forked reviewer `Peirce the 4th`.
+  The run passed; observed route reselection/path-jumping noise, high-load
+  queue pressure, temporary path-not-found warnings, and successful stream
+  processing mapped to existing RC-3 and RC-7/stale-route patterns, so no
+  accepted issue or summary root-cause change was recorded.
 - Cycle after ISSUE-204 no-new cycle 5 ran a fourteen-node steady-valid fuzz
   pass with forked reviewer `Harvey the 4th`. The run passed; observed route
   reselection/path-jumping noise, high-load queue pressure, temporary
