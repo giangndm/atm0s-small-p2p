@@ -7,9 +7,9 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Accepted issues: 204
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 10
+- Current consecutive no-new-issue cycles: 11
 - Stop condition: continue until 5 consecutive cycles find no new accepted
-  issue; currently 10/5 after ISSUE-204.
+  issue; currently 11/5 after ISSUE-204.
 
 ## Root Cause Summary
 
@@ -256,6 +256,12 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Recent Fuzz Evidence
 
+- Extended valid-action fuzz:
+  `P2P_FUZZ_SEED=2177001 P2P_FUZZ_NODES=8 P2P_FUZZ_STEPS=2500 cargo test fuzz_random_valid_node_actions_must_not_panic_connection_tasks -- --nocapture`
+  failed with duplicate evidence for ISSUE-063 and ISSUE-139. Reviewer
+  `Godel the 4th` confirmed the `src/router.rs:76` stale-sync panic after
+  repeated `PeerStopped` reports and the later `src/peer.rs:92` send-to-main
+  panic are already-covered root causes.
 - Extended steady-valid fuzz:
   `P2P_FUZZ_SEED=2176001 P2P_FUZZ_NODES=8 P2P_FUZZ_STEPS=2200 cargo test fuzz_random_steady_valid_node_actions_must_not_panic_connection_tasks -- --nocapture`
   passed with `1 passed; 0 failed`. Reviewer `Fermat the 4th` confirmed the
@@ -346,6 +352,14 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Recent No-New Audit
 
+- Cycle after ISSUE-204 no-new cycle 11 ran an eight-node valid-action fuzz
+  pass with forked reviewer `Godel the 4th`. The run failed, but the failure
+  was duplicate evidence for ISSUE-063 and ISSUE-139: stale sync reached
+  `RouterTable::apply_sync` after repeated `PeerStopped` reports and panicked
+  at `src/router.rs:76`, then an incoming `PeerConnectError` report panicked
+  at `src/peer.rs:92` because the main loop was already closed. Queue-full
+  warnings mapped to RC-3 backpressure, so no accepted issue or summary
+  root-cause change was recorded.
 - Cycle after ISSUE-204 no-new cycle 10 ran an eight-node steady-valid fuzz
   pass with forked reviewer `Fermat the 4th`. The run passed with no panic or
   failing assertion. The reviewer mapped 335 route reselections to

@@ -11,7 +11,7 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 10
+- Current consecutive no-new-issue cycles: 11
 - Stop condition requested by user: continue until 5 consecutive cycles find no
   new accepted issue.
 
@@ -5768,6 +5768,29 @@ the source of truth for evidence and reviewer decisions.
     `src/peer.rs:1092` with `got 2`.
 
 ## No-New-Issue Audit Cycles
+
+### Cycle after ISSUE-204 no-new cycle 11: valid-action fuzz duplicate stale sync and shutdown panic
+
+- Result: no accepted non-duplicate issue.
+- Reviewer: `Godel the 4th`, forked subagent review, confirmed
+  duplicate-only no-new classification.
+- Fuzz evidence reviewed:
+  - `P2P_FUZZ_SEED=2177001 P2P_FUZZ_NODES=8 P2P_FUZZ_STEPS=2500 cargo test fuzz_random_valid_node_actions_must_not_panic_connection_tasks -- --nocapture`
+    failed with duplicate evidence for ISSUE-063 and ISSUE-139.
+- Duplicate or too-close symptoms rejected:
+  - the primary background panic at `src/router.rs:76:66` with
+    `should have direct metric with apply_sync` followed 20
+    `reported peer 4 stopped` logs and maps directly to ISSUE-063's stale
+    peer data / stopped-peer route-missing crash.
+  - the later background panic at `src/peer.rs:92:104` with
+    `should send to main: SendError { .. }` maps directly to ISSUE-139's
+    unchecked `PeerConnectError` reporting after the main loop is closed. The
+    source line differs from earlier fuzz notes because this run hit the
+    incoming-connection error branch.
+  - 14 `queue main loop full` warnings map to RC-3 peer-control backpressure
+    rather than a new issue.
+- Root-cause summary impact: no new root cause; this run strengthens existing
+  ISSUE-063 and ISSUE-139 fuzz evidence but does not add ISSUE-205.
 
 ### Cycle after ISSUE-204 no-new cycle 10: eight-node steady-valid fuzz pass
 
