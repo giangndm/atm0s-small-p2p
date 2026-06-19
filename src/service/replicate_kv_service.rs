@@ -249,6 +249,22 @@ mod tests {
         );
     }
 
+    #[test]
+    fn replicated_kv_local_outbound_event_queue_must_be_bounded() {
+        const MAX_PENDING_EVENTS: usize = 1024;
+        let mut store: ReplicatedKvStore<u64, u64, u64> = ReplicatedKvStore::new(10, 10);
+
+        for key in 0..=MAX_PENDING_EVENTS {
+            store.set(key as u64, key as u64);
+        }
+
+        assert!(
+            store.outs.len() <= MAX_PENDING_EVENTS,
+            "replicated KV outbound event queue must be bounded, got {}",
+            store.outs.len()
+        );
+    }
+
     #[tokio::test]
     async fn replicated_kv_recv_must_not_panic_on_value_serialize_failure() {
         let mut service = ReplicatedKvService::<u16, FailingSerializeValue>::new(test_service(), 10, 10);

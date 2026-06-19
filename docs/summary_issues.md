@@ -5,10 +5,10 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Audit Status
 
-- Accepted issues: 195
+- Accepted issues: 196
 - Missing issue scores: 0
 - Current consecutive no-new-issue cycles: 0
-- Stop condition: reset by ISSUE-194. Continue RED-team review and randomized
+- Stop condition: reset by ISSUE-196. Continue RED-team review and randomized
   fuzz tests over node actions.
 
 ## Root Cause Summary
@@ -87,14 +87,15 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Representative issues: ISSUE-010, ISSUE-024, ISSUE-027, ISSUE-035,
   ISSUE-041, ISSUE-043, ISSUE-045, ISSUE-046, ISSUE-100 through ISSUE-108,
-  ISSUE-122, ISSUE-131, ISSUE-174.
+  ISSUE-122, ISSUE-131, ISSUE-174, ISSUE-196.
 - Pattern: decoded service-level collections, pending maps, cache sets,
-  tombstones, remote stores, and retained channel state often have no item-count
-  or lifetime cap.
+  tombstones, remote stores, retained channel state, and outbound event queues
+  often have no item-count or lifetime cap.
 - Minimal fix proposal: add per-structure caps with deterministic
   eviction/rejection: max rows per message, max peers per alias/channel, max
-  pending RPCs/finds, max tombstones/remotes, and prune empty channel state on
-  teardown.
+  pending RPCs/finds, max tombstones/remotes, max queued outbound events, and
+  prune empty channel state on teardown. Mutation APIs that enqueue work should
+  return backpressure errors or coalesce superseded work.
 
 ### RC-6: Lifecycle cleanup and stale handles are inconsistent
 
@@ -217,6 +218,8 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   claims. Reviewer: Confucius the 3rd.
 - ISSUE-195, score 42: connection teardown resets monotonic counters to zero.
   Reviewer: Dalton the 3rd.
+- ISSUE-196, score 47: replicated-KV local mutations build an unbounded
+  outbound event queue. Reviewer: Averroes the 3rd.
 
 ## Next Candidate To Validate
 

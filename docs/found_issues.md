@@ -103,14 +103,16 @@ the source of truth for evidence and reviewer decisions.
 
 - Representative issues: ISSUE-010, ISSUE-024, ISSUE-027, ISSUE-035,
   ISSUE-041, ISSUE-043, ISSUE-045, ISSUE-046, ISSUE-100 through ISSUE-108,
-  ISSUE-122, ISSUE-131, ISSUE-174.
+  ISSUE-122, ISSUE-131, ISSUE-174, ISSUE-196.
 - Pattern: protocol framing may limit packet size, but decoded service-level
-  collections, pending maps, cache sets, tombstones, remote stores, and retained
-  channel state often have no item-count or lifetime cap.
+  collections, pending maps, cache sets, tombstones, remote stores, retained
+  channel state, and outbound event queues often have no item-count or lifetime
+  cap.
 - Minimal fix proposal: introduce small per-structure caps with deterministic
   eviction/rejection: max rows per message, max peers per alias/channel, max
-  pending RPCs/finds, max tombstones/remotes, and prune empty channel state on
-  teardown.
+  pending RPCs/finds, max tombstones/remotes, max queued outbound events, and
+  prune empty channel state on teardown. Mutation APIs that can enqueue work
+  should return explicit backpressure errors or coalesce superseded work.
 
 ### RC-6: Lifecycle cleanup and stale handles are not consistently modeled
 
@@ -5453,6 +5455,38 @@ the source of truth for evidence and reviewer decisions.
     congestion counters, then observes teardown `absolute(0)` samples for the
     same counter names. The test fails because those monotonic counters
     decrease.
+
+### ISSUE-196: Replicated-KV local mutations build an unbounded outbound event queue
+
+- Category: high-load stability, resource bounds, backpressure
+- Score: 47/100
+- Reviewer: `Averroes the 3rd`, confirmed after `Boyle the 3rd` discovery.
+- Affected code:
+  - `src/service/replicate_kv_service.rs`: `ReplicatedKvStore` retains
+    outbound `Event` values in an unbounded `VecDeque`.
+  - `src/service/replicate_kv_service.rs`: `ReplicatedKvStore::set` and `del`
+    drain all local-store outputs into `self.outs` without capacity checks or
+    backpressure.
+  - `src/service/replicate_kv_service/local_storage.rs`: each local `set`
+    queues both a broadcast `Changed` event and a local `KvEvent::Set`.
+- Impact: a local high-load caller can call `ReplicatedKvService::set()` or
+  `del()` faster than `recv()` drains and transmits events. The store retains
+  every generated net/local event, so memory grows linearly with mutation rate
+  under stalled polling, slow network sends, or bursty workloads. This is
+  distinct from ISSUE-045 remote-store growth from many remote identities;
+  ISSUE-046/131 malicious inbound response batches; ISSUE-096 serialization
+  panic while draining events; ISSUE-119/120 service ingress drops;
+  ISSUE-123/124/126 pubsub queues; and ISSUE-164 route/discovery sync drops.
+- Minimal fix proposal: add a bounded pending-event capacity to
+  `ReplicatedKvStore::outs`. On overflow, coalesce superseded local changes by
+  key/version and drop redundant local `KvEvent`s where safe; otherwise make
+  `set` and `del` return explicit backpressure errors instead of accepting
+  unlimited writes.
+- Evidence test:
+  - `cargo test replicated_kv_local_outbound_event_queue_must_be_bounded -- --nocapture`
+  - Failure summary: after `1025` local `set()` calls, current code retains
+    `2050` events in `ReplicatedKvStore::outs` because each set queues one
+    broadcast and one local KV event, so the bounded-queue assertion fails.
 
 ## No-New-Issue Audit Cycles
 
