@@ -96,6 +96,46 @@ async fn peer_stopped_must_remove_stopped_neighbour_immediately() {
 }
 
 #[tokio::test]
+async fn peer_stopped_route_must_not_be_resurrected_by_connection_ticker() {
+    let (mut node1, addr1) = create_node(true, 1, vec![]).await;
+    let (mut node2, _addr2) = create_node(false, 2, vec![addr1.clone()]).await;
+
+    let stopped_conn = tokio::time::timeout(Duration::from_secs(3), async {
+        loop {
+            tokio::select! {
+                _ = node1.recv() => {}
+                event = node2.recv() => {
+                    if let Ok(P2pNetworkEvent::PeerConnected(conn, peer)) = event {
+                        if peer == addr1.peer_id() {
+                            return conn;
+                        }
+                    }
+                }
+            }
+        }
+    })
+    .await
+    .expect("node2 should connect to node1");
+
+    node2
+        .process_internal(100, MainEvent::PeerStopped(stopped_conn, addr1.peer_id()))
+        .expect("peer stopped event should process");
+    assert_eq!(
+        node2.router.action(&addr1.peer_id()),
+        None,
+        "test setup should remove the stopped peer route first"
+    );
+
+    tokio::time::sleep(Duration::from_millis(1200)).await;
+
+    assert_eq!(
+        node2.router.action(&addr1.peer_id()),
+        None,
+        "PeerStopped route cleanup must not be undone by the still-running connection task ticker"
+    );
+}
+
+#[tokio::test]
 async fn forged_peer_stopped_must_not_be_forwarded_to_other_neighbours() {
     let (mut relay, relay_addr) = create_node(true, 2, vec![]).await;
     tokio::spawn(async move { while relay.recv().await.is_ok() {} });

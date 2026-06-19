@@ -89,7 +89,7 @@ the source of truth for evidence and reviewer decisions.
 - Representative issues: ISSUE-028, ISSUE-029, ISSUE-051, ISSUE-057,
   ISSUE-060, ISSUE-064, ISSUE-065, ISSUE-069 through ISSUE-076, ISSUE-108,
   ISSUE-128 through ISSUE-132, ISSUE-135, ISSUE-139, ISSUE-142, ISSUE-144,
-  ISSUE-148, ISSUE-150.
+  ISSUE-148, ISSUE-150, ISSUE-151.
 - Pattern: requesters, services, peer aliases, channel state, and cached hints
   can outlive the owner they represent, while shutdown paths may panic, leak,
   emit false public events, or keep stale routes/cache entries.
@@ -3812,3 +3812,33 @@ the source of truth for evidence and reviewer decisions.
     `PublisherDestroyed(rand, PubsubChannelId(77))` creates
     `PubsubChannelId(77)` in `service.channels`; expected unknown publisher and
     subscriber destroy controls to leave no phantom channel state.
+
+### ISSUE-151: Stopped peer route is resurrected by connection RTT ticks
+
+- Category: correctness, graceful-shutdown stability, route lifecycle
+- Score: 68/100
+- Reviewer: `Lagrange the 2nd`, confirmed.
+- Affected code:
+  - `src/lib.rs`: `P2pNetwork::process_internal` handles
+    `MainEvent::PeerStopped` by removing discovery state and calling
+    `router.del_peer(&peer)`.
+  - `src/lib.rs`: the same branch does not stop the peer task or unregister its
+    ability to mutate shared router state.
+  - `src/peer/peer_internal.rs`: the peer connection task ticker independently
+    calls `self.ctx.router().set_direct(self.conn_id, self.to_id, rtt_ms)` every
+    second.
+  - `src/router.rs`: `set_direct` unconditionally recreates direct route state
+    for the connection and peer.
+- Impact: after a graceful stop notification removes a peer route, the still-live
+  connection task can recreate that route on its next RTT tick. The node can
+  treat a stopped peer as routable again, causing route churn, reconnect
+  suppression, and later unicast or stream attempts toward a peer that already
+  announced it stopped. This is distinct from ISSUE-051, which covers the
+  stopped peer remaining in neighbour/context state; this issue proves the
+  route deletion itself is undone by an independent connection task writer.
+- Evidence test:
+  - `cargo test peer_stopped_route_must_not_be_resurrected_by_connection_ticker -- --nocapture`
+  - Failure summary: after node2 processes
+    `MainEvent::PeerStopped(stopped_conn, node1)`, `node2.router.action(node1)`
+    becomes `None`; after 1.2 seconds it becomes `Some(Next(stopped_conn))`
+    again because the connection ticker calls `set_direct`.
