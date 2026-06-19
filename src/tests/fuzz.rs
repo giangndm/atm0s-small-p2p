@@ -27,8 +27,17 @@ fn env_u64(name: &str, default: u64) -> u64 {
 
 #[test(tokio::test(flavor = "multi_thread", worker_threads = 4))]
 async fn fuzz_random_node_actions_must_not_panic_connection_tasks() {
+    run_random_node_action_fuzz(true, 120).await;
+}
+
+#[test(tokio::test(flavor = "multi_thread", worker_threads = 4))]
+async fn fuzz_random_valid_node_actions_must_not_panic_connection_tasks() {
+    run_random_node_action_fuzz(false, 300).await;
+}
+
+async fn run_random_node_action_fuzz(include_known_invalid_service: bool, default_steps: usize) {
     let node_count = env_usize("P2P_FUZZ_NODES", 5).clamp(2, 8);
-    let steps = env_usize("P2P_FUZZ_STEPS", 120);
+    let steps = env_usize("P2P_FUZZ_STEPS", default_steps);
     let seed = env_u64("P2P_FUZZ_SEED", 0x5eed);
     let mut rng = StdRng::seed_from_u64(seed);
 
@@ -80,7 +89,8 @@ async fn fuzz_random_node_actions_must_not_panic_connection_tasks() {
             to = (to + 1) % node_count;
         }
 
-        match rng.gen_range(0..7) {
+        let actions = if include_known_invalid_service { 11 } else { 10 };
+        match rng.gen_range(0..actions) {
             0 => {
                 requesters[from].try_connect(addrs[to].clone());
             }
@@ -105,12 +115,35 @@ async fn fuzz_random_node_actions_must_not_panic_connection_tasks() {
                     let _ = conn.try_send(PeerMessage::PeerStopped(forged_peer));
                 }
             }
-            _ => {
+            6 => {
+                let burst = rng.gen_range(2..=6);
+                for _ in 0..burst {
+                    requesters[from].try_connect(addrs[to].clone());
+                }
+            }
+            7 => {
+                let data = format!("fuzz-try-unicast-{seed}-{step}-{from}-{to}").into_bytes();
+                let _ = service_requesters[from].try_send_unicast(addrs[to].peer_id(), data).await;
+            }
+            8 => {
+                let data = format!("fuzz-send-broadcast-{seed}-{step}-{from}").into_bytes();
+                let _ = tokio::time::timeout(Duration::from_millis(50), service_requesters[from].send_broadcast(data)).await;
+            }
+            9 => {
+                if let Some(conn) = ctxs[from].conns().into_iter().next() {
+                    let source = PeerId::from(rng.gen_range(1_000_000..2_000_000));
+                    let dest = addrs[to].peer_id();
+                    let data = format!("fuzz-raw-unicast-{seed}-{step}-{from}-{to}").into_bytes();
+                    let _ = conn.try_send(PeerMessage::Unicast(source, dest, P2pServiceId::from(0), data));
+                }
+            }
+            _ if include_known_invalid_service => {
                 if let Some(conn) = ctxs[from].conns().into_iter().next() {
                     let data = format!("fuzz-invalid-service-{seed}-{step}").into_bytes();
                     let _ = conn.try_send(PeerMessage::Broadcast(PeerId::from(999_999), P2pServiceId::from(256), BroadcastMsgId::rand(), data));
                 }
             }
+            _ => unreachable!("action count excludes known invalid service action"),
         }
 
         tokio::time::sleep(Duration::from_millis(5)).await;

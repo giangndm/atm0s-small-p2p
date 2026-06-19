@@ -1430,6 +1430,14 @@ the source of truth for evidence and reviewer decisions.
   - Failure summary: processing `MainEvent::PeerData(ConnectionId(404), ...)`
     for an unknown connection panics at `src/router.rs:76` with
     `should have direct metric with apply_sync`.
+  - Additional fuzz evidence:
+    `cargo test fuzz_random_valid_node_actions_must_not_panic_connection_tasks -- --nocapture`
+  - Fuzz failure summary: with default `P2P_FUZZ_NODES=5`,
+    `P2P_FUZZ_STEPS=300`, and `P2P_FUZZ_SEED=0x5eed`, valid random actions
+    including duplicate connects, forged in-range unicast, streams, and
+    `PeerStopped` messages panic background tasks at `src/router.rs:76`,
+    rediscovering the stale `PeerData::Sync` route-missing crash without using
+    the known invalid service-id shortcut.
 
 ### ISSUE-064: Stale peer stats events publish metrics for unknown connections
 
