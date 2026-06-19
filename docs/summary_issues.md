@@ -7,9 +7,9 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Accepted issues: 204
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 16
+- Current consecutive no-new-issue cycles: 17
 - Stop condition: continue until 5 consecutive cycles find no new accepted
-  issue; currently 16/5 after ISSUE-204.
+  issue; currently 17/5 after ISSUE-204.
 
 ## Root Cause Summary
 
@@ -256,6 +256,12 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Recent Fuzz Evidence
 
+- Focused discovery graceful-stop source/test review:
+  `cargo test graceful_shutdown_removes_stopped_non_seed -- --nocapture`
+  passed. Reviewer `Gibbs the 4th` confirmed the repeated reconnect and route
+  cleanup logs are duplicate/no-new symptoms mapped to ISSUE-153,
+  ISSUE-051/ISSUE-167, ISSUE-118, ISSUE-170, ISSUE-185, ISSUE-187, RC-6, and
+  RC-7 rather than failing evidence for ISSUE-205.
 - Focused stream admission source/test review:
   `cargo test idle_inbound_stream_connects_must_be_admission_bounded -- --nocapture`
   failed with duplicate evidence for ISSUE-117. Reviewer `Beauvoir the 4th`

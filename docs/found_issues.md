@@ -11,7 +11,7 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 16
+- Current consecutive no-new-issue cycles: 17
 - Stop condition requested by user: continue until 5 consecutive cycles find no
   new accepted issue.
 
@@ -5768,6 +5768,29 @@ the source of truth for evidence and reviewer decisions.
     `src/peer.rs:1092` with `got 2`.
 
 ## No-New-Issue Audit Cycles
+
+### Cycle after ISSUE-204 no-new cycle 17: discovery graceful-stop duplicate noise
+
+- Result: no accepted non-duplicate issue.
+- Reviewer: `Gibbs the 4th`, forked subagent review, confirmed
+  duplicate-only no-new classification.
+- Source and test evidence reviewed:
+  - `src/tests/discovery.rs`
+  - `src/discovery.rs`
+  - `cargo test graceful_shutdown_removes_stopped_non_seed -- --nocapture`
+    passed.
+- Duplicate or too-close symptoms rejected:
+  - the test confirmed node3 eventually removed the gracefully stopped non-seed
+    peer from its neighbour set, so this run did not produce failing evidence
+    for ISSUE-205.
+  - repeated `P2pNetwork connecting to 2@...` logs before final route removal
+    map to existing discovery/lifecycle issues: ISSUE-153 duplicate discovery
+    connect attempts, ISSUE-051/ISSUE-167 stopped or expired non-seed cleanup,
+    ISSUE-118 graceful-shutdown congestion, ISSUE-170 stop propagation
+    amplification, and ISSUE-185/ISSUE-187 lifecycle event gaps.
+- Root-cause summary impact: no new root cause; this source/test cycle maps to
+  RC-6 lifecycle cleanup and RC-7 unstable routing/discovery without adding
+  ISSUE-205.
 
 ### Cycle after ISSUE-204 no-new cycle 16: stream idle admission duplicate
 
