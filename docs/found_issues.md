@@ -11,7 +11,7 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 45
+- Current consecutive no-new-issue cycles: 46
 - Stop condition requested by user: continue until 5 consecutive cycles find no
   new accepted issue.
 
@@ -5783,6 +5783,28 @@ the source of truth for evidence and reviewer decisions.
     `src/peer.rs:1092` with `got 2`.
 
 ## No-New-Issue Audit Cycles
+
+### Cycle after ISSUE-204 no-new cycle 46: invalid-service fuzz duplicate
+
+- Result: no accepted non-duplicate issue.
+- Reviewer: `Cicero the 4th`, forked subagent review, confirmed
+  duplicate-only no-new classification.
+- Source and test evidence reviewed:
+  - `src/tests/fuzz.rs`
+  - `src/ctx.rs`
+  - `RUST_LOG=error P2P_FUZZ_SEED=6 P2P_FUZZ_NODES=7 P2P_FUZZ_STEPS=900 cargo test fuzz_random_node_actions_must_not_panic_connection_tasks -- --nocapture`
+    failed at `src/tests/fuzz.rs:183:5`.
+- Duplicate or too-close symptoms rejected:
+  - the fuzz harness injected an invalid wire service id with
+    `PeerMessage::Broadcast(..., P2pServiceId::from(256), ...)`.
+  - inbound handling reached `SharedCtxInternal::get_service`, which indexes
+    the fixed 256-slot service array with `service_id as usize`.
+  - the background task panicked at `src/ctx.rs:34:9` with
+    `index out of bounds: the len is 256 but the index is 256`.
+  - this maps directly to ISSUE-053: inbound out-of-range service ids still
+    kill peer connection tasks through unchecked service-table indexing.
+- Root-cause summary impact: no new root cause; this fuzz cycle strengthens
+  existing ISSUE-053 evidence under RC-7 without adding ISSUE-205.
 
 ### Cycle after ISSUE-204 no-new cycle 45: sanitized churn duplicate peer-connect panic
 
