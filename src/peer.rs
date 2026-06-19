@@ -1134,10 +1134,15 @@ mod tests {
         remote_router.set_direct(ConnectionId::from(99), destination, 10);
         ctx.router().apply_sync(ingress_conn, remote_router.create_sync(&local));
 
-        assert_ne!(
+        assert_eq!(
             ctx.router().action(&destination),
             Some(RouteAction::Next(ingress_conn)),
-            "inbound unicast must not be forwarded back over its ingress connection"
+            "test setup must expose the bad route state: destination routes back to ingress"
+        );
+        assert_eq!(
+            peer_internal::unicast_route_decision(ctx.router().action(&destination), ingress_conn),
+            peer_internal::UnicastRouteDecision::DropIngressLoop(ingress_conn),
+            "inbound unicast forwarding must drop instead of sending back over ingress"
         );
     }
 

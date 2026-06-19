@@ -204,15 +204,15 @@ impl PeerConnectionInternal {
                     log::debug!("[PeerConnectionInternal {}] broadcast msg {msg_id} already deliveried", self.remote);
                 }
             }
-            PeerMessage::Unicast(source, dest, service_id, data) => match self.ctx.router().action(&dest) {
-                Some(RouteAction::Local) => {
+            PeerMessage::Unicast(source, dest, service_id, data) => match unicast_route_decision(self.ctx.router().action(&dest), self.conn_id) {
+                UnicastRouteDecision::Local => {
                     if let Some(service) = self.ctx.get_service(&service_id) {
                         service.try_send(P2pServiceEvent::Unicast(source, data)).print_on_err("[PeerConnectionInternal] send service msg");
                     } else {
                         log::warn!("[PeerConnectionInternal {}] service {service_id} not found", self.remote);
                     }
                 }
-                Some(RouteAction::Next(next)) => {
+                UnicastRouteDecision::Forward(next) => {
                     if let Some(conn) = self.ctx.conn(&next) {
                         conn.try_send(PeerMessage::Unicast(source, dest, service_id, data))
                             .print_on_err("[PeerConnectionInternal] send data over peer alias");
@@ -220,12 +220,32 @@ impl PeerConnectionInternal {
                         log::warn!("[PeerConnectionInternal {}] peer {next} not found", self.remote);
                     }
                 }
-                None => {
+                UnicastRouteDecision::DropIngressLoop(next) => {
+                    log::warn!("[PeerConnectionInternal {}] drop unicast relay to {dest}: next hop {next} is ingress connection", self.remote);
+                }
+                UnicastRouteDecision::NoRoute => {
                     log::warn!("[PeerConnectionInternal {}] path to {dest} not found", self.remote);
                 }
             },
         }
         Ok(())
+    }
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub(super) enum UnicastRouteDecision {
+    Local,
+    Forward(ConnectionId),
+    DropIngressLoop(ConnectionId),
+    NoRoute,
+}
+
+pub(super) fn unicast_route_decision(action: Option<RouteAction>, ingress: ConnectionId) -> UnicastRouteDecision {
+    match action {
+        Some(RouteAction::Local) => UnicastRouteDecision::Local,
+        Some(RouteAction::Next(next)) if next == ingress => UnicastRouteDecision::DropIngressLoop(next),
+        Some(RouteAction::Next(next)) => UnicastRouteDecision::Forward(next),
+        None => UnicastRouteDecision::NoRoute,
     }
 }
 
