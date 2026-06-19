@@ -949,6 +949,31 @@ mod test {
     }
 
     #[tokio::test]
+    async fn stale_pubsub_destroy_must_not_create_phantom_channel() {
+        let mut service = test_service();
+        let publisher_channel = PubsubChannelId(77);
+        let subscriber_channel = PubsubChannelId(78);
+
+        service
+            .on_internal(InternalMsg::PublisherDestroyed(PublisherLocalId::rand(), publisher_channel))
+            .await
+            .expect("stale publisher destroy should be processed");
+        service
+            .on_internal(InternalMsg::SubscriberDestroyed(SubscriberLocalId::rand(), subscriber_channel))
+            .await
+            .expect("stale subscriber destroy should be processed");
+
+        assert!(
+            !service.channels.contains_key(&publisher_channel),
+            "destroy for an unknown publisher handle must not create phantom channel state"
+        );
+        assert!(
+            !service.channels.contains_key(&subscriber_channel),
+            "destroy for an unknown subscriber handle must not create phantom channel state"
+        );
+    }
+
+    #[tokio::test]
     async fn pubsub_rpc_methods_must_be_bounded() {
         const MAX_METHOD_LEN: usize = 1024;
         let mut service = test_service();

@@ -89,7 +89,7 @@ the source of truth for evidence and reviewer decisions.
 - Representative issues: ISSUE-028, ISSUE-029, ISSUE-051, ISSUE-057,
   ISSUE-060, ISSUE-064, ISSUE-065, ISSUE-069 through ISSUE-076, ISSUE-108,
   ISSUE-128 through ISSUE-132, ISSUE-135, ISSUE-139, ISSUE-142, ISSUE-144,
-  ISSUE-148.
+  ISSUE-148, ISSUE-150.
 - Pattern: requesters, services, peer aliases, channel state, and cached hints
   can outlive the owner they represent, while shutdown paths may panic, leak,
   emit false public events, or keep stale routes/cache entries.
@@ -3780,3 +3780,35 @@ the source of truth for evidence and reviewer decisions.
     `StreamConnectRes`. The caller's `open_stream` task does not return within
     2.5 seconds, so the test aborts it and fails; expected stream setup to
     return `Err` within the setup timeout instead of hanging.
+
+### ISSUE-150: Stale pubsub destroy controls create phantom channel state
+
+- Category: correctness, pubsub lifecycle stability, cleanup
+- Score: 58/100
+- Reviewer: `Sagan the 2nd`, confirmed.
+- Affected code:
+  - `src/service/pubsub_service.rs`: `InternalMsg::PublisherDestroyed` accepts
+    any `(local_id, channel)` pair and calls
+    `self.channels.entry(channel).or_default()`.
+  - `src/service/pubsub_service.rs`: the publisher destroy branch ignores
+    whether `state.local_publishers.remove(&local_id)` actually removed a live
+    handle.
+  - `src/service/pubsub_service.rs`: when the local publisher set is empty, it
+    runs leave handling and broadcasts `PublisherLeaved(channel)` even if the
+    destroy was stale or unknown.
+  - `src/service/pubsub_service.rs`: `InternalMsg::SubscriberDestroyed` mirrors
+    the same behavior for subscriber handles and `SubscriberLeaved(channel)`.
+- Impact: a stale, duplicated, or malformed destroy control for a never-seen
+  local handle creates phantom empty channel state and can broadcast false leave
+  messages even though there was no prior local membership. This can add retained
+  channel entries and noisy membership churn under handle-drop races or bad
+  internal ordering. This is distinct from ISSUE-108, which covers empty channel
+  state retained after a legitimate create/destroy lifecycle; this issue covers
+  destroy controls that should have been no-ops because the handle was never
+  registered.
+- Evidence test:
+  - `cargo test stale_pubsub_destroy_must_not_create_phantom_channel -- --nocapture`
+  - Failure summary: on a fresh pubsub service, processing
+    `PublisherDestroyed(rand, PubsubChannelId(77))` creates
+    `PubsubChannelId(77)` in `service.channels`; expected unknown publisher and
+    subscriber destroy controls to leave no phantom channel state.
