@@ -8,7 +8,7 @@ use crate::{
     discovery::PeerDiscovery,
     msg::{BroadcastMsgId, P2pServiceId, PeerMessage},
     router::RouteAction,
-    ConnectionId, MainEvent, P2pNetwork, P2pNetworkConfig, P2pNetworkEvent, P2pServiceEvent, PeerAddress, PeerConnectionMetric, PeerId, PeerMainData,
+    ConnectionId, ControlCmd, MainEvent, NetworkAddress, P2pNetwork, P2pNetworkConfig, P2pNetworkEvent, P2pServiceEvent, PeerAddress, PeerConnectionMetric, PeerId, PeerMainData,
     SharedKeyHandshake, SharedRouterTable,
 };
 use futures::FutureExt;
@@ -988,6 +988,44 @@ async fn requester_connect_backlog_must_be_bounded() {
         node.control_rx.len() <= MAX_PENDING_CONNECTS,
         "pending requester connect commands must be bounded, got {}",
         node.control_rx.len()
+    );
+}
+
+#[tokio::test]
+async fn connect_to_same_peer_id_at_different_address_must_not_report_success() {
+    let (mut node1, addr1) = create_node(true, 1, vec![]).await;
+    let (mut node2, _addr2) = create_node(false, 2, vec![]).await;
+    let requester2 = node2.requester();
+
+    requester2.try_connect(addr1.clone());
+    tokio::time::timeout(Duration::from_secs(3), async {
+        loop {
+            tokio::select! {
+                _ = node1.recv() => {}
+                event = node2.recv() => {
+                    if let Ok(P2pNetworkEvent::PeerConnected(_conn, peer)) = event {
+                        if peer == addr1.peer_id() {
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+    })
+    .await
+    .expect("node2 should connect to node1");
+
+    let wrong_address = NetworkAddress::from(SocketAddr::new(Ipv4Addr::LOCALHOST.into(), 9));
+    let wrong_peer_address = PeerAddress::new(addr1.peer_id(), wrong_address);
+    let (tx, rx) = tokio::sync::oneshot::channel();
+
+    node2
+        .process_control(ControlCmd::Connect(wrong_peer_address, Some(tx)))
+        .expect("connect command should process");
+
+    assert!(
+        rx.await.expect("connect response should be sent").is_err(),
+        "connect() must not report success for a different socket address just because the peer id is already connected"
     );
 }
 

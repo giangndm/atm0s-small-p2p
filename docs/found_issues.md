@@ -116,15 +116,17 @@ the source of truth for evidence and reviewer decisions.
 
 - Representative issues: ISSUE-003, ISSUE-005, ISSUE-006, ISSUE-007,
   ISSUE-008, ISSUE-033, ISSUE-044, ISSUE-055, ISSUE-092, ISSUE-103,
-  ISSUE-112 through ISSUE-114, ISSUE-160, ISSUE-161, ISSUE-164, ISSUE-167.
+  ISSUE-112 through ISSUE-114, ISSUE-160, ISSUE-161, ISSUE-164, ISSUE-167,
+  ISSUE-177.
 - Pattern: route/discovery inputs can include local ids, self seeds, stale
   addresses, overflowed metrics, over-hop routes, duplicate connection races, or
+  explicit connect addresses that are ignored by peer-id-only fast paths, or
   tiny RTT jitter that changes active paths too aggressively.
 - Minimal fix proposal: add route/discovery sanitization before insertion:
   reject local/self candidates and over-hop routes, pin authenticated direct
   paths for their peer ids, use checked metric math, ignore stale discovery
-  timestamps, coalesce duplicate connects, and add a small hysteresis threshold
-  before switching active paths.
+  timestamps, coalesce duplicate connects, validate already-connected peer
+  addresses, and add a small hysteresis threshold before switching active paths.
 
 ## Accepted Issues
 
@@ -2811,6 +2813,40 @@ the source of truth for evidence and reviewer decisions.
   - Failure summary: four inbound connections from peer `2` to node `1`
     produce four `PeerConnected` events on node `1`; the test expected at most
     one connected event for that already-connected peer.
+
+### ISSUE-177: `connect()` reports success for a different address when peer id is already connected
+
+- Category: correctness, API stability, topology stability
+- Score: 38/100
+- Reviewer: `Helmholtz the 3rd`, confirmed after `Aristotle the 3rd`
+  discovery.
+- Affected code:
+  - `src/requester.rs`: `P2pNetworkRequester::connect` forwards a concrete
+    `PeerAddress` to the main loop.
+  - `src/lib.rs`: `P2pNetwork::process_control` returns `Ok(())` whenever
+    `self.neighbours.has_peer(&addr.peer_id())` is true.
+  - `src/neighbours.rs`: `NetworkNeighbours::has_peer` checks only
+    authenticated peer id and has no record of the requested socket address.
+- Impact: after a node is already authenticated to `PeerId(N)`,
+  `connect(N@different_socket)` reports success without dialing or validating
+  that endpoint. Callers can believe a specific address is reachable even when
+  the live connection is to a different address, causing misleading state,
+  address churn, or reconnect policy mistakes. This is distinct from ISSUE-016,
+  which covers success before authentication; ISSUE-112, which covers
+  self-connect input; and ISSUE-113/114, which cover duplicate connection work
+  rather than the already-connected fast path.
+- Minimal fix proposal: store the authenticated connection's remote network
+  address in `PeerConnection` or `NetworkNeighbours`, and make the fast path
+  return success only when both peer id and address match. If the peer id is
+  connected at a different address, return an explicit
+  `AlreadyConnectedDifferentAddress` error or enter a deliberate reconnect
+  policy.
+- Evidence test:
+  - `cargo test connect_to_same_peer_id_at_different_address_must_not_report_success -- --nocapture`
+  - Failure summary: after node2 has a live authenticated connection to node1,
+    `process_control(ControlCmd::Connect(node1_peer_id@127.0.0.1:9, Some(tx)))`
+    sends `Ok(())`; expected an error because the requested socket address does
+    not match the existing connection.
 
 ### ISSUE-115: Local pubsub publish RPC answers are not bound to the subscriber handle
 
