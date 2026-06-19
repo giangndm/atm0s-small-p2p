@@ -5,7 +5,7 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Audit Status
 
-- Accepted issues: 183
+- Accepted issues: 184
 - Missing issue scores: 0
 - Current consecutive no-new-issue cycles: 0
 - Stop condition: continue until 5 consecutive cycles find no new accepted
@@ -44,20 +44,22 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 - Representative issues: ISSUE-049, ISSUE-050, ISSUE-056, ISSUE-118,
   ISSUE-119, ISSUE-120, ISSUE-123, ISSUE-124, ISSUE-125, ISSUE-126,
   ISSUE-127, ISSUE-133, ISSUE-136, ISSUE-147, ISSUE-153, ISSUE-157,
-  ISSUE-163, ISSUE-164, ISSUE-178, ISSUE-182.
+  ISSUE-163, ISSUE-164, ISSUE-178, ISSUE-182, ISSUE-184.
 - Pattern: some paths drop on `try_send`, some await bounded sends from
   critical tasks, and others use unbounded queues or duplicate internal control
   work. Under load this causes silent loss, head-of-line blocking, or unbounded
   memory. RPC fanout can also count failed local or remote delivery attempts as
   live destinations. Transport config can also admit unused stream classes that
-  no application task drains.
+  no application task drains. Repair state machines can also duplicate
+  in-flight repair requests before timeout or response.
 - Minimal fix proposal: define a channel policy by event class; lifecycle and
   route updates need bounded retry/coalescing, service payload delivery needs
   explicit backpressure errors, and peer tasks must not await bounded lifecycle
   reporting before they can process traffic or cleanup. RPC paths should insert
   pending state only after at least one successful local or remote fanout.
   Disable unused QUIC stream classes or add explicit admission plus
-  drain/reject handlers.
+  drain/reject handlers. Repair requests need typed pending descriptors and
+  duplicate suppression until timeout or a matching response changes the range.
 
 ### RC-4: Timeouts and setup cancellation are incomplete
 
@@ -158,9 +160,11 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   Pascal the 3rd.
 - ISSUE-183, score 53: local alias shutdown keeps serving local aliases.
   Reviewer: Newton the 3rd.
+- ISSUE-184, score 57: replicated KV duplicates in-flight FetchChanged repairs
+  for the same gap. Reviewer: Poincare the 3rd.
 
 ## Next Candidate To Validate
 
-- None queued. ISSUE-183 kept the no-new counter at 0. Continue fresh source
+- None queued. ISSUE-184 kept the no-new counter at 0. Continue fresh source
   review; if five consecutive cycles find no issue, switch to randomized fuzz
   tests over node actions.

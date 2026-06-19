@@ -55,13 +55,15 @@ the source of truth for evidence and reviewer decisions.
 - Representative issues: ISSUE-049, ISSUE-050, ISSUE-056, ISSUE-118,
   ISSUE-119, ISSUE-120, ISSUE-123, ISSUE-124, ISSUE-125, ISSUE-126,
   ISSUE-127, ISSUE-133, ISSUE-136, ISSUE-147, ISSUE-153, ISSUE-157,
-  ISSUE-163, ISSUE-164, ISSUE-178, ISSUE-182.
+  ISSUE-163, ISSUE-164, ISSUE-178, ISSUE-182, ISSUE-184.
 - Pattern: some paths use bounded channels and drop on `try_send`, some await
   bounded sends from critical tasks, and others use unbounded queues or produce
   duplicate internal control work. Under load this causes silent data loss,
   head-of-line blocking, or unbounded memory. RPC fanout can also count failed
   local or remote delivery attempts as live destinations. Transport config can
-  also admit unused stream classes that no application task drains.
+  also admit unused stream classes that no application task drains. Repair
+  state machines can emit duplicate in-flight repair requests without waiting
+  for timeout or response.
 - Minimal fix proposal: define channel policy by event class: lifecycle and
   route updates must use bounded retry/coalescing; service payload delivery must
   return explicit backpressure errors; public and internal request/control
@@ -69,7 +71,9 @@ the source of truth for evidence and reviewer decisions.
   not await bounded lifecycle reporting before they can process traffic or
   cleanup. RPC paths should insert pending state only after at least one
   successful local or remote fanout. Disable unused QUIC stream classes or add
-  explicit admission plus drain/reject handlers.
+  explicit admission plus drain/reject handlers. Repair requests should keep a
+  typed pending descriptor and suppress duplicates until timeout or a matching
+  response changes the required range.
 
 ### RC-4: Timeouts are partial, coarse, or overflow-prone
 
@@ -4057,6 +4061,46 @@ the source of truth for evidence and reviewer decisions.
     request is superseded by `{ from: Version(1), count: 5 }`, a delayed
     response containing only `Version(1)` clears the wider repair. The timeout
     tick emits no follow-up `FetchChanged { from: Version(2), count: 4 }`.
+
+### ISSUE-184: Replicated KV duplicates in-flight FetchChanged repairs for the same gap
+
+- Category: bad-network stability, replicated-KV repair backpressure,
+  duplicate control traffic
+- Score: 57/100
+- Reviewer: `Poincare the 3rd`, confirmed after `Planck the 3rd` discovery.
+- Affected code:
+  - `src/service/replicate_kv_service/remote_storage.rs`:
+    `WorkingState::apply_pendings` computes a missing range and always queues
+    `RpcReq::FetchChanged { from, count }` when the first pending version is
+    discontinuous.
+  - `src/service/replicate_kv_service/remote_storage.rs`:
+    `WorkingState::on_broadcast` inserts every future
+    `BroadcastEvent::Changed` into `pendings` and immediately calls
+    `apply_pendings`.
+  - `src/service/replicate_kv_service/remote_storage.rs`: `self.sending_req`
+    is overwritten with the new request without checking whether an equivalent
+    repair is already in flight.
+- Impact: a remote that sends multiple future `Changed` broadcasts while the
+  same lower version gap is still missing can make the receiver emit duplicate
+  `FetchChanged` repairs before any timeout or response. Under packet loss or
+  reordered broadcasts this creates avoidable duplicate control traffic and
+  resets the single opaque `sending_req` timestamp. This is distinct from
+  ISSUE-027, which covers unbounded pending future-change memory growth;
+  ISSUE-071, which covers retrying stale repairs after broadcasts fill the gap;
+  and ISSUE-111/141/154, which cover response-side repair cancellation or
+  continuation bugs.
+- Minimal fix proposal: track the in-flight repair as typed state, such as
+  `Option<(from, count, sent_at)>`, and suppress emission when the computed gap
+  is already covered by the active repair. Resend only from `on_tick`; replace
+  or widen/narrow the descriptor only when the requested repair range truly
+  changes.
+- Evidence test:
+  - `cargo test working_state_must_not_duplicate_inflight_fetch_changed_for_same_gap -- --nocapture`
+  - Failure summary: after a future `Changed(version=10)` queues
+    `FetchChanged { from: Version(1), count: 9 }`, a later
+    `Changed(version=11)` before timeout/response queues the same
+    `FetchChanged { from: Version(1), count: 9 }` again; expected no duplicate
+    in-flight repair request.
 
 ### ISSUE-155: Stale pubsub leave removes membership confirmed by newer heartbeat
 

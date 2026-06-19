@@ -1682,6 +1682,58 @@ mod tests {
     }
 
     #[test]
+    fn working_state_must_not_duplicate_inflight_fetch_changed_for_same_gap() {
+        let mut ctx: StateCtx<u16, u16, u16> = StateCtx {
+            remote: 1,
+            slots: BTreeMap::new(),
+            outs: VecDeque::new(),
+            next_state: None,
+        };
+
+        let now = Instant::now();
+        let mut state = WorkingState::new(Version(0));
+        state.init(&mut ctx, now);
+
+        state.on_broadcast(
+            &mut ctx,
+            now,
+            BroadcastEvent::Changed(Changed {
+                key: 10,
+                version: Version(10),
+                action: Action::Set(10),
+            }),
+        );
+
+        assert_eq!(
+            ctx.outs.pop_front(),
+            Some(Event::NetEvent(NetEvent::Unicast(
+                1,
+                RpcEvent::RpcReq(RpcReq::FetchChanged {
+                    from: Version(1),
+                    count: 9
+                })
+            )))
+        );
+        assert_eq!(ctx.outs.pop_front(), None);
+
+        state.on_broadcast(
+            &mut ctx,
+            now + Duration::from_millis(10),
+            BroadcastEvent::Changed(Changed {
+                key: 11,
+                version: Version(11),
+                action: Action::Set(11),
+            }),
+        );
+
+        assert_eq!(
+            ctx.outs.pop_front(),
+            None,
+            "same-gap FetchChanged repair is already in flight and must not be duplicated before timeout or response"
+        );
+    }
+
+    #[test]
     fn working_state_must_cap_pending_future_changes() {
         let mut ctx: StateCtx<u16, u16, u16> = StateCtx {
             remote: 1,
