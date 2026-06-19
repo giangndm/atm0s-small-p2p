@@ -7,9 +7,9 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Accepted issues: 204
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 11
+- Current consecutive no-new-issue cycles: 12
 - Stop condition: continue until 5 consecutive cycles find no new accepted
-  issue; currently 11/5 after ISSUE-204.
+  issue; currently 12/5 after ISSUE-204.
 
 ## Root Cause Summary
 
@@ -256,6 +256,12 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Recent Fuzz Evidence
 
+- Extended sanitized churn fuzz:
+  `P2P_FUZZ_SEED=2178001 P2P_FUZZ_NODES=8 P2P_FUZZ_STEPS=1800 cargo test fuzz_random_sanitized_node_churn_actions_must_not_panic_connection_tasks -- --nocapture`
+  failed with duplicate evidence for ISSUE-139 and ISSUE-170. Reviewer
+  `Plato the 4th` confirmed the `src/peer.rs:92`/`src/peer.rs:133`
+  send-to-main panics are ISSUE-139, while the 9,813 forwarded-stop alias
+  errors strengthen ISSUE-170 without adding a new root cause.
 - Extended valid-action fuzz:
   `P2P_FUZZ_SEED=2177001 P2P_FUZZ_NODES=8 P2P_FUZZ_STEPS=2500 cargo test fuzz_random_valid_node_actions_must_not_panic_connection_tasks -- --nocapture`
   failed with duplicate evidence for ISSUE-063 and ISSUE-139. Reviewer
@@ -352,6 +358,15 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Recent No-New Audit
 
+- Cycle after ISSUE-204 no-new cycle 12 ran an eight-node sanitized churn fuzz
+  pass with forked reviewer `Plato the 4th`. The run failed, but the failure
+  was duplicate evidence for ISSUE-139 and ISSUE-170: early
+  `PeerConnectError` reporting panicked at `src/peer.rs:92` and
+  `src/peer.rs:133` after the main loop closed, and the run produced 9,813
+  forwarded-stop alias errors from duplicate `PeerStopped` amplification.
+  Queue-full warnings mapped to RC-3 backpressure and ISSUE-118-style
+  congested shutdown overlap, so no accepted issue or summary root-cause
+  change was recorded.
 - Cycle after ISSUE-204 no-new cycle 11 ran an eight-node valid-action fuzz
   pass with forked reviewer `Godel the 4th`. The run failed, but the failure
   was duplicate evidence for ISSUE-063 and ISSUE-139: stale sync reached

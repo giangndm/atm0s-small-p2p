@@ -11,7 +11,7 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 11
+- Current consecutive no-new-issue cycles: 12
 - Stop condition requested by user: continue until 5 consecutive cycles find no
   new accepted issue.
 
@@ -5768,6 +5768,28 @@ the source of truth for evidence and reviewer decisions.
     `src/peer.rs:1092` with `got 2`.
 
 ## No-New-Issue Audit Cycles
+
+### Cycle after ISSUE-204 no-new cycle 12: sanitized churn duplicate shutdown and PeerStopped storm
+
+- Result: no accepted non-duplicate issue.
+- Reviewer: `Plato the 4th`, forked subagent review, confirmed
+  duplicate-only no-new classification.
+- Fuzz evidence reviewed:
+  - `P2P_FUZZ_SEED=2178001 P2P_FUZZ_NODES=8 P2P_FUZZ_STEPS=1800 cargo test fuzz_random_sanitized_node_churn_actions_must_not_panic_connection_tasks -- --nocapture`
+    failed with duplicate evidence for ISSUE-139, ISSUE-170, RC-3, and
+    shutdown-congestion overlap covered by ISSUE-118.
+- Duplicate or too-close symptoms rejected:
+  - background panics at `src/peer.rs:92:104` and `src/peer.rs:133:113` with
+    `should send to main: SendError { .. }` map directly to ISSUE-139's
+    unchecked `PeerConnectError` reporting after the main loop is closed.
+  - 9,813 `forward peer stopped over peer alias got error ...` logs, including
+    8,556 `no available capacity` and 1,269 `channel closed` failures, map to
+    ISSUE-170's duplicate `PeerStopped` forwarding amplification in cyclic
+    meshes.
+  - 529 `queue main loop full` warnings map to RC-3 peer-control backpressure
+    and ISSUE-118-style congested graceful-shutdown overlap.
+- Root-cause summary impact: no new root cause; this run strengthens existing
+  ISSUE-139 and ISSUE-170 fuzz evidence but does not add ISSUE-205.
 
 ### Cycle after ISSUE-204 no-new cycle 11: valid-action fuzz duplicate stale sync and shutdown panic
 
