@@ -11,7 +11,7 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 38
+- Current consecutive no-new-issue cycles: 39
 - Stop condition requested by user: continue until 5 consecutive cycles find no
   new accepted issue.
 
@@ -5783,6 +5783,27 @@ the source of truth for evidence and reviewer decisions.
     `src/peer.rs:1092` with `got 2`.
 
 ## No-New-Issue Audit Cycles
+
+### Cycle after ISSUE-204 no-new cycle 39: idle inbound stream admission duplicate
+
+- Result: no accepted non-duplicate issue.
+- Reviewer: `Avicenna the 4th`, forked subagent review, confirmed
+  duplicate-only no-new classification.
+- Source and test evidence reviewed:
+  - `src/tests/stream.rs`
+  - `src/peer/peer_internal.rs`
+  - `cargo test idle_inbound_stream_connects_must_be_admission_bounded -- --nocapture`
+    failed at `src/tests/stream.rs:575:5`.
+- Duplicate or too-close symptoms rejected:
+  - a raw authenticated peer opens 17 inbound bidirectional streams without
+    sending `StreamConnectReq`; all are transport accepted, exceeding the
+    test's threshold of 16 idle stream-connect attempts.
+  - this maps directly to ISSUE-117: the peer loop accepts every inbound
+    bidirectional stream and spawns `accept_bi(...)` without an admission cap or
+    stream-connect read timeout.
+- Root-cause summary impact: no new root cause; this focused stream admission
+  cycle strengthens existing ISSUE-117 evidence under RC-4 without adding
+  ISSUE-205.
 
 ### Cycle after ISSUE-204 no-new cycle 38: orphan relay stream duplicate
 

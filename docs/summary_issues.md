@@ -7,9 +7,9 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Accepted issues: 204
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 38
+- Current consecutive no-new-issue cycles: 39
 - Stop condition: continue until 5 consecutive cycles find no new accepted
-  issue; currently 38/5 after ISSUE-204.
+  issue; currently 39/5 after ISSUE-204.
 
 ## Root Cause Summary
 
@@ -256,6 +256,12 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Recent Fuzz Evidence
 
+- Focused idle inbound stream admission review:
+  `cargo test idle_inbound_stream_connects_must_be_admission_bounded -- --nocapture`
+  failed with duplicate evidence for ISSUE-117. Reviewer `Avicenna the 4th`
+  confirmed the peer loop still accepts every inbound bidirectional stream and
+  spawns `accept_bi(...)` without an admission cap or stream-connect read
+  timeout.
 - Focused orphan relay stream review:
   `cargo test relay_must_not_deliver_downstream_stream_after_upstream_setup_closes -- --nocapture`
   failed with duplicate evidence for ISSUE-156. Reviewer `Archimedes the 4th`
