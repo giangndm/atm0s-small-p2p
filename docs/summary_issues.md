@@ -5,7 +5,7 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Audit Status
 
-- Accepted issues: 168
+- Accepted issues: 169
 - Missing issue scores: 0
 - Current consecutive no-new-issue cycles: 0
 - Stop condition: continue until 5 consecutive cycles find no new accepted
@@ -58,7 +58,7 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Representative issues: ISSUE-002, ISSUE-009, ISSUE-021, ISSUE-036,
   ISSUE-042, ISSUE-093, ISSUE-117, ISSUE-121, ISSUE-134, ISSUE-149,
-  ISSUE-156, ISSUE-159.
+  ISSUE-156, ISSUE-159, ISSUE-169.
 - Pattern: timeouts wrap only one await point, rely on unchecked timestamp
   arithmetic, use coarse global sweeps, or complete one side of setup before
   proving the end-to-end setup is still alive.
@@ -108,8 +108,6 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Recent Accepted Issues
 
-- ISSUE-163, score 61: pubsub RPC waits for timeout after every remote send
-  fails. Reviewer: Einstein the 2nd.
 - ISSUE-164, score 57: tick route/discovery sync is dropped when the peer
   control queue is full. Reviewer: Archimedes the 2nd.
 - ISSUE-165, score 54: visualization keeps a gracefully stopped peer until
@@ -120,9 +118,12 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   Reviewer: Pasteur the 3rd.
 - ISSUE-168, score 44: duplicate pubsub local ids detach live publisher
   handles. Reviewer: Jason the 3rd.
+- ISSUE-169, score 68: stream open hangs while writing connect request to a
+  flow-control-stalled peer. Reviewer: independent validation after subagent
+  `019ede01-2c64-7e11-af87-56677fa09649`.
 
 ## Next Candidate To Validate
 
-- None queued. ISSUE-168 reset the no-new counter to 0. Continue fresh source
+- None queued. ISSUE-169 reset the no-new counter to 0. Continue fresh source
   review; if five consecutive cycles find no issue, switch to randomized fuzz
   tests over node actions.

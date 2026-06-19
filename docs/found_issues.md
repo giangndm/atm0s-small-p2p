@@ -71,7 +71,7 @@ the source of truth for evidence and reviewer decisions.
 
 - Representative issues: ISSUE-002, ISSUE-009, ISSUE-021, ISSUE-036,
   ISSUE-042, ISSUE-093, ISSUE-117, ISSUE-121, ISSUE-134, ISSUE-149,
-  ISSUE-156, ISSUE-159.
+  ISSUE-156, ISSUE-159, ISSUE-169.
 - Pattern: timeout checks often wrap only one await point, rely on unchecked
   timestamp arithmetic, use coarse global sweeps instead of per-operation
   deadlines, or complete one side of setup before the full end-to-end setup is
@@ -4446,6 +4446,41 @@ the source of truth for evidence and reviewer decisions.
     `PublisherLocalId`, the first publisher receiver returns
     `Err(Disconnected)` instead of receiving `PeerJoined(Local)` from a later
     local subscriber join.
+
+### ISSUE-169: Stream open hangs while writing connect request to stalled peer
+
+- Category: bad-network stability, stream setup, timeout correctness
+- Score: 68/100
+- Reviewer: independent validation in this audit turn, confirmed after
+  subagent `019ede01-2c64-7e11-af87-56677fa09649` discovery.
+- Affected code:
+  - `src/peer/peer_internal.rs`: `open_bi` wraps only
+    `connection.open_bi()` in `OPEN_BI_TIMEOUT`.
+  - `src/peer/peer_internal.rs`: after the QUIC stream is opened, the
+    `write_object(StreamConnectReq)` call has no setup deadline.
+  - `src/stream.rs`: `write_object` awaits `write_all` for the length and
+    payload without any timeout.
+  - `src/service.rs` and `src/ctx.rs`: public `open_stream` callers wait on
+    this setup path.
+- Impact: an authenticated peer can accept a stream-open bidirectional stream
+  but stop reading. If the request metadata is large enough to hit QUIC
+  flow-control backpressure, the opener can remain stuck in
+  `write_object(StreamConnectReq)` until transport idle timeout or longer. This
+  is distinct from ISSUE-149, which covers a peer that reads
+  `StreamConnectReq` and withholds `StreamConnectRes`; ISSUE-056, which blocks
+  before peer task stream setup; ISSUE-156, which covers relay orphan delivery;
+  and ISSUE-159, which covers outbound peer setup before the main control
+  stream opens.
+- Minimal fix proposal: wrap the entire stream setup sequence in one deadline:
+  `connection.open_bi()`, writing `StreamConnectReq`, and reading
+  `StreamConnectRes`. Keep `OPEN_BI_TIMEOUT` as the setup timeout or rename it
+  to make the broader scope explicit.
+- Evidence test:
+  - `cargo test open_stream_must_timeout_when_connect_request_write_stalls -- --nocapture`
+  - Failure summary: a raw authenticated peer accepts the stream-open
+    bidirectional stream with a tiny receive window and then never reads it.
+    The caller's `open_stream` task does not return within 2.5 seconds, so the
+    test aborts it and fails; expected stream setup to return `Err`.
 
 ## No-New-Issue Audit Cycles
 

@@ -17,7 +17,7 @@ use crate::{
     P2pServiceEvent, PeerId, SharedKeyHandshake, CERT_DOMAIN_NAME,
 };
 use futures::FutureExt;
-use quinn::VarInt;
+use quinn::{Endpoint, ServerConfig, TransportConfig, VarInt};
 use rustls::pki_types::{CertificateDer, PrivatePkcs8KeyDer};
 use serde::{Deserialize, Serialize};
 use test_log::test;
@@ -32,6 +32,28 @@ struct RawConnectReq {
 #[derive(Deserialize, Serialize)]
 struct RawConnectRes {
     result: Result<Vec<u8>, String>,
+}
+
+fn make_small_stream_receive_endpoint(
+    bind_addr: std::net::SocketAddr,
+    stream_window: u32,
+) -> anyhow::Result<Endpoint> {
+    let priv_key = PrivatePkcs8KeyDer::from(super::DEFAULT_CLUSTER_KEY.to_vec());
+    let cert = CertificateDer::from(super::DEFAULT_CLUSTER_CERT.to_vec());
+    let mut server_config = ServerConfig::with_single_cert(vec![cert], priv_key.into())?;
+    let mut transport = TransportConfig::default();
+    let window = VarInt::from_u32(stream_window);
+    transport.stream_receive_window(window);
+    transport.receive_window(window);
+    transport.max_concurrent_uni_streams(10_000_u32.into());
+    transport.max_concurrent_bidi_streams(10_000_u32.into());
+    transport.max_idle_timeout(Some(
+        Duration::from_secs(5)
+            .try_into()
+            .expect("timeout should configure"),
+    ));
+    server_config.transport_config(Arc::new(transport));
+    Endpoint::server(server_config, bind_addr).map_err(Into::into)
 }
 
 #[tokio::test]
@@ -325,6 +347,99 @@ async fn open_stream_must_timeout_when_peer_withholds_connect_response() {
     assert!(
         matches!(result, Ok(Ok(Err(_)))),
         "open_stream must return an error when the peer withholds StreamConnectRes instead of hanging past the setup deadline"
+    );
+}
+
+#[tokio::test]
+async fn open_stream_must_timeout_when_connect_request_write_stalls() {
+    let (mut node, addr) = create_node(false, 1, vec![]).await;
+    let service = node.create_service(0.into());
+    let requester = node.requester();
+    tokio::spawn(async move { while node.recv().await.is_ok() {} });
+
+    let raw_addr = UdpSocket::bind("127.0.0.1:0")
+        .expect("should bind raw peer udp")
+        .local_addr()
+        .expect("should get raw peer addr");
+    let raw_peer = make_small_stream_receive_endpoint(raw_addr, 37)
+        .expect("should create small-window raw peer endpoint");
+    let raw_peer_id = PeerId::from(2);
+    let local_peer_id = addr.peer_id();
+    let secure: SharedKeyHandshake = super::DEFAULT_SECURE_KEY.into();
+    let (stream_accepted_tx, stream_accepted_rx) = tokio::sync::oneshot::channel();
+
+    let raw_task = tokio::spawn({
+        async move {
+            let connecting = raw_peer
+                .accept()
+                .await
+                .expect("raw peer should accept incoming connect");
+            let connection = connecting.await.expect("raw peer should complete QUIC connection");
+            let (send, recv) = connection
+                .accept_bi()
+                .await
+                .expect("raw peer should accept main control stream");
+            let mut main_stream = P2pQuicStream::new(recv, send);
+            let request: RawConnectReq = wait_object::<_, _, 60000>(&mut main_stream)
+                .await
+                .expect("raw peer should receive connect request");
+            secure
+                .verify_request(request.auth, request.from, request.to, crate::now_ms())
+                .expect("raw peer should verify connect request");
+            write_object::<_, _, 60000>(
+                &mut main_stream,
+                &RawConnectRes {
+                    result: Ok(secure.create_response(raw_peer_id, local_peer_id, crate::now_ms())),
+                },
+            )
+            .await
+            .expect("raw peer should write connect response");
+
+            let stream = connection
+                .accept_bi()
+                .await
+                .expect("raw peer should accept stream connect");
+            let _ = stream_accepted_tx.send(());
+            let _held_stream = stream;
+            std::future::pending::<()>().await;
+        }
+    });
+
+    requester
+        .connect((raw_peer_id, raw_addr.into()).into())
+        .await
+        .expect("connect to raw peer should be queued");
+
+    tokio::time::timeout(Duration::from_secs(2), async {
+        loop {
+            if matches!(service.router().action(&raw_peer_id), Some(RouteAction::Next(_))) {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+    })
+    .await
+    .expect("node should learn direct route to raw peer");
+
+    let mut open = tokio::spawn({
+        let service_requester = service.requester();
+        async move { service_requester.open_stream(raw_peer_id, vec![7; 59_000]).await }
+    });
+
+    tokio::time::timeout(Duration::from_secs(1), stream_accepted_rx)
+        .await
+        .expect("raw peer should accept stream open")
+        .expect("raw peer should signal accepted stream");
+
+    let result = tokio::time::timeout(Duration::from_millis(2500), &mut open).await;
+    if result.is_err() {
+        open.abort();
+    }
+    raw_task.abort();
+
+    assert!(
+        matches!(result, Ok(Ok(Err(_)))),
+        "open_stream must return an error when writing StreamConnectReq stalls behind peer flow control"
     );
 }
 
