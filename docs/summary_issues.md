@@ -7,9 +7,9 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Accepted issues: 204
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 6
+- Current consecutive no-new-issue cycles: 7
 - Stop condition: continue until 5 consecutive cycles find no new accepted
-  issue; currently 6/5 after ISSUE-204.
+  issue; currently 7/5 after ISSUE-204.
 
 ## Root Cause Summary
 
@@ -262,6 +262,11 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 - Valid-only churn fuzz:
   `P2P_FUZZ_NODES=3 P2P_FUZZ_STEPS=60 cargo test fuzz_random_valid_node_churn_actions_must_not_panic_connection_tasks -- --nocapture`
   panics at `src/router.rs:76`, duplicate evidence for ISSUE-063.
+- Extended valid-action fuzz:
+  `P2P_FUZZ_SEED=0x205101 P2P_FUZZ_NODES=8 P2P_FUZZ_STEPS=1200 cargo test fuzz_random_valid_node_actions_must_not_panic_connection_tasks -- --nocapture`
+  panics at `src/router.rs:76`, duplicate evidence for ISSUE-063. Reviewer
+  `Planck the 4th` confirmed this is stale `PeerData::Sync` after direct route
+  removal, not a new accepted issue.
 - Sanitized churn fuzz:
   `P2P_FUZZ_NODES=3 P2P_FUZZ_STEPS=120 cargo test fuzz_random_sanitized_node_churn_actions_must_not_panic_connection_tasks -- --nocapture`
   panics at `src/peer.rs:106`, duplicate evidence for ISSUE-139.
@@ -324,6 +329,13 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Recent No-New Audit
 
+- Cycle after ISSUE-204 no-new cycle 7 ran an eight-node valid-action fuzz
+  pass with forked reviewer `Planck the 4th`. The run failed, but the failure
+  was duplicate evidence for ISSUE-063: stale `PeerData::Sync` reached
+  `RouterTable::apply_sync` after the direct route was gone and panicked at
+  `src/router.rs:76`. Queue pressure, route noise, and PeerStopped forwarding
+  symptoms mapped to existing RC-3, RC-7, and lifecycle entries, so no accepted
+  issue or summary root-cause change was recorded.
 - Cycle after ISSUE-204 no-new cycle 6 ran a fifteen-node steady-valid fuzz
   pass after the prior 5/5 threshold, with forked reviewer `Peirce the 4th`.
   The run passed; observed route reselection/path-jumping noise, high-load

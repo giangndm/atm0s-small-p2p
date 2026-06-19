@@ -11,7 +11,7 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 6
+- Current consecutive no-new-issue cycles: 7
 - Stop condition requested by user: continue until 5 consecutive cycles find no
   new accepted issue.
 
@@ -5768,6 +5768,26 @@ the source of truth for evidence and reviewer decisions.
     `src/peer.rs:1092` with `got 2`.
 
 ## No-New-Issue Audit Cycles
+
+### Cycle after ISSUE-204 no-new cycle 7: valid-action fuzz duplicate stale sync
+
+- Result: no accepted non-duplicate issue.
+- Reviewer: `Planck the 4th`, forked subagent review, confirmed duplicate-only
+  no-new classification.
+- Fuzz evidence reviewed:
+  - `P2P_FUZZ_SEED=0x205101 P2P_FUZZ_NODES=8 P2P_FUZZ_STEPS=1200 cargo test fuzz_random_valid_node_actions_must_not_panic_connection_tasks -- --nocapture`
+    failed with duplicate evidence for ISSUE-063.
+- Duplicate or too-close symptoms rejected:
+  - background panics at `src/router.rs:76:66` with
+    `should have direct metric with apply_sync` map directly to ISSUE-063,
+    where stale `PeerData::Sync` reaches `RouterTable::apply_sync` after the
+    direct connection route has already been removed.
+  - repeated `queue main loop full` warnings map to RC-3 backpressure issues.
+  - route reselection/path noise maps to ISSUE-003 and RC-7 route instability.
+  - repeated PeerStopped forwarding pressure maps to existing graceful-stop and
+    lifecycle entries, including ISSUE-170 where applicable.
+- Root-cause summary impact: no new root cause; this run strengthens existing
+  ISSUE-063 fuzz evidence but does not add ISSUE-205.
 
 ### Cycle after ISSUE-204 no-new cycle 6: fifteen-node post-stop-condition fuzz
 
