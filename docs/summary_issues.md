@@ -7,9 +7,9 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Accepted issues: 204
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 40
+- Current consecutive no-new-issue cycles: 41
 - Stop condition: continue until 5 consecutive cycles find no new accepted
-  issue; currently 40/5 after ISSUE-204.
+  issue; currently 41/5 after ISSUE-204.
 
 ## Root Cause Summary
 
@@ -256,6 +256,12 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Recent Fuzz Evidence
 
+- Focused unauthenticated inbound connection review:
+  `cargo test unauthenticated_inbound_connections_must_be_admission_bounded -- --nocapture`
+  failed with duplicate evidence for ISSUE-134. Reviewer `Newton the 4th`
+  confirmed inbound QUIC connections are still accepted/inserted before
+  authentication and can wait for the P2P control stream without a node-level
+  unauthenticated cap or control-stream timeout.
 - Focused unused unidirectional stream review:
   `cargo test unused_unidirectional_streams_must_not_be_admitted -- --nocapture`
   failed with duplicate evidence for ISSUE-182. Reviewer `Hegel the 4th`

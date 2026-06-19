@@ -11,7 +11,7 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 40
+- Current consecutive no-new-issue cycles: 41
 - Stop condition requested by user: continue until 5 consecutive cycles find no
   new accepted issue.
 
@@ -5783,6 +5783,29 @@ the source of truth for evidence and reviewer decisions.
     `src/peer.rs:1092` with `got 2`.
 
 ## No-New-Issue Audit Cycles
+
+### Cycle after ISSUE-204 no-new cycle 41: unauthenticated inbound connection duplicate
+
+- Result: no accepted non-duplicate issue.
+- Reviewer: `Newton the 4th`, forked subagent review, confirmed
+  duplicate-only no-new classification.
+- Source and test evidence reviewed:
+  - `src/tests/stream.rs`
+  - `src/lib.rs`
+  - `src/peer.rs`
+  - `cargo test unauthenticated_inbound_connections_must_be_admission_bounded -- --nocapture`
+    failed at `src/tests/stream.rs:607:5`.
+- Duplicate or too-close symptoms rejected:
+  - 17 raw QUIC clients connect to a node and never open the P2P main control
+    stream; all are accepted, exceeding the test's pending unauthenticated
+    connection threshold of 16.
+  - this maps directly to ISSUE-134: `process_incoming` accepts/inserts inbound
+    connections before authentication, and `PeerConnection::new_incoming`
+    awaits the P2P control stream without a node-level unauthenticated cap or
+    control-stream timeout.
+- Root-cause summary impact: no new root cause; this focused transport
+  admission cycle strengthens existing ISSUE-134 evidence under RC-4/RC-5
+  unauthenticated setup admission without adding ISSUE-205.
 
 ### Cycle after ISSUE-204 no-new cycle 40: unused unidirectional stream duplicate
 
