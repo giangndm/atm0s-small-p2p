@@ -48,6 +48,61 @@ async fn full_sync() {
     assert_eq!(timeout(WAIT, kv2.recv()).await, Ok(Some(KvEvent::Set(Some(addr1.peer_id()), 3, 3))));
 }
 
+#[test(tokio::test)]
+async fn replicated_kv_must_delete_remote_data_when_peer_gracefully_stops() {
+    let (mut node1, addr1) = create_node(true, 1, vec![]).await;
+    let (mut node2, addr2) = create_node(true, 2, vec![]).await;
+    let node1_requester = node1.requester();
+    let (shutdown_tx, mut shutdown_rx) = tokio::sync::oneshot::channel();
+
+    let mut kv1: ReplicatedKvService<u16, u16> = ReplicatedKvService::new(node1.create_service(0.into()), 10, 3);
+    let mut kv2: ReplicatedKvService<u16, u16> = ReplicatedKvService::new(node2.create_service(0.into()), 10, 3);
+
+    tokio::spawn(async move {
+        kv1.set(7, 70);
+        while kv1.recv().await.is_some() {}
+    });
+
+    tokio::spawn(async move {
+        loop {
+            tokio::select! {
+                _ = &mut shutdown_rx => {
+                    node1.shutdown_gracefully().await;
+                    break;
+                }
+                res = node1.recv() => {
+                    if res.is_err() {
+                        break;
+                    }
+                }
+            }
+        }
+    });
+    tokio::spawn(async move { while node2.recv().await.is_ok() {} });
+
+    node1_requester.connect(addr2).await.expect("connect should succeed");
+
+    assert_eq!(timeout(WAIT, kv2.recv()).await, Ok(Some(KvEvent::Set(Some(addr1.peer_id()), 7, 70))));
+
+    shutdown_tx.send(()).expect("shutdown signal should send");
+
+    let deleted = timeout(WAIT, async {
+        loop {
+            if let Some(KvEvent::Del(Some(peer), 7)) = kv2.recv().await {
+                if peer == addr1.peer_id() {
+                    break;
+                }
+            }
+        }
+    })
+    .await;
+
+    assert!(
+        deleted.is_ok(),
+        "replicated KV must delete a gracefully stopped peer's data promptly, not wait for the 10s idle timeout"
+    );
+}
+
 // compose pkt smaller than slots count then FullSync will be split to multiple packets
 #[test(tokio::test)]
 async fn full_sync2() {

@@ -99,7 +99,7 @@ the source of truth for evidence and reviewer decisions.
 - Representative issues: ISSUE-028, ISSUE-029, ISSUE-051, ISSUE-057,
   ISSUE-060, ISSUE-064, ISSUE-065, ISSUE-069 through ISSUE-076, ISSUE-108,
   ISSUE-128 through ISSUE-132, ISSUE-135, ISSUE-139, ISSUE-142, ISSUE-144,
-  ISSUE-148, ISSUE-150, ISSUE-151, ISSUE-161.
+  ISSUE-148, ISSUE-150, ISSUE-151, ISSUE-161, ISSUE-162.
 - Pattern: requesters, services, peer aliases, channel state, and cached hints
   can outlive the owner they represent, while shutdown paths may panic, leak,
   emit false public events, or keep stale routes/cache entries.
@@ -4207,3 +4207,36 @@ the source of truth for evidence and reviewer decisions.
     third-party relay `PeerId(3)` advertises a route to `PeerId(2)`. The local
     router changes from `None` to `Some(Next(ConnectionId(30)))`; expected the
     graceful-stop tombstone to keep the stopped peer unroutable.
+
+### ISSUE-162: Replicated KV keeps stopped peer data until idle timeout
+
+- Category: correctness, graceful-shutdown stability, service lifecycle
+- Score: 63/100
+- Reviewer: `Franklin the 2nd`, confirmed after `Noether the 2nd` discovery.
+- Affected code:
+  - `src/service/replicate_kv_service.rs`: remote KV data is deleted only when
+    `ReplicatedKvStore::on_tick` sees `REMOTE_TIMEOUT_MS` expire.
+  - `src/service/replicate_kv_service.rs`: `ReplicatedKvService::recv` consumes
+    service payload events and ticks, but receives no peer stopped or
+    disconnected lifecycle event.
+  - `src/lib.rs`: `shutdown_gracefully` sends `PeerStopped` to connected peers.
+  - `src/lib.rs`: `PeerStopped` handling updates discovery and routing only,
+    not service-owned replicated-KV state.
+- Impact: after a peer explicitly announces graceful shutdown, its replicated-KV
+  rows remain visible on other nodes until the 10-second idle timeout. The
+  module comment promises disconnected-node data will be deleted from other
+  nodes, but graceful stop does not promptly remove that application state. This
+  is distinct from ISSUE-051, ISSUE-151, and ISSUE-161, which cover neighbour
+  and route state after `PeerStopped`, and from ISSUE-140, which covers ignored
+  RPC responses refreshing stale KV activity.
+- Minimal fix proposal: deliver peer lifecycle events to services, or add a
+  narrower replicated-KV hook that calls `RemoteStore::destroy()` immediately on
+  `PeerStopped` or `PeerDisconnected`. Keep the 10-second idle timeout only as
+  fallback for silent network loss.
+- Evidence test:
+  - `cargo test replicated_kv_must_delete_remote_data_when_peer_gracefully_stops -- --nocapture`
+  - Failure summary: node2 receives `KvEvent::Set(Some(node1), 7, 70)`, then
+    node1 calls `shutdown_gracefully()`. No
+    `KvEvent::Del(Some(node1), 7)` is emitted within the 3-second graceful-stop
+    window; expected replicated KV to remove explicitly stopped peer data
+    promptly instead of waiting for `REMOTE_TIMEOUT_MS`.
