@@ -7,9 +7,9 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Accepted issues: 204
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 30
+- Current consecutive no-new-issue cycles: 31
 - Stop condition: continue until 5 consecutive cycles find no new accepted
-  issue; currently 30/5 after ISSUE-204.
+  issue; currently 31/5 after ISSUE-204.
 
 ## Root Cause Summary
 
@@ -256,6 +256,12 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Recent Fuzz Evidence
 
+- Focused closed-receiver stream review:
+  `cargo test open_stream_fails_when_destination_service_receiver_is_closed -- --nocapture`
+  failed with duplicate evidence for ISSUE-011. Reviewer `Rawls the 4th`
+  confirmed `open_stream` still reports success after the destination service
+  receiver is closed because local stream delivery ignores the bounded
+  `try_send` failure.
 - Focused router active-path stability review:
   `cargo test active_path_should_not_jump_for_tiny_rtt_jitter -- --nocapture`
   and

@@ -11,7 +11,7 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 30
+- Current consecutive no-new-issue cycles: 31
 - Stop condition requested by user: continue until 5 consecutive cycles find no
   new accepted issue.
 
@@ -5783,6 +5783,27 @@ the source of truth for evidence and reviewer decisions.
     `src/peer.rs:1092` with `got 2`.
 
 ## No-New-Issue Audit Cycles
+
+### Cycle after ISSUE-204 no-new cycle 31: closed-receiver stream duplicate
+
+- Result: no accepted non-duplicate issue.
+- Reviewer: `Rawls the 4th`, forked subagent review, confirmed
+  duplicate-only no-new classification.
+- Source and test evidence reviewed:
+  - `src/tests/stream.rs`
+  - `src/peer/peer_internal.rs`
+  - `cargo test open_stream_fails_when_destination_service_receiver_is_closed -- --nocapture`
+    failed at `src/tests/stream.rs:68:5`.
+- Duplicate or too-close symptoms rejected:
+  - `open_stream` still reports success after the destination service receiver
+    is closed, leaving the opener with an apparently valid pipe that no
+    destination service can accept.
+  - this maps directly to ISSUE-011, where local stream delivery ignores the
+    `service_acceptor.try_send(...)` result and still sends successful
+    `StreamConnectRes` to the opener.
+- Root-cause summary impact: no new root cause; this focused pipe-reliability
+  cycle strengthens existing ISSUE-011 evidence under RC-3/RC-7 delivery and
+  routing reliability patterns without adding ISSUE-205.
 
 ### Cycle after ISSUE-204 no-new cycle 30: active-path jitter duplicate
 
