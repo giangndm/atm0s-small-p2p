@@ -7,9 +7,9 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Accepted issues: 204
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 15
+- Current consecutive no-new-issue cycles: 16
 - Stop condition: continue until 5 consecutive cycles find no new accepted
-  issue; currently 15/5 after ISSUE-204.
+  issue; currently 16/5 after ISSUE-204.
 
 ## Root Cause Summary
 
@@ -256,6 +256,11 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Recent Fuzz Evidence
 
+- Focused stream admission source/test review:
+  `cargo test idle_inbound_stream_connects_must_be_admission_bounded -- --nocapture`
+  failed with duplicate evidence for ISSUE-117. Reviewer `Beauvoir the 4th`
+  confirmed the `src/tests/stream.rs:575` assertion is the already-accepted
+  idle inbound stream-connect admission gap covered by RC-4.
 - Focused handshake source/test review:
   `cargo test inbound_handshake_must_reject_peer_claiming_third_party_id -- --nocapture`
   failed with duplicate evidence for ISSUE-194. Reviewer `Zeno the 4th`

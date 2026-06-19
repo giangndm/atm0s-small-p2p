@@ -11,7 +11,7 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 15
+- Current consecutive no-new-issue cycles: 16
 - Stop condition requested by user: continue until 5 consecutive cycles find no
   new accepted issue.
 
@@ -5768,6 +5768,26 @@ the source of truth for evidence and reviewer decisions.
     `src/peer.rs:1092` with `got 2`.
 
 ## No-New-Issue Audit Cycles
+
+### Cycle after ISSUE-204 no-new cycle 16: stream idle admission duplicate
+
+- Result: no accepted non-duplicate issue.
+- Reviewer: `Beauvoir the 4th`, forked subagent review, confirmed
+  duplicate-only no-new classification.
+- Source and test evidence reviewed:
+  - `src/tests/stream.rs`
+  - `src/stream.rs`
+  - `cargo test idle_inbound_stream_connects_must_be_admission_bounded -- --nocapture`
+    failed with duplicate evidence for ISSUE-117.
+- Duplicate or too-close symptoms rejected:
+  - the failure at `src/tests/stream.rs:575:5` shows a raw authenticated QUIC
+    peer opening 17 bidirectional streams without sending `StreamConnectReq`,
+    exceeding the test's admission threshold of 16 idle stream-connect
+    attempts.
+  - the same test, assertion, and root cause are already the accepted evidence
+    for ISSUE-117 and RC-4's incomplete stream setup admission/timeout pattern.
+- Root-cause summary impact: no new root cause; this source/test cycle
+  strengthens existing ISSUE-117 evidence but does not add ISSUE-205.
 
 ### Cycle after ISSUE-204 no-new cycle 15: handshake third-party identity duplicate
 
