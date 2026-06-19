@@ -7,7 +7,7 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Accepted issues: 173
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 0
+- Current consecutive no-new-issue cycles: 1
 - Stop condition: continue until 5 consecutive cycles find no new accepted
   issue; after that, continue with randomized fuzz tests over node actions.
 
@@ -108,8 +108,8 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Recent Accepted Issues
 
-- ISSUE-168, score 44: duplicate pubsub local ids detach live publisher
-  handles. Reviewer: Jason the 3rd.
+- ISSUE-168, score 44: duplicate pubsub local ids detach live publisher and
+  subscriber handles. Reviewers: Jason the 3rd, Noether the 2nd.
 - ISSUE-169, score 68: stream open hangs while writing connect request to a
   flow-control-stalled peer. Reviewer: independent validation after subagent
   `019ede01-2c64-7e11-af87-56677fa09649`.
@@ -124,6 +124,7 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Next Candidate To Validate
 
-- None queued. ISSUE-173 reset the no-new counter to 0. Continue fresh source
-  review; if five consecutive cycles find no issue, switch to randomized fuzz
-  tests over node actions.
+- None queued. The cycle after ISSUE-173 found supplemental evidence for
+  ISSUE-168, ISSUE-060, and ISSUE-119, but no non-duplicate accepted issue.
+  Continue fresh source review; if five consecutive cycles find no issue,
+  switch to randomized fuzz tests over node actions.

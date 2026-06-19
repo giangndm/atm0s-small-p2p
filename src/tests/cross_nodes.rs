@@ -178,6 +178,38 @@ async fn inbound_unicast_must_not_drop_when_service_queue_is_full() {
 }
 
 #[test(tokio::test)]
+async fn unicast_must_not_report_success_when_destination_service_receiver_is_closed() {
+    let (mut node1, _addr1) = create_node(false, 1, vec![]).await;
+    let service1 = node1.create_service(0.into());
+    let requester1 = node1.requester();
+    tokio::spawn(async move { while node1.recv().await.is_ok() {} });
+
+    let (mut node2, addr2) = create_node(false, 2, vec![]).await;
+    let service2 = node2.create_service(0.into());
+    drop(service2);
+    tokio::spawn(async move { while node2.recv().await.is_ok() {} });
+
+    requester1.connect(addr2.clone()).await.expect("connect should be queued");
+    tokio::time::timeout(Duration::from_secs(3), async {
+        loop {
+            if matches!(service1.router().action(&addr2.peer_id()), Some(RouteAction::Next(_))) {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .expect("route to node2 should become available");
+
+    let result = service1.send_unicast(addr2.peer_id(), b"closed-destination".to_vec()).await;
+
+    assert!(
+        result.is_err(),
+        "send_unicast must not report success when the destination service receiver is already closed"
+    );
+}
+
+#[test(tokio::test)]
 async fn inbound_broadcast_must_not_drop_when_service_queue_is_full() {
     let (mut node1, addr1) = create_node(false, 1, vec![]).await;
     let service1 = node1.create_service(0.into());

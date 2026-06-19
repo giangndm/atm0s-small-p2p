@@ -11,7 +11,7 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 0
+- Current consecutive no-new-issue cycles: 1
 - Stop condition requested by user: continue until 5 consecutive cycles find no
   new accepted issue.
 
@@ -1368,6 +1368,13 @@ the source of truth for evidence and reviewer decisions.
   - Failure summary: after dropping the first `P2pService`, creating a
     replacement with the same id panics at `src/ctx.rs:28` with
     `Service ID already used`.
+  - Additional reviewer `Turing the 2nd` accepted
+    `cargo test unicast_must_not_report_success_when_destination_service_receiver_is_closed -- --nocapture`
+    as closed-destination evidence for this stale service sender root cause.
+  - Additional failure summary: after node2 drops its destination
+    `P2pService`, node1's live service can still route a unicast to node2 and
+    observe `Ok(())`; the stale registered sender means the closed destination
+    remains addressable until delivery is later discarded.
 
 ### ISSUE-061: Visualization accepts unsolicited forged topology info
 
@@ -2930,6 +2937,13 @@ the source of truth for evidence and reviewer decisions.
     `send service msg got error no available capacity` and only 10 messages can
     be drained from the service queue; expected all 11 to be preserved or
     backpressured instead of silently dropped.
+  - Additional reviewer `Turing the 2nd` accepted
+    `cargo test unicast_must_not_report_success_when_destination_service_receiver_is_closed -- --nocapture`
+    as closed-receiver evidence for the same ignored local-delivery failure
+    pattern.
+  - Additional failure summary: when the destination service receiver is closed,
+    inbound local unicast delivery still only logs `try_send` failure, while
+    the sender has already observed `send_unicast` success.
 
 ### ISSUE-120: Inbound broadcast is silently dropped when the local service queue is full
 
@@ -4446,6 +4460,13 @@ the source of truth for evidence and reviewer decisions.
     `PublisherLocalId`, the first publisher receiver returns
     `Err(Disconnected)` instead of receiving `PeerJoined(Local)` from a later
     local subscriber join.
+  - Additional reviewer `Noether the 2nd` accepted
+    `cargo test duplicate_subscriber_local_id_must_not_detach_live_handle -- --nocapture`
+    as subscriber-side evidence for the same issue.
+  - Additional failure summary: after two `SubscriberCreated` controls use the
+    same `SubscriberLocalId`, the first subscriber receiver returns
+    `Err(Disconnected)` instead of receiving `PeerJoined(Local)` from a later
+    local publisher join.
 
 ### ISSUE-169: Stream open hangs while writing connect request to stalled peer
 
@@ -4667,3 +4688,27 @@ the source of truth for evidence and reviewer decisions.
     local and remote storage evidence tests.
 - Root-cause summary impact: no change; rejected candidates map to existing
   RC-2, RC-3, RC-5, and RC-6 patterns.
+
+### Cycle after ISSUE-173: pubsub handle collisions and closed-service delivery
+
+- Result: no accepted non-duplicate issue; added supplemental failing evidence
+  to existing issues.
+- Reviewer/explorer: `Kepler the 3rd`, `Noether the 2nd`, `Turing the 2nd`.
+- Local/source areas reviewed:
+  - `src/service/pubsub_service.rs`,
+    `src/service/pubsub_service/subscriber.rs`,
+    `src/service/pubsub_service/publisher.rs`
+  - `src/service.rs`, `src/ctx.rs`, `src/peer/peer_internal.rs`,
+    `src/tests/cross_nodes.rs`
+  - existing pubsub lifecycle, service lifecycle, stream false-success, and
+    service delivery-loss ledger entries.
+- Duplicate or too-close candidates rejected:
+  - duplicate subscriber local ids detach live subscriber handles: accepted by
+    `Noether the 2nd` as additional ISSUE-168 evidence, not distinct from the
+    existing pubsub local-id collision root cause.
+  - `send_unicast` returns success when the destination service receiver is
+    closed: accepted by `Turing the 2nd` as additional ISSUE-060/ISSUE-119
+    evidence, not a standalone issue because it composes stale service
+    registration with ignored local-delivery failure.
+- Root-cause summary impact: no new root cause; supplemental evidence maps to
+  RC-3 and RC-6.

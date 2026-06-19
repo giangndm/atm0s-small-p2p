@@ -1035,6 +1035,35 @@ mod test {
     }
 
     #[tokio::test]
+    async fn duplicate_subscriber_local_id_must_not_detach_live_handle() {
+        let mut service = test_service();
+        let channel = PubsubChannelId(1);
+        let local_id = SubscriberLocalId::from_raw_for_test(7);
+        let (first_sub_tx, mut first_sub_rx) = unbounded_channel();
+        let (second_sub_tx, _second_sub_rx) = unbounded_channel();
+        let (pub_tx, _pub_rx) = unbounded_channel();
+
+        service
+            .on_internal(InternalMsg::SubscriberCreated(local_id, channel, first_sub_tx))
+            .await
+            .expect("first subscriber should be registered");
+        service
+            .on_internal(InternalMsg::SubscriberCreated(local_id, channel, second_sub_tx))
+            .await
+            .expect("duplicate subscriber id should be handled without detaching the first handle");
+        service
+            .on_internal(InternalMsg::PublisherCreated(PublisherLocalId::rand(), channel, pub_tx))
+            .await
+            .expect("publisher should be registered");
+
+        assert_eq!(
+            first_sub_rx.try_recv(),
+            Ok(SubscriberEvent::PeerJoined(PeerSrc::Local)),
+            "a duplicate local subscriber id must not silently replace an existing live subscriber handle"
+        );
+    }
+
+    #[tokio::test]
     async fn stale_pubsub_leave_must_not_remove_membership_after_newer_heartbeat() {
         let mut service = test_service();
         let channel = PubsubChannelId(1);
