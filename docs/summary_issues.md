@@ -7,9 +7,9 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Accepted issues: 204
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 22
+- Current consecutive no-new-issue cycles: 23
 - Stop condition: continue until 5 consecutive cycles find no new accepted
-  issue; currently 22/5 after ISSUE-204.
+  issue; currently 23/5 after ISSUE-204.
 
 ## Root Cause Summary
 
@@ -256,6 +256,12 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Recent Fuzz Evidence
 
+- Focused cross-node broadcast delivery review:
+  `cargo test inbound_broadcast_must_not_drop_when_service_queue_is_full -- --nocapture`
+  now passes. Reviewer `Hilbert the 4th` classified this as existing-issue
+  fixed/no-new evidence for ISSUE-120 under RC-3: local queue-full broadcast
+  silent drop is fixed by awaited local delivery, without proving broader RC-3
+  fixes.
 - Focused cross-node unicast delivery review:
   `cargo test inbound_unicast_must_not_drop_when_service_queue_is_full -- --nocapture`
   now passes, but

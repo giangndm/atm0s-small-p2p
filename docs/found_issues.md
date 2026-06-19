@@ -11,7 +11,7 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 22
+- Current consecutive no-new-issue cycles: 23
 - Stop condition requested by user: continue until 5 consecutive cycles find no
   new accepted issue.
 
@@ -3123,6 +3123,12 @@ the source of truth for evidence and reviewer decisions.
     `send service msg got error no available capacity` and only 10 broadcast
     events can be drained; expected all 11 to be preserved or backpressured
     instead of silently dropped.
+- Current audit status:
+  - No-new cycle 23 reran
+    `cargo test inbound_broadcast_must_not_drop_when_service_queue_is_full -- --nocapture`;
+    it now passes because current local broadcast delivery awaits bounded
+    `service.send(...)` through `send_local_service_event` instead of immediate
+    `try_send`.
 
 ### ISSUE-121: Short pubsub RPC timeouts wait for the global one-second sweep
 
@@ -5777,6 +5783,27 @@ the source of truth for evidence and reviewer decisions.
     `src/peer.rs:1092` with `got 2`.
 
 ## No-New-Issue Audit Cycles
+
+### Cycle after ISSUE-204 no-new cycle 23: broadcast queue-full fixed
+
+- Result: no accepted non-duplicate issue.
+- Reviewer: `Hilbert the 4th`, forked subagent review, confirmed
+  existing-issue fixed/no-new classification.
+- Source and test evidence reviewed:
+  - `src/tests/cross_nodes.rs`
+  - `src/peer/peer_internal.rs`
+  - `cargo test inbound_broadcast_must_not_drop_when_service_queue_is_full -- --nocapture`
+    passed.
+- Duplicate, fixed, or too-close symptoms rejected:
+  - the queue-full broadcast subcase no longer reproduces ISSUE-120 because
+    `send_local_service_event` now wraps bounded `service.send(event)` in
+    `LOCAL_SERVICE_DELIVERY_TIMEOUT`, and the 11-broadcast assertion drains all
+    expected events.
+  - this is fixed evidence for ISSUE-120's local queue-full silent-drop case
+    only; it is not a broader RC-3 fix and does not add ISSUE-205.
+- Root-cause summary impact: no new root cause; this cycle records fixed
+  evidence for ISSUE-120 under RC-3 while other RC-3 backpressure issues remain
+  open.
 
 ### Cycle after ISSUE-204 no-new cycle 22: unicast queue-full partial fix, closed receiver duplicate
 
