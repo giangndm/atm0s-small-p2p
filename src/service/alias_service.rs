@@ -175,21 +175,25 @@ impl AliasService {
                 _ = self.interval.tick() => {
                     self.on_tick().await;
                 },
-                event = self.service.recv() => match event.expect("service channel should work") {
-                    P2pServiceEvent::Unicast(from, data) => {
+                event = self.service.recv() => match event {
+                    Some(P2pServiceEvent::Unicast(from, data)) => {
                         if let Ok(msg) = bincode::deserialize::<AliasMessage>(&data) {
                             self.on_msg(from, msg).await;
                         }
                     }
-                    P2pServiceEvent::Broadcast(from, data) => {
+                    Some(P2pServiceEvent::Broadcast(from, data)) => {
                         if let Ok(msg) = bincode::deserialize::<AliasMessage>(&data) {
                             self.on_msg(from, msg).await;
                         }
                     }
-                    P2pServiceEvent::Stream(..) => {},
+                    Some(P2pServiceEvent::Stream(..)) => {},
+                    None => anyhow::bail!("alias base service channel closed"),
                 },
                 control = self.rx.recv() => {
-                    self.on_control(control.expect("service channel should work")).await;
+                    let Some(control) = control else {
+                        anyhow::bail!("alias control channel closed");
+                    };
+                    self.on_control(control).await;
                 }
             }
         }
