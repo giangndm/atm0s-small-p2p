@@ -105,7 +105,7 @@ the source of truth for evidence and reviewer decisions.
   ISSUE-060, ISSUE-064, ISSUE-065, ISSUE-069 through ISSUE-076, ISSUE-108,
   ISSUE-128 through ISSUE-132, ISSUE-135, ISSUE-139, ISSUE-142, ISSUE-144,
   ISSUE-148, ISSUE-150, ISSUE-151, ISSUE-161, ISSUE-162, ISSUE-165,
-  ISSUE-167, ISSUE-168, ISSUE-170.
+  ISSUE-167, ISSUE-168, ISSUE-170, ISSUE-179.
 - Pattern: requesters, services, peer aliases, channel state, and cached hints
   can outlive the owner they represent, while shutdown paths may panic, leak,
   emit false public events, or keep stale routes/cache entries.
@@ -4397,6 +4397,40 @@ the source of truth for evidence and reviewer decisions.
     receiver is closed. `GuestPublishRpc` ignores the failed local send,
     `rx.try_recv()` remains `Err(Empty)`, and `publish_rpc_reqs` retains the
     request; expected immediate `Err(NoDestination)` and no pending RPC.
+
+### ISSUE-179: Local alias shutdown leaves pending find waiters alive
+
+- Category: lifecycle stability, graceful shutdown, alias lookup
+- Score: 49/100
+- Reviewer: `Socrates the 3rd`, confirmed after `Ampere the 3rd` discovery.
+- Affected code:
+  - `src/service/alias_service.rs`: `AliasControl::Find` inserts missing-alias
+    lookups into `AliasServiceInternal::find_reqs` and parks caller waiters
+    until a response or timeout.
+  - `src/service/alias_service.rs`: `AliasControl::Shutdown` only queues
+    `Broadcast(AliasMessage::Shutdown)` and does not transition local pending
+    lookup state.
+  - `src/service/alias_service.rs`: pending finds are completed only by remote
+    `Found` responses or the periodic timeout sweep.
+- Impact: a local alias service can be asked to shut down while callers are
+  blocked in `AliasServiceRequester::find`. Those waiters remain unresolved and
+  `find_reqs` remains populated until the normal scan timeout, so graceful
+  shutdown leaves local tasks and metrics alive longer than necessary. This is
+  distinct from ISSUE-022, which covers remote shutdown evicting unrelated
+  cache entries; ISSUE-148, which covers remote shutdown from a cached hint
+  peer leaving hint lookup stuck; ISSUE-029/130/132, which cover panic and
+  closed-channel lifecycle issues; and ISSUE-137, which covers pending find
+  races with later local registration.
+- Minimal fix proposal: in `AliasControl::Shutdown`, drain `find_reqs`, send
+  `None` to every waiter, decrement `P2P_ALIAS_LIVE_FIND_REQUEST` for each
+  removed request, then broadcast `AliasMessage::Shutdown`. Optionally add a
+  local `shutting_down` flag so later `Find` controls fail immediately.
+- Evidence test:
+  - `cargo test service::alias_service::test::local_shutdown_must_fail_pending_alias_finds -- --nocapture`
+  - Failure summary: after a missing-alias `Find` creates a pending scan,
+    `AliasControl::Shutdown` broadcasts `Shutdown` but `rx.try_recv()` remains
+    `Err(Empty)` and `find_reqs` still contains the alias; expected immediate
+    `Ok(None)` and cleared pending state.
 
 ### ISSUE-164: Tick route/discovery sync is dropped when peer control queue is full
 

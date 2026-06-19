@@ -5,7 +5,7 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Audit Status
 
-- Accepted issues: 178
+- Accepted issues: 179
 - Missing issue scores: 0
 - Current consecutive no-new-issue cycles: 0
 - Stop condition: continue until 5 consecutive cycles find no new accepted
@@ -89,7 +89,7 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   ISSUE-060, ISSUE-064, ISSUE-065, ISSUE-069 through ISSUE-076, ISSUE-108,
   ISSUE-128 through ISSUE-132, ISSUE-135, ISSUE-139, ISSUE-142, ISSUE-144,
   ISSUE-148, ISSUE-150, ISSUE-151, ISSUE-161, ISSUE-162, ISSUE-165,
-  ISSUE-167, ISSUE-168, ISSUE-170.
+  ISSUE-167, ISSUE-168, ISSUE-170, ISSUE-179.
 - Pattern: requesters, services, peer aliases, channel state, and cached hints
   can outlive the owner they represent; shutdown paths can panic, leak, emit
   false public events, or keep stale routes/cache entries.
@@ -138,9 +138,11 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   when the peer id is already connected. Reviewer: Helmholtz the 3rd.
 - ISSUE-178, score 57: pubsub RPC treats closed local event channels as live
   destinations. Reviewer: Russell the 3rd.
+- ISSUE-179, score 49: local alias shutdown leaves pending find waiters alive.
+  Reviewer: Socrates the 3rd.
 
 ## Next Candidate To Validate
 
-- None queued. ISSUE-178 kept the no-new counter at 0. Continue fresh source
+- None queued. ISSUE-179 kept the no-new counter at 0. Continue fresh source
   review; if five consecutive cycles find no issue, switch to randomized fuzz
   tests over node actions.

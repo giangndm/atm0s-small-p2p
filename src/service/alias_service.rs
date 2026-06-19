@@ -909,6 +909,30 @@ mod test {
     }
 
     #[test]
+    fn local_shutdown_must_fail_pending_alias_finds() {
+        let mut ctx = TestContext::new();
+        let alias_id = AliasId(1);
+
+        let (tx, mut rx) = oneshot::channel();
+        ctx.internal.on_control(ctx.now, AliasControl::Find(alias_id, tx));
+
+        assert_eq!(ctx.collect_outputs(), vec![InternalOutput::Broadcast(AliasMessage::Scan(alias_id))]);
+
+        ctx.internal.on_control(ctx.now + 1, AliasControl::Shutdown);
+
+        assert_eq!(
+            rx.try_recv(),
+            Ok(None),
+            "local alias shutdown must immediately fail pending find waiters"
+        );
+        assert!(
+            !ctx.internal.find_reqs.contains_key(&alias_id),
+            "local alias shutdown must clear pending find state"
+        );
+        assert_eq!(ctx.collect_outputs(), vec![InternalOutput::Broadcast(AliasMessage::Shutdown)]);
+    }
+
+    #[test]
     fn test_shutdown() {
         let mut ctx = TestContext::new();
         let alias_id = AliasId(1);
