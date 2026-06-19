@@ -213,8 +213,9 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Randomized node-action churn fuzzing has started. The first invalid-input
   churn run rediscovered ISSUE-053; the first valid-only churn run rediscovered
-  ISSUE-063. Continue fuzzing after fixing or bypassing those duplicate
-  blockers.
+  ISSUE-063; sanitized churn rediscovered ISSUE-139. A steady-valid fuzz pass
+  bypassed those duplicate blockers and found no new issue. Continue expanding
+  randomized fuzzing from that passing baseline.
 
 ## Recent Fuzz Evidence
 
@@ -224,6 +225,13 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 - Valid-only churn fuzz:
   `P2P_FUZZ_NODES=3 P2P_FUZZ_STEPS=60 cargo test fuzz_random_valid_node_churn_actions_must_not_panic_connection_tasks -- --nocapture`
   panics at `src/router.rs:76`, duplicate evidence for ISSUE-063.
+- Sanitized churn fuzz:
+  `P2P_FUZZ_NODES=3 P2P_FUZZ_STEPS=120 cargo test fuzz_random_sanitized_node_churn_actions_must_not_panic_connection_tasks -- --nocapture`
+  panics at `src/peer.rs:106`, duplicate evidence for ISSUE-139.
+- Steady valid fuzz:
+  `P2P_FUZZ_NODES=3 P2P_FUZZ_STEPS=150 cargo test fuzz_random_steady_valid_node_actions_must_not_panic_connection_tasks -- --nocapture`
+  passed after bypassing invalid service ids, forged `PeerStopped`, and
+  stop/restart churn.
 
 ## Recent No-New Audit
 

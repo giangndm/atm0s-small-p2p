@@ -38,12 +38,22 @@ async fn fuzz_random_valid_node_actions_must_not_panic_connection_tasks() {
 
 #[test(tokio::test(flavor = "multi_thread", worker_threads = 4))]
 async fn fuzz_random_node_churn_actions_must_not_panic_connection_tasks() {
-    run_random_node_churn_fuzz(true, 180).await;
+    run_random_node_churn_fuzz(true, true, 180).await;
 }
 
 #[test(tokio::test(flavor = "multi_thread", worker_threads = 4))]
 async fn fuzz_random_valid_node_churn_actions_must_not_panic_connection_tasks() {
-    run_random_node_churn_fuzz(false, 300).await;
+    run_random_node_churn_fuzz(false, true, 300).await;
+}
+
+#[test(tokio::test(flavor = "multi_thread", worker_threads = 4))]
+async fn fuzz_random_sanitized_node_churn_actions_must_not_panic_connection_tasks() {
+    run_random_node_churn_fuzz(false, false, 500).await;
+}
+
+#[test(tokio::test(flavor = "multi_thread", worker_threads = 4))]
+async fn fuzz_random_steady_valid_node_actions_must_not_panic_connection_tasks() {
+    run_random_steady_valid_node_fuzz().await;
 }
 
 async fn run_random_node_action_fuzz(include_known_invalid_service: bool, default_steps: usize) {
@@ -232,7 +242,7 @@ async fn spawn_fuzz_node(peer_id: u64) -> RunningFuzzNode {
     }
 }
 
-async fn run_random_node_churn_fuzz(include_known_invalid_service: bool, default_steps: usize) {
+async fn run_random_node_churn_fuzz(include_known_invalid_service: bool, include_forged_peer_stopped: bool, default_steps: usize) {
     let node_count = env_usize("P2P_FUZZ_NODES", 5).clamp(2, 8);
     let steps = env_usize("P2P_FUZZ_STEPS", default_steps);
     let seed = env_u64("P2P_FUZZ_SEED", 0x51a7e);
@@ -260,8 +270,10 @@ async fn run_random_node_churn_fuzz(include_known_invalid_service: bool, default
 
         let actions = if include_known_invalid_service {
             12
-        } else {
+        } else if include_forged_peer_stopped {
             11
+        } else {
+            10
         };
         match rng.gen_range(0..actions) {
             0 => {
@@ -292,7 +304,7 @@ async fn run_random_node_churn_fuzz(include_known_invalid_service: bool, default
                     let _ = tokio::time::timeout(Duration::from_millis(100), from_node.service_requester.open_stream(to_node.addr.peer_id(), meta)).await;
                 }
             }
-            5 => {
+            5 if include_forged_peer_stopped => {
                 if let Some(from_node) = &nodes[from] {
                     if let Some(conn) = from_node.ctx.conns().into_iter().next() {
                         let forged_peer = PeerId::from(rng.gen_range(1..=(node_count as u64 + 4)));
@@ -360,5 +372,87 @@ async fn run_random_node_churn_fuzz(include_known_invalid_service: bool, default
     assert!(
         !background_panicked.load(Ordering::SeqCst),
         "fuzz random node churn actions must not panic background connection/service tasks; seed={seed}, nodes={node_count}, steps={steps}"
+    );
+}
+
+async fn run_random_steady_valid_node_fuzz() {
+    let node_count = env_usize("P2P_FUZZ_NODES", 5).clamp(2, 8);
+    let steps = env_usize("P2P_FUZZ_STEPS", 500);
+    let seed = env_u64("P2P_FUZZ_SEED", 0x57ead);
+    let mut rng = StdRng::seed_from_u64(seed);
+
+    let background_panicked = Arc::new(AtomicBool::new(false));
+    let previous_hook = std::panic::take_hook();
+    let hook_flag = background_panicked.clone();
+    std::panic::set_hook(Box::new(move |info| {
+        hook_flag.store(true, Ordering::SeqCst);
+        eprintln!("{info}");
+    }));
+
+    let mut nodes = Vec::with_capacity(node_count);
+
+    for id in 0..node_count {
+        nodes.push(spawn_fuzz_node((id + 1) as u64).await);
+    }
+
+    for step in 0..steps {
+        let from = rng.gen_range(0..node_count);
+        let mut to = rng.gen_range(0..node_count);
+        if to == from {
+            to = (to + 1) % node_count;
+        }
+
+        match rng.gen_range(0..8) {
+            0 => {
+                nodes[from].requester.try_connect(nodes[to].addr.clone());
+            }
+            1 => {
+                let _ = tokio::time::timeout(Duration::from_millis(50), nodes[from].requester.connect(nodes[to].addr.clone())).await;
+            }
+            2 => {
+                for _ in 0..rng.gen_range(2..=6) {
+                    nodes[from].requester.try_connect(nodes[to].addr.clone());
+                }
+            }
+            3 => {
+                let data = format!("fuzz-steady-unicast-{seed}-{step}-{from}-{to}").into_bytes();
+                let _ = tokio::time::timeout(Duration::from_millis(50), nodes[from].service_requester.send_unicast(nodes[to].addr.peer_id(), data)).await;
+            }
+            4 => {
+                let data = format!("fuzz-steady-try-unicast-{seed}-{step}-{from}-{to}").into_bytes();
+                let _ = nodes[from].service_requester.try_send_unicast(nodes[to].addr.peer_id(), data).await;
+            }
+            5 => {
+                let data = format!("fuzz-steady-broadcast-{seed}-{step}-{from}").into_bytes();
+                let _ = tokio::time::timeout(Duration::from_millis(50), nodes[from].service_requester.send_broadcast(data)).await;
+            }
+            6 => {
+                let meta = format!("fuzz-steady-stream-{seed}-{step}-{from}-{to}").into_bytes();
+                let _ = tokio::time::timeout(Duration::from_millis(100), nodes[from].service_requester.open_stream(nodes[to].addr.peer_id(), meta)).await;
+            }
+            _ => {
+                if let Some(conn) = nodes[from].ctx.conns().into_iter().next() {
+                    let source = PeerId::from(rng.gen_range(1_000_000..2_000_000));
+                    let data = format!("fuzz-steady-raw-unicast-{seed}-{step}-{from}-{to}").into_bytes();
+                    let _ = conn.try_send(PeerMessage::Unicast(source, nodes[to].addr.peer_id(), P2pServiceId::from(0), data));
+                }
+            }
+        }
+
+        tokio::time::sleep(Duration::from_millis(5)).await;
+        if background_panicked.load(Ordering::SeqCst) {
+            break;
+        }
+    }
+
+    tokio::time::sleep(Duration::from_millis(150)).await;
+    for node in nodes {
+        node.abort();
+    }
+    std::panic::set_hook(previous_hook);
+
+    assert!(
+        !background_panicked.load(Ordering::SeqCst),
+        "fuzz random steady valid node actions must not panic background connection/service tasks; seed={seed}, nodes={node_count}, steps={steps}"
     );
 }

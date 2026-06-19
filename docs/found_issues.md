@@ -3595,7 +3595,8 @@ the source of truth for evidence and reviewer decisions.
 
 - Category: shutdown stability, bad-network stability, connection lifecycle
 - Score: 63/100
-- Reviewer: `Mill the 2nd`, confirmed.
+- Reviewer: `Mill the 2nd`, confirmed. Additional churn fuzz evidence
+  confirmed by `Huygens the 3rd`.
 - Affected code:
   - `src/peer.rs`: `PeerConnection::new_incoming` reports early
     `incoming.await` and `connection.accept_bi()` failures with
@@ -3616,6 +3617,13 @@ the source of truth for evidence and reviewer decisions.
     control stream while `main_rx` is dropped; the spawned incoming peer task
     panics at `src/peer.rs:62` with `should send to main: SendError`, and the
     panic hook records the background panic.
+  - Additional sanitized churn fuzz evidence:
+    `P2P_FUZZ_NODES=3 P2P_FUZZ_STEPS=120 cargo test fuzz_random_sanitized_node_churn_actions_must_not_panic_connection_tasks -- --nocapture`
+  - Sanitized churn fuzz failure summary: with out-of-range service ids and
+    forged `PeerStopped` messages disabled, ordinary connect/stop/restart
+    churn panics a background task at `src/peer.rs:106` while the outbound
+    `new_connecting` path reports an early `PeerConnectError` to a closed main
+    loop.
 
 ### ISSUE-140: Ignored replicated-KV RPC responses refresh stale remote activity
 
