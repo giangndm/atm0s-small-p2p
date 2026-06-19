@@ -234,14 +234,16 @@ async fn run_connection<SECURE: HandshakeProtocol>(
 mod tests {
     use super::*;
     use std::{
+        collections::HashMap,
         net::UdpSocket,
         sync::{
             atomic::{AtomicBool, Ordering},
-            Arc,
+            Arc, Mutex,
         },
     };
 
     use futures::SinkExt;
+    use metrics::{Counter, Gauge, Histogram, Key, KeyName, Metadata, Recorder, SharedString, Unit};
     use quinn::{ClientConfig, Endpoint, ServerConfig, TransportConfig, VarInt};
     use rustls::pki_types::{CertificateDer, PrivatePkcs8KeyDer};
     use tokio_util::codec::Framed;
@@ -257,6 +259,72 @@ mod tests {
 
     const DEFAULT_CLUSTER_CERT: &[u8] = include_bytes!("../certs/dev.cluster.cert");
     const DEFAULT_CLUSTER_KEY: &[u8] = include_bytes!("../certs/dev.cluster.key");
+
+    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+    enum MetricKind {
+        Counter,
+        Gauge,
+        Histogram,
+    }
+
+    #[derive(Default)]
+    struct KindCollisionRecorder {
+        kinds: Mutex<HashMap<String, MetricKind>>,
+        collision: AtomicBool,
+    }
+
+    impl KindCollisionRecorder {
+        fn record_kind(&self, key: &Key, kind: MetricKind) {
+            let mut kinds = self.kinds.lock().expect("test recorder mutex should not be poisoned");
+            match kinds.insert(key.name().to_owned(), kind) {
+                Some(existing) if existing != kind => self.collision.store(true, Ordering::SeqCst),
+                _ => {}
+            }
+        }
+
+        fn has_collision(&self) -> bool {
+            self.collision.load(Ordering::SeqCst)
+        }
+    }
+
+    impl Recorder for KindCollisionRecorder {
+        fn describe_counter(&self, _key: KeyName, _unit: Option<Unit>, _description: SharedString) {}
+
+        fn describe_gauge(&self, _key: KeyName, _unit: Option<Unit>, _description: SharedString) {}
+
+        fn describe_histogram(&self, _key: KeyName, _unit: Option<Unit>, _description: SharedString) {}
+
+        fn register_counter(&self, key: &Key, _metadata: &Metadata<'_>) -> Counter {
+            self.record_kind(key, MetricKind::Counter);
+            Counter::noop()
+        }
+
+        fn register_gauge(&self, key: &Key, _metadata: &Metadata<'_>) -> Gauge {
+            self.record_kind(key, MetricKind::Gauge);
+            Gauge::noop()
+        }
+
+        fn register_histogram(&self, key: &Key, _metadata: &Metadata<'_>) -> Histogram {
+            self.record_kind(key, MetricKind::Histogram);
+            Histogram::noop()
+        }
+    }
+
+    #[test]
+    fn connection_teardown_must_not_emit_rtt_as_counter() {
+        let recorder = KindCollisionRecorder::default();
+
+        metrics::with_local_recorder(&recorder, || {
+            gauge!(P2P_CONNECTION_RTT, "peer_id" => "1", "connect_to" => "2").set(10);
+            gauge!(P2P_CONNECTION_RTT, "peer_id" => "1", "connect_to" => "2").set(0);
+            counter!(P2P_CONNECTION_RTT, "peer_id" => "1", "connect_to" => "2").absolute(0);
+        });
+
+        assert!(
+            !recorder.has_collision(),
+            "connection teardown must not emit p2p_connection_rtt as a counter after it was emitted and described as a gauge"
+        );
+    }
 
     struct LargeAuthHandshake;
 

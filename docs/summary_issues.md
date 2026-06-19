@@ -5,7 +5,7 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Audit Status
 
-- Accepted issues: 192
+- Accepted issues: 193
 - Missing issue scores: 0
 - Current consecutive no-new-issue cycles: 0
 - Stop condition: continue until 5 consecutive cycles find no new accepted
@@ -100,13 +100,14 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   ISSUE-128 through ISSUE-132, ISSUE-135, ISSUE-139, ISSUE-142, ISSUE-144,
   ISSUE-148, ISSUE-150, ISSUE-151, ISSUE-161, ISSUE-162, ISSUE-165,
   ISSUE-167, ISSUE-168, ISSUE-170, ISSUE-179, ISSUE-183, ISSUE-185,
-  ISSUE-187, ISSUE-188.
+  ISSUE-187, ISSUE-188, ISSUE-193.
 - Pattern: requesters, services, peer aliases, channel state, and cached hints
   can outlive the owner they represent; shutdown paths can panic, leak, emit
   false public events, keep stale routes/cache entries, announce shutdown while
   local authority remains active, or drop remote membership that arrives before
   local channel ownership exists. Peer lifecycle events also do not consistently
   reach service-owned per-peer membership or public network-event consumers.
+  Connection teardown can also reset metric names through the wrong metric kind.
 - Minimal fix proposal: add generation or liveness tokens to cloned requesters
   and local handles, make closed channels return `Err`, and centralize teardown
   for aliases, metrics, routes, caches, and service ids. Shutdown controls
@@ -114,7 +115,8 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   rejected or no-op. Fan out accepted peer stopped/disconnected events to
   services that own per-peer state and surface them through the public network
   event API. Retain bounded pubsub remote membership even before local handles
-  exist, then replay it when local handles are created.
+  exist, then replay it when local handles are created. Keep each metric name on
+  one metric kind during live emission and teardown resets.
 
 ### RC-7: Routing/discovery accepts unstable topology
 
@@ -204,10 +206,12 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   compile. Reviewer: Halley the 3rd.
 - ISSUE-192, score 39: duplicate discovery-sync peers silently keep the last
   address. Reviewer: Arendt the 3rd.
+- ISSUE-193, score 31: connection teardown emits RTT as both gauge and counter.
+  Reviewer: Copernicus the 3rd.
 
 ## Next Candidate To Validate
 
-- None queued. ISSUE-192 reset the no-new counter to 0. Continue fresh source
+- None queued. ISSUE-193 reset the no-new counter to 0. Continue fresh source
   review until five consecutive no-new cycles, then switch to randomized fuzz
   tests over node actions.
 

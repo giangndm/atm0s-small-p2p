@@ -117,7 +117,7 @@ the source of truth for evidence and reviewer decisions.
   ISSUE-128 through ISSUE-132, ISSUE-135, ISSUE-139, ISSUE-142, ISSUE-144,
   ISSUE-148, ISSUE-150, ISSUE-151, ISSUE-161, ISSUE-162, ISSUE-165,
   ISSUE-167, ISSUE-168, ISSUE-170, ISSUE-179, ISSUE-183, ISSUE-185,
-  ISSUE-187, ISSUE-188.
+  ISSUE-187, ISSUE-188, ISSUE-193.
 - Pattern: requesters, services, peer aliases, channel state, and cached hints
   can outlive the owner they represent, while shutdown paths may panic, leak,
   emit false public events, or keep stale routes/cache entries. Remote
@@ -125,7 +125,9 @@ the source of truth for evidence and reviewer decisions.
   discarded instead of retained as peer-owned state. Some shutdown controls
   announce owner teardown without clearing local authority, and peer lifecycle
   events do not consistently reach service-owned membership or public
-  network-event consumers.
+  network-event consumers. Teardown instrumentation can also reset metrics
+  through the wrong metric kind, corrupting observability state for exporters
+  that require a single kind per metric name.
 - Minimal fix proposal: add generation or liveness tokens to cloned requesters
   and local handles, make closed channels return `Err` instead of panicking, and
   centralize owner teardown so aliases, metrics, routes, caches, and service ids
@@ -134,7 +136,8 @@ the source of truth for evidence and reviewer decisions.
   Peer stopped/disconnected events should be fanned out to services that own
   per-peer state and surfaced through the public network event API. Pubsub
   should retain bounded remote membership state even before local handles exist
-  and replay it when the first local handle is created.
+  and replay it when the first local handle is created. Metric teardown should
+  use the same metric kind as live emission for every metric name.
 
 ### RC-7: Routing and discovery accept unstable or self-referential topology
 
@@ -5321,6 +5324,38 @@ the source of truth for evidence and reviewer decisions.
     `7@127.0.0.1:9000` at timestamp 100. Current discovery remotes become
     `[7@127.0.0.1:9000]`; expected rejection or newest-timestamp resolution
     leaving `[7@127.0.0.1:9001]`.
+
+### ISSUE-193: Connection teardown emits RTT as both gauge and counter
+
+- Category: correctness, observability stability, lifecycle cleanup
+- Score: 31/100
+- Reviewer: `Copernicus the 3rd`, confirmed by independent forked review and
+  failing test evidence.
+- Affected code:
+  - `src/peer/peer_internal.rs`: live connection ticks emit
+    `P2P_CONNECTION_RTT` with `gauge!(...).set(metrics.rtt as f64)`.
+  - `src/stats.rs`: `P2P_CONNECTION_RTT` is described as a gauge.
+  - `src/peer.rs`: connection teardown first resets
+    `P2P_CONNECTION_RTT` as a gauge, then emits the same metric name with
+    `counter!(P2P_CONNECTION_RTT).absolute(0)`.
+- Impact: exporters or recorders that enforce one metric kind per metric name
+  can observe `p2p_connection_rtt` registered as both a gauge and a counter.
+  That can drop the reset, reject the metric family, or corrupt dashboards
+  after disconnects. This is distinct from ISSUE-061/062 metrics-service forged
+  protocol messages and ISSUE-064/068 stale or mismatched `PeerStats` state;
+  this issue is the real connection teardown instrumentation path using the
+  wrong metric kind.
+- Minimal fix proposal: remove the teardown
+  `counter!(P2P_CONNECTION_RTT).absolute(0)` call, or change it to the existing
+  `gauge!(P2P_CONNECTION_RTT).set(0)` reset only. Keep uptime and byte/loss
+  metrics on counter names.
+- Evidence test:
+  - `cargo test connection_teardown_must_not_emit_rtt_as_counter -- --nocapture`
+  - Failure summary: the test installs a recorder that records metric kind per
+    key, emits `p2p_connection_rtt` as a gauge like the live tick path, then
+    exercises the teardown reset sequence. The recorder observes the same RTT
+    key as both gauge and counter, so the test fails with the assertion that
+    teardown must not emit RTT as a counter.
 
 ## No-New-Issue Audit Cycles
 
