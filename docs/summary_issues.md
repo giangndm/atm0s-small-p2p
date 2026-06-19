@@ -5,9 +5,9 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Audit Status
 
-- Accepted issues: 173
+- Accepted issues: 174
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 1
+- Current consecutive no-new-issue cycles: 0
 - Stop condition: continue until 5 consecutive cycles find no new accepted
   issue; after that, continue with randomized fuzz tests over node actions.
 
@@ -70,7 +70,7 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Representative issues: ISSUE-010, ISSUE-024, ISSUE-027, ISSUE-035,
   ISSUE-041, ISSUE-043, ISSUE-045, ISSUE-046, ISSUE-100 through ISSUE-108,
-  ISSUE-122, ISSUE-131.
+  ISSUE-122, ISSUE-131, ISSUE-174.
 - Pattern: decoded service-level collections, pending maps, cache sets,
   tombstones, remote stores, and retained channel state often have no item-count
   or lifetime cap.
@@ -121,10 +121,11 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   a stalled peer. Reviewer: James the 3rd.
 - ISSUE-173, score 68: inbound peer setup hangs while writing `ConnectRes` to
   a stalled peer. Reviewer: Peirce the 3rd.
+- ISSUE-174, score 46: QUIC object writer can bypass `MAX_SIZE` with
+  non-deterministic serialization. Reviewer: Hypatia the 3rd.
 
 ## Next Candidate To Validate
 
-- None queued. The cycle after ISSUE-173 found supplemental evidence for
-  ISSUE-168, ISSUE-060, and ISSUE-119, but no non-duplicate accepted issue.
-  Continue fresh source review; if five consecutive cycles find no issue,
-  switch to randomized fuzz tests over node actions.
+- None queued. ISSUE-174 reset the no-new counter to 0. Continue fresh source
+  review; if five consecutive cycles find no issue, switch to randomized fuzz
+  tests over node actions.

@@ -11,7 +11,7 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 1
+- Current consecutive no-new-issue cycles: 0
 - Stop condition requested by user: continue until 5 consecutive cycles find no
   new accepted issue.
 
@@ -86,7 +86,7 @@ the source of truth for evidence and reviewer decisions.
 
 - Representative issues: ISSUE-010, ISSUE-024, ISSUE-027, ISSUE-035,
   ISSUE-041, ISSUE-043, ISSUE-045, ISSUE-046, ISSUE-100 through ISSUE-108,
-  ISSUE-122, ISSUE-131.
+  ISSUE-122, ISSUE-131, ISSUE-174.
 - Pattern: protocol framing may limit packet size, but decoded service-level
   collections, pending maps, cache sets, tombstones, remote stores, and retained
   channel state often have no item-count or lifetime cap.
@@ -2331,6 +2331,37 @@ the source of truth for evidence and reviewer decisions.
   - Failure summary: `write_object::<_, _, 100_000>` returns `Ok(())` for a
     70 KB payload even though the two-byte length prefix cannot represent it;
     expected a recoverable error.
+
+### ISSUE-174: QUIC object writer can bypass `MAX_SIZE` with non-deterministic serialization
+
+- Category: correctness, API stability, framing validation
+- Score: 46/100
+- Reviewer: `Hypatia the 3rd`, confirmed after `Locke the 3rd` discovery.
+- Affected code:
+  - `src/stream.rs`: `write_object` calls
+    `bincode::serialized_size(object)` for the size check, then calls
+    `bincode::serialize(object)` again and writes the second buffer.
+  - `src/stream.rs`: the actual `data_buf.len()` is not rechecked against
+    `MAX_SIZE` before writing the length prefix and payload.
+  - `src/peer.rs` and `src/peer/peer_internal.rs`: handshake and stream setup
+    paths rely on this shared object writer.
+- Impact: a legal but stateful or otherwise non-deterministic `Serialize`
+  implementation can produce a small payload for the estimate pass and a larger
+  payload for the actual write pass. `write_object` can then return `Ok(())`
+  and emit a frame larger than the configured protocol cap even when
+  `MAX_SIZE <= u16::MAX`. This is distinct from ISSUE-097, which covers
+  serialization errors panicking instead of returning `Err`, and ISSUE-098,
+  which covers length-prefix truncation when `MAX_SIZE` itself exceeds the
+  two-byte wire limit.
+- Minimal fix proposal: serialize exactly once, map serialization failures to
+  `Err`, then validate `data_buf.len() <= MAX_SIZE` and
+  `data_buf.len() <= u16::MAX` before writing any bytes.
+- Evidence test:
+  - `cargo test write_object_must_recheck_actual_serialized_size -- --nocapture`
+  - Failure summary: a test `Serialize` implementation emits a one-element
+    sequence during `serialized_size` and a 32-element sequence during
+    `serialize`; `write_object::<_, _, 16>` returns `Ok(())` instead of
+    rejecting the actual oversized serialized payload.
 
 ### ISSUE-099: Replicated KV accepts zero-count FetchChanged as successful repair
 

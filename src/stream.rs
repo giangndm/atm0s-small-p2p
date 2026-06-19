@@ -120,8 +120,10 @@ pub async fn write_object<W: AsyncWrite + Send + Unpin, O: Serialize, const MAX_
 
 #[cfg(test)]
 mod tests {
+    use std::cell::Cell;
+
     use futures::FutureExt;
-    use serde::Serializer;
+    use serde::{ser::SerializeSeq, Serializer};
     use tokio_util::{bytes::BytesMut, codec::Encoder};
 
     use crate::{
@@ -139,6 +141,24 @@ mod tests {
             S: Serializer,
         {
             Err(serde::ser::Error::custom("intentional stream serialization failure"))
+        }
+    }
+
+    struct GrowingSerialize {
+        first_pass: Cell<bool>,
+    }
+
+    impl Serialize for GrowingSerialize {
+        fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+        where
+            S: Serializer,
+        {
+            let len = if self.first_pass.replace(false) { 1 } else { 32 };
+            let mut seq = serializer.serialize_seq(Some(len))?;
+            for _ in 0..len {
+                seq.serialize_element(&7u8)?;
+            }
+            seq.end()
         }
     }
 
@@ -170,5 +190,23 @@ mod tests {
         let result = write_object::<_, _, 100_000>(&mut writer, &payload).await;
 
         assert!(result.is_err(), "write_object must reject objects larger than the two-byte length prefix can represent");
+    }
+
+    #[tokio::test]
+    async fn write_object_must_recheck_actual_serialized_size() {
+        let mut writer = Vec::new();
+        let payload = GrowingSerialize { first_pass: Cell::new(true) };
+
+        let result = write_object::<_, _, 16>(&mut writer, &payload).await;
+
+        assert!(
+            result.is_err(),
+            "write_object must reject the actual serialized payload when it exceeds MAX_SIZE, not only the estimate"
+        );
+        assert!(
+            writer.len() <= 18,
+            "write_object must not write an oversized frame after a smaller serialized_size estimate, wrote {} bytes",
+            writer.len()
+        );
     }
 }
