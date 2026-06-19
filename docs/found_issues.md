@@ -11,7 +11,7 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 1
+- Current consecutive no-new-issue cycles: 2
 - Stop condition requested by user: continue until 5 consecutive cycles find no
   new accepted issue.
 
@@ -4370,3 +4370,30 @@ the source of truth for evidence and reviewer decisions.
     ISSUE-162 or ISSUE-165.
 - Root-cause summary impact: no change; rejected candidates map to existing
   RC-3, RC-4, RC-6, and RC-7 patterns.
+
+### Cycle after no-new cycle 1: serialization, parsing, public API boundaries
+
+- Result: no accepted non-duplicate issue.
+- Reviewer/explorer: `Hegel the 3rd`.
+- Local/source areas reviewed:
+  - `src/stream.rs`, `src/msg.rs`, `src/peer.rs`,
+    `src/peer/peer_internal.rs`
+  - `src/service/pubsub_service.rs`, `src/service/replicate_kv_service.rs`,
+    `src/service/replicate_kv_service/local_storage.rs`,
+    `src/service/replicate_kv_service/remote_storage.rs`
+  - existing pubsub, replicated-KV, metrics, visualization, stream, and
+    malformed-input ledger entries.
+- Duplicate or too-close candidates rejected:
+  - pubsub object helper serialization panics: ISSUE-094.
+  - QUIC object writer serialization and length-prefix failures:
+    ISSUE-097/098.
+  - oversized main/service frames and service-level batch/resource gaps:
+    ISSUE-010, ISSUE-024, ISSUE-100 through ISSUE-108, ISSUE-122.
+  - alias requester/guard drop panics and stale alias cache states: ISSUE-029
+    plus alias stale/cache issues.
+  - pubsub RPC answer binding and forgery surfaces:
+    ISSUE-020, ISSUE-115, ISSUE-116.
+  - replicated-KV malformed snapshot/change/version cases already covered by
+    local and remote storage evidence tests.
+- Root-cause summary impact: no change; rejected candidates map to existing
+  RC-2, RC-3, RC-5, and RC-6 patterns.
