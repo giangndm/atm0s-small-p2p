@@ -7,9 +7,9 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Accepted issues: 204
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 12
+- Current consecutive no-new-issue cycles: 13
 - Stop condition: continue until 5 consecutive cycles find no new accepted
-  issue; currently 12/5 after ISSUE-204.
+  issue; currently 13/5 after ISSUE-204.
 
 ## Root Cause Summary
 
@@ -256,6 +256,12 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Recent Fuzz Evidence
 
+- Extended invalid churn fuzz:
+  `P2P_FUZZ_SEED=2179001 P2P_FUZZ_NODES=8 P2P_FUZZ_STEPS=1400 cargo test fuzz_random_node_churn_actions_must_not_panic_connection_tasks -- --nocapture`
+  failed with duplicate evidence for ISSUE-053. Reviewer `Nash the 4th`
+  confirmed the `src/ctx.rs:34` fixed service-array bounds panic is the same
+  out-of-range `P2pServiceId(256)` root cause; channel-closed sends after the
+  panic were consequential churn/lifecycle symptoms.
 - Extended sanitized churn fuzz:
   `P2P_FUZZ_SEED=2178001 P2P_FUZZ_NODES=8 P2P_FUZZ_STEPS=1800 cargo test fuzz_random_sanitized_node_churn_actions_must_not_panic_connection_tasks -- --nocapture`
   failed with duplicate evidence for ISSUE-139 and ISSUE-170. Reviewer
@@ -358,6 +364,12 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Recent No-New Audit
 
+- Cycle after ISSUE-204 no-new cycle 13 ran an eight-node invalid churn fuzz
+  pass with forked reviewer `Nash the 4th`. The run failed with exit code 101,
+  but the failure was duplicate evidence for ISSUE-053: an invalid service id
+  reached the fixed service array and panicked at `src/ctx.rs:34`. Follow-on
+  channel-closed send logs were reviewed as churn/lifecycle consequences, so
+  no accepted issue or summary root-cause change was recorded.
 - Cycle after ISSUE-204 no-new cycle 12 ran an eight-node sanitized churn fuzz
   pass with forked reviewer `Plato the 4th`. The run failed, but the failure
   was duplicate evidence for ISSUE-139 and ISSUE-170: early
