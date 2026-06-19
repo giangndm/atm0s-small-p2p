@@ -112,14 +112,15 @@ the source of truth for evidence and reviewer decisions.
 
 - Representative issues: ISSUE-003, ISSUE-005, ISSUE-006, ISSUE-007,
   ISSUE-008, ISSUE-033, ISSUE-044, ISSUE-055, ISSUE-092, ISSUE-103,
-  ISSUE-112 through ISSUE-114.
+  ISSUE-112 through ISSUE-114, ISSUE-160.
 - Pattern: route/discovery inputs can include local ids, self seeds, stale
   addresses, overflowed metrics, over-hop routes, duplicate connection races, or
   tiny RTT jitter that changes active paths too aggressively.
 - Minimal fix proposal: add route/discovery sanitization before insertion:
-  reject local/self candidates and over-hop routes, use checked metric math,
-  ignore stale discovery timestamps, coalesce duplicate connects, and add a
-  small hysteresis threshold before switching active paths.
+  reject local/self candidates and over-hop routes, pin authenticated direct
+  paths for their peer ids, use checked metric math, ignore stale discovery
+  timestamps, coalesce duplicate connects, and add a small hysteresis threshold
+  before switching active paths.
 
 ## Accepted Issues
 
@@ -4139,3 +4140,38 @@ the source of truth for evidence and reviewer decisions.
     advertising `max_concurrent_bidi_streams(0)`. After the normal node queues
     a connect and the test drives `recv()` for the cleanup window, the pending
     neighbour count remains `1`; expected setup timeout cleanup to remove it.
+
+### ISSUE-160: Relayed route replaces direct authenticated peer route
+
+- Category: correctness, route stability, bad-network path selection
+- Score: 68/100
+- Reviewer: `Wegener the 2nd`, confirmed after `Kierkegaard the 2nd`
+  discovery.
+- Affected code:
+  - `src/router.rs`: `set_direct` inserts an authenticated direct peer path,
+    but the direct path is stored as just another scored candidate.
+  - `src/router.rs`: `apply_sync` accepts relayed advertisements for peers that
+    already have a direct authenticated connection.
+  - `src/router.rs`: `PeerMemory::select_best` chooses the lowest score only,
+    with no direct-path ownership preference for the destination peer.
+  - `src/peer/peer_internal.rs`: unicast and stream forwarding trust the
+    selected router path.
+- Impact: a relay can advertise a very low-cost path to a peer that is already
+  directly authenticated, causing local traffic for that peer to leave over the
+  relay instead of the peer's own connection. This makes active paths noisy,
+  can break pipe setup when the relay path is stale or lossy, and contradicts
+  the router invariant that direct RTT should dominate. This is distinct from
+  ISSUE-003, which covers low-margin route flapping and equal-score instability,
+  and ISSUE-044, which requires score arithmetic overflow.
+- Minimal fix proposal: prefer the direct connection for its authenticated peer
+  unless that direct connection is removed or explicitly marked unusable. The
+  smallest implementation is to check `RouterTable.directs` during selection,
+  or store direct ownership in `PeerMemory`, and make direct paths outrank
+  relayed paths for the same destination.
+- Evidence test:
+  - `cargo test direct_peer_route_must_not_be_replaced_by_relayed_path -- --nocapture`
+  - Failure summary: after installing a direct route to `PeerId(2)` over
+    `ConnectionId(2)`, a relay on `ConnectionId(1)` advertises a cheaper path
+    to `PeerId(2)`. The router changes the active route to
+    `Some(Next(ConnectionId(1)))`; expected it to keep the authenticated direct
+    route `Some(Next(ConnectionId(2)))`.

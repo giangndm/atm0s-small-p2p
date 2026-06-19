@@ -450,6 +450,27 @@ mod tests {
     }
 
     #[test_log::test]
+    fn direct_peer_route_must_not_be_replaced_by_relayed_path() {
+        let mut table = RouterTable::new(PeerId(0));
+        let relay = PeerId(1);
+        let direct_peer = PeerId(2);
+        let relay_conn = ConnectionId(1);
+        let direct_conn = ConnectionId(2);
+
+        table.set_direct(relay_conn, relay, 1);
+        table.set_direct(direct_conn, direct_peer, 1000);
+        assert_eq!(table.action(&direct_peer), Some(RouteAction::Next(direct_conn)));
+
+        table.apply_sync(relay_conn, RouterTableSync(vec![(direct_peer, (0, 1).into())]));
+
+        assert_eq!(
+            table.action(&direct_peer),
+            Some(RouteAction::Next(direct_conn)),
+            "traffic to a directly connected peer must stay on that authenticated direct connection"
+        );
+    }
+
+    #[test_log::test]
     fn should_not_store_or_advertise_route_to_local_peer() {
         let local = PeerId(0);
         let peer1 = PeerId(1);

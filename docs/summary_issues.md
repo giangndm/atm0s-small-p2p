@@ -5,7 +5,7 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Audit Status
 
-- Accepted issues: 159
+- Accepted issues: 160
 - Missing issue scores: 0
 - Current consecutive no-new-issue cycles: 0
 - Stop condition: continue until 5 consecutive cycles find no new accepted
@@ -95,19 +95,17 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Representative issues: ISSUE-003, ISSUE-005, ISSUE-006, ISSUE-007,
   ISSUE-008, ISSUE-033, ISSUE-044, ISSUE-055, ISSUE-092, ISSUE-103,
-  ISSUE-112 through ISSUE-114.
+  ISSUE-112 through ISSUE-114, ISSUE-160.
 - Pattern: route/discovery inputs can include local ids, self seeds, stale
   addresses, overflowed metrics, over-hop routes, duplicate connection races,
   or tiny RTT jitter that changes active paths too aggressively.
 - Minimal fix proposal: sanitize before insertion: reject local/self candidates
-  and over-hop routes, use checked metric math, ignore stale discovery
-  timestamps, coalesce duplicate connects, and add hysteresis before switching
-  active paths.
+  and over-hop routes, pin authenticated direct paths for their peer ids, use
+  checked metric math, ignore stale discovery timestamps, coalesce duplicate
+  connects, and add hysteresis before switching active paths.
 
 ## Recent Accepted Issues
 
-- ISSUE-154, score 66: stale `FetchChanged` response cancels a newer
-  replicated-KV repair. Reviewer: Curie the 2nd.
 - ISSUE-155, score 64: stale pubsub leave removes membership confirmed by newer
   heartbeat. Reviewer: Boole the 2nd.
 - ISSUE-156, score 64: relay delivers orphan downstream stream after upstream
@@ -118,6 +116,8 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   `NotifyDel`. Reviewer: Dirac the 2nd.
 - ISSUE-159, score 67: outbound peer setup hangs before the main control stream
   opens. Reviewer: Pascal the 2nd.
+- ISSUE-160, score 68: relayed route replaces a direct authenticated peer
+  route. Reviewer: Wegener the 2nd.
 
 ## Next Candidate To Validate
 
