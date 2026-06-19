@@ -100,7 +100,8 @@ the source of truth for evidence and reviewer decisions.
 - Representative issues: ISSUE-028, ISSUE-029, ISSUE-051, ISSUE-057,
   ISSUE-060, ISSUE-064, ISSUE-065, ISSUE-069 through ISSUE-076, ISSUE-108,
   ISSUE-128 through ISSUE-132, ISSUE-135, ISSUE-139, ISSUE-142, ISSUE-144,
-  ISSUE-148, ISSUE-150, ISSUE-151, ISSUE-161, ISSUE-162, ISSUE-165.
+  ISSUE-148, ISSUE-150, ISSUE-151, ISSUE-161, ISSUE-162, ISSUE-165,
+  ISSUE-167.
 - Pattern: requesters, services, peer aliases, channel state, and cached hints
   can outlive the owner they represent, while shutdown paths may panic, leak,
   emit false public events, or keep stale routes/cache entries.
@@ -113,7 +114,7 @@ the source of truth for evidence and reviewer decisions.
 
 - Representative issues: ISSUE-003, ISSUE-005, ISSUE-006, ISSUE-007,
   ISSUE-008, ISSUE-033, ISSUE-044, ISSUE-055, ISSUE-092, ISSUE-103,
-  ISSUE-112 through ISSUE-114, ISSUE-160, ISSUE-161, ISSUE-164.
+  ISSUE-112 through ISSUE-114, ISSUE-160, ISSUE-161, ISSUE-164, ISSUE-167.
 - Pattern: route/discovery inputs can include local ids, self seeds, stale
   addresses, overflowed metrics, over-hop routes, duplicate connection races, or
   tiny RTT jitter that changes active paths too aggressively.
@@ -4377,6 +4378,38 @@ the source of truth for evidence and reviewer decisions.
     immediate duplicate is rejected, then inserts 8,192 distinct ids. The same
     original id is accepted again after eviction; expected replays inside the
     configured freshness window to remain rejected.
+
+### ISSUE-167: Expired non-seed discovery entries remain routable
+
+- Category: correctness, route lifecycle, bad-network topology stability
+- Score: 56/100
+- Reviewer: `Pasteur the 3rd`, confirmed after `Raman the 3rd` discovery.
+- Affected code:
+  - `src/lib.rs`: `process_tick` calls `discovery.clear_timeout(now_ms)` but
+    does not remove router state for expired peers.
+  - `src/discovery.rs`: `clear_timeout` removes expired non-seed discovery
+    remotes without returning the removed peer ids.
+  - `src/lib.rs`: route sync can install relayed routes independently through
+    `router.apply_sync`.
+  - `src/router.rs`: learned routes have no freshness or discovery-liveness
+    check.
+- Impact: after a non-seed peer's discovery address expires during a long
+  outage, a previously learned relayed route to that peer can remain selected.
+  The node can still send or open streams toward the expired peer and may
+  continue advertising stale reachability. This is distinct from ISSUE-161,
+  which involves graceful-stop tombstones; ISSUE-092/093, which cover discovery
+  freshness only; ISSUE-160, which covers direct-vs-relay preference; and
+  ISSUE-147/164, which cover sync delivery loss.
+- Minimal fix proposal: make `PeerDiscovery::clear_timeout` return expired
+  non-seed peer ids, and have `P2pNetwork::process_tick` call
+  `router.del_peer(&peer)` for each expired non-seed. Preserve configured seed
+  behavior. A broader fix can add route freshness per learned path.
+- Evidence test:
+  - `cargo test discovery_timeout_must_remove_route_to_expired_non_seed -- --nocapture`
+  - Failure summary: after discovery timeout removes the non-seed peer's
+    address, `router.action(expired)` still returns
+    `Some(Next(ConnectionId(20)))`; expected the expired non-seed peer to be
+    unroutable.
 
 ## No-New-Issue Audit Cycles
 

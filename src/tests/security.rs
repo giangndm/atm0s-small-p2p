@@ -5,6 +5,7 @@ use std::{
 };
 
 use crate::{
+    discovery::PeerDiscovery,
     msg::{BroadcastMsgId, P2pServiceId, PeerMessage},
     router::RouteAction,
     ConnectionId, MainEvent, P2pNetwork, P2pNetworkConfig, P2pNetworkEvent, P2pServiceEvent, PeerAddress, PeerConnectionMetric, PeerId, PeerMainData,
@@ -184,6 +185,37 @@ async fn stopped_peer_route_must_not_be_resurrected_by_third_party_sync() {
         node.router.action(&stopped),
         None,
         "a graceful-stop tombstone must prevent third-party route sync from making the stopped peer routable again"
+    );
+}
+
+#[tokio::test]
+async fn discovery_timeout_must_remove_route_to_expired_non_seed() {
+    let (mut node, _addr) = create_node(false, 1, vec![]).await;
+    let relay = PeerId::from(2);
+    let expired = PeerId::from(3);
+    let relay_conn = ConnectionId::from(20);
+    let expired_addr: PeerAddress = "3@127.0.0.1:9003".parse().expect("expired address should parse");
+
+    let mut remote_discovery = PeerDiscovery::default();
+    remote_discovery.enable_local(expired, expired_addr.network_address().clone());
+    node.discovery.apply_sync(100, remote_discovery.create_sync_for(100, &node.local_id));
+
+    node.router.set_direct(relay_conn, relay, 10);
+    let remote_router = SharedRouterTable::new(relay);
+    remote_router.set_direct(ConnectionId::from(30), expired, 5);
+    node.router.apply_sync(relay_conn, remote_router.create_sync(&node.local_id));
+    assert_eq!(
+        node.router.action(&expired),
+        Some(RouteAction::Next(relay_conn)),
+        "test setup should make the expired peer routable through the relay"
+    );
+
+    node.process_tick(30_100).expect("tick should process discovery timeout");
+
+    assert_eq!(
+        node.router.action(&expired),
+        None,
+        "when a non-seed expires from discovery, stale router paths to it must not remain usable"
     );
 }
 
