@@ -7,9 +7,9 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Accepted issues: 204
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 24
+- Current consecutive no-new-issue cycles: 25
 - Stop condition: continue until 5 consecutive cycles find no new accepted
-  issue; currently 24/5 after ISSUE-204.
+  issue; currently 25/5 after ISSUE-204.
 
 ## Root Cause Summary
 
@@ -256,6 +256,11 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Recent Fuzz Evidence
 
+- Focused discovery tombstone source/test review:
+  `cargo test graceful_stop_tombstones_must_be_bounded_for_unknown_peers -- --nocapture`
+  failed with duplicate evidence for ISSUE-122. Reviewer `Hubble the 4th`
+  confirmed the `src/discovery.rs:280` assertion is the already-accepted
+  unbounded stopped-peer tombstone resource flaw under RC-5.
 - Focused pubsub timeout source/test review:
   `cargo test pubsub_publish_rpc_must_respect_short_timeout -- --nocapture`
   failed with duplicate evidence for ISSUE-121. Reviewer `Dirac the 4th`

@@ -11,7 +11,7 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 24
+- Current consecutive no-new-issue cycles: 25
 - Stop condition requested by user: continue until 5 consecutive cycles find no
   new accepted issue.
 
@@ -5783,6 +5783,26 @@ the source of truth for evidence and reviewer decisions.
     `src/peer.rs:1092` with `got 2`.
 
 ## No-New-Issue Audit Cycles
+
+### Cycle after ISSUE-204 no-new cycle 25: discovery tombstone resource duplicate
+
+- Result: no accepted non-duplicate issue.
+- Reviewer: `Hubble the 4th`, forked subagent review, confirmed
+  duplicate-only no-new classification.
+- Source and test evidence reviewed:
+  - `src/discovery.rs`
+  - `cargo test graceful_stop_tombstones_must_be_bounded_for_unknown_peers -- --nocapture`
+    failed with duplicate evidence for ISSUE-122.
+- Duplicate or too-close symptoms rejected:
+  - the failure at `src/discovery.rs:280:9` leaves 1,025 stopped-peer
+    tombstones for unknown non-seed peer ids, exceeding the bounded-tombstone
+    assertion.
+  - `PeerDiscovery::remove_remote` still inserts into `stopped` for every
+    non-seed peer id, even when that peer was never present in `remotes`; this
+    is the exact accepted source behavior and failing evidence for ISSUE-122.
+- Root-cause summary impact: no new root cause; this source/test cycle
+  strengthens existing ISSUE-122 evidence under RC-5 application-level
+  resource limits without adding ISSUE-205.
 
 ### Cycle after ISSUE-204 no-new cycle 24: pubsub short RPC timeout duplicate
 
