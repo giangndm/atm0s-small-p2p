@@ -67,13 +67,17 @@ the source of truth for evidence and reviewer decisions.
 ### RC-4: Timeouts are partial, coarse, or overflow-prone
 
 - Representative issues: ISSUE-002, ISSUE-009, ISSUE-021, ISSUE-036,
-  ISSUE-042, ISSUE-093, ISSUE-117, ISSUE-121, ISSUE-134, ISSUE-149.
+  ISSUE-042, ISSUE-093, ISSUE-117, ISSUE-121, ISSUE-134, ISSUE-149,
+  ISSUE-156.
 - Pattern: timeout checks often wrap only one await point, rely on unchecked
-  timestamp arithmetic, or use coarse global sweeps instead of per-operation
-  deadlines.
+  timestamp arithmetic, use coarse global sweeps instead of per-operation
+  deadlines, or complete one side of setup before the full end-to-end setup is
+  still alive.
 - Minimal fix proposal: use `checked_add`/`saturating_add` for deadlines and
   wrap every protocol phase with one end-to-end setup timeout; for RPCs, track
-  the exact deadline per request and wake on the nearest deadline.
+  the exact deadline per request and wake on the nearest deadline; for relays,
+  tie downstream setup to upstream cancellation and roll back downstream streams
+  if upstream acknowledgement fails.
 
 ### RC-5: Application-level resource limits are missing
 
@@ -3989,3 +3993,40 @@ the source of truth for evidence and reviewer decisions.
     into `remote_publishers`, a delayed `PublisherLeaved(channel)` from the same
     peer removes it; expected stale leave to preserve the heartbeat-confirmed
     membership and not emit `PeerLeaved`.
+
+### ISSUE-156: Relay delivers orphan downstream stream after upstream setup closes
+
+- Category: bad-network stability, stream setup, pipe reliability
+- Score: 64/100
+- Reviewer: `Herschel the 2nd`, confirmed after `Hooke the 2nd` discovery.
+- Affected code:
+  - `src/peer/peer_internal.rs`: in the relay branch of `accept_bi`,
+    `alias.open_stream(service, source, dest, meta).await` opens and delivers
+    the downstream stream before the upstream side has been acknowledged.
+  - `src/peer/peer_internal.rs`: the relay writes `Ok(())` to the upstream
+    stream only after downstream setup succeeds.
+  - `src/peer/peer_internal.rs`: `copy_bidirectional` starts only after that
+    late upstream acknowledgement, so a failed acknowledgement can leave the
+    downstream stream already accepted by the destination service.
+- Impact: if an upstream caller sends a relayed `StreamConnectReq` and then
+  closes the setup response side before the relay writes `StreamConnectRes`, the
+  relay can still open and deliver a downstream stream to the destination. The
+  destination service observes an accepted stream that has no live upstream
+  caller or usable pipe, causing confusing stream lifecycle events and wasted
+  resources under cancellations or bad networks. This is distinct from
+  ISSUE-011 and ISSUE-012, which cover local destination delivery failures;
+  ISSUE-056, which blocks before stream setup reaches the peer task; ISSUE-117,
+  which covers idle inbound stream-connect requests; and ISSUE-149, which covers
+  a downstream peer withholding `StreamConnectRes`.
+- Minimal fix proposal: in the relay branch, treat downstream setup as tentative
+  until the upstream success acknowledgement is written. If writing `Ok(())` to
+  the upstream stream fails, immediately close/reset the downstream stream and
+  return an error; for a broader fix, pass an upstream cancellation token into
+  downstream `open_stream`.
+- Evidence test:
+  - `cargo test relay_must_not_deliver_downstream_stream_after_upstream_setup_closes -- --nocapture`
+  - Failure summary: a raw authenticated node sends a relayed
+    `StreamConnectReq` to node2 for node3, finishes the request, and stops the
+    response side before node2 writes setup success. Node3 still receives
+    `P2pServiceEvent::Stream(PeerId(1), b"orphan-relay-stream", _)`; expected
+    the relay not to deliver a downstream stream after upstream setup closed.

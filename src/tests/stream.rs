@@ -17,6 +17,7 @@ use crate::{
     P2pServiceEvent, PeerId, SharedKeyHandshake, CERT_DOMAIN_NAME,
 };
 use futures::FutureExt;
+use quinn::VarInt;
 use rustls::pki_types::{CertificateDer, PrivatePkcs8KeyDer};
 use serde::{Deserialize, Serialize};
 use test_log::test;
@@ -324,6 +325,79 @@ async fn open_stream_must_timeout_when_peer_withholds_connect_response() {
     assert!(
         matches!(result, Ok(Ok(Err(_)))),
         "open_stream must return an error when the peer withholds StreamConnectRes instead of hanging past the setup deadline"
+    );
+}
+
+#[tokio::test]
+async fn relay_must_not_deliver_downstream_stream_after_upstream_setup_closes() {
+    let raw_addr = UdpSocket::bind("127.0.0.1:0")
+        .expect("should bind raw node1 udp")
+        .local_addr()
+        .expect("should get raw node1 addr");
+    let priv_key = PrivatePkcs8KeyDer::from(super::DEFAULT_CLUSTER_KEY.to_vec());
+    let cert = CertificateDer::from(super::DEFAULT_CLUSTER_CERT.to_vec());
+    let raw_node1 = make_server_endpoint(raw_addr, priv_key, cert).expect("should create raw node1 endpoint");
+    let raw_node1_id = PeerId::from(1);
+
+    let (mut node2, addr2) = create_node(true, 2, vec![]).await;
+    let requester2 = node2.requester();
+    tokio::spawn(async move { while node2.recv().await.is_ok() {} });
+
+    let (mut node3, addr3) = create_node(false, 3, vec![]).await;
+    let mut service3 = node3.create_service(0.into());
+    tokio::spawn(async move { while node3.recv().await.is_ok() {} });
+
+    requester2.connect(addr3.clone()).await.expect("node2 should connect to node3");
+    tokio::time::sleep(Duration::from_millis(500)).await;
+
+    let connection = raw_node1
+        .connect(**addr2.network_address(), CERT_DOMAIN_NAME)
+        .expect("raw node1 should start QUIC connect")
+        .await
+        .expect("raw node1 should connect to node2");
+    let (send, recv) = connection.open_bi().await.expect("raw node1 should open main control stream");
+    let mut main_stream = P2pQuicStream::new(recv, send);
+    let secure: SharedKeyHandshake = super::DEFAULT_SECURE_KEY.into();
+    write_object::<_, _, 60000>(
+        &mut main_stream,
+        &RawConnectReq {
+            from: raw_node1_id,
+            to: addr2.peer_id(),
+            auth: secure.create_request(raw_node1_id, addr2.peer_id(), crate::now_ms()),
+        },
+    )
+    .await
+    .expect("raw node1 should send authenticated connect request");
+    let response: RawConnectRes = wait_object::<_, _, 60000>(&mut main_stream)
+        .await
+        .expect("raw node1 should receive connect response");
+    secure
+        .verify_response(response.result.expect("node2 should accept raw node1"), addr2.peer_id(), raw_node1_id, crate::now_ms())
+        .expect("raw node1 should verify connect response");
+
+    let meta = b"orphan-relay-stream".to_vec();
+    let (mut send, mut recv) = connection.open_bi().await.expect("raw node1 should open stream setup");
+    write_object::<_, _, 60000>(
+        &mut send,
+        &StreamConnectReq {
+            source: raw_node1_id,
+            dest: addr3.peer_id(),
+            service: 0.into(),
+            meta: meta.clone(),
+        },
+    )
+    .await
+    .expect("raw node1 should send stream connect request");
+    send.finish()
+        .expect("raw node1 should finish the upstream send side after setup request");
+    recv.stop(VarInt::from_u32(0))
+        .expect("raw node1 should stop the upstream receive side before setup ack");
+
+    let delivered = tokio::time::timeout(Duration::from_millis(500), service3.recv()).await;
+
+    assert!(
+        !matches!(delivered, Ok(Some(P2pServiceEvent::Stream(source, received_meta, _))) if source == raw_node1_id && received_meta == meta),
+        "relay must not deliver a downstream stream after the upstream stream was closed before setup ack"
     );
 }
 
