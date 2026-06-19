@@ -243,7 +243,7 @@ mod tests {
     };
 
     use futures::SinkExt;
-    use metrics::{Counter, Gauge, Histogram, Key, KeyName, Metadata, Recorder, SharedString, Unit};
+    use metrics::{Counter, CounterFn, Gauge, Histogram, Key, KeyName, Metadata, Recorder, SharedString, Unit};
     use quinn::{ClientConfig, Endpoint, ServerConfig, TransportConfig, VarInt};
     use rustls::pki_types::{CertificateDer, PrivatePkcs8KeyDer};
     use tokio_util::codec::Framed;
@@ -310,6 +310,65 @@ mod tests {
         }
     }
 
+    #[derive(Default)]
+    struct MonotonicCounterRecorder {
+        values: Arc<Mutex<HashMap<String, u64>>>,
+        decreased: Arc<AtomicBool>,
+    }
+
+    impl MonotonicCounterRecorder {
+        fn has_decrease(&self) -> bool {
+            self.decreased.load(Ordering::SeqCst)
+        }
+    }
+
+    struct MonotonicCounterHandle {
+        name: String,
+        values: Arc<Mutex<HashMap<String, u64>>>,
+        decreased: Arc<AtomicBool>,
+    }
+
+    impl CounterFn for MonotonicCounterHandle {
+        fn increment(&self, value: u64) {
+            let mut values = self.values.lock().expect("test recorder mutex should not be poisoned");
+            let next = values.get(&self.name).copied().unwrap_or_default().saturating_add(value);
+            values.insert(self.name.clone(), next);
+        }
+
+        fn absolute(&self, value: u64) {
+            let mut values = self.values.lock().expect("test recorder mutex should not be poisoned");
+            if let Some(previous) = values.insert(self.name.clone(), value) {
+                if value < previous {
+                    self.decreased.store(true, Ordering::SeqCst);
+                }
+            }
+        }
+    }
+
+    impl Recorder for MonotonicCounterRecorder {
+        fn describe_counter(&self, _key: KeyName, _unit: Option<Unit>, _description: SharedString) {}
+
+        fn describe_gauge(&self, _key: KeyName, _unit: Option<Unit>, _description: SharedString) {}
+
+        fn describe_histogram(&self, _key: KeyName, _unit: Option<Unit>, _description: SharedString) {}
+
+        fn register_counter(&self, key: &Key, _metadata: &Metadata<'_>) -> Counter {
+            Counter::from_arc(Arc::new(MonotonicCounterHandle {
+                name: key.name().to_string(),
+                values: self.values.clone(),
+                decreased: self.decreased.clone(),
+            }))
+        }
+
+        fn register_gauge(&self, _key: &Key, _metadata: &Metadata<'_>) -> Gauge {
+            Gauge::noop()
+        }
+
+        fn register_histogram(&self, _key: &Key, _metadata: &Metadata<'_>) -> Histogram {
+            Histogram::noop()
+        }
+    }
+
     #[test]
     fn connection_teardown_must_not_emit_rtt_as_counter() {
         let recorder = KindCollisionRecorder::default();
@@ -324,6 +383,29 @@ mod tests {
             !recorder.has_collision(),
             "connection teardown must not emit p2p_connection_rtt as a counter after it was emitted and described as a gauge"
         );
+    }
+
+    #[test]
+    fn connection_teardown_must_not_reset_monotonic_counters() {
+        let recorder = MonotonicCounterRecorder::default();
+
+        metrics::with_local_recorder(&recorder, || {
+            counter!(P2P_CONNECTION_UPTIME, "peer_id" => "1", "connect_to" => "2").absolute(10);
+            counter!(P2P_CONNECTION_SENT_BYTES, "peer_id" => "1", "connect_to" => "2").absolute(1024);
+            counter!(P2P_CONNECTION_RECV_BYTES, "peer_id" => "1", "connect_to" => "2").absolute(2048);
+            counter!(P2P_CONNECTION_LOST_BYTES, "peer_id" => "1", "connect_to" => "2").absolute(64);
+            counter!(P2P_CONNECTION_LOST_PKT, "peer_id" => "1", "connect_to" => "2").absolute(4);
+            counter!(P2P_CONNECTION_CONGESTION_EVENTS, "peer_id" => "1", "connect_to" => "2").absolute(2);
+
+            counter!(P2P_CONNECTION_UPTIME, "peer_id" => "1", "connect_to" => "2").absolute(0);
+            counter!(P2P_CONNECTION_SENT_BYTES, "peer_id" => "1", "connect_to" => "2").absolute(0);
+            counter!(P2P_CONNECTION_RECV_BYTES, "peer_id" => "1", "connect_to" => "2").absolute(0);
+            counter!(P2P_CONNECTION_LOST_BYTES, "peer_id" => "1", "connect_to" => "2").absolute(0);
+            counter!(P2P_CONNECTION_LOST_PKT, "peer_id" => "1", "connect_to" => "2").absolute(0);
+            counter!(P2P_CONNECTION_CONGESTION_EVENTS, "peer_id" => "1", "connect_to" => "2").absolute(0);
+        });
+
+        assert!(!recorder.has_decrease(), "connection teardown must not reset monotonic connection counters to zero");
     }
 
     struct LargeAuthHandshake;

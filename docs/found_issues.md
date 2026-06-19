@@ -119,7 +119,7 @@ the source of truth for evidence and reviewer decisions.
   ISSUE-128 through ISSUE-132, ISSUE-135, ISSUE-139, ISSUE-142, ISSUE-144,
   ISSUE-148, ISSUE-150, ISSUE-151, ISSUE-161, ISSUE-162, ISSUE-165,
   ISSUE-167, ISSUE-168, ISSUE-170, ISSUE-179, ISSUE-183, ISSUE-185,
-  ISSUE-187, ISSUE-188, ISSUE-193.
+  ISSUE-187, ISSUE-188, ISSUE-193, ISSUE-195.
 - Pattern: requesters, services, peer aliases, channel state, and cached hints
   can outlive the owner they represent, while shutdown paths may panic, leak,
   emit false public events, or keep stale routes/cache entries. Remote
@@ -128,8 +128,9 @@ the source of truth for evidence and reviewer decisions.
   announce owner teardown without clearing local authority, and peer lifecycle
   events do not consistently reach service-owned membership or public
   network-event consumers. Teardown instrumentation can also reset metrics
-  through the wrong metric kind, corrupting observability state for exporters
-  that require a single kind per metric name.
+  through the wrong metric kind or reset monotonic counters to zero, corrupting
+  observability state for exporters that require stable metric kinds and
+  non-decreasing counters.
 - Minimal fix proposal: add generation or liveness tokens to cloned requesters
   and local handles, make closed channels return `Err` instead of panicking, and
   centralize owner teardown so aliases, metrics, routes, caches, and service ids
@@ -139,7 +140,8 @@ the source of truth for evidence and reviewer decisions.
   per-peer state and surfaced through the public network event API. Pubsub
   should retain bounded remote membership state even before local handles exist
   and replay it when the first local handle is created. Metric teardown should
-  use the same metric kind as live emission for every metric name.
+  use the same metric kind as live emission for every metric name and must not
+  reset monotonic counters.
 
 ### RC-7: Routing and discovery accept unstable or self-referential topology
 
@@ -5418,6 +5420,39 @@ the source of truth for evidence and reviewer decisions.
     `PeerId(1)`; current code returns `ConnectRes { result: Ok(_) }`, so the
     test fails because the claimed third-party id is admitted as the
     authenticated connection identity.
+
+### ISSUE-195: Connection teardown resets monotonic counters to zero
+
+- Category: correctness, observability stability, lifecycle cleanup
+- Score: 42/100
+- Reviewer: `Dalton the 3rd`, confirmed after `Feynman the 3rd` discovery.
+- Affected code:
+  - `src/stats.rs`: connection uptime, sent bytes, received bytes, lost bytes,
+    lost packets, and congestion events are described as counters.
+  - `src/peer/peer_internal.rs`: live connection ticks emit those metrics with
+    `counter!(...).absolute(metrics...)`.
+  - `src/peer.rs`: disconnect teardown emits `counter!(...).absolute(0)` for
+    the same monotonic counter metric names and label set.
+- Impact: metrics exporters or recorders that expect counters to be monotonic
+  can observe a connection counter advance to a positive value and then
+  decrease to zero during teardown. Under churn, this can make byte/loss/uptime
+  dashboards and alerting noisy, rejected, or interpreted as a process restart.
+  This is distinct from ISSUE-193, which covers `P2P_CONNECTION_RTT` being
+  emitted as both gauge and counter; ISSUE-061/062 forged metrics-service
+  messages; ISSUE-064/068 stale or mismatched `PeerStats` state; and
+  ISSUE-128/129 service shutdown panics.
+- Minimal fix proposal: remove teardown `counter!(...).absolute(0)` resets for
+  monotonic connection counters in `src/peer.rs`. Keep gauge cleanup for live
+  connection count and RTT. If zero-on-teardown semantics are required, model
+  those values as gauges or include a connection-lifetime label so each
+  connection creates a distinct time series.
+- Evidence test:
+  - `cargo test connection_teardown_must_not_reset_monotonic_counters -- --nocapture`
+  - Failure summary: a test recorder observes positive absolute samples for
+    `P2P_CONNECTION_UPTIME`, sent/received bytes, lost bytes/packets, and
+    congestion counters, then observes teardown `absolute(0)` samples for the
+    same counter names. The test fails because those monotonic counters
+    decrease.
 
 ## No-New-Issue Audit Cycles
 
