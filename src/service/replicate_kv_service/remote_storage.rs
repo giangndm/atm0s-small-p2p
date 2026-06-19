@@ -9,6 +9,7 @@ use std::{
 use super::messages::{Action, BroadcastEvent, Changed, Event, KvEvent, NetEvent, RpcEvent, RpcReq, RpcRes, Slot, Version};
 
 const REQUEST_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(1);
+const MAX_SNAPSHOT_SLOTS_PER_PAGE: usize = 1024;
 
 #[derive(Debug, PartialEq, Eq)]
 enum RemoteStoreState<N, K, V> {
@@ -210,6 +211,14 @@ where
                     snapshot.biggest_key,
                     snapshot.next_key,
                 );
+                if snapshot.slots.len() > MAX_SNAPSHOT_SLOTS_PER_PAGE {
+                    log::warn!(
+                        "[RemoteStore {:?}] reject snapshot page with {} slots over limit {MAX_SNAPSHOT_SLOTS_PER_PAGE}",
+                        ctx.remote,
+                        snapshot.slots.len()
+                    );
+                    return;
+                }
                 for (k, slot) in snapshot.slots.into_iter() {
                     ctx.outs.push_back(Event::KvEvent(KvEvent::Set(Some(ctx.remote.clone()), k.clone(), slot.value.clone())));
                     ctx.slots.insert(k, slot);
