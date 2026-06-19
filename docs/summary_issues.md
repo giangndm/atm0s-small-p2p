@@ -5,7 +5,7 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Audit Status
 
-- Accepted issues: 167
+- Accepted issues: 168
 - Missing issue scores: 0
 - Current consecutive no-new-issue cycles: 0
 - Stop condition: continue until 5 consecutive cycles find no new accepted
@@ -85,7 +85,7 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   ISSUE-060, ISSUE-064, ISSUE-065, ISSUE-069 through ISSUE-076, ISSUE-108,
   ISSUE-128 through ISSUE-132, ISSUE-135, ISSUE-139, ISSUE-142, ISSUE-144,
   ISSUE-148, ISSUE-150, ISSUE-151, ISSUE-161, ISSUE-162, ISSUE-165,
-  ISSUE-167.
+  ISSUE-167, ISSUE-168.
 - Pattern: requesters, services, peer aliases, channel state, and cached hints
   can outlive the owner they represent; shutdown paths can panic, leak, emit
   false public events, or keep stale routes/cache entries.
@@ -108,8 +108,6 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Recent Accepted Issues
 
-- ISSUE-162, score 63: replicated KV keeps stopped peer data until idle
-  timeout. Reviewer: Franklin the 2nd.
 - ISSUE-163, score 61: pubsub RPC waits for timeout after every remote send
   fails. Reviewer: Einstein the 2nd.
 - ISSUE-164, score 57: tick route/discovery sync is dropped when the peer
@@ -120,9 +118,11 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   eviction. Reviewer: Avicenna the 3rd.
 - ISSUE-167, score 56: expired non-seed discovery entries remain routable.
   Reviewer: Pasteur the 3rd.
+- ISSUE-168, score 44: duplicate pubsub local ids detach live publisher
+  handles. Reviewer: Jason the 3rd.
 
 ## Next Candidate To Validate
 
-- None queued. ISSUE-167 reset the no-new counter to 0. Continue fresh source
+- None queued. ISSUE-168 reset the no-new counter to 0. Continue fresh source
   review; if five consecutive cycles find no issue, switch to randomized fuzz
   tests over node actions.

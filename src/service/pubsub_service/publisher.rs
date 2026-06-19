@@ -19,6 +19,11 @@ impl PublisherLocalId {
     pub fn rand() -> Self {
         Self(rand::random())
     }
+
+    #[cfg(test)]
+    pub(crate) fn from_raw_for_test(id: u64) -> Self {
+        Self(id)
+    }
 }
 
 #[derive(Debug, PartialEq, Eq)]

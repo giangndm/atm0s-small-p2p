@@ -101,7 +101,7 @@ the source of truth for evidence and reviewer decisions.
   ISSUE-060, ISSUE-064, ISSUE-065, ISSUE-069 through ISSUE-076, ISSUE-108,
   ISSUE-128 through ISSUE-132, ISSUE-135, ISSUE-139, ISSUE-142, ISSUE-144,
   ISSUE-148, ISSUE-150, ISSUE-151, ISSUE-161, ISSUE-162, ISSUE-165,
-  ISSUE-167.
+  ISSUE-167, ISSUE-168.
 - Pattern: requesters, services, peer aliases, channel state, and cached hints
   can outlive the owner they represent, while shutdown paths may panic, leak,
   emit false public events, or keep stale routes/cache entries.
@@ -4410,6 +4410,42 @@ the source of truth for evidence and reviewer decisions.
     address, `router.action(expired)` still returns
     `Some(Next(ConnectionId(20)))`; expected the expired non-seed peer to be
     unroutable.
+
+### ISSUE-168: Duplicate pubsub local ids detach live publisher handles
+
+- Category: correctness, lifecycle stability
+- Score: 44/100
+- Reviewer: `Jason the 3rd`, confirmed after `Mill the 3rd` discovery.
+- Affected code:
+  - `src/service/pubsub_service/publisher.rs`: `PublisherLocalId::rand`
+    creates an untracked random id.
+  - `src/service/pubsub_service.rs`: `InternalMsg::PublisherCreated` calls
+    `state.local_publishers.insert(local_id, tx)` and silently replaces any
+    existing live publisher with the same local id.
+  - `src/service/pubsub_service.rs`: `InternalMsg::SubscriberCreated` has the
+    same collision shape for `local_subscribers`.
+  - `src/service/pubsub_service.rs`: destroy and action controls identify
+    local handles only by `(local_id, channel)`, so a collision can corrupt
+    ownership.
+- Impact: if two live local pubsub handles collide on their random local id,
+  the later create replaces the first handle's event sender and disconnects the
+  first live handle. Later destroy/action controls for the shared id can also
+  affect the wrong live handle. Public reproduction is probabilistic because
+  ids are random `u64`, but the service state machine has no collision
+  handling once a duplicate id appears. This is distinct from ISSUE-069 through
+  ISSUE-075, which cover stale requesters after drop, and ISSUE-150, which
+  covers unknown destroy controls creating phantom channel state.
+- Minimal fix proposal: allocate local handle ids collision-aware inside
+  `PubsubService`, or have create retry/reject when the id already exists.
+  Longer term, pair handle controls with a generation/ownership token so
+  destroy and action messages cannot affect a different handle with the same
+  local id.
+- Evidence test:
+  - `cargo test duplicate_publisher_local_id_must_not_detach_live_handle -- --nocapture`
+  - Failure summary: after two `PublisherCreated` controls use the same
+    `PublisherLocalId`, the first publisher receiver returns
+    `Err(Disconnected)` instead of receiving `PeerJoined(Local)` from a later
+    local subscriber join.
 
 ## No-New-Issue Audit Cycles
 
