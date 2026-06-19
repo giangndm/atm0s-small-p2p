@@ -1188,7 +1188,7 @@ async fn dropped_service_requester_must_not_continue_sending_broadcast() {
     drop(service1);
 
     let data = b"stale-service-broadcast".to_vec();
-    stale_requester.send_broadcast(data.clone()).await;
+    let _ = stale_requester.send_broadcast(data.clone()).await;
 
     let delivered = tokio::time::timeout(Duration::from_millis(500), service2.recv()).await;
 

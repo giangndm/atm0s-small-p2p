@@ -651,7 +651,10 @@ impl PubsubService {
     }
 
     async fn broadcast(&self, msg: &PubsubMessage) {
-        self.service.send_broadcast(bincode::serialize(msg).expect("should convert to binary")).await;
+        self.service
+            .send_broadcast(bincode::serialize(msg).expect("should convert to binary"))
+            .await
+            .print_on_err("[PubsubService] broadcast data");
     }
 }
 

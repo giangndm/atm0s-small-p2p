@@ -36,6 +36,7 @@ use crate::{
 use super::PeerConnectionControl;
 
 const OPEN_BI_TIMEOUT: Duration = Duration::from_secs(2);
+const LOCAL_SERVICE_DELIVERY_TIMEOUT: Duration = Duration::from_secs(1);
 const MAX_CONTROL_STREAM_PKT: usize = 60000;
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
@@ -196,7 +197,7 @@ impl PeerConnectionInternal {
 
                     if let Some(service) = self.ctx.get_service(&service_id) {
                         log::debug!("[PeerConnectionInternal {}] broadcast msg {msg_id} to service {service_id}", self.remote);
-                        service.try_send(P2pServiceEvent::Broadcast(source, data)).print_on_err("[PeerConnectionInternal] send service msg");
+                        send_local_service_event(self.remote, service_id, &service, P2pServiceEvent::Broadcast(source, data)).await;
                     } else {
                         log::warn!("[PeerConnectionInternal {}] broadcast msg to unknown service {service_id}", self.remote);
                     }
@@ -207,7 +208,7 @@ impl PeerConnectionInternal {
             PeerMessage::Unicast(source, dest, service_id, data) => match unicast_route_decision(self.ctx.router().action(&dest), self.conn_id) {
                 UnicastRouteDecision::Local => {
                     if let Some(service) = self.ctx.get_service(&service_id) {
-                        service.try_send(P2pServiceEvent::Unicast(source, data)).print_on_err("[PeerConnectionInternal] send service msg");
+                        send_local_service_event(self.remote, service_id, &service, P2pServiceEvent::Unicast(source, data)).await;
                     } else {
                         log::warn!("[PeerConnectionInternal {}] service {service_id} not found", self.remote);
                     }
@@ -246,6 +247,14 @@ pub(super) fn unicast_route_decision(action: Option<RouteAction>, ingress: Conne
         Some(RouteAction::Next(next)) if next == ingress => UnicastRouteDecision::DropIngressLoop(next),
         Some(RouteAction::Next(next)) => UnicastRouteDecision::Forward(next),
         None => UnicastRouteDecision::NoRoute,
+    }
+}
+
+async fn send_local_service_event(remote: SocketAddr, service_id: P2pServiceId, service: &Sender<P2pServiceEvent>, event: P2pServiceEvent) {
+    match tokio::time::timeout(LOCAL_SERVICE_DELIVERY_TIMEOUT, service.send(event)).await {
+        Ok(Ok(())) => {}
+        Ok(Err(err)) => log::warn!("[PeerConnectionInternal {remote}] send local service {service_id} msg failed: {err}"),
+        Err(_) => log::warn!("[PeerConnectionInternal {remote}] send local service {service_id} msg timed out"),
     }
 }
 

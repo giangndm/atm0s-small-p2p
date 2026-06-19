@@ -89,11 +89,11 @@ async fn broadcast_direct() {
     log::info!("sending broadcast message");
 
     let data = "from_node1".as_bytes().to_vec();
-    service1.send_broadcast(data.clone()).await;
+    service1.send_broadcast(data.clone()).await.expect("node1 should send broadcast");
     assert_eq!(service2.recv().await, Some(P2pServiceEvent::Broadcast(addr1.peer_id(), data)));
 
     let data = "from_node2".as_bytes().to_vec();
-    service2.send_broadcast(data.clone()).await;
+    service2.send_broadcast(data.clone()).await.expect("node2 should send broadcast");
     assert_eq!(service1.recv().await, Some(P2pServiceEvent::Broadcast(addr2.peer_id(), data)));
 }
 
@@ -114,17 +114,17 @@ async fn broadcast_relay() {
     tokio::time::sleep(Duration::from_secs(1)).await;
 
     let data = "from_node1".as_bytes().to_vec();
-    service1.send_broadcast(data.clone()).await;
+    service1.send_broadcast(data.clone()).await.expect("node1 should send broadcast");
     assert_eq!(service2.recv().await, Some(P2pServiceEvent::Broadcast(addr1.peer_id(), data.clone())));
     assert_eq!(service3.recv().await, Some(P2pServiceEvent::Broadcast(addr1.peer_id(), data)));
 
     let data = "from_node2".as_bytes().to_vec();
-    service2.send_broadcast(data.clone()).await;
+    service2.send_broadcast(data.clone()).await.expect("node2 should send broadcast");
     assert_eq!(service1.recv().await, Some(P2pServiceEvent::Broadcast(addr2.peer_id(), data.clone())));
     assert_eq!(service3.recv().await, Some(P2pServiceEvent::Broadcast(addr2.peer_id(), data)));
 
     let data = "from_node3".as_bytes().to_vec();
-    service3.send_broadcast(data.clone()).await;
+    service3.send_broadcast(data.clone()).await.expect("node3 should send broadcast");
     assert_eq!(service1.recv().await, Some(P2pServiceEvent::Broadcast(addr3.peer_id(), data.clone())));
     assert_eq!(service2.recv().await, Some(P2pServiceEvent::Broadcast(addr3.peer_id(), data)));
 }
@@ -234,7 +234,7 @@ async fn inbound_broadcast_must_not_drop_when_service_queue_is_full() {
 
     let expected = 11usize;
     for idx in 0..expected {
-        service1.send_broadcast(vec![idx as u8]).await;
+        service1.send_broadcast(vec![idx as u8]).await.expect("node1 should send broadcast");
     }
 
     tokio::time::sleep(Duration::from_millis(300)).await;

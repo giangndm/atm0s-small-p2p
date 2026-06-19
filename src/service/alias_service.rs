@@ -219,7 +219,10 @@ impl AliasService {
         while let Some(out) = self.internal.pop_output() {
             match out {
                 InternalOutput::Broadcast(msg) => {
-                    self.service.send_broadcast(bincode::serialize(&msg).expect("should serialie")).await;
+                    self.service
+                        .send_broadcast(bincode::serialize(&msg).expect("should serialie"))
+                        .await
+                        .print_on_err("[AliasService] send broadcast");
                 }
                 InternalOutput::Unicast(dest, msg) => {
                     self.service

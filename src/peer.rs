@@ -1,7 +1,9 @@
 use std::{net::SocketAddr, sync::Arc, time::Duration};
 
 use anyhow::anyhow;
-use metrics::{counter, gauge};
+use metrics::gauge;
+#[cfg(test)]
+use metrics::counter;
 use peer_internal::PeerConnectionInternal;
 use quinn::{Connecting, Connection, Incoming, RecvStream, SendStream};
 use serde::{Deserialize, Serialize};
@@ -16,8 +18,11 @@ use crate::{
     now_ms,
     secure::HandshakeProtocol,
     stream::{wait_object, write_object, P2pQuicStream},
-    ConnectionId, PeerId, P2P_CONNECTION_CONGESTION_EVENTS, P2P_CONNECTION_LOST_BYTES, P2P_CONNECTION_LOST_PKT, P2P_CONNECTION_RECV_BYTES, P2P_CONNECTION_RTT, P2P_CONNECTION_SENT_BYTES,
-    P2P_CONNECTION_UPTIME, P2P_LIVE_CONNECTION_COUNT,
+    ConnectionId, PeerId, P2P_CONNECTION_RTT, P2P_LIVE_CONNECTION_COUNT,
+};
+#[cfg(test)]
+use crate::{
+    P2P_CONNECTION_CONGESTION_EVENTS, P2P_CONNECTION_LOST_BYTES, P2P_CONNECTION_LOST_PKT, P2P_CONNECTION_RECV_BYTES, P2P_CONNECTION_SENT_BYTES, P2P_CONNECTION_UPTIME,
 };
 
 use super::{msg::PeerMessage, MainEvent};
@@ -884,10 +889,9 @@ mod tests {
 
         let result = ctx.send_broadcast(P2pServiceId::from(1), b"lost-broadcast".to_vec()).await;
 
-        assert_ne!(
-            std::any::type_name_of_val(&result),
-            "()",
-            "send_broadcast must return a delivery result so callers can observe when every peer control channel is closed"
+        assert!(
+            result.is_err(),
+            "send_broadcast must report an error when every peer control channel is closed, got {result:?}"
         );
     }
 
@@ -1061,7 +1065,7 @@ mod tests {
         ctx.register_conn(ConnectionId::from(1), PeerConnectionAlias::new(PeerId::from(0), PeerId::from(1), ConnectionId::from(1), tx1));
         ctx.register_conn(ConnectionId::from(2), PeerConnectionAlias::new(PeerId::from(0), PeerId::from(2), ConnectionId::from(2), tx2));
 
-        ctx.try_send_broadcast(P2pServiceId::from(1), b"lost-broadcast".to_vec());
+        let result = ctx.try_send_broadcast(P2pServiceId::from(1), b"lost-broadcast".to_vec());
 
         let mut delivered = 0;
         for rx in [&mut rx1, &mut rx2] {
@@ -1073,8 +1077,12 @@ mod tests {
         }
 
         assert!(
-            delivered > 0,
-            "try_send_broadcast must report an error or preserve at least one copy when every peer control queue rejects the broadcast"
+            result.is_err(),
+            "try_send_broadcast must report an error when every peer control queue rejects the broadcast, got {result:?}"
+        );
+        assert!(
+            delivered == 0,
+            "try_send_broadcast should not report all-failed delivery while a broadcast was actually queued"
         );
     }
 

@@ -1,4 +1,4 @@
-use std::{collections::HashMap, sync::Arc};
+use std::{collections::HashMap, sync::Arc, time::Duration};
 
 use anyhow::anyhow;
 use lru::LruCache;
@@ -11,9 +11,10 @@ use crate::{
     router::{RouteAction, SharedRouterTable},
     service::P2pServiceEvent,
     stream::P2pQuicStream,
-    utils::ErrorExt,
     ConnectionId, PeerId,
 };
+
+const BROADCAST_ADMISSION_TIMEOUT: Duration = Duration::from_millis(25);
 
 #[derive(Debug)]
 struct SharedCtxInternal {
@@ -177,31 +178,54 @@ impl SharedCtx {
         }
     }
 
-    pub fn try_send_broadcast(&self, service_id: P2pServiceId, data: Vec<u8>) {
+    pub fn try_send_broadcast(&self, service_id: P2pServiceId, data: Vec<u8>) -> anyhow::Result<usize> {
         let msg_id = BroadcastMsgId::rand();
-        self.check_broadcast_msg(msg_id);
         let source = self.router.local_id();
         let conns = self.conns();
         log::debug!("[ShareCtx] broadcast to {conns:?} connections");
-        for conn_alias in conns {
-            conn_alias
-                .try_send(PeerMessage::Broadcast(source, service_id, msg_id, data.clone()))
-                .print_on_err("[ShareCtx] broadcast data over peer alias");
+        if conns.is_empty() {
+            anyhow::bail!("[ShareCtx] broadcast has no connected peers");
         }
+
+        let mut accepted = 0;
+        for conn_alias in conns {
+            match conn_alias.try_send(PeerMessage::Broadcast(source, service_id, msg_id, data.clone())) {
+                Ok(()) => accepted += 1,
+                Err(err) => log::warn!("[ShareCtx] broadcast data over peer alias failed: {err}"),
+            }
+        }
+        if accepted == 0 {
+            anyhow::bail!("[ShareCtx] broadcast rejected by all peer aliases");
+        }
+
+        self.check_broadcast_msg(msg_id);
+        Ok(accepted)
     }
 
-    pub async fn send_broadcast(&self, service_id: P2pServiceId, data: Vec<u8>) {
+    pub async fn send_broadcast(&self, service_id: P2pServiceId, data: Vec<u8>) -> anyhow::Result<usize> {
         let msg_id = BroadcastMsgId::rand();
-        self.check_broadcast_msg(msg_id);
         let source = self.router.local_id();
         let conns = self.conns();
         log::debug!("[ShareCtx] broadcast to {conns:?} connections");
-        for conn_alias in conns {
-            conn_alias
-                .send(PeerMessage::Broadcast(source, service_id, msg_id, data.clone()))
-                .await
-                .print_on_err("[ShareCtx] broadcast data over peer alias");
+        if conns.is_empty() {
+            anyhow::bail!("[ShareCtx] broadcast has no connected peers");
         }
+
+        let mut accepted = 0;
+        for conn_alias in conns {
+            let msg = PeerMessage::Broadcast(source, service_id, msg_id, data.clone());
+            match tokio::time::timeout(BROADCAST_ADMISSION_TIMEOUT, conn_alias.send(msg)).await {
+                Ok(Ok(())) => accepted += 1,
+                Ok(Err(err)) => log::warn!("[ShareCtx] broadcast data over peer alias failed: {err}"),
+                Err(_) => log::warn!("[ShareCtx] broadcast data over peer alias timed out"),
+            }
+        }
+        if accepted == 0 {
+            anyhow::bail!("[ShareCtx] broadcast rejected by all peer aliases");
+        }
+
+        self.check_broadcast_msg(msg_id);
+        Ok(accepted)
     }
 
     pub async fn open_stream(&self, service: P2pServiceId, dest: PeerId, meta: Vec<u8>) -> anyhow::Result<P2pQuicStream> {

@@ -129,7 +129,8 @@ impl MetricsService {
                             let data = bincode::serialize(&Message::Scan).expect("should convert to buf");
                             self.pending_scan_broadcast = Some(tokio::spawn(async move {
                                 match tokio::time::timeout(SCAN_BROADCAST_SEND_TIMEOUT, requester.send_broadcast(data)).await {
-                                    Ok(()) => {}
+                                    Ok(Ok(_)) => {}
+                                    Ok(Err(err)) => log::warn!("metrics scan broadcast failed: {err}"),
                                     Err(_) => log::warn!("metrics scan broadcast timed out"),
                                 }
                             }));
