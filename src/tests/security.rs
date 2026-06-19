@@ -1,4 +1,8 @@
-use std::{net::UdpSocket, time::Duration};
+use std::{
+    net::{Ipv4Addr, SocketAddr, UdpSocket},
+    sync::Arc,
+    time::Duration,
+};
 
 use crate::{
     msg::{BroadcastMsgId, P2pServiceId, PeerMessage},
@@ -7,9 +11,23 @@ use crate::{
     SharedKeyHandshake, SharedRouterTable,
 };
 use futures::FutureExt;
+use quinn::{Endpoint, ServerConfig};
 use rustls::pki_types::{CertificateDer, PrivatePkcs8KeyDer};
 
 use super::{create_node, DEFAULT_CLUSTER_CERT, DEFAULT_CLUSTER_KEY, DEFAULT_SECURE_KEY};
+
+fn make_zero_bidi_server_endpoint(bind_addr: SocketAddr) -> anyhow::Result<Endpoint> {
+    let _ = rustls::crypto::ring::default_provider().install_default();
+    let priv_key = PrivatePkcs8KeyDer::from(DEFAULT_CLUSTER_KEY.to_vec());
+    let cert = CertificateDer::from(DEFAULT_CLUSTER_CERT.to_vec());
+    let mut server_config = ServerConfig::with_single_cert(vec![cert], priv_key.into())?;
+    let transport_config = Arc::get_mut(&mut server_config.transport).expect("transport config should be unique");
+    transport_config.max_concurrent_uni_streams(10_000_u32.into());
+    transport_config.max_concurrent_bidi_streams(0_u32.into());
+    transport_config.max_idle_timeout(Some(Duration::from_secs(5).try_into().expect("timeout should configure")));
+
+    Endpoint::server(server_config, bind_addr).map_err(Into::into)
+}
 
 #[tokio::test]
 async fn forged_peer_stopped_must_not_remove_third_party_route() {
@@ -338,6 +356,47 @@ async fn peer_connected_must_not_block_authenticated_connection_run_loop_on_full
         delivered,
         Ok(Some(P2pServiceEvent::Unicast(addr2.peer_id(), b"after-auth".to_vec()))),
         "authenticated connection must process traffic even if PeerConnected event delivery is backpressured"
+    );
+}
+
+#[tokio::test]
+async fn outbound_peer_setup_must_timeout_when_main_control_stream_cannot_open() {
+    let raw_server = make_zero_bidi_server_endpoint(SocketAddr::new(Ipv4Addr::LOCALHOST.into(), 0)).expect("raw server should bind");
+    let raw_addr = raw_server.local_addr().expect("raw server should have a local addr");
+    let raw_server_task = tokio::spawn(async move {
+        if let Some(incoming) = raw_server.accept().await {
+            let _connection = incoming.await.expect("raw server should accept transport connection");
+            std::future::pending::<()>().await;
+        }
+    });
+
+    let (mut node, _addr) = create_node(false, 1, vec![]).await;
+    let requester = node.requester();
+    let raw_peer = PeerAddress::new(PeerId::from(200), raw_addr.into());
+
+    requester.try_connect(raw_peer);
+
+    tokio::time::timeout(Duration::from_secs(1), async {
+        while node.neighbours.len() == 0 {
+            let _ = node.recv().await;
+        }
+    })
+    .await
+    .expect("connect command should create a pending neighbour");
+
+    let cleaned = tokio::time::timeout(Duration::from_secs(2), async {
+        while node.neighbours.len() != 0 {
+            let _ = node.recv().await;
+        }
+    })
+    .await;
+
+    raw_server_task.abort();
+
+    assert!(
+        cleaned.is_ok(),
+        "outbound setup must time out and remove the pending neighbour when the QUIC peer never permits opening the P2P control stream; pending neighbours: {}",
+        node.neighbours.len()
     );
 }
 

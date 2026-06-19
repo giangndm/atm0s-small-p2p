@@ -29,4 +29,9 @@ impl NetworkNeighbours {
     pub fn connected_conns(&self) -> impl Iterator<Item = &PeerConnection> {
         self.conns.values().filter(|c| c.is_connected())
     }
+
+    #[cfg(test)]
+    pub fn len(&self) -> usize {
+        self.conns.len()
+    }
 }

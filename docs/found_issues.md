@@ -70,7 +70,7 @@ the source of truth for evidence and reviewer decisions.
 
 - Representative issues: ISSUE-002, ISSUE-009, ISSUE-021, ISSUE-036,
   ISSUE-042, ISSUE-093, ISSUE-117, ISSUE-121, ISSUE-134, ISSUE-149,
-  ISSUE-156.
+  ISSUE-156, ISSUE-159.
 - Pattern: timeout checks often wrap only one await point, rely on unchecked
   timestamp arithmetic, use coarse global sweeps instead of per-operation
   deadlines, or complete one side of setup before the full end-to-end setup is
@@ -4103,3 +4103,39 @@ the source of truth for evidence and reviewer decisions.
     `NotifySet(AliasId(7))` from the same peer re-inserts the cache entry;
     expected the stale set to be ignored and a later find to broadcast
     `Scan(AliasId(7))` instead of checking the stale peer.
+
+### ISSUE-159: Outbound peer setup hangs before main control stream opens
+
+- Category: bad-network stability, connection lifecycle, setup timeout
+- Score: 67/100
+- Reviewer: `Pascal the 2nd`, confirmed after `Singer the 2nd` discovery.
+- Affected code:
+  - `src/peer.rs`: the outbound connection task awaits the QUIC connection and
+    then awaits `connection.open_bi()` without a peer-setup timeout.
+  - `src/peer.rs`: authentication and `ConnectReq`/`ConnectRes` exchange only
+    start after the main P2P control stream opens.
+  - `src/lib.rs`: an outbound pending neighbour is inserted before the control
+    stream opens, and cleanup depends on receiving
+    `MainEvent::PeerConnectError`.
+  - `src/neighbours.rs`: pending outbound entries stay resident until an error
+    event removes them.
+- Impact: a remote QUIC endpoint can complete the transport connection but
+  advertise no bidirectional stream credit, or otherwise hold the main control
+  stream setup open. The outbound peer task then parks before authentication,
+  no `PeerConnectError` reaches the main loop, and the pending neighbour remains
+  until QUIC idle timeout or longer. Repeated attempts under bad networks or
+  hostile peers can accumulate stuck setup tasks and noisy pending state. This
+  is distinct from ISSUE-134, which covers inbound unauthenticated connections
+  waiting on `accept_bi`, and ISSUE-149, which covers authenticated stream setup
+  after a peer task is already running.
+- Minimal fix proposal: wrap outbound setup after QUIC connect in one bounded
+  deadline, at least around `connection.open_bi()`, and send
+  `MainEvent::PeerConnectError` on timeout so the main loop removes the pending
+  neighbour. The smallest robust version uses one setup timeout for main control
+  stream open, `ConnectReq` write, and `ConnectRes` read.
+- Evidence test:
+  - `cargo test outbound_peer_setup_must_timeout_when_main_control_stream_cannot_open -- --nocapture`
+  - Failure summary: a raw QUIC server accepts the transport connection while
+    advertising `max_concurrent_bidi_streams(0)`. After the normal node queues
+    a connect and the test drives `recv()` for the cleanup window, the pending
+    neighbour count remains `1`; expected setup timeout cleanup to remove it.

@@ -5,7 +5,7 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Audit Status
 
-- Accepted issues: 158
+- Accepted issues: 159
 - Missing issue scores: 0
 - Current consecutive no-new-issue cycles: 0
 - Stop condition: continue until 5 consecutive cycles find no new accepted
@@ -57,7 +57,7 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Representative issues: ISSUE-002, ISSUE-009, ISSUE-021, ISSUE-036,
   ISSUE-042, ISSUE-093, ISSUE-117, ISSUE-121, ISSUE-134, ISSUE-149,
-  ISSUE-156.
+  ISSUE-156, ISSUE-159.
 - Pattern: timeouts wrap only one await point, rely on unchecked timestamp
   arithmetic, use coarse global sweeps, or complete one side of setup before
   proving the end-to-end setup is still alive.
@@ -106,8 +106,6 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Recent Accepted Issues
 
-- ISSUE-153, score 71: discovery ticks enqueue duplicate connect commands
-  without coalescing. Reviewer: Curie the 2nd.
 - ISSUE-154, score 66: stale `FetchChanged` response cancels a newer
   replicated-KV repair. Reviewer: Curie the 2nd.
 - ISSUE-155, score 64: stale pubsub leave removes membership confirmed by newer
@@ -118,6 +116,8 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   peer run loop. Reviewer: Avicenna the 2nd.
 - ISSUE-158, score 62: stale alias `NotifySet` resurrects a hint after a newer
   `NotifyDel`. Reviewer: Dirac the 2nd.
+- ISSUE-159, score 67: outbound peer setup hangs before the main control stream
+  opens. Reviewer: Pascal the 2nd.
 
 ## Next Candidate To Validate
 
