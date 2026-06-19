@@ -217,6 +217,15 @@ async fn run_connection<SECURE: HandshakeProtocol>(
             )
             .await?;
             return Err(anyhow!("destination wrong"));
+        } else if req.from == local_id {
+            write_object::<_, _, MAX_CONTROL_PEER_PKT>(
+                &mut send,
+                &ConnectRes {
+                    result: Err("source must not match destination".to_owned()),
+                },
+            )
+            .await?;
+            return Err(anyhow!("source wrong"));
         } else {
             let auth = secure.create_response(req.to, req.from, now_ms());
             write_object::<_, _, MAX_CONTROL_PEER_PKT>(&mut send, &ConnectRes { result: Ok(auth) }).await?;
