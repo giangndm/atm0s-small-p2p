@@ -238,6 +238,11 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 - Extended steady valid fuzz:
   `P2P_FUZZ_NODES=5 P2P_FUZZ_STEPS=500 cargo test fuzz_random_steady_valid_node_actions_must_not_panic_connection_tasks -- --nocapture`
   passed with no new issue.
+- Extended steady valid fuzz:
+  `P2P_FUZZ_NODES=6 P2P_FUZZ_STEPS=800 cargo test fuzz_random_steady_valid_node_actions_must_not_panic_connection_tasks -- --nocapture`
+  passed with no new issue. Output still shows route reselection noise and
+  bounded queue pressure warnings, but no failing test evidence for a new
+  accepted issue.
 
 ## Recent No-New Audit
 
