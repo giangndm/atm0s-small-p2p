@@ -7,9 +7,9 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Accepted issues: 204
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 2
+- Current consecutive no-new-issue cycles: 3
 - Stop condition: continue until 5 consecutive cycles find no new accepted
-  issue; currently 2/5 after ISSUE-204.
+  issue; currently 3/5 after ISSUE-204.
 
 ## Root Cause Summary
 
@@ -299,9 +299,19 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   passed with no new issue. Output again showed active route reselection noise
   and endpoint-driver-drop shutdown logs at test end, but no panic or failing
   assertion.
+- Twelve-node extended steady valid fuzz:
+  `P2P_FUZZ_SEED=0x204205 P2P_FUZZ_NODES=12 P2P_FUZZ_STEPS=3200 cargo test fuzz_random_steady_valid_node_actions_must_not_panic_connection_tasks -- --nocapture`
+  passed with no new issue. Reviewer `Locke the 4th` mapped route reselection
+  noise, main-loop pressure warnings, and teardown logs to existing RC-3,
+  RC-6, and RC-7 entries.
 
 ## Recent No-New Audit
 
+- Cycle after ISSUE-204 no-new cycle 3 ran a twelve-node steady-valid fuzz
+  pass with forked reviewer `Locke the 4th`. The run passed; observed route
+  reselection noise, bounded main-loop pressure warnings, and endpoint teardown
+  logs mapped to existing RC-3, RC-6, and RC-7 patterns, so no accepted issue
+  or summary root-cause change was recorded.
 - Cycle after ISSUE-204 no-new cycle 2 reviewed shared-key handshake
   validation, QUIC transport admission, stream/object codec helpers, and
   public constructor/config validation with forked reviewer `Turing the 4th`.

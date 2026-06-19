@@ -11,7 +11,7 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 2
+- Current consecutive no-new-issue cycles: 3
 - Stop condition requested by user: continue until 5 consecutive cycles find no
   new accepted issue.
 
@@ -5768,6 +5768,26 @@ the source of truth for evidence and reviewer decisions.
     `src/peer.rs:1092` with `got 2`.
 
 ## No-New-Issue Audit Cycles
+
+### Cycle after ISSUE-204 no-new cycle 3: twelve-node steady-valid fuzz
+
+- Result: no accepted non-duplicate issue.
+- Reviewer: `Locke the 4th`, forked subagent review, confirmed no-new
+  classification.
+- Fuzz evidence reviewed:
+  - `P2P_FUZZ_SEED=0x204205 P2P_FUZZ_NODES=12 P2P_FUZZ_STEPS=3200 cargo test fuzz_random_steady_valid_node_actions_must_not_panic_connection_tasks -- --nocapture`
+    passed with no new issue.
+- Duplicate or too-close symptoms rejected:
+  - active route reselection noise maps to ISSUE-003 and RC-7 route
+    instability.
+  - `queue main loop full` and bounded backpressure warnings map to RC-3,
+    including ISSUE-118, ISSUE-164, ISSUE-198, ISSUE-199, ISSUE-203, and
+    ISSUE-204 depending on the path.
+  - endpoint-driver-drop and connection-lost teardown logs at test end map to
+    existing lifecycle and graceful-shutdown entries in RC-6, especially
+    ISSUE-187 and related PeerStopped/teardown cases.
+- Root-cause summary impact: no new root cause; fuzz output produced no panic
+  or failing assertion for a fresh accepted issue.
 
 ### Cycle after ISSUE-204 no-new cycle 2: security, transport, stream codec, config
 
