@@ -5,10 +5,10 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Audit Status
 
-- Accepted issues: 203
+- Accepted issues: 204
 - Missing issue scores: 0
 - Current consecutive no-new-issue cycles: 0
-- Stop condition: reset by ISSUE-203. Continue RED-team review and randomized
+- Stop condition: reset by ISSUE-204. Continue RED-team review and randomized
   fuzz tests over node actions.
 
 ## Root Cause Summary
@@ -53,7 +53,7 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   ISSUE-119, ISSUE-120, ISSUE-123, ISSUE-124, ISSUE-125, ISSUE-126,
   ISSUE-127, ISSUE-133, ISSUE-136, ISSUE-147, ISSUE-153, ISSUE-157,
   ISSUE-163, ISSUE-164, ISSUE-178, ISSUE-182, ISSUE-184, ISSUE-198,
-  ISSUE-199, ISSUE-200, ISSUE-201, ISSUE-202, ISSUE-203.
+  ISSUE-199, ISSUE-200, ISSUE-201, ISSUE-202, ISSUE-203, ISSUE-204.
 - Pattern: some paths drop on `try_send`, some await bounded sends from
   critical tasks, and others use unbounded queues or duplicate internal control
   work. Under load this causes silent loss, head-of-line blocking, unreported
@@ -74,8 +74,10 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   should keep explicit in-flight scan state and coalesce ticks while an earlier
   scan broadcast is still backpressured. Metrics scan responses need a retry,
   timeout, or observable backpressure policy instead of fire-and-forget
-  nonblocking unicast. Visualization scan responses need bounded in-flight
-  response state instead of unbounded detached awaited unicast tasks.
+  nonblocking unicast, plus bounded in-flight response state instead of
+  duplicate detached awaited unicast tasks. Visualization scan responses need
+  bounded in-flight response state instead of unbounded detached awaited
+  unicast tasks.
 
 ### RC-4: Timeouts and setup cancellation are incomplete
 
@@ -242,6 +244,8 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   backpressure. Reviewer: Ramanujan the 3rd.
 - ISSUE-203, score 56: visualization scan responses accumulate behind
   peer-control backpressure. Reviewer: Sartre the 3rd.
+- ISSUE-204, score 56: metrics scan responses accumulate behind peer-control
+  backpressure. Reviewer: Anscombe the 4th.
 
 ## Next Candidate To Validate
 

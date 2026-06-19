@@ -1052,6 +1052,50 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn metrics_scan_responses_must_not_accumulate_behind_full_peer_control_queue() {
+        let router = SharedRouterTable::new(PeerId::from(0));
+        let ctx = SharedCtx::new(PeerId::from(0), router.clone());
+        let conn = ConnectionId::from(1);
+        let peer = PeerId::from(1);
+        let (tx, mut rx) = channel(1);
+
+        router.set_direct(conn, peer, 0);
+        tx.try_send(PeerConnectionControl::Send(PeerMessage::PeerStopped(PeerId::from(99)), None))
+            .expect("test control queue should accept filler message");
+        ctx.register_conn(conn, PeerConnectionAlias::new(PeerId::from(0), peer, conn, tx));
+
+        let (base_service, service_tx) = P2pService::build(P2pServiceId::from(11), ctx);
+        let mut metrics = MetricsService::new(None, base_service, false);
+        for _ in 0..8 {
+            service_tx
+                .send(P2pServiceEvent::Unicast(peer, encode_metrics_scan_for_test()))
+                .await
+                .expect("test service queue should accept scan");
+            let _ = tokio::time::timeout(Duration::from_millis(20), metrics.recv()).await;
+        }
+        for _ in 0..8 {
+            tokio::task::yield_now().await;
+        }
+
+        let _filler = rx.recv().await.expect("filler should drain");
+        let mut responses = 0;
+        let deadline = tokio::time::Instant::now() + Duration::from_millis(100);
+        while tokio::time::Instant::now() < deadline {
+            if let Ok(Some(PeerConnectionControl::Send(PeerMessage::Unicast(_, _, _, _), None))) = tokio::time::timeout(Duration::from_millis(10), rx.recv()).await {
+                responses += 1;
+                if responses > 1 {
+                    break;
+                }
+            }
+        }
+
+        assert!(
+            responses <= 1,
+            "metrics Scan responses must be coalesced while the previous response is still backpressured; got {responses}"
+        );
+    }
+
+    #[tokio::test]
     async fn try_send_broadcast_must_report_when_all_peer_queues_reject() {
         let ctx = SharedCtx::new(PeerId::from(0), SharedRouterTable::new(PeerId::from(0)));
         let (tx1, mut rx1) = channel(1);

@@ -5732,6 +5732,41 @@ the source of truth for evidence and reviewer decisions.
     `PeerMessage::Unicast` response appears, and the test fails at
     `src/peer.rs:1021` with `got 2`.
 
+### ISSUE-204: metrics scan responses accumulate behind peer-control backpressure
+
+- Category: high-load stability, metrics response reliability, duplicate work
+- Score: 56/100
+- Reviewer: `Anscombe the 4th`, confirmed.
+- Affected code:
+  - `src/service/metrics_service.rs`: when a `Message::Scan` arrives, the
+    service gathers metrics and spawns a detached task for every response.
+  - `src/service/metrics_service.rs`: the response task awaits
+    `requester.send_unicast(...)` with a timeout, but no per-requester
+    in-flight state suppresses duplicate pending replies.
+  - `src/ctx.rs`: `SharedCtx::send_unicast` awaits the selected next-hop
+    peer alias.
+  - `src/peer/peer_alias.rs`: `PeerConnectionAlias::send` awaits the bounded
+    peer-control channel.
+- Impact: repeated metrics `Scan` messages can create multiple detached
+  response tasks while the selected peer-control queue is full. When pressure
+  clears, stale duplicate `Info` responses are released. This is distinct from
+  ISSUE-202, which covered the older dropped-response path; ISSUE-203, which
+  covers the same accumulation class in `VisualizationService`; ISSUE-050,
+  which covers direct awaited unicast blocking; ISSUE-078, which covers
+  unauthorized metrics disclosure; and ISSUE-200/201, which cover periodic
+  collector scan broadcast scheduling.
+- Minimal fix proposal: add bounded in-flight response state for metrics scan
+  replies, preferably keyed by requester peer. While a response to that peer is
+  pending, skip or coalesce additional `Scan` replies; clear the marker when
+  the send task completes or times out.
+- Evidence test:
+  - `cargo test metrics_scan_responses_must_not_accumulate_behind_full_peer_control_queue -- --nocapture`
+  - Failure summary: the test injects eight metrics `Scan` messages while the
+    selected next-hop peer-control queue is full, yields while response tasks
+    are blocked, then drains the filler item. More than one queued
+    `PeerMessage::Unicast` response appears, and the test fails at
+    `src/peer.rs:1092` with `got 2`.
+
 ## No-New-Issue Audit Cycles
 
 ### Cycle after ISSUE-193 no-new cycle 4: public API, examples, fuzz harness, config
