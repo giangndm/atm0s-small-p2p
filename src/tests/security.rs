@@ -254,6 +254,94 @@ async fn peer_stopped_must_not_block_connection_task_on_full_main_queue() {
 }
 
 #[tokio::test]
+async fn peer_connected_must_not_block_authenticated_connection_run_loop_on_full_main_queue() {
+    let (mut node1, addr1) = create_node(true, 1, vec![]).await;
+    let mut service1 = node1.create_service(0.into());
+
+    let (mut node2, addr2) = create_node(false, 2, vec![]).await;
+    let _service2 = node2.create_service(0.into());
+    let requester2 = node2.requester();
+
+    assert!(
+        matches!(
+            tokio::time::timeout(Duration::from_secs(1), node1.recv()).await,
+            Ok(Ok(P2pNetworkEvent::Continue))
+        ),
+        "node1 should process initial tick"
+    );
+    assert!(
+        matches!(
+            tokio::time::timeout(Duration::from_secs(1), node2.recv()).await,
+            Ok(Ok(P2pNetworkEvent::Continue))
+        ),
+        "node2 should process initial tick"
+    );
+
+    requester2.try_connect(addr1.clone());
+
+    assert!(
+        matches!(
+            tokio::time::timeout(Duration::from_secs(2), node2.recv()).await,
+            Ok(Ok(P2pNetworkEvent::Continue))
+        ),
+        "node2 should process the queued connect command"
+    );
+
+    tokio::time::timeout(Duration::from_secs(2), async {
+        loop {
+            if matches!(node1.recv().await, Ok(P2pNetworkEvent::Continue)) {
+                break;
+            }
+        }
+    })
+    .await
+    .expect("node1 should accept the incoming connection");
+
+    for idx in 0..10 {
+        node1
+            .main_tx
+            .try_send(MainEvent::PeerStats(
+                ConnectionId::from(10_000 + idx),
+                PeerId::from(10_000 + idx),
+                PeerConnectionMetric {
+                    uptime: 1,
+                    rtt: 1,
+                    sent_pkt: 0,
+                    lost_pkt: 0,
+                    lost_bytes: 0,
+                    send_bytes: 0,
+                    recv_bytes: 0,
+                    current_mtu: 1200,
+                },
+            ))
+            .expect("test should fill node1 main queue");
+    }
+
+    let conn_to_node1 = tokio::time::timeout(Duration::from_secs(2), async {
+        loop {
+            if let Some(conn) = node2.ctx.conns().into_iter().next() {
+                return conn;
+            }
+            let _ = node2.recv().await;
+        }
+    })
+    .await
+    .expect("node2 should register a connection alias to node1");
+
+    conn_to_node1
+        .try_send(PeerMessage::Unicast(addr2.peer_id(), addr1.peer_id(), 0.into(), b"after-auth".to_vec()))
+        .expect("test unicast should enqueue to node2 peer task");
+
+    let delivered = tokio::time::timeout(Duration::from_millis(500), service1.recv()).await;
+
+    assert_eq!(
+        delivered,
+        Ok(Some(P2pServiceEvent::Unicast(addr2.peer_id(), b"after-auth".to_vec()))),
+        "authenticated connection must process traffic even if PeerConnected event delivery is backpressured"
+    );
+}
+
+#[tokio::test]
 async fn peer_disconnected_must_not_block_alias_cleanup_on_full_main_queue() {
     let (mut node1, addr1) = create_node(true, 1, vec![]).await;
     let (mut node2, _addr2) = create_node(false, 2, vec![addr1.clone()]).await;

@@ -54,7 +54,7 @@ the source of truth for evidence and reviewer decisions.
 
 - Representative issues: ISSUE-049, ISSUE-050, ISSUE-056, ISSUE-118,
   ISSUE-119, ISSUE-120, ISSUE-123, ISSUE-124, ISSUE-125, ISSUE-126,
-  ISSUE-127, ISSUE-133, ISSUE-136, ISSUE-147, ISSUE-153.
+  ISSUE-127, ISSUE-133, ISSUE-136, ISSUE-147, ISSUE-153, ISSUE-157.
 - Pattern: some paths use bounded channels and drop on `try_send`, some await
   bounded sends from critical tasks, and others use unbounded queues or produce
   duplicate internal control work. Under load this causes silent data loss,
@@ -62,7 +62,9 @@ the source of truth for evidence and reviewer decisions.
 - Minimal fix proposal: define channel policy by event class: lifecycle and
   route updates must use bounded retry/coalescing; service payload delivery must
   return explicit backpressure errors; public and internal request/control
-  queues need fixed admission limits and per-target coalescing.
+  queues need fixed admission limits and per-target coalescing; peer tasks must
+  not await bounded lifecycle reporting before they can process traffic or
+  cleanup.
 
 ### RC-4: Timeouts are partial, coarse, or overflow-prone
 
@@ -4030,3 +4032,37 @@ the source of truth for evidence and reviewer decisions.
     response side before node2 writes setup success. Node3 still receives
     `P2pServiceEvent::Stream(PeerId(1), b"orphan-relay-stream", _)`; expected
     the relay not to deliver a downstream stream after upstream setup closed.
+
+### ISSUE-157: PeerConnected backpressure stalls authenticated peer run loop
+
+- Category: high-load stability, connection lifecycle, head-of-line blocking
+- Score: 66/100
+- Reviewer: `Avicenna the 2nd`, confirmed after `Zeno the 2nd` discovery.
+- Affected code:
+  - `src/peer.rs`: after authentication, `run_connection` registers the
+    `PeerConnectionAlias` in shared context.
+  - `src/peer.rs`: before entering `PeerConnectionInternal::run_loop`, it
+    awaits `main_tx.send(MainEvent::PeerConnected(conn_id, to_id, rtt_ms))` on
+    the bounded main event queue.
+  - `src/lib.rs`: `main_tx/main_rx` is a bounded channel, so a live but
+    saturated main loop can backpressure that send indefinitely.
+- Impact: when the main event queue is full during connection setup, an
+  authenticated peer task can park before it starts reading peer messages,
+  streams, or stop notifications. The alias is already registered, so other
+  code can enqueue traffic to that connection, but the peer task has not entered
+  its run loop to process it. This stalls authenticated traffic and lifecycle
+  handling under high load. This is distinct from ISSUE-133, which blocks inside
+  `PeerStopped` handling after the run loop is active; ISSUE-136, which blocks
+  after the run loop exits while sending `PeerDisconnected`; and ISSUE-144,
+  which covers a closed main loop causing alias leak after `PeerConnected`
+  delivery fails.
+- Minimal fix proposal: do not await bounded main-loop delivery before starting
+  the peer run loop. Register the alias, start traffic processing, and report
+  `PeerConnected` through a non-blocking or coalesced lifecycle path; if the
+  main queue is full, keep bounded retry state outside the peer traffic loop.
+- Evidence test:
+  - `cargo test peer_connected_must_not_block_authenticated_connection_run_loop_on_full_main_queue -- --nocapture`
+  - Failure summary: after node1 accepts node2 and its bounded main queue is
+    filled, node2 has a registered alias and enqueues a unicast to node1, but
+    node1's service receive times out. The authenticated node1 peer task is
+    parked on `main_tx.send(PeerConnected)` and has not entered `run_loop`.
