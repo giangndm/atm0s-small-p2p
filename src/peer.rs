@@ -242,7 +242,7 @@ mod tests {
     };
 
     use futures::SinkExt;
-    use quinn::{Endpoint, ServerConfig, TransportConfig, VarInt};
+    use quinn::{ClientConfig, Endpoint, ServerConfig, TransportConfig, VarInt};
     use rustls::pki_types::{CertificateDer, PrivatePkcs8KeyDer};
     use tokio_util::codec::Framed;
 
@@ -278,10 +278,30 @@ mod tests {
         }
     }
 
+    struct LargeResponseHandshake;
+
+    impl HandshakeProtocol for LargeResponseHandshake {
+        fn create_request(&self, _from: PeerId, _to: PeerId, _now: u64) -> Vec<u8> {
+            vec![7; 64]
+        }
+
+        fn verify_request(&self, _data: Vec<u8>, _expected_from: PeerId, _expected_to: PeerId, _now: u64) -> Result<(), String> {
+            Ok(())
+        }
+
+        fn create_response(&self, _from: PeerId, _to: PeerId, _now: u64) -> Vec<u8> {
+            vec![8; 58_000]
+        }
+
+        fn verify_response(&self, _data: Vec<u8>, _expected_from: PeerId, _expected_to: PeerId, _now: u64) -> Result<(), String> {
+            Ok(())
+        }
+    }
+
     fn make_small_stream_receive_endpoint(bind_addr: SocketAddr, stream_window: u32) -> anyhow::Result<Endpoint> {
         let priv_key = PrivatePkcs8KeyDer::from(DEFAULT_CLUSTER_KEY.to_vec());
         let cert = CertificateDer::from(DEFAULT_CLUSTER_CERT.to_vec());
-        let mut server_config = ServerConfig::with_single_cert(vec![cert], priv_key.into())?;
+        let mut server_config = ServerConfig::with_single_cert(vec![cert.clone()], priv_key.into())?;
         let mut transport = TransportConfig::default();
         let window = VarInt::from_u32(stream_window);
         transport.stream_receive_window(window);
@@ -290,7 +310,20 @@ mod tests {
         transport.max_concurrent_bidi_streams(10_000_u32.into());
         transport.max_idle_timeout(Some(Duration::from_secs(5).try_into().expect("timeout should configure")));
         server_config.transport_config(Arc::new(transport));
-        Endpoint::server(server_config, bind_addr).map_err(Into::into)
+
+        let mut certs = rustls::RootCertStore::empty();
+        certs.add(cert)?;
+        let mut client_config = ClientConfig::with_root_certificates(Arc::new(certs))?;
+        let mut client_transport = TransportConfig::default();
+        client_transport.stream_receive_window(window);
+        client_transport.receive_window(window);
+        client_transport.max_concurrent_uni_streams(10_000_u32.into());
+        client_transport.max_concurrent_bidi_streams(10_000_u32.into());
+        client_transport.max_idle_timeout(Some(Duration::from_secs(5).try_into().expect("timeout should configure")));
+        client_config.transport_config(Arc::new(client_transport));
+        let mut endpoint = Endpoint::server(server_config, bind_addr)?;
+        endpoint.set_default_client_config(client_config);
+        Ok(endpoint)
     }
 
     #[test]
@@ -547,6 +580,52 @@ mod tests {
             node.neighbours.len(),
             0,
             "outbound peer setup must time out and remove the pending neighbour when writing ConnectReq stalls behind peer flow control"
+        );
+    }
+
+    #[tokio::test]
+    async fn inbound_peer_setup_must_timeout_when_connect_response_write_stalls() {
+        let _ = rustls::crypto::ring::default_provider().install_default();
+        let server_addr = UdpSocket::bind("127.0.0.1:0")
+            .expect("should bind server udp")
+            .local_addr()
+            .expect("should read server addr");
+        let client_addr = UdpSocket::bind("127.0.0.1:0")
+            .expect("should bind raw client udp")
+            .local_addr()
+            .expect("should read raw client addr");
+        let server_priv_key = PrivatePkcs8KeyDer::from(DEFAULT_CLUSTER_KEY.to_vec());
+        let server_cert = CertificateDer::from(DEFAULT_CLUSTER_CERT.to_vec());
+        let server = make_server_endpoint(server_addr, server_priv_key, server_cert.clone()).expect("server endpoint should build");
+        let client = make_small_stream_receive_endpoint(client_addr, 37).expect("small-window client endpoint should build");
+        let local_id = PeerId::from(1);
+        let remote_id = PeerId::from(2);
+        let ctx = SharedCtx::new(local_id, SharedRouterTable::new(local_id));
+        let (main_tx, mut main_rx) = channel(1);
+
+        let connecting = client.connect(server_addr, CERT_DOMAIN_NAME).expect("raw client should start connecting");
+        let incoming = server.accept().await.expect("server should accept incoming connection");
+        let _conn = PeerConnection::new_incoming(Arc::new(LargeResponseHandshake), local_id, incoming, main_tx, ctx);
+        let connection = connecting.await.expect("raw client should complete transport");
+        let (mut send, recv) = connection.open_bi().await.expect("raw client should open p2p control stream");
+        let auth = LargeResponseHandshake.create_request(remote_id, local_id, now_ms());
+        write_object::<_, _, MAX_CONTROL_PEER_PKT>(
+            &mut send,
+            &ConnectReq {
+                from: remote_id,
+                to: local_id,
+                auth,
+            },
+        )
+        .await
+        .expect("raw client should send connect request");
+        let _held_recv = recv;
+
+        let event = tokio::time::timeout(Duration::from_millis(2500), main_rx.recv()).await;
+
+        assert!(
+            matches!(event, Ok(Some(MainEvent::PeerConnectError(_, None, _)))),
+            "inbound peer setup must time out and report PeerConnectError when writing ConnectRes stalls behind peer flow control"
         );
     }
 

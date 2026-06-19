@@ -71,7 +71,7 @@ the source of truth for evidence and reviewer decisions.
 
 - Representative issues: ISSUE-002, ISSUE-009, ISSUE-021, ISSUE-036,
   ISSUE-042, ISSUE-093, ISSUE-117, ISSUE-121, ISSUE-134, ISSUE-149,
-  ISSUE-156, ISSUE-159, ISSUE-169, ISSUE-172.
+  ISSUE-156, ISSUE-159, ISSUE-169, ISSUE-172, ISSUE-173.
 - Pattern: timeout checks often wrap only one await point, rely on unchecked
   timestamp arithmetic, use coarse global sweeps instead of per-operation
   deadlines, or complete one side of setup before the full end-to-end setup is
@@ -4580,6 +4580,40 @@ the source of truth for evidence and reviewer decisions.
   - Failure summary: a raw peer accepts the P2P control stream with a tiny
     receive window and never reads it. After the setup window, the normal node
     still has one pending neighbour; expected timeout cleanup to remove it.
+
+### ISSUE-173: Inbound peer setup hangs while writing ConnectRes to stalled peer
+
+- Category: bad-network stability, connection lifecycle, setup timeout
+- Score: 68/100
+- Reviewer: `Peirce the 3rd`, confirmed after `Einstein the 3rd` discovery.
+- Affected code:
+  - `src/peer.rs`: incoming `run_connection` reads `ConnectReq`, verifies the
+    request, then writes `ConnectRes` with `write_object` without a peer setup
+    deadline.
+  - `src/stream.rs`: `write_object` awaits `write_all` for the length and
+    payload without any timeout.
+  - `src/peer.rs`: `PeerConnectError` is sent only after `run_connection`
+    returns, so a stalled response write leaves the inbound setup task parked.
+- Impact: a raw client can complete QUIC setup, open the P2P control stream,
+  send a valid `ConnectReq`, and then stop reading. If `ConnectRes` is large
+  enough to hit peer flow control, the inbound peer task can remain stuck while
+  writing the response, and no `PeerConnectError` is emitted promptly. This is
+  distinct from ISSUE-172, which covers outbound `ConnectReq` writes;
+  ISSUE-159, which stalls before the main control stream opens; ISSUE-134,
+  which covers inbound connections that never complete the P2P control-stream
+  handshake; ISSUE-139, which covers panic while reporting early errors; and
+  ISSUE-144, which covers alias leak after authentication.
+- Minimal fix proposal: wrap the entire inbound peer admission sequence in one
+  bounded deadline: accepting/opening the control stream, reading `ConnectReq`,
+  verifying auth, and writing `ConnectRes`. On timeout, emit
+  `MainEvent::PeerConnectError(conn_id, None, err)` and close the QUIC
+  connection.
+- Evidence test:
+  - `cargo test inbound_peer_setup_must_timeout_when_connect_response_write_stalls -- --nocapture`
+  - Failure summary: a raw client with a tiny receive window sends a valid
+    `ConnectReq` and does not read the large `ConnectRes`; no
+    `PeerConnectError` arrives within 2.5 seconds, but setup should fail
+    promptly.
 
 ## No-New-Issue Audit Cycles
 
