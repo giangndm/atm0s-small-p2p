@@ -1,9 +1,11 @@
 use std::{
-    collections::{HashMap, VecDeque},
+    collections::{HashMap, HashSet, VecDeque},
     time::Duration,
 };
 
+use futures::{stream::FuturesUnordered, FutureExt, StreamExt};
 use serde::{Deserialize, Serialize};
+use tokio::task::JoinHandle;
 use tokio::{select, time::Interval};
 
 use crate::{now_ms, ConnectionId, ErrorExt, PeerId};
@@ -33,9 +35,13 @@ pub(crate) fn encode_scan_for_test() -> Vec<u8> {
     bincode::serialize(&Message::Scan).expect("test message should serialize")
 }
 
+const SCAN_RESPONSE_SEND_TIMEOUT: Duration = Duration::from_secs(1);
+
 pub struct VisualizationService {
     service: P2pService,
     neighbours: HashMap<PeerId, u64>,
+    pending_scan_responses: HashSet<PeerId>,
+    scan_response_tasks: FuturesUnordered<JoinHandle<PeerId>>,
     ticker: Interval,
     collect_interval: Option<Duration>,
     collect_me: bool,
@@ -55,6 +61,8 @@ impl VisualizationService {
             collect_interval,
             collect_me,
             neighbours: HashMap::new(),
+            pending_scan_responses: HashSet::new(),
+            scan_response_tasks: FuturesUnordered::new(),
             outs: if collect_me {
                 VecDeque::from([VisualizationServiceEvent::PeerJoined(service.router().local_id(), vec![])])
             } else {
@@ -68,6 +76,16 @@ impl VisualizationService {
         loop {
             if let Some(out) = self.outs.pop_front() {
                 return Ok(out);
+            }
+            while let Some(task) = self.scan_response_tasks.next().now_or_never().flatten() {
+                match task {
+                    Ok(peer) => {
+                        self.pending_scan_responses.remove(&peer);
+                    }
+                    Err(err) => {
+                        log::warn!("visualization scan response task failed: {err}");
+                    }
+                }
             }
 
             select! {
@@ -102,14 +120,19 @@ impl VisualizationService {
                         if let Ok(msg) = bincode::deserialize::<Message>(&data) {
                             match msg {
                                 Message::Scan => {
-                                    let requester = self.service.requester();
-                                    let neighbours = requester.router().neighbours();
-                                    tokio::spawn(async move {
-                                        requester
-                                            .send_unicast(from, bincode::serialize(&Message::Info(neighbours)).expect("should convert to buf"))
-                                            .await
-                                            .print_on_err("send neighbour info to visualization collector");
-                                    });
+                                    if self.pending_scan_responses.insert(from) {
+                                        let requester = self.service.requester();
+                                        let neighbours = requester.router().neighbours();
+                                        let data = bincode::serialize(&Message::Info(neighbours)).expect("should convert to buf");
+                                        self.scan_response_tasks.push(tokio::spawn(async move {
+                                            // Coalesce repeated scans while one response is backpressured.
+                                            match tokio::time::timeout(SCAN_RESPONSE_SEND_TIMEOUT, requester.send_unicast(from, data)).await {
+                                                Ok(result) => result.print_on_err("send neighbour info to visualization collector"),
+                                                Err(_) => log::warn!("send neighbour info to visualization collector timed out"),
+                                            }
+                                            from
+                                        }));
+                                    }
                                 }
                                 Message::Info(neighbours) => {
                                     if self.neighbours.insert(from, now_ms()).is_none() {
@@ -131,8 +154,8 @@ impl VisualizationService {
 #[cfg(test)]
 mod test {
     use super::*;
-    use futures::FutureExt;
     use crate::{ctx::SharedCtx, msg::P2pServiceId, router::SharedRouterTable};
+    use futures::FutureExt;
 
     #[tokio::test]
     async fn visualization_recv_after_base_service_close_must_not_panic() {
