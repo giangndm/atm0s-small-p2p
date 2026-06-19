@@ -5697,6 +5697,41 @@ the source of truth for evidence and reviewer decisions.
     then drains the filler item. No `PeerMessage::Unicast` metrics response is
     observed afterward, and the test fails at `src/peer.rs:977`.
 
+### ISSUE-203: visualization scan responses accumulate behind peer-control backpressure
+
+- Category: high-load stability, visualization response reliability, duplicate
+  work
+- Score: 56/100
+- Reviewer: `Sartre the 3rd`, confirmed after `Boole the 3rd` discovery.
+- Affected code:
+  - `src/service/visualization_service.rs`: when a `Message::Scan` arrives,
+    the service gathers neighbour topology from the requester router.
+  - `src/service/visualization_service.rs`: the response path spawns a
+    detached task for every scan and awaits `requester.send_unicast(...)`.
+  - `src/ctx.rs`: `SharedCtx::send_unicast` awaits the selected next-hop
+    peer alias.
+  - `src/peer/peer_alias.rs`: `PeerConnectionAlias::send` awaits the bounded
+    peer-control channel.
+- Impact: repeated visualization `Scan` messages can create multiple detached
+  response tasks while the selected peer-control queue is full. When pressure
+  clears, stale duplicate `Info` responses are released. This is distinct from
+  ISSUE-050, which covers direct awaited unicast blocking; ISSUE-079, which
+  covers unauthorized topology disclosure; ISSUE-119/120, which cover local
+  service ingress drops; ISSUE-200/201, which cover periodic collector scan
+  broadcast scheduling; and ISSUE-202, where metrics uses nonblocking
+  `try_send_unicast` and drops the response instead of accumulating tasks.
+- Minimal fix proposal: do not spawn unbounded detached response tasks for
+  visualization `Scan`. Keep bounded in-flight response state per requester and
+  coalesce duplicates, or await/send with a timeout and explicit failure
+  accounting.
+- Evidence test:
+  - `cargo test visualization_scan_responses_must_not_accumulate_behind_full_peer_control_queue -- --nocapture`
+  - Failure summary: the test injects eight visualization `Scan` messages while
+    the selected next-hop peer-control queue is full, yields while response
+    tasks are blocked, then drains the filler item. More than one queued
+    `PeerMessage::Unicast` response appears, and the test fails at
+    `src/peer.rs:1021` with `got 2`.
+
 ## No-New-Issue Audit Cycles
 
 ### Cycle after ISSUE-193 no-new cycle 4: public API, examples, fuzz harness, config

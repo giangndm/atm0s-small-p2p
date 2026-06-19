@@ -5,10 +5,10 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Audit Status
 
-- Accepted issues: 202
+- Accepted issues: 203
 - Missing issue scores: 0
 - Current consecutive no-new-issue cycles: 0
-- Stop condition: reset by ISSUE-202. Continue RED-team review and randomized
+- Stop condition: reset by ISSUE-203. Continue RED-team review and randomized
   fuzz tests over node actions.
 
 ## Root Cause Summary
@@ -53,7 +53,7 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   ISSUE-119, ISSUE-120, ISSUE-123, ISSUE-124, ISSUE-125, ISSUE-126,
   ISSUE-127, ISSUE-133, ISSUE-136, ISSUE-147, ISSUE-153, ISSUE-157,
   ISSUE-163, ISSUE-164, ISSUE-178, ISSUE-182, ISSUE-184, ISSUE-198,
-  ISSUE-199, ISSUE-200, ISSUE-201, ISSUE-202.
+  ISSUE-199, ISSUE-200, ISSUE-201, ISSUE-202, ISSUE-203.
 - Pattern: some paths drop on `try_send`, some await bounded sends from
   critical tasks, and others use unbounded queues or duplicate internal control
   work. Under load this causes silent loss, head-of-line blocking, unreported
@@ -74,7 +74,8 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   should keep explicit in-flight scan state and coalesce ticks while an earlier
   scan broadcast is still backpressured. Metrics scan responses need a retry,
   timeout, or observable backpressure policy instead of fire-and-forget
-  nonblocking unicast.
+  nonblocking unicast. Visualization scan responses need bounded in-flight
+  response state instead of unbounded detached awaited unicast tasks.
 
 ### RC-4: Timeouts and setup cancellation are incomplete
 
@@ -239,11 +240,13 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   behind hidden backpressure. Reviewer: Plato the 3rd.
 - ISSUE-202, score 55: metrics scan responses are dropped under peer-control
   backpressure. Reviewer: Ramanujan the 3rd.
+- ISSUE-203, score 56: visualization scan responses accumulate behind
+  peer-control backpressure. Reviewer: Sartre the 3rd.
 
 ## Next Candidate To Validate
 
-- Continue RED-team review around visualization response tasks, directed
-  service replies, and high-load backpressure. Randomized node-action churn
+- Continue RED-team review around directed service replies, pubsub/alias
+  response paths, and high-load backpressure. Randomized node-action churn
   fuzzing has already started and should continue from the steady-valid passing
   baseline when five consecutive no-new cycles accumulate again.
 

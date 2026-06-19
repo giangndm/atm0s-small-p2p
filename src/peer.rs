@@ -256,7 +256,7 @@ mod tests {
         router::{RouteAction, SharedRouterTable},
         service::{
             metrics_service::{encode_scan_for_test as encode_metrics_scan_for_test, MetricsService},
-            visualization_service::VisualizationService,
+            visualization_service::{encode_scan_for_test as encode_visualization_scan_for_test, VisualizationService},
             P2pService, P2pServiceEvent,
         },
         stream::BincodeCodec,
@@ -977,6 +977,50 @@ mod tests {
         assert!(
             found,
             "metrics Scan response must be queued, retried, or backpressured instead of dropped when the peer control queue is briefly full"
+        );
+    }
+
+    #[tokio::test]
+    async fn visualization_scan_responses_must_not_accumulate_behind_full_peer_control_queue() {
+        let router = SharedRouterTable::new(PeerId::from(0));
+        let ctx = SharedCtx::new(PeerId::from(0), router.clone());
+        let conn = ConnectionId::from(1);
+        let peer = PeerId::from(1);
+        let (tx, mut rx) = channel(1);
+
+        router.set_direct(conn, peer, 0);
+        tx.try_send(PeerConnectionControl::Send(PeerMessage::PeerStopped(PeerId::from(99)), None))
+            .expect("test control queue should accept filler message");
+        ctx.register_conn(conn, PeerConnectionAlias::new(PeerId::from(0), peer, conn, tx));
+
+        let (base_service, service_tx) = P2pService::build(P2pServiceId::from(10), ctx);
+        let mut visualization = VisualizationService::new(None, false, base_service);
+        for _ in 0..8 {
+            service_tx
+                .send(P2pServiceEvent::Unicast(peer, encode_visualization_scan_for_test()))
+                .await
+                .expect("test service queue should accept scan");
+            let _ = tokio::time::timeout(Duration::from_millis(20), visualization.recv()).await;
+        }
+        for _ in 0..8 {
+            tokio::task::yield_now().await;
+        }
+
+        let _filler = rx.recv().await.expect("filler should drain");
+        let mut responses = 0;
+        let deadline = tokio::time::Instant::now() + Duration::from_millis(100);
+        while tokio::time::Instant::now() < deadline {
+            if let Ok(Some(PeerConnectionControl::Send(PeerMessage::Unicast(_, _, _, _), None))) = tokio::time::timeout(Duration::from_millis(10), rx.recv()).await {
+                responses += 1;
+                if responses > 1 {
+                    break;
+                }
+            }
+        }
+
+        assert!(
+            responses <= 1,
+            "visualization Scan responses must be coalesced while the previous response is still backpressured; got {responses}"
         );
     }
 
