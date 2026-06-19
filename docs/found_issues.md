@@ -11,7 +11,7 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 4
+- Current consecutive no-new-issue cycles: 5
 - Stop condition requested by user: continue until 5 consecutive cycles find no
   new accepted issue.
 
@@ -5358,6 +5358,47 @@ the source of truth for evidence and reviewer decisions.
     teardown must not emit RTT as a counter.
 
 ## No-New-Issue Audit Cycles
+
+### Cycle after ISSUE-193 no-new cycle 4: public API, examples, fuzz harness, config
+
+- Result: no accepted non-duplicate issue.
+- Reviewer/explorer: `Kierkegaard the 3rd`; local review by main agent.
+- Local/source areas reviewed:
+  - `src/lib.rs`, `src/requester.rs`, `src/service.rs`, `src/ctx.rs`,
+    `src/quic.rs`, `src/secure.rs`, `src/utils.rs`, `src/discovery.rs`, and
+    `src/router.rs`.
+  - `README.md`, `examples/simple.rs`, `examples/kv.rs`,
+    `examples/benchmark.rs`, `examples/readme_getting_started.rs`,
+    `src/tests.rs`, `src/tests/fuzz.rs`, and cross-node/config/security tests.
+- Validation:
+  - Forked reviewer ran example checks and reported that `cargo check
+    --example simple`, `cargo check --example kv`, and `cargo check --example
+    benchmark` pass.
+  - `cargo check --examples` still fails only on
+    `examples/readme_getting_started.rs`, which is existing ISSUE-191
+    evidence.
+- Duplicate or too-close candidates rejected:
+  - README/getting-started compile drift: ISSUE-191.
+  - duplicate, out-of-range, and dropped service registration/lifecycle
+    failures: ISSUE-050, ISSUE-052, ISSUE-053, ISSUE-060, and ISSUE-091.
+  - stale requester panic after network shutdown/drop: ISSUE-028 and
+    ISSUE-125.
+  - zero tick interval constructor panic: ISSUE-054.
+  - seed and non-seed stop, timeout, stale advertise, duplicate advertise, and
+    route/discovery lifecycle behavior: ISSUE-004, ISSUE-055, ISSUE-092,
+    ISSUE-093, ISSUE-103, ISSUE-122, ISSUE-153, ISSUE-167, ISSUE-181, and
+    ISSUE-192.
+  - graceful shutdown latency across congested peers: ISSUE-118.
+  - QUIC stream admission/setup stalls and unused stream classes:
+    ISSUE-117, ISSUE-134, ISSUE-149, ISSUE-156, ISSUE-169, ISSUE-172,
+    ISSUE-173, and ISSUE-182.
+  - existing fuzz harness panic surfaces map to known RC-1, RC-3, RC-6, and
+    RC-7 issues rather than a fresh root cause.
+- Root-cause summary impact: no new root cause; rejected candidates map to
+  existing RC-1, RC-3, RC-6, RC-7, and RC-8.
+- Threshold impact: this is the fifth consecutive no-new issue cycle after
+  ISSUE-193, so the audit switches to randomized node-action fuzzing as
+  requested.
 
 ### Cycle after ISSUE-193 no-new cycle 3: alias, metrics, visualization, service boundaries
 

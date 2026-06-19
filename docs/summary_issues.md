@@ -7,9 +7,9 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Accepted issues: 193
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 4
-- Stop condition: continue until 5 consecutive cycles find no new accepted
-  issue; after that, continue with randomized fuzz tests over node actions.
+- Current consecutive no-new-issue cycles: 5
+- Stop condition: reached. Continue with randomized fuzz tests over node
+  actions.
 
 ## Root Cause Summary
 
@@ -211,12 +211,17 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Next Candidate To Validate
 
-- None queued. Four consecutive no-new issue cycles are recorded after ISSUE-193.
-  Continue fresh source review until five consecutive no-new cycles, then
-  switch to randomized fuzz tests over node actions.
+- None queued. Five consecutive no-new issue cycles are recorded after
+  ISSUE-193. Switch to randomized fuzz tests over node actions.
 
 ## Recent No-New Audit
 
+- Cycle after ISSUE-193 no-new cycle 4 reviewed public API/node lifecycle,
+  config/transport/security helpers, discovery/router config edges,
+  README/examples, and the fuzz harness. Rejected candidates mapped to existing
+  RC-1, RC-3, RC-6, RC-7, and RC-8 patterns, so no root-cause summary change
+  was needed. This reached the five-cycle threshold and moves the audit into
+  randomized node-action fuzzing.
 - Cycle after ISSUE-193 no-new cycle 3 reviewed alias lifecycle/cache/finder,
   metrics and visualization collector paths, service/context boundaries,
   stream codec helpers, and peer-alias control wrappers. Rejected candidates
