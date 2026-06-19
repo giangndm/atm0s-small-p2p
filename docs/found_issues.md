@@ -141,23 +141,23 @@ the source of truth for evidence and reviewer decisions.
 - Representative issues: ISSUE-003, ISSUE-005, ISSUE-006, ISSUE-007,
   ISSUE-008, ISSUE-033, ISSUE-044, ISSUE-055, ISSUE-092, ISSUE-103,
   ISSUE-112 through ISSUE-114, ISSUE-160, ISSUE-161, ISSUE-164, ISSUE-167,
-  ISSUE-177, ISSUE-180, ISSUE-181, ISSUE-190.
+  ISSUE-177, ISSUE-180, ISSUE-181, ISSUE-190, ISSUE-192.
 - Pattern: route/discovery inputs can include local ids, self seeds, stale
   addresses, overflowed metrics, over-hop routes, duplicate connection races, or
   explicit connect addresses that are ignored by peer-id-only fast paths, or
   tiny RTT jitter that changes active paths too aggressively. Malformed route
-  syncs can also contain duplicate destination rows whose last value silently
-  wins before validation. Stream relay setup also trusts route choices without
-  checking whether the next hop is the same ingress connection, and local
-  advertise config can gossip non-dialable addresses.
+  or discovery syncs can also contain duplicate destination rows whose last
+  value silently wins before validation. Stream relay setup also trusts route
+  choices without checking whether the next hop is the same ingress connection,
+  and local advertise config can gossip non-dialable addresses.
 - Minimal fix proposal: add route/discovery sanitization before insertion:
   reject local/self candidates and over-hop routes, pin authenticated direct
   paths for their peer ids, use checked metric math, ignore stale discovery
-  timestamps, reject duplicate destination rows in a single route sync, coalesce
-  duplicate connects, validate already-connected peer addresses, add a small
-  hysteresis threshold before switching active paths, and reject relay stream
-  hops that would forward back to their ingress connection. Validate configured
-  local advertise addresses before gossiping them.
+  timestamps, reject duplicate destination rows in a single route or discovery
+  sync, coalesce duplicate connects, validate already-connected peer addresses,
+  add a small hysteresis threshold before switching active paths, and reject
+  relay stream hops that would forward back to their ingress connection.
+  Validate configured local advertise addresses before gossiping them.
 
 ### RC-8: Public examples are not compile-checked against the API
 
@@ -5289,6 +5289,38 @@ the source of truth for evidence and reviewer decisions.
     Current compilation fails with `no method named create_service found for
     enum Result<T, E>` because the snippet calls `create_service` on the
     unhandled `Result<P2pNetwork<SharedKeyHandshake>, anyhow::Error>`.
+
+### ISSUE-192: Duplicate discovery-sync peers silently keep the last address
+
+- Category: correctness, route/discovery stability, malformed-input handling
+- Score: 39/100
+- Reviewer: `Arendt the 3rd`, confirmed by independent forked review and
+  failing test evidence.
+- Affected code:
+  - `src/discovery.rs`: `PeerDiscoverySync(Vec<(PeerId, u64, NetworkAddress)>)`
+    allows repeated peer ids in one discovery sync message.
+  - `src/discovery.rs`: `PeerDiscovery::apply_sync` iterates rows and calls
+    `self.remotes.insert(peer, (last_updated, address))` for every live row, so
+    the last duplicate in a single malformed sync wins regardless of timestamp.
+- Impact: a malformed or malicious peer can send two address rows for the same
+  discovered peer in one sync and make the receiver retain the attacker-chosen
+  last address. This makes discovery state order-dependent, can replace a
+  fresher address with a stale one inside one packet, and adds dial/route churn
+  under bad-network conditions. This is distinct from ISSUE-092, which covers a
+  later stale sync overwriting already-stored discovery state; ISSUE-055, which
+  covers configured seed ids; and ISSUE-190, which covers duplicate route-sync
+  destinations rather than discovery address rows.
+- Minimal fix proposal: validate `PeerDiscoverySync` for duplicate `PeerId`
+  rows before mutating `remotes` and reject the whole malformed sync. A slightly
+  broader fix can pre-collapse duplicate rows by keeping only the highest
+  `last_updated`, then apply the existing local/seed/stopped filters.
+- Evidence test:
+  - `cargo test discovery_sync_must_reject_duplicate_peer_entries -- --nocapture`
+  - Failure summary: a single sync contains `PeerId(7)` twice, first with fresh
+    `7@127.0.0.1:9001` at timestamp 200 and then stale
+    `7@127.0.0.1:9000` at timestamp 100. Current discovery remotes become
+    `[7@127.0.0.1:9000]`; expected rejection or newest-timestamp resolution
+    leaving `[7@127.0.0.1:9001]`.
 
 ## No-New-Issue Audit Cycles
 

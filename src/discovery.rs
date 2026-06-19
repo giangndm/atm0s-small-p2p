@@ -187,6 +187,25 @@ mod test {
     }
 
     #[test_log::test]
+    fn discovery_sync_must_reject_duplicate_peer_entries() {
+        let mut discovery = PeerDiscovery::default();
+        let peer = PeerId(7);
+        let fresh_addr = peer_addr("7@127.0.0.1:9001");
+        let stale_addr = peer_addr("7@127.0.0.1:9000");
+
+        discovery.apply_sync(
+            210,
+            PeerDiscoverySync(vec![(peer, 200, fresh_addr.network_address().clone()), (peer, 100, stale_addr.network_address().clone())]),
+        );
+
+        assert_eq!(
+            discovery.remotes().collect::<Vec<_>>(),
+            vec![fresh_addr],
+            "duplicate discovery rows for one peer must be rejected or resolved by newest timestamp, not by attacker-controlled row order"
+        );
+    }
+
+    #[test_log::test]
     fn clear_timeout() {
         let mut discovery = PeerDiscovery::default();
 
