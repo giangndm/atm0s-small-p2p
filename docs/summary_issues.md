@@ -7,9 +7,9 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Accepted issues: 204
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 19
+- Current consecutive no-new-issue cycles: 20
 - Stop condition: continue until 5 consecutive cycles find no new accepted
-  issue; currently 19/5 after ISSUE-204.
+  issue; currently 20/5 after ISSUE-204.
 
 ## Root Cause Summary
 
@@ -256,6 +256,11 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Recent Fuzz Evidence
 
+- Focused alias backpressure source/test review:
+  `cargo test alias_internal_control_backlog_must_be_bounded -- --nocapture`
+  failed with duplicate evidence for ISSUE-127. Reviewer `Euclid the 4th`
+  confirmed the `src/service/alias_service.rs:484` assertion is the
+  already-accepted unbounded alias internal control backlog under RC-3.
 - Focused pubsub backpressure source/test review:
   `cargo test pubsub_internal_control_backlog_must_be_bounded -- --nocapture`
   failed with duplicate evidence for ISSUE-126. Reviewer `Nietzsche the 4th`
