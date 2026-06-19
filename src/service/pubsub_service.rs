@@ -612,7 +612,7 @@ impl PubsubService {
             }
             InternalMsg::PublishRpcAnswer(rpc_id, peer_src, data) => {
                 if let PeerSrc::Remote(peer) = peer_src {
-                    let _ = self.send_to(peer, &PubsubMessage::PublishRpcAnswer(data, rpc_id)).await;
+                    self.try_send_to(peer, &PubsubMessage::PublishRpcAnswer(data, rpc_id)).await;
                 } else {
                     if let Some(mut req) = self.publish_rpc_reqs.remove(&rpc_id) {
                         let _ = req.tx.take().expect("should have req_tx").send(Ok(data));
@@ -623,7 +623,7 @@ impl PubsubService {
             }
             InternalMsg::FeedbackRpcAnswer(rpc_id, peer_src, data) => {
                 if let PeerSrc::Remote(peer) = peer_src {
-                    let _ = self.send_to(peer, &PubsubMessage::FeedbackRpcAnswer(data, rpc_id)).await;
+                    self.try_send_to(peer, &PubsubMessage::FeedbackRpcAnswer(data, rpc_id)).await;
                 } else {
                     if let Some(mut req) = self.feedback_rpc_reqs.remove(&rpc_id) {
                         let _ = req.tx.take().expect("should have req_tx").send(Ok(data));
@@ -641,6 +641,13 @@ impl PubsubService {
             .send_unicast(dest, bincode::serialize(msg).expect("should convert to binary"))
             .await
             .print_on_err("[PubsubService] send data");
+    }
+
+    async fn try_send_to(&self, dest: PeerId, msg: &PubsubMessage) {
+        self.service
+            .try_send_unicast(dest, bincode::serialize(msg).expect("should convert to binary"))
+            .await
+            .print_on_err("[PubsubService] try send data");
     }
 
     async fn broadcast(&self, msg: &PubsubMessage) {
@@ -711,7 +718,7 @@ mod test {
     use tokio::sync::{mpsc::unbounded_channel, oneshot};
 
     use super::*;
-    use crate::{ctx::SharedCtx, msg::P2pServiceId, router::SharedRouterTable};
+    use crate::{ctx::SharedCtx, msg::P2pServiceId, peer::test_congested_peer_alias, router::SharedRouterTable, ConnectionId};
 
     struct FailingSerialize;
 
@@ -838,6 +845,28 @@ mod test {
             service.publish_rpc_reqs.is_empty(),
             "failed local fanout must not leave a pending RPC request"
         );
+    }
+
+    #[tokio::test]
+    async fn pubsub_remote_rpc_answer_must_not_block_service_loop_on_full_peer_control_queue() {
+        let local = PeerId::from(1);
+        let remote = PeerId::from(2);
+        let conn = ConnectionId::from(7);
+        let router = SharedRouterTable::new(local);
+        let ctx = SharedCtx::new(local, router.clone());
+        let congested = test_congested_peer_alias(local, remote, conn);
+        router.set_direct(conn, remote, 0);
+        ctx.register_conn(conn, congested.alias());
+        let (base_service, _tx) = P2pService::build(P2pServiceId::from(0), ctx);
+        let mut service = PubsubService::new(base_service);
+
+        let result = tokio::time::timeout(
+            Duration::from_millis(50),
+            service.on_internal(InternalMsg::PublishRpcAnswer(RpcId(7), PeerSrc::Remote(remote), b"answer".to_vec())),
+        )
+        .await;
+
+        assert!(result.is_ok(), "remote pubsub RPC answers must not block the service loop behind a full peer-control queue");
     }
 
     #[tokio::test]

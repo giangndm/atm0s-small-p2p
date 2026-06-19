@@ -35,6 +35,30 @@ enum PeerConnectionControl {
     OpenStream(P2pServiceId, PeerId, PeerId, Vec<u8>, oneshot::Sender<anyhow::Result<P2pQuicStream>>),
 }
 
+#[cfg(test)]
+pub(crate) struct TestCongestedPeerAlias {
+    alias: PeerConnectionAlias,
+    _rx: tokio::sync::mpsc::Receiver<PeerConnectionControl>,
+}
+
+#[cfg(test)]
+impl TestCongestedPeerAlias {
+    pub(crate) fn alias(&self) -> PeerConnectionAlias {
+        self.alias.clone()
+    }
+}
+
+#[cfg(test)]
+pub(crate) fn test_congested_peer_alias(local_id: PeerId, to_id: PeerId, conn_id: ConnectionId) -> TestCongestedPeerAlias {
+    let (tx, rx) = channel(1);
+    tx.try_send(PeerConnectionControl::Send(PeerMessage::PeerStopped(PeerId::from(u64::MAX)), None))
+        .expect("test peer-control queue should accept filler message");
+    TestCongestedPeerAlias {
+        alias: PeerConnectionAlias::new(local_id, to_id, conn_id, tx),
+        _rx: rx,
+    }
+}
+
 pub struct PeerConnection {
     conn_id: ConnectionId,
     peer_id: Option<PeerId>,
