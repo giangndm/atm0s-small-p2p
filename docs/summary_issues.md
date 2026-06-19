@@ -7,9 +7,9 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Accepted issues: 204
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 9
+- Current consecutive no-new-issue cycles: 10
 - Stop condition: continue until 5 consecutive cycles find no new accepted
-  issue; currently 9/5 after ISSUE-204.
+  issue; currently 10/5 after ISSUE-204.
 
 ## Root Cause Summary
 
@@ -256,6 +256,11 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Recent Fuzz Evidence
 
+- Extended steady-valid fuzz:
+  `P2P_FUZZ_SEED=2176001 P2P_FUZZ_NODES=8 P2P_FUZZ_STEPS=2200 cargo test fuzz_random_steady_valid_node_actions_must_not_panic_connection_tasks -- --nocapture`
+  passed with `1 passed; 0 failed`. Reviewer `Fermat the 4th` confirmed the
+  non-fatal route reselection, `path not found`, and `queue main loop full`
+  warnings map to existing RC-7 and RC-3 entries.
 - Extended invalid-wire action fuzz:
   `P2P_FUZZ_SEED=0x205301 P2P_FUZZ_NODES=8 P2P_FUZZ_STEPS=1000 cargo test fuzz_random_node_actions_must_not_panic_connection_tasks -- --nocapture`
   panics at `src/ctx.rs:34`, duplicate evidence for ISSUE-053. Reviewer
@@ -341,6 +346,13 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Recent No-New Audit
 
+- Cycle after ISSUE-204 no-new cycle 10 ran an eight-node steady-valid fuzz
+  pass with forked reviewer `Fermat the 4th`. The run passed with no panic or
+  failing assertion. The reviewer mapped 335 route reselections to
+  ISSUE-003/RC-7, 20 `queue main loop full` warnings to RC-3 backpressure, and
+  2 transient `path to ... not found` warnings to existing stale/unavailable
+  route entries, so no accepted issue or summary root-cause change was
+  recorded.
 - Cycle after ISSUE-204 no-new cycle 9 ran an eight-node invalid-wire action
   fuzz pass with forked reviewer `Hooke the 4th`. The run failed, but the
   failure was duplicate evidence for ISSUE-053: an invalid service id

@@ -11,7 +11,7 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 9
+- Current consecutive no-new-issue cycles: 10
 - Stop condition requested by user: continue until 5 consecutive cycles find no
   new accepted issue.
 
@@ -5768,6 +5768,24 @@ the source of truth for evidence and reviewer decisions.
     `src/peer.rs:1092` with `got 2`.
 
 ## No-New-Issue Audit Cycles
+
+### Cycle after ISSUE-204 no-new cycle 10: eight-node steady-valid fuzz pass
+
+- Result: no accepted non-duplicate issue.
+- Reviewer: `Fermat the 4th`, forked subagent review, confirmed no-new
+  classification.
+- Fuzz evidence reviewed:
+  - `P2P_FUZZ_SEED=2176001 P2P_FUZZ_NODES=8 P2P_FUZZ_STEPS=2200 cargo test fuzz_random_steady_valid_node_actions_must_not_panic_connection_tasks -- --nocapture`
+    passed with `1 passed; 0 failed`.
+- Duplicate or too-close symptoms rejected:
+  - 335 route reselection logs map to ISSUE-003 and RC-7 route instability.
+  - 20 `queue main loop full` warnings map to RC-3 peer-control backpressure,
+    including ISSUE-118, ISSUE-164, ISSUE-198, ISSUE-199, ISSUE-203, and
+    ISSUE-204 depending on the affected send path.
+  - 2 transient `path to ... not found` warnings map to existing stale or
+    unavailable-route entries rather than a new issue.
+- Root-cause summary impact: no new root cause; the run produced no panic,
+  failing assertion, or stronger correctness/security evidence for ISSUE-205.
 
 ### Cycle after ISSUE-204 no-new cycle 9: invalid-wire action fuzz duplicate service-id panic
 
