@@ -11,7 +11,7 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 25
+- Current consecutive no-new-issue cycles: 26
 - Stop condition requested by user: continue until 5 consecutive cycles find no
   new accepted issue.
 
@@ -5783,6 +5783,26 @@ the source of truth for evidence and reviewer decisions.
     `src/peer.rs:1092` with `got 2`.
 
 ## No-New-Issue Audit Cycles
+
+### Cycle after ISSUE-204 no-new cycle 26: discovery fresh-restart tombstone duplicate
+
+- Result: no accepted non-duplicate issue.
+- Reviewer: `Confucius the 4th`, forked subagent review, confirmed
+  duplicate-only no-new classification.
+- Source and test evidence reviewed:
+  - `src/discovery.rs`
+  - `cargo test graceful_stop_tombstone_must_allow_fresh_restart_advertise -- --nocapture`
+    failed with duplicate evidence for ISSUE-093.
+- Duplicate or too-close symptoms rejected:
+  - the failure at `src/discovery.rs:328:9` leaves `remotes()` empty after a
+    stopped peer restarts with a newer advertisement timestamp and address.
+  - `PeerDiscovery::apply_sync` still rejects all advertisements while a stop
+    tombstone is fresh without comparing `last_updated` against the tombstone
+    timestamp; this is exact accepted source behavior/failing evidence for
+    ISSUE-093.
+- Root-cause summary impact: no new root cause; this source/test cycle
+  strengthens existing ISSUE-093 evidence under RC-4 timeout/freshness gaps
+  without adding ISSUE-205.
 
 ### Cycle after ISSUE-204 no-new cycle 25: discovery tombstone resource duplicate
 

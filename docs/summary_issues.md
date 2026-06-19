@@ -7,9 +7,9 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Accepted issues: 204
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 25
+- Current consecutive no-new-issue cycles: 26
 - Stop condition: continue until 5 consecutive cycles find no new accepted
-  issue; currently 25/5 after ISSUE-204.
+  issue; currently 26/5 after ISSUE-204.
 
 ## Root Cause Summary
 
@@ -256,6 +256,11 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Recent Fuzz Evidence
 
+- Focused discovery freshness source/test review:
+  `cargo test graceful_stop_tombstone_must_allow_fresh_restart_advertise -- --nocapture`
+  failed with duplicate evidence for ISSUE-093. Reviewer `Confucius the 4th`
+  confirmed the `src/discovery.rs:328` assertion is the already-accepted fresh
+  restart advertisement suppression by stale stop tombstone under RC-4.
 - Focused discovery tombstone source/test review:
   `cargo test graceful_stop_tombstones_must_be_bounded_for_unknown_peers -- --nocapture`
   failed with duplicate evidence for ISSUE-122. Reviewer `Hubble the 4th`
