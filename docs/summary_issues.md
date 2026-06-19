@@ -5,7 +5,7 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Audit Status
 
-- Accepted issues: 170
+- Accepted issues: 171
 - Missing issue scores: 0
 - Current consecutive no-new-issue cycles: 0
 - Stop condition: continue until 5 consecutive cycles find no new accepted
@@ -30,7 +30,7 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 - Representative issues: ISSUE-034, ISSUE-037, ISSUE-038, ISSUE-047,
   ISSUE-059, ISSUE-071, ISSUE-081 through ISSUE-089, ISSUE-095, ISSUE-099,
   ISSUE-110, ISSUE-111, ISSUE-138, ISSUE-141, ISSUE-143, ISSUE-152,
-  ISSUE-154, ISSUE-155, ISSUE-158, ISSUE-166.
+  ISSUE-154, ISSUE-155, ISSUE-158, ISSUE-166, ISSUE-171.
 - Pattern: replicated-KV, alias, metrics, visualization, and pubsub flows accept
   stale, unsolicited, reordered, or mismatched responses because handlers do
   not verify request shape, bounds, version, continuation key, expected phase,
@@ -108,8 +108,6 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Recent Accepted Issues
 
-- ISSUE-165, score 54: visualization keeps a gracefully stopped peer until
-  timeout. Reviewer: Hubble the 2nd.
 - ISSUE-166, score 58: broadcast replay is accepted again after dedup cache
   eviction. Reviewer: Avicenna the 3rd.
 - ISSUE-167, score 56: expired non-seed discovery entries remain routable.
@@ -121,9 +119,11 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   `019ede01-2c64-7e11-af87-56677fa09649`.
 - ISSUE-170, score 62: PeerStopped forwarding loops indefinitely in cyclic
   meshes. Reviewer: Banach the 3rd.
+- ISSUE-171, score 60: replicated KV full resync deletes visible data before
+  replacement snapshot. Reviewer: Fermat the 3rd.
 
 ## Next Candidate To Validate
 
-- None queued. ISSUE-170 reset the no-new counter to 0. Continue fresh source
+- None queued. ISSUE-171 reset the no-new counter to 0. Continue fresh source
   review; if five consecutive cycles find no issue, switch to randomized fuzz
   tests over node actions.

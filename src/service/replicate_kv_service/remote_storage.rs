@@ -1366,6 +1366,41 @@ mod tests {
     }
 
     #[test]
+    fn solicited_full_resync_must_not_delete_existing_slots_before_snapshot_completes() {
+        let now = Instant::now();
+        let mut remote: RemoteStore<u16, u16, u16> = RemoteStore {
+            ctx: StateCtx {
+                remote: 1,
+                slots: BTreeMap::from([(1, Slot::new(10, Version(1))), (2, Slot::new(20, Version(2)))]),
+                outs: VecDeque::new(),
+                next_state: None,
+            },
+            state: RemoteStoreState::Working(WorkingState::new(Version(2))),
+            last_active: now,
+        };
+
+        remote.on_broadcast(BroadcastEvent::Version(Version(5)));
+        assert!(matches!(
+            remote.pop_out(),
+            Some(Event::NetEvent(NetEvent::Unicast(1, RpcEvent::RpcReq(RpcReq::FetchChanged { from: Version(3), count: 3 }))))
+        ));
+        assert_eq!(remote.pop_out(), None);
+
+        remote.on_rpc_res(RpcRes::FetchChanged(Err(FetchChangedError::MissingData)));
+
+        assert_eq!(
+            remote.ctx.slots,
+            BTreeMap::from([(1, Slot::new(10, Version(1))), (2, Slot::new(20, Version(2)))]),
+            "existing remote data should remain visible until the replacement full snapshot is complete"
+        );
+        assert_ne!(
+            remote.pop_out(),
+            Some(Event::KvEvent(KvEvent::Del(Some(1), 1))),
+            "a legitimate full-resync fallback must not emit false deletes before it has replacement data"
+        );
+    }
+
+    #[test]
     fn ignored_rpc_response_must_not_refresh_remote_activity() {
         let stale = Instant::now() - Duration::from_secs(11);
         let mut remote: RemoteStore<u16, u16, u16> = RemoteStore {

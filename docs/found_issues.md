@@ -39,7 +39,7 @@ the source of truth for evidence and reviewer decisions.
 - Representative issues: ISSUE-034, ISSUE-037, ISSUE-038, ISSUE-047,
   ISSUE-059, ISSUE-071, ISSUE-081 through ISSUE-089, ISSUE-095, ISSUE-099,
   ISSUE-110, ISSUE-111, ISSUE-138, ISSUE-141, ISSUE-143, ISSUE-152,
-  ISSUE-154, ISSUE-155, ISSUE-158, ISSUE-166.
+  ISSUE-154, ISSUE-155, ISSUE-158, ISSUE-166, ISSUE-171.
 - Pattern: replicated-KV full sync, changed repair, alias lookup, metrics,
   visualization, and pubsub flows accept stale, unsolicited, reordered, or
   mismatched responses because response handlers do not verify outstanding
@@ -4513,6 +4513,41 @@ the source of truth for evidence and reviewer decisions.
     a live `B-C-D-B` mesh produces thousands of
     `MainEvent::PeerStopped(_, stopped)` events in 500 ms; expected at most one
     observation per live node.
+
+### ISSUE-171: Replicated KV full resync deletes visible data before replacement snapshot
+
+- Category: correctness, replicated-KV resync stability, bad-network ordering
+- Score: 60/100
+- Reviewer: `Fermat the 3rd`, confirmed after `Franklin the 3rd` discovery.
+- Affected code:
+  - `src/service/replicate_kv_service/remote_storage.rs`:
+    `WorkingState::on_rpc_res` handles a solicited
+    `FetchChanged(Err(MissingData))` by scheduling `SyncFullState`.
+  - `src/service/replicate_kv_service/remote_storage.rs`: the wrapper
+    initializes the next state immediately after `on_rpc_res`.
+  - `src/service/replicate_kv_service/remote_storage.rs`:
+    `SyncFullState::init` clears all current remote slots and emits
+    `KvEvent::Del` before any replacement snapshot response arrives.
+- Impact: when a legitimate repair request falls back to full resync because
+  the producer no longer has the requested changelog range, consumers can see
+  the remote peer's live data disappear before the replacement snapshot has
+  completed. If the snapshot stalls or is delayed, the false deletes remain
+  visible for the whole resync window. Public reproduction requires changelog
+  rollover or a producer returning `MissingData` for a real requested gap. This
+  is distinct from ISSUE-087, which covers an unsolicited error forcing resync;
+  ISSUE-111, ISSUE-141, and ISSUE-154, which cover repair cancellation or stale
+  response correlation; and ISSUE-162, which covers stopped-peer cleanup.
+- Minimal fix proposal: for resync from an existing `WorkingState`, keep the
+  old `ctx.slots` visible while fetching a replacement full snapshot. Stage the
+  full-sync result in temporary storage, then atomically diff/apply `Set` and
+  `Del` events only after the terminal snapshot page is accepted. First-time
+  sync can still start from empty state.
+- Evidence test:
+  - `cargo test solicited_full_resync_must_not_delete_existing_slots_before_snapshot_completes -- --nocapture`
+  - Failure summary: after a real `FetchChanged { from: Version(3), count: 3 }`
+    request, a `FetchChanged(Err(MissingData))` fallback immediately clears
+    existing slots `{1, 2}`; expected the old slots to remain visible until the
+    replacement full snapshot completes.
 
 ## No-New-Issue Audit Cycles
 
