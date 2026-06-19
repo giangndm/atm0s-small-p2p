@@ -232,6 +232,12 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   `P2P_FUZZ_NODES=3 P2P_FUZZ_STEPS=150 cargo test fuzz_random_steady_valid_node_actions_must_not_panic_connection_tasks -- --nocapture`
   passed after bypassing invalid service ids, forged `PeerStopped`, and
   stop/restart churn.
+- Extended steady valid fuzz:
+  `P2P_FUZZ_NODES=4 P2P_FUZZ_STEPS=300 cargo test fuzz_random_steady_valid_node_actions_must_not_panic_connection_tasks -- --nocapture`
+  passed with no new issue.
+- Extended steady valid fuzz:
+  `P2P_FUZZ_NODES=5 P2P_FUZZ_STEPS=500 cargo test fuzz_random_steady_valid_node_actions_must_not_panic_connection_tasks -- --nocapture`
+  passed with no new issue.
 
 ## Recent No-New Audit
 
