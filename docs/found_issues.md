@@ -11,7 +11,7 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 31
+- Current consecutive no-new-issue cycles: 32
 - Stop condition requested by user: continue until 5 consecutive cycles find no
   new accepted issue.
 
@@ -5783,6 +5783,27 @@ the source of truth for evidence and reviewer decisions.
     `src/peer.rs:1092` with `got 2`.
 
 ## No-New-Issue Audit Cycles
+
+### Cycle after ISSUE-204 no-new cycle 32: queue-full stream duplicate
+
+- Result: no accepted non-duplicate issue.
+- Reviewer: `Wegener the 4th`, forked subagent review, confirmed
+  duplicate-only no-new classification.
+- Source and test evidence reviewed:
+  - `src/tests/stream.rs`
+  - `src/peer/peer_internal.rs`
+  - `cargo test open_stream_does_not_succeed_when_destination_service_queue_is_full -- --nocapture`
+    failed at `src/tests/stream.rs:97:5`.
+- Duplicate or too-close symptoms rejected:
+  - after ten held accepted streams fill the destination service acceptor
+    queue, the next `open_stream` still reports success for a pipe that no
+    destination service can consume.
+  - this maps directly to ISSUE-012, where the local `open_stream` path ignores
+    bounded destination service acceptor `try_send` failure and still returns a
+    successful `StreamConnectRes`.
+- Root-cause summary impact: no new root cause; this focused high-load
+  pipe-reliability cycle strengthens existing ISSUE-012 evidence under RC-3
+  delivery backpressure without adding ISSUE-205.
 
 ### Cycle after ISSUE-204 no-new cycle 31: closed-receiver stream duplicate
 

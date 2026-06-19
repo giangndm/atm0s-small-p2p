@@ -7,9 +7,9 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Accepted issues: 204
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 31
+- Current consecutive no-new-issue cycles: 32
 - Stop condition: continue until 5 consecutive cycles find no new accepted
-  issue; currently 31/5 after ISSUE-204.
+  issue; currently 32/5 after ISSUE-204.
 
 ## Root Cause Summary
 
@@ -256,6 +256,12 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Recent Fuzz Evidence
 
+- Focused queue-full stream review:
+  `cargo test open_stream_does_not_succeed_when_destination_service_queue_is_full -- --nocapture`
+  failed with duplicate evidence for ISSUE-012. Reviewer `Wegener the 4th`
+  confirmed the local `open_stream` path still ignores bounded destination
+  service acceptor `try_send` failure and reports success for an unconsumed
+  pipe after the acceptor queue is full.
 - Focused closed-receiver stream review:
   `cargo test open_stream_fails_when_destination_service_receiver_is_closed -- --nocapture`
   failed with duplicate evidence for ISSUE-011. Reviewer `Rawls the 4th`
