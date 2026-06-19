@@ -11,7 +11,7 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 37
+- Current consecutive no-new-issue cycles: 38
 - Stop condition requested by user: continue until 5 consecutive cycles find no
   new accepted issue.
 
@@ -5783,6 +5783,27 @@ the source of truth for evidence and reviewer decisions.
     `src/peer.rs:1092` with `got 2`.
 
 ## No-New-Issue Audit Cycles
+
+### Cycle after ISSUE-204 no-new cycle 38: orphan relay stream duplicate
+
+- Result: no accepted non-duplicate issue.
+- Reviewer: `Archimedes the 4th`, forked subagent review, confirmed
+  duplicate-only no-new classification.
+- Source and test evidence reviewed:
+  - `src/tests/stream.rs`
+  - `src/peer/peer_internal.rs`
+  - `cargo test relay_must_not_deliver_downstream_stream_after_upstream_setup_closes -- --nocapture`
+    failed at `src/tests/stream.rs:521:5`.
+- Duplicate or too-close symptoms rejected:
+  - a raw authenticated upstream sends a relayed `StreamConnectReq`, closes the
+    upstream response side before setup acknowledgement, and the destination
+    still receives the downstream stream event.
+  - this maps directly to ISSUE-156: the relay branch opens and delivers the
+    downstream stream with `alias.open_stream(...)` before proving the upstream
+    setup acknowledgement is writable/live.
+- Root-cause summary impact: no new root cause; this focused relay
+  cancellation cycle strengthens existing ISSUE-156 evidence under RC-4
+  end-to-end setup cancellation without adding ISSUE-205.
 
 ### Cycle after ISSUE-204 no-new cycle 37: stalled stream request write duplicate
 

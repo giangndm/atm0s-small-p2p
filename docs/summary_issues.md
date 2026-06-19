@@ -7,9 +7,9 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Accepted issues: 204
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 37
+- Current consecutive no-new-issue cycles: 38
 - Stop condition: continue until 5 consecutive cycles find no new accepted
-  issue; currently 37/5 after ISSUE-204.
+  issue; currently 38/5 after ISSUE-204.
 
 ## Root Cause Summary
 
@@ -256,6 +256,12 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Recent Fuzz Evidence
 
+- Focused orphan relay stream review:
+  `cargo test relay_must_not_deliver_downstream_stream_after_upstream_setup_closes -- --nocapture`
+  failed with duplicate evidence for ISSUE-156. Reviewer `Archimedes the 4th`
+  confirmed the relay still opens the downstream stream with
+  `alias.open_stream(...)` before proving the upstream setup acknowledgement is
+  writable/live, so upstream cancellation can leave an orphan downstream pipe.
 - Focused stalled stream-request write review:
   `cargo test open_stream_must_timeout_when_connect_request_write_stalls -- --nocapture`
   failed with duplicate evidence for ISSUE-169. Reviewer `Bohr the 4th`
