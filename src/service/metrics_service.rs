@@ -1,5 +1,9 @@
-use std::{collections::VecDeque, time::Duration};
+use std::{
+    collections::{HashSet, VecDeque},
+    time::Duration,
+};
 
+use futures::{stream::FuturesUnordered, FutureExt, StreamExt};
 use serde::{Deserialize, Serialize};
 use tokio::{select, task::JoinHandle, time::Interval};
 
@@ -89,6 +93,8 @@ pub struct MetricsService {
     service: P2pService,
     ticker: Interval,
     outs: VecDeque<MetricsServiceEvent>,
+    pending_scan_responses: HashSet<PeerId>,
+    scan_response_tasks: FuturesUnordered<JoinHandle<PeerId>>,
     pending_scan_broadcast: Option<JoinHandle<()>>,
 }
 
@@ -101,6 +107,8 @@ impl MetricsService {
             ticker,
             service,
             outs: VecDeque::new(),
+            pending_scan_responses: HashSet::new(),
+            scan_response_tasks: FuturesUnordered::new(),
             pending_scan_broadcast: None,
         }
     }
@@ -109,6 +117,16 @@ impl MetricsService {
         loop {
             if let Some(out) = self.outs.pop_front() {
                 return Ok(out);
+            }
+            while let Some(task) = self.scan_response_tasks.next().now_or_never().flatten() {
+                match task {
+                    Ok(peer) => {
+                        self.pending_scan_responses.remove(&peer);
+                    }
+                    Err(err) => {
+                        log::warn!("metrics scan response task failed: {err}");
+                    }
+                }
             }
             if self.pending_scan_broadcast.as_ref().is_some_and(|task| task.is_finished()) {
                 if let Some(task) = self.pending_scan_broadcast.take() {
@@ -142,17 +160,20 @@ impl MetricsService {
                         if let Ok(msg) = bincode::deserialize::<Message>(&data) {
                             match msg {
                                 Message::Scan => {
-                                    let metrics = self.service.ctx.metrics();
-                                    let requester = self.service.requester();
-                                    tokio::spawn(async move {
+                                    if self.pending_scan_responses.insert(from) {
+                                        let metrics = self.service.ctx.metrics();
+                                        let requester = self.service.requester();
                                         let data = bincode::serialize(&Message::Info(metrics)).expect("should convert to buf");
-                                        // Wait through transient peer-control backpressure, but do not keep
-                                        // a detached response task alive forever for a stuck peer.
-                                        match tokio::time::timeout(SCAN_RESPONSE_SEND_TIMEOUT, requester.send_unicast(from, data)).await {
-                                            Ok(result) => result.print_on_err("send metrics info to collector error"),
-                                            Err(_) => log::warn!("send metrics info to collector timed out"),
-                                        }
-                                    });
+                                        self.scan_response_tasks.push(tokio::spawn(async move {
+                                            // Wait through transient peer-control backpressure, but do not keep
+                                            // a detached response task alive forever for a stuck peer.
+                                            match tokio::time::timeout(SCAN_RESPONSE_SEND_TIMEOUT, requester.send_unicast(from, data)).await {
+                                                Ok(result) => result.print_on_err("send metrics info to collector error"),
+                                                Err(_) => log::warn!("send metrics info to collector timed out"),
+                                            }
+                                            from
+                                        }));
+                                    }
                                 }
                                 Message::Info(peer_metrics) => {
                                     self.outs.push_back(MetricsServiceEvent::OnPeerConnectionMetric(from, peer_metrics));

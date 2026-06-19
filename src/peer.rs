@@ -1,9 +1,9 @@
 use std::{net::SocketAddr, sync::Arc, time::Duration};
 
 use anyhow::anyhow;
-use metrics::gauge;
 #[cfg(test)]
 use metrics::counter;
+use metrics::gauge;
 use peer_internal::PeerConnectionInternal;
 use quinn::{Connecting, Connection, Incoming, RecvStream, SendStream};
 use serde::{Deserialize, Serialize};
@@ -21,9 +21,7 @@ use crate::{
     ConnectionId, PeerId, P2P_CONNECTION_RTT, P2P_LIVE_CONNECTION_COUNT,
 };
 #[cfg(test)]
-use crate::{
-    P2P_CONNECTION_CONGESTION_EVENTS, P2P_CONNECTION_LOST_BYTES, P2P_CONNECTION_LOST_PKT, P2P_CONNECTION_RECV_BYTES, P2P_CONNECTION_SENT_BYTES, P2P_CONNECTION_UPTIME,
-};
+use crate::{P2P_CONNECTION_CONGESTION_EVENTS, P2P_CONNECTION_LOST_BYTES, P2P_CONNECTION_LOST_PKT, P2P_CONNECTION_RECV_BYTES, P2P_CONNECTION_SENT_BYTES, P2P_CONNECTION_UPTIME};
 
 use super::{msg::PeerMessage, MainEvent};
 
@@ -889,10 +887,7 @@ mod tests {
 
         let result = ctx.send_broadcast(P2pServiceId::from(1), b"lost-broadcast".to_vec()).await;
 
-        assert!(
-            result.is_err(),
-            "send_broadcast must report an error when every peer control channel is closed, got {result:?}"
-        );
+        assert!(result.is_err(), "send_broadcast must report an error when every peer control channel is closed, got {result:?}");
     }
 
     #[tokio::test]
@@ -1124,10 +1119,7 @@ mod tests {
             result.is_err(),
             "try_send_broadcast must report an error when every peer control queue rejects the broadcast, got {result:?}"
         );
-        assert!(
-            delivered == 0,
-            "try_send_broadcast should not report all-failed delivery while a broadcast was actually queued"
-        );
+        assert!(delivered == 0, "try_send_broadcast should not report all-failed delivery while a broadcast was actually queued");
     }
 
     #[tokio::test]
