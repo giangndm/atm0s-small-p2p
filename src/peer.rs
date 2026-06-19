@@ -254,7 +254,7 @@ mod tests {
         neighbours::NetworkNeighbours,
         quic::make_server_endpoint,
         router::{RouteAction, SharedRouterTable},
-        service::{metrics_service::MetricsService, P2pService},
+        service::{metrics_service::MetricsService, visualization_service::VisualizationService, P2pService},
         stream::BincodeCodec,
         NetworkAddress, P2pNetwork, P2pNetworkConfig, PeerMainData, SharedKeyHandshake, CERT_DOMAIN_NAME,
     };
@@ -895,6 +895,41 @@ mod tests {
         assert!(
             duplicate_scans <= 1,
             "metrics collector must coalesce scan broadcasts while the previous broadcast is still backpressured; got {duplicate_scans}"
+        );
+    }
+
+    #[tokio::test]
+    async fn visualization_collector_must_not_spawn_duplicate_scans_when_previous_broadcast_is_backpressured() {
+        let ctx = SharedCtx::new(PeerId::from(0), SharedRouterTable::new(PeerId::from(0)));
+        let (tx, mut rx) = channel(1);
+
+        tx.try_send(PeerConnectionControl::Send(PeerMessage::PeerStopped(PeerId::from(99)), None))
+            .expect("test control queue should accept filler message");
+
+        ctx.register_conn(ConnectionId::from(1), PeerConnectionAlias::new(PeerId::from(0), PeerId::from(1), ConnectionId::from(1), tx));
+        let (base_service, _service_tx) = P2pService::build(P2pServiceId::from(8), ctx);
+        let mut visualization = VisualizationService::new(Some(Duration::from_millis(1)), true, base_service);
+        let _ = visualization.recv().await.expect("initial local peer event should be emitted");
+
+        for _ in 0..8 {
+            let _ = visualization.recv().await.expect("collector tick should emit local topology");
+        }
+
+        let _filler = rx.recv().await.expect("filler should drain");
+        let mut duplicate_scans = 0;
+        let deadline = tokio::time::Instant::now() + Duration::from_millis(100);
+        while tokio::time::Instant::now() < deadline {
+            if let Ok(Some(PeerConnectionControl::Send(PeerMessage::Broadcast(_, _, _, _), None))) = tokio::time::timeout(Duration::from_millis(10), rx.recv()).await {
+                duplicate_scans += 1;
+                if duplicate_scans > 1 {
+                    break;
+                }
+            }
+        }
+
+        assert!(
+            duplicate_scans <= 1,
+            "visualization collector must coalesce scan broadcasts while the previous broadcast is still backpressured; got {duplicate_scans}"
         );
     }
 

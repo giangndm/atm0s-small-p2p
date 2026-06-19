@@ -5,10 +5,10 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Audit Status
 
-- Accepted issues: 200
+- Accepted issues: 201
 - Missing issue scores: 0
 - Current consecutive no-new-issue cycles: 0
-- Stop condition: reset by ISSUE-200. Continue RED-team review and randomized
+- Stop condition: reset by ISSUE-201. Continue RED-team review and randomized
   fuzz tests over node actions.
 
 ## Root Cause Summary
@@ -53,7 +53,7 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   ISSUE-119, ISSUE-120, ISSUE-123, ISSUE-124, ISSUE-125, ISSUE-126,
   ISSUE-127, ISSUE-133, ISSUE-136, ISSUE-147, ISSUE-153, ISSUE-157,
   ISSUE-163, ISSUE-164, ISSUE-178, ISSUE-182, ISSUE-184, ISSUE-198,
-  ISSUE-199, ISSUE-200.
+  ISSUE-199, ISSUE-200, ISSUE-201.
 - Pattern: some paths drop on `try_send`, some await bounded sends from
   critical tasks, and others use unbounded queues or duplicate internal control
   work. Under load this causes silent loss, head-of-line blocking, unreported
@@ -70,9 +70,9 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   one successful local or remote fanout. Disable unused QUIC stream classes or
   add explicit admission plus drain/reject handlers. Repair requests need typed
   pending descriptors and duplicate suppression until timeout or a matching
-  response changes the range. Periodic collectors should keep explicit
-  in-flight scan state and coalesce ticks while an earlier scan broadcast is
-  still backpressured.
+  response changes the range. Periodic metrics and visualization collectors
+  should keep explicit in-flight scan state and coalesce ticks while an earlier
+  scan broadcast is still backpressured.
 
 ### RC-4: Timeouts and setup cancellation are incomplete
 
@@ -233,12 +233,14 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   fails. Reviewer: Maxwell the 3rd.
 - ISSUE-200, score 58: metrics collector duplicates scan broadcasts behind
   hidden backpressure. Reviewer: Bohr the 3rd.
+- ISSUE-201, score 57: visualization collector duplicates scan broadcasts
+  behind hidden backpressure. Reviewer: Plato the 3rd.
 
 ## Next Candidate To Validate
 
-- Continue RED-team review around service collectors, visualization scan
-  scheduling, and high-load backpressure. Randomized node-action churn fuzzing
-  has already started and should continue from the steady-valid passing
+- Continue RED-team review around service collector response paths, detached
+  unicast tasks, and high-load backpressure. Randomized node-action churn
+  fuzzing has already started and should continue from the steady-valid passing
   baseline when five consecutive no-new cycles accumulate again.
 
 ## Recent Fuzz Evidence

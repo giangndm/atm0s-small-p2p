@@ -5627,6 +5627,40 @@ the source of truth for evidence and reviewer decisions.
     with `got 2`, proving scans accumulate while a prior broadcast remains
     backpressured.
 
+### ISSUE-201: visualization collector duplicates scan broadcasts behind hidden backpressure
+
+- Category: high-load stability, visualization collector backpressure,
+  duplicate work
+- Score: 57/100
+- Reviewer: `Plato the 3rd`, confirmed after `Tesla the 3rd` discovery.
+- Affected code:
+  - `src/service/visualization_service.rs`: each collection tick optionally
+    emits a local topology update and then `tokio::spawn`s a detached task that
+    awaits `requester.send_broadcast(Message::Scan)`.
+  - `src/ctx.rs`: `SharedCtx::send_broadcast` awaits bounded peer-control
+    sends sequentially.
+  - `src/peer/peer_alias.rs`: `PeerConnectionAlias::send` awaits the bounded
+    peer-control channel.
+- Impact: when a peer-control queue is full, the visualization service loop
+  remains responsive by hiding the blocked broadcast in a detached task.
+  Subsequent collection ticks spawn more blocked topology scan tasks; when
+  pressure clears, peers can receive duplicate stale scans. This is distinct
+  from ISSUE-200, which covers `MetricsService`; ISSUE-049/050, which cover
+  direct caller blocking; and ISSUE-198/199, which cover broadcast
+  delivery/result reporting.
+- Minimal fix proposal: add explicit in-flight scan state to
+  `VisualizationService` and skip or coalesce collector ticks while the prior
+  scan broadcast is pending. The smallest local fix is a pending `JoinHandle`
+  or boolean flag cleared when the send task completes; longer term, use an
+  observable bounded broadcast API.
+- Evidence test:
+  - `cargo test visualization_collector_must_not_spawn_duplicate_scans_when_previous_broadcast_is_backpressured -- --nocapture`
+  - Failure summary: the test keeps a synthetic peer-control queue full across
+    eight 1 ms visualization collection ticks, drains the filler item, and
+    observes more than one queued `PeerMessage::Broadcast` scan. It fails at
+    `src/peer.rs:930` with `got 2`, proving visualization scans accumulate
+    while a prior broadcast remains backpressured.
+
 ## No-New-Issue Audit Cycles
 
 ### Cycle after ISSUE-193 no-new cycle 4: public API, examples, fuzz harness, config
