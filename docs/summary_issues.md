@@ -7,9 +7,9 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Accepted issues: 204
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 33
+- Current consecutive no-new-issue cycles: 34
 - Stop condition: continue until 5 consecutive cycles find no new accepted
-  issue; currently 33/5 after ISSUE-204.
+  issue; currently 34/5 after ISSUE-204.
 
 ## Root Cause Summary
 
@@ -256,6 +256,13 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Recent Fuzz Evidence
 
+- Focused relay stream ingress-loop review:
+  `cargo test relay_stream_must_not_forward_back_to_ingress_peer -- --nocapture`
+  failed with duplicate evidence for ISSUE-180. Reviewer `Socrates the 4th`
+  confirmed `accept_bi` still blindly relays `RouteAction::Next(next)` with
+  `alias.open_stream(...)` and cannot reject forwarding back to the ingress
+  peer/connection, so recursive relay setup times out instead of returning a
+  prompt route-loop error.
 - Focused local open-stream API review:
   `cargo test open_stream_to_local_returns_error_not_panic -- --nocapture`
   failed with duplicate evidence for ISSUE-013. Reviewer `Helmholtz the 4th`

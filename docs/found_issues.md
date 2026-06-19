@@ -11,7 +11,7 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 33
+- Current consecutive no-new-issue cycles: 34
 - Stop condition requested by user: continue until 5 consecutive cycles find no
   new accepted issue.
 
@@ -5783,6 +5783,27 @@ the source of truth for evidence and reviewer decisions.
     `src/peer.rs:1092` with `got 2`.
 
 ## No-New-Issue Audit Cycles
+
+### Cycle after ISSUE-204 no-new cycle 34: relay stream ingress-loop duplicate
+
+- Result: no accepted non-duplicate issue.
+- Reviewer: `Socrates the 4th`, forked subagent review, confirmed
+  duplicate-only no-new classification.
+- Source and test evidence reviewed:
+  - `src/tests/stream.rs`
+  - `src/peer/peer_internal.rs`
+  - `cargo test relay_stream_must_not_forward_back_to_ingress_peer -- --nocapture`
+    failed at `src/tests/stream.rs:161:10` with `Elapsed(())`.
+- Duplicate or too-close symptoms rejected:
+  - with route state where a ghost peer routes through the two connected nodes,
+    `service1.open_stream(PeerId(99), ...)` still fails to return a prompt
+    route-loop error and instead times out while relayed setup recurses.
+  - this maps directly to ISSUE-180: `accept_bi` still handles
+    `RouteAction::Next(next)` by blindly calling `alias.open_stream(...)`
+    without knowing or rejecting the ingress connection.
+- Root-cause summary impact: no new root cause; this focused relay
+  pipe-reliability cycle strengthens existing ISSUE-180 evidence under RC-7
+  route-loop handling without adding ISSUE-205.
 
 ### Cycle after ISSUE-204 no-new cycle 33: local open-stream panic duplicate
 
