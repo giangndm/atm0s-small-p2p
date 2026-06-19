@@ -36,12 +36,14 @@ pub(crate) fn encode_scan_for_test() -> Vec<u8> {
 }
 
 const SCAN_RESPONSE_SEND_TIMEOUT: Duration = Duration::from_secs(1);
+const SCAN_BROADCAST_SEND_TIMEOUT: Duration = Duration::from_secs(1);
 
 pub struct VisualizationService {
     service: P2pService,
     neighbours: HashMap<PeerId, u64>,
     pending_scan_responses: HashSet<PeerId>,
     scan_response_tasks: FuturesUnordered<JoinHandle<PeerId>>,
+    pending_scan_broadcast: Option<JoinHandle<()>>,
     ticker: Interval,
     collect_interval: Option<Duration>,
     collect_me: bool,
@@ -63,6 +65,7 @@ impl VisualizationService {
             neighbours: HashMap::new(),
             pending_scan_responses: HashSet::new(),
             scan_response_tasks: FuturesUnordered::new(),
+            pending_scan_broadcast: None,
             outs: if collect_me {
                 VecDeque::from([VisualizationServiceEvent::PeerJoined(service.router().local_id(), vec![])])
             } else {
@@ -87,6 +90,13 @@ impl VisualizationService {
                     }
                 }
             }
+            if self.pending_scan_broadcast.as_ref().is_some_and(|task| task.is_finished()) {
+                if let Some(task) = self.pending_scan_broadcast.take() {
+                    if let Err(err) = task.await {
+                        log::warn!("visualization scan broadcast task failed: {err}");
+                    }
+                }
+            }
 
             select! {
                 _ = self.ticker.tick() => {
@@ -96,10 +106,16 @@ impl VisualizationService {
                             self.outs.push_back(VisualizationServiceEvent::PeerUpdated(self.service.router().local_id(), self.service.router().neighbours()));
                         }
 
-                        let requester = self.service.requester();
-                        tokio::spawn(async move {
-                            requester.send_broadcast(bincode::serialize(&Message::Scan).expect("should convert to buf")).await;
-                        });
+                        if self.pending_scan_broadcast.is_none() {
+                            let requester = self.service.requester();
+                            let data = bincode::serialize(&Message::Scan).expect("should convert to buf");
+                            self.pending_scan_broadcast = Some(tokio::spawn(async move {
+                                match tokio::time::timeout(SCAN_BROADCAST_SEND_TIMEOUT, requester.send_broadcast(data)).await {
+                                    Ok(()) => {}
+                                    Err(_) => log::warn!("visualization scan broadcast timed out"),
+                                }
+                            }));
+                        }
 
                         let now = now_ms();
                         let mut timeout_peers = vec![];
