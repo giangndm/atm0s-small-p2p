@@ -7,9 +7,9 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Accepted issues: 204
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 21
+- Current consecutive no-new-issue cycles: 22
 - Stop condition: continue until 5 consecutive cycles find no new accepted
-  issue; currently 21/5 after ISSUE-204.
+  issue; currently 22/5 after ISSUE-204.
 
 ## Root Cause Summary
 
@@ -256,6 +256,14 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Recent Fuzz Evidence
 
+- Focused cross-node unicast delivery review:
+  `cargo test inbound_unicast_must_not_drop_when_service_queue_is_full -- --nocapture`
+  now passes, but
+  `cargo test unicast_must_not_report_success_when_destination_service_receiver_is_closed -- --nocapture`
+  still fails at `src/tests/cross_nodes.rs:203`. Reviewer `Noether the 4th`
+  classified this as existing-issue partial-fix/no-new evidence for ISSUE-119
+  under RC-3: queue-full silent drop is fixed by awaited local delivery, while
+  closed-receiver success reporting remains open.
 - Focused visualization resource-bound source/test review:
   `cargo test visualization_info_batches_must_be_bounded -- --nocapture`
   failed with duplicate evidence for ISSUE-105. Reviewer `Popper the 4th`

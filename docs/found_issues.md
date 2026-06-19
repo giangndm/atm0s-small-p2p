@@ -11,7 +11,7 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 21
+- Current consecutive no-new-issue cycles: 22
 - Stop condition requested by user: continue until 5 consecutive cycles find no
   new accepted issue.
 
@@ -3083,6 +3083,15 @@ the source of truth for evidence and reviewer decisions.
   - Additional failure summary: when the destination service receiver is closed,
     inbound local unicast delivery still only logs `try_send` failure, while
     the sender has already observed `send_unicast` success.
+- Current audit status:
+  - No-new cycle 22 reran
+    `cargo test inbound_unicast_must_not_drop_when_service_queue_is_full -- --nocapture`;
+    it now passes because the current local delivery path awaits bounded
+    `service.send(...)` with a timeout instead of immediate `try_send`.
+  - The additional closed-receiver evidence
+    `cargo test unicast_must_not_report_success_when_destination_service_receiver_is_closed -- --nocapture`
+    still fails at `src/tests/cross_nodes.rs:203:5`, so ISSUE-119 remains open
+    for sender success reporting when local delivery cannot be completed.
 
 ### ISSUE-120: Inbound broadcast is silently dropped when the local service queue is full
 
@@ -5768,6 +5777,31 @@ the source of truth for evidence and reviewer decisions.
     `src/peer.rs:1092` with `got 2`.
 
 ## No-New-Issue Audit Cycles
+
+### Cycle after ISSUE-204 no-new cycle 22: unicast queue-full partial fix, closed receiver duplicate
+
+- Result: no accepted non-duplicate issue.
+- Reviewer: `Noether the 4th`, forked subagent review, confirmed
+  existing-issue partial-fix/no-new classification.
+- Source and test evidence reviewed:
+  - `src/tests/cross_nodes.rs`
+  - `src/peer/peer_internal.rs`
+  - `cargo test inbound_unicast_must_not_drop_when_service_queue_is_full -- --nocapture`
+    passed.
+  - `cargo test unicast_must_not_report_success_when_destination_service_receiver_is_closed -- --nocapture`
+    failed with duplicate evidence for ISSUE-119.
+- Duplicate, fixed, or too-close symptoms rejected:
+  - the queue-full subcase no longer reproduces ISSUE-119 because
+    `send_local_service_event` now wraps bounded `service.send(event)` in
+    `LOCAL_SERVICE_DELIVERY_TIMEOUT`, and the 11-message assertion drains all
+    expected messages.
+  - the closed-receiver subcase still fails at `src/tests/cross_nodes.rs:203:5`;
+    `send_unicast` reports success even when the destination service receiver
+    is gone. This is already accepted under ISSUE-119 and does not add
+    ISSUE-205.
+- Root-cause summary impact: no new root cause; this cycle records partial
+  fixed evidence for ISSUE-119 under RC-3 while the closed-receiver reporting
+  subcase remains open.
 
 ### Cycle after ISSUE-204 no-new cycle 21: visualization info batch duplicate
 
