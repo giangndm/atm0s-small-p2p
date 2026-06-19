@@ -1561,6 +1561,52 @@ mod tests {
     }
 
     #[test]
+    fn working_state_must_not_let_stale_fetch_changed_response_cancel_newer_repair() {
+        let mut ctx: StateCtx<u16, u16, u16> = StateCtx {
+            remote: 1,
+            slots: BTreeMap::new(),
+            outs: VecDeque::new(),
+            next_state: None,
+        };
+
+        let now = Instant::now();
+        let mut state = WorkingState::new(Version(0));
+
+        state.on_broadcast(&mut ctx, now, BroadcastEvent::Version(Version(1)));
+        assert_eq!(
+            ctx.outs.pop_front(),
+            Some(Event::NetEvent(NetEvent::Unicast(1, RpcEvent::RpcReq(RpcReq::FetchChanged { from: Version(1), count: 1 }))))
+        );
+        assert_eq!(ctx.outs.pop_front(), None);
+
+        state.on_broadcast(&mut ctx, now, BroadcastEvent::Version(Version(5)));
+        assert_eq!(
+            ctx.outs.pop_front(),
+            Some(Event::NetEvent(NetEvent::Unicast(1, RpcEvent::RpcReq(RpcReq::FetchChanged { from: Version(1), count: 5 }))))
+        );
+        assert_eq!(ctx.outs.pop_front(), None);
+
+        state.on_rpc_res(
+            &mut ctx,
+            now,
+            RpcRes::FetchChanged(Ok(vec![Changed {
+                key: 1,
+                version: Version(1),
+                action: Action::Set(10),
+            }])),
+        );
+
+        while matches!(ctx.outs.pop_front(), Some(Event::KvEvent(_))) {}
+        state.on_tick(&mut ctx, now + REQUEST_TIMEOUT + Duration::from_millis(1));
+
+        assert_eq!(
+            ctx.outs.pop_front(),
+            Some(Event::NetEvent(NetEvent::Unicast(1, RpcEvent::RpcReq(RpcReq::FetchChanged { from: Version(2), count: 4 })))),
+            "stale response for the old narrow request must not cancel the newer repair for versions 2..=5"
+        );
+    }
+
+    #[test]
     fn test_working_state_resend_timeout_fetch_changed() {
         let mut ctx: StateCtx<u16, u16, u16> = StateCtx {
             remote: 1,

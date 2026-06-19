@@ -38,7 +38,8 @@ the source of truth for evidence and reviewer decisions.
 
 - Representative issues: ISSUE-034, ISSUE-037, ISSUE-038, ISSUE-047,
   ISSUE-059, ISSUE-071, ISSUE-081 through ISSUE-089, ISSUE-095, ISSUE-099,
-  ISSUE-110, ISSUE-111, ISSUE-138, ISSUE-141, ISSUE-143, ISSUE-152.
+  ISSUE-110, ISSUE-111, ISSUE-138, ISSUE-141, ISSUE-143, ISSUE-152,
+  ISSUE-154.
 - Pattern: replicated-KV full sync, changed repair, alias lookup, metrics,
   visualization, and pubsub flows accept stale, unsolicited, reordered, or
   mismatched responses because response handlers do not verify outstanding
@@ -3906,3 +3907,39 @@ the source of truth for evidence and reviewer decisions.
   - Failure summary: calling `process_tick` 1,025 times with one unreachable
     seed leaves `node.control_rx.len() == 1025`; expected discovery retries to
     coalesce to at most one pending connect per remote.
+
+### ISSUE-154: Stale FetchChanged response cancels a newer replicated-KV repair
+
+- Category: correctness, replicated-KV repair stability, bad-network ordering
+- Score: 66/100
+- Reviewer: `Linnaeus the 2nd`, confirmed by independent forked discovery.
+- Affected code:
+  - `src/service/replicate_kv_service/remote_storage.rs`:
+    `WorkingState::on_broadcast` stores the current repair request in
+    `self.sending_req`, but a later broadcast can replace it with a wider
+    `FetchChanged` request.
+  - `src/service/replicate_kv_service/remote_storage.rs`:
+    `WorkingState::on_rpc_res` accepts any successful
+    `RpcRes::FetchChanged(Ok(_))` without checking that it matches the current
+    request's `from` and `count`.
+  - `src/service/replicate_kv_service/remote_storage.rs`: after applying the
+    response, `on_rpc_res` unconditionally clears `self.sending_req`.
+- Impact: when a delayed response to an older narrow repair arrives after a
+  newer wider repair has been requested, the stale response can advance only
+  part of the gap and then clear the newer pending request. The replica remains
+  stale for the rest of the missing version range until a future broadcast
+  happens to restart repair. This is distinct from ISSUE-086, which covers
+  unsolicited success without any request; ISSUE-111, which covers empty success
+  canceling an active repair; ISSUE-141, which covers a partial response to the
+  current wider request; and ISSUE-071, which covers retrying a stale request
+  after broadcasts already filled the gap.
+- Minimal fix proposal: store a typed pending `FetchChanged { from, count }`
+  descriptor and reject or ignore responses that cannot be matched to that
+  descriptor; after applying a matched response, keep or narrow the pending
+  descriptor until the entire requested range is covered.
+- Evidence test:
+  - `cargo test working_state_must_not_let_stale_fetch_changed_response_cancel_newer_repair -- --nocapture`
+  - Failure summary: after a `FetchChanged { from: Version(1), count: 1 }`
+    request is superseded by `{ from: Version(1), count: 5 }`, a delayed
+    response containing only `Version(1)` clears the wider repair. The timeout
+    tick emits no follow-up `FetchChanged { from: Version(2), count: 4 }`.
