@@ -39,7 +39,7 @@ the source of truth for evidence and reviewer decisions.
 - Representative issues: ISSUE-034, ISSUE-037, ISSUE-038, ISSUE-047,
   ISSUE-059, ISSUE-071, ISSUE-081 through ISSUE-089, ISSUE-095, ISSUE-099,
   ISSUE-110, ISSUE-111, ISSUE-138, ISSUE-141, ISSUE-143, ISSUE-152,
-  ISSUE-154, ISSUE-155, ISSUE-158, ISSUE-166, ISSUE-171.
+  ISSUE-154, ISSUE-155, ISSUE-158, ISSUE-166, ISSUE-171, ISSUE-175.
 - Pattern: replicated-KV full sync, changed repair, alias lookup, metrics,
   visualization, and pubsub flows accept stale, unsolicited, reordered, or
   mismatched responses because response handlers do not verify outstanding
@@ -4600,6 +4600,40 @@ the source of truth for evidence and reviewer decisions.
     request, a `FetchChanged(Err(MissingData))` fallback immediately clears
     existing slots `{1, 2}`; expected the old slots to remain visible until the
     replacement full snapshot completes.
+
+### ISSUE-175: Replicated KV emits delete changes for keys that were never present
+
+- Category: correctness, replicated-KV API semantics, noisy state changes
+- Score: 42/100
+- Reviewer: `Volta the 3rd`, confirmed after `Gibbs the 3rd` discovery.
+- Affected code:
+  - `src/service/replicate_kv_service/local_storage.rs`: `LocalStore::del`
+    increments the local version, records and broadcasts
+    `Changed { action: Del }`, and emits `KvEvent::Del(None, key)` before
+    checking whether `slots.remove(&key)` removes anything.
+  - `src/service/replicate_kv_service/remote_storage.rs`:
+    `WorkingState::apply_pendings` emits `KvEvent::Del(Some(remote), key)` for
+    a delete change before checking whether replicated state contained that key.
+- Impact: deleting an absent key through the normal local API creates a
+  replicated version bump, broadcasts a delete to peers, and emits a local
+  delete event even though no visible value changed. Peers can observe delete
+  events for keys they never had, creating noisy application events and
+  avoidable replication churn. This is distinct from ISSUE-171, which deletes
+  visible data during full resync; ISSUE-162, which delays stopped-peer data
+  cleanup; ISSUE-086/087, which cover unsolicited RPC responses; and version
+  overflow issues.
+- Minimal fix proposal: make local deletes idempotent against current state:
+  remove first, and only if a slot existed should the store increment version,
+  record/broadcast `Changed(Del)`, and emit `KvEvent::Del`. On the remote side,
+  still advance protocol version for valid ordered deletes, but emit
+  `KvEvent::Del(Some(remote), key)` only when `ctx.slots.remove(&key)` returns
+  `Some(_)`.
+- Evidence test:
+  - `cargo test deleting_absent_key_must_not_emit_delete_event -- --nocapture`
+  - Failure summary: calling `LocalStore::del(99)` on an empty store queues
+    `NetEvent::Broadcast(Changed { key: 99, version: Version(1), action: Del })`
+    and advances version; expected no output and version `0` because the key
+    was never present.
 
 ### ISSUE-172: Outbound peer setup hangs while writing ConnectReq to stalled peer
 

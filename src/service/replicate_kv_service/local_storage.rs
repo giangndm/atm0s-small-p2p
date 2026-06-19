@@ -329,6 +329,24 @@ mod tests {
     }
 
     #[test]
+    fn deleting_absent_key_must_not_emit_delete_event() {
+        let mut store: LocalStore<u16, u16, u16> = LocalStore::new(10, 2);
+
+        store.del(99);
+
+        assert_eq!(
+            store.pop_out(),
+            None,
+            "deleting a key that was never present must not broadcast or emit a delete event"
+        );
+        assert_eq!(
+            store.version,
+            Version(0),
+            "deleting a key that was never present must not advance the replicated version"
+        );
+    }
+
+    #[test]
     fn snapshot_with_zero_compose_budget_must_make_progress() {
         let mut store: LocalStore<u16, u16, u16> = LocalStore::new(10, 0);
         store.set(1, 1);

@@ -5,7 +5,7 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Audit Status
 
-- Accepted issues: 174
+- Accepted issues: 175
 - Missing issue scores: 0
 - Current consecutive no-new-issue cycles: 0
 - Stop condition: continue until 5 consecutive cycles find no new accepted
@@ -30,7 +30,7 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 - Representative issues: ISSUE-034, ISSUE-037, ISSUE-038, ISSUE-047,
   ISSUE-059, ISSUE-071, ISSUE-081 through ISSUE-089, ISSUE-095, ISSUE-099,
   ISSUE-110, ISSUE-111, ISSUE-138, ISSUE-141, ISSUE-143, ISSUE-152,
-  ISSUE-154, ISSUE-155, ISSUE-158, ISSUE-166, ISSUE-171.
+  ISSUE-154, ISSUE-155, ISSUE-158, ISSUE-166, ISSUE-171, ISSUE-175.
 - Pattern: replicated-KV, alias, metrics, visualization, and pubsub flows accept
   stale, unsolicited, reordered, or mismatched responses because handlers do
   not verify request shape, bounds, version, continuation key, expected phase,
@@ -123,9 +123,11 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   a stalled peer. Reviewer: Peirce the 3rd.
 - ISSUE-174, score 46: QUIC object writer can bypass `MAX_SIZE` with
   non-deterministic serialization. Reviewer: Hypatia the 3rd.
+- ISSUE-175, score 42: replicated KV emits delete changes for keys that were
+  never present. Reviewer: Volta the 3rd.
 
 ## Next Candidate To Validate
 
-- None queued. ISSUE-174 reset the no-new counter to 0. Continue fresh source
+- None queued. ISSUE-175 kept the no-new counter at 0. Continue fresh source
   review; if five consecutive cycles find no issue, switch to randomized fuzz
   tests over node actions.
