@@ -7,9 +7,9 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Accepted issues: 204
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 36
+- Current consecutive no-new-issue cycles: 37
 - Stop condition: continue until 5 consecutive cycles find no new accepted
-  issue; currently 36/5 after ISSUE-204.
+  issue; currently 37/5 after ISSUE-204.
 
 ## Root Cause Summary
 
@@ -256,6 +256,12 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Recent Fuzz Evidence
 
+- Focused stalled stream-request write review:
+  `cargo test open_stream_must_timeout_when_connect_request_write_stalls -- --nocapture`
+  failed with duplicate evidence for ISSUE-169. Reviewer `Bohr the 4th`
+  confirmed the same missing whole-setup deadline: `open_bi` times out only
+  `connection.open_bi()`, while `write_object(StreamConnectReq)` and the later
+  `StreamConnectRes` wait can hang behind peer flow control.
 - Focused withheld stream-response review:
   `cargo test open_stream_must_timeout_when_peer_withholds_connect_response -- --nocapture`
   failed with duplicate evidence for ISSUE-149. Reviewer `Halley the 4th`
