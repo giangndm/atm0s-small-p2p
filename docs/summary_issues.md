@@ -211,8 +211,19 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Next Candidate To Validate
 
-- None queued. Five consecutive no-new issue cycles are recorded after
-  ISSUE-193. Switch to randomized fuzz tests over node actions.
+- Randomized node-action churn fuzzing has started. The first invalid-input
+  churn run rediscovered ISSUE-053; the first valid-only churn run rediscovered
+  ISSUE-063. Continue fuzzing after fixing or bypassing those duplicate
+  blockers.
+
+## Recent Fuzz Evidence
+
+- Churn fuzz with invalid wire actions:
+  `P2P_FUZZ_NODES=3 P2P_FUZZ_STEPS=40 cargo test fuzz_random_node_churn_actions_must_not_panic_connection_tasks -- --nocapture`
+  panics at `src/ctx.rs:33`, duplicate evidence for ISSUE-053.
+- Valid-only churn fuzz:
+  `P2P_FUZZ_NODES=3 P2P_FUZZ_STEPS=60 cargo test fuzz_random_valid_node_churn_actions_must_not_panic_connection_tasks -- --nocapture`
+  panics at `src/router.rs:76`, duplicate evidence for ISSUE-063.
 
 ## Recent No-New Audit
 

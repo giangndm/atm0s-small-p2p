@@ -1226,7 +1226,7 @@ the source of truth for evidence and reviewer decisions.
 - Category: security, bad-network stability
 - Score: 84/100
 - Reviewer: `Hooke`, confirmed. Additional fuzz evidence confirmed by
-  `Socrates the 2nd`.
+  `Socrates the 2nd` and `Hilbert the 3rd`.
 - Affected code:
   - `src/msg.rs`: `P2pServiceId` is deserialized from the wire as a `u16`,
     including values outside the 256-slot service table.
@@ -1252,6 +1252,12 @@ the source of truth for evidence and reviewer decisions.
     harness reaches the broadcast variant of the same bug by injecting
     `PeerMessage::Broadcast(..., P2pServiceId::from(256), ...)`, panicking a
     background connection task at `src/ctx.rs:33`.
+  - Additional churn fuzz evidence:
+    `P2P_FUZZ_NODES=3 P2P_FUZZ_STEPS=40 cargo test fuzz_random_node_churn_actions_must_not_panic_connection_tasks -- --nocapture`
+  - Churn fuzz failure summary: after the five-cycle no-new threshold, the
+    node-churn random action harness also reaches the broadcast variant by
+    injecting `PeerMessage::Broadcast(..., P2pServiceId::from(256), ...)`,
+    panicking a background connection task at `src/ctx.rs:33`.
 
 ### ISSUE-054: Zero network tick interval panics node construction
 
@@ -1506,6 +1512,13 @@ the source of truth for evidence and reviewer decisions.
     `PeerStopped` messages panic background tasks at `src/router.rs:76`,
     rediscovering the stale `PeerData::Sync` route-missing crash without using
     the known invalid service-id shortcut.
+  - Additional churn fuzz evidence, confirmed by `Laplace the 3rd`:
+    `P2P_FUZZ_NODES=3 P2P_FUZZ_STEPS=60 cargo test fuzz_random_valid_node_churn_actions_must_not_panic_connection_tasks -- --nocapture`
+  - Churn fuzz failure summary: valid-only shutdown/restart churn, duplicate
+    connects, in-range raw messages, streams, broadcasts, and forged
+    `PeerStopped` messages panic a background task at `src/router.rs:76`,
+    rediscovering the stale `PeerData::Sync` route-missing crash without using
+    an out-of-range service id.
 
 ### ISSUE-064: Stale peer stats events publish metrics for unknown connections
 
