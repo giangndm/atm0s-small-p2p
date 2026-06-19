@@ -663,6 +663,30 @@ mod test {
     }
 
     #[test]
+    fn stale_not_found_must_not_evict_alias_cache_without_pending_check() {
+        let mut ctx = TestContext::new();
+        let alias_id = AliasId(7);
+        let hinted_peer = PeerId(2);
+
+        ctx.internal.on_msg(ctx.now, hinted_peer, AliasMessage::NotifySet(alias_id));
+        assert!(
+            ctx.internal.cache.get(&alias_id).is_some_and(|peers| peers.contains(&hinted_peer)),
+            "test setup should cache the hinted peer"
+        );
+        assert!(
+            !ctx.internal.find_reqs.contains_key(&alias_id),
+            "test setup should have no active lookup for this alias"
+        );
+
+        ctx.internal.on_msg(ctx.now, hinted_peer, AliasMessage::NotFound(alias_id));
+
+        assert!(
+            ctx.internal.cache.get(&alias_id).is_some_and(|peers| peers.contains(&hinted_peer)),
+            "stale NotFound without a matching pending CheckHint request must not evict a valid cached hint"
+        );
+    }
+
+    #[test]
     fn cached_alias_peer_hints_must_be_bounded() {
         const MAX_PEERS_PER_ALIAS: usize = 1024;
         let mut ctx = TestContext::new();

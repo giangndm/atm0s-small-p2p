@@ -38,7 +38,7 @@ the source of truth for evidence and reviewer decisions.
 
 - Representative issues: ISSUE-034, ISSUE-037, ISSUE-038, ISSUE-047,
   ISSUE-059, ISSUE-071, ISSUE-081 through ISSUE-089, ISSUE-095, ISSUE-099,
-  ISSUE-110, ISSUE-111, ISSUE-138, ISSUE-141, ISSUE-143.
+  ISSUE-110, ISSUE-111, ISSUE-138, ISSUE-141, ISSUE-143, ISSUE-152.
 - Pattern: replicated-KV full sync, changed repair, alias lookup, metrics,
   visualization, and pubsub flows accept stale, unsolicited, reordered, or
   mismatched responses because response handlers do not verify outstanding
@@ -3842,3 +3842,31 @@ the source of truth for evidence and reviewer decisions.
     `MainEvent::PeerStopped(stopped_conn, node1)`, `node2.router.action(node1)`
     becomes `None`; after 1.2 seconds it becomes `Some(Next(stopped_conn))`
     again because the connection ticker calls `set_direct`.
+
+### ISSUE-152: Stale alias `NotFound` evicts cached hints without request correlation
+
+- Category: correctness, alias cache stability, bad-network ordering
+- Score: 63/100
+- Reviewer: `Huygens the 2nd`, confirmed.
+- Affected code:
+  - `src/service/alias_service.rs`: `AliasMessage::NotFound` removes the sender
+    from `self.cache[alias_id]` and can pop the alias entry before validating
+    whether any matching lookup is active.
+  - `src/service/alias_service.rs`: only after mutating cache does the handler
+    inspect `find_reqs` and `FindRequestState::CheckHint`.
+  - `src/service/alias_service.rs`: cached lookup later relies on
+    `self.cache[alias_id]` to choose which peers receive `AliasMessage::Check`.
+- Impact: a delayed or unsolicited `NotFound` from an older lookup can erase a
+  currently valid cached alias hint even when there is no active `CheckHint`
+  request for that alias. Later finds fall back to broadcast scan instead of
+  checking the cached peer, adding avoidable latency and network noise under
+  reordered messages or churn. This is distinct from ISSUE-090, which covers
+  unchecked `Found` completing an active lookup; ISSUE-109, which covers
+  unsolicited `Found` creating cache hints; and ISSUE-148, which covers
+  `Shutdown` failing to advance an active cached-hint lookup.
+- Evidence test:
+  - `cargo test stale_not_found_must_not_evict_alias_cache_without_pending_check -- --nocapture`
+  - Failure summary: after `NotifySet(AliasId(7))` caches `PeerId(2)` and no
+    `find_reqs` entry exists, a `NotFound(AliasId(7))` from `PeerId(2)` removes
+    the cache entry; expected stale `NotFound` without a matching pending
+    `CheckHint` request to leave the valid cached hint intact.
