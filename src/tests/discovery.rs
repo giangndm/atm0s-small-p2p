@@ -1,6 +1,7 @@
 use std::{collections::HashSet, sync::Arc, time::Duration};
 
 use super::create_node;
+use crate::PeerAddress;
 use parking_lot::Mutex;
 use test_log::test;
 
@@ -84,5 +85,22 @@ async fn graceful_shutdown_removes_stopped_non_seed() {
     assert!(
         !node3_neighbours.lock().contains(&addr2.peer_id()),
         "node3 should remove a gracefully stopped non-seed peer and not keep reconnecting to it"
+    );
+}
+
+#[test(tokio::test)]
+async fn discovery_tick_connect_backlog_must_coalesce_duplicate_remotes() {
+    const MAX_PENDING_PER_REMOTE: usize = 1;
+    let seed: PeerAddress = "2@127.0.0.1:9".parse().expect("seed address should parse");
+    let (mut node, _addr) = create_node(false, 1, vec![seed]).await;
+
+    for now in 0..1025 {
+        node.process_tick(now * 100).expect("tick should process");
+    }
+
+    assert!(
+        node.control_rx.len() <= MAX_PENDING_PER_REMOTE,
+        "discovery ticks must coalesce pending connects for the same remote, got {}",
+        node.control_rx.len()
     );
 }

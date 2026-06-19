@@ -51,14 +51,15 @@ the source of truth for evidence and reviewer decisions.
 
 - Representative issues: ISSUE-049, ISSUE-050, ISSUE-056, ISSUE-118,
   ISSUE-119, ISSUE-120, ISSUE-123, ISSUE-124, ISSUE-125, ISSUE-126,
-  ISSUE-127, ISSUE-133, ISSUE-136, ISSUE-147.
+  ISSUE-127, ISSUE-133, ISSUE-136, ISSUE-147, ISSUE-153.
 - Pattern: some paths use bounded channels and drop on `try_send`, some await
-  bounded sends from critical tasks, and others use unbounded queues. Under load
-  this causes silent data loss, head-of-line blocking, or unbounded memory.
+  bounded sends from critical tasks, and others use unbounded queues or produce
+  duplicate internal control work. Under load this causes silent data loss,
+  head-of-line blocking, or unbounded memory.
 - Minimal fix proposal: define channel policy by event class: lifecycle and
   route updates must use bounded retry/coalescing; service payload delivery must
-  return explicit backpressure errors; public request/control queues need fixed
-  admission limits.
+  return explicit backpressure errors; public and internal request/control
+  queues need fixed admission limits and per-target coalescing.
 
 ### RC-4: Timeouts are partial, coarse, or overflow-prone
 
@@ -3870,3 +3871,38 @@ the source of truth for evidence and reviewer decisions.
     `find_reqs` entry exists, a `NotFound(AliasId(7))` from `PeerId(2)` removes
     the cache entry; expected stale `NotFound` without a matching pending
     `CheckHint` request to leave the valid cached hint intact.
+
+### ISSUE-153: Discovery ticks enqueue duplicate connect commands without coalescing
+
+- Category: high-load stability, resource exhaustion, discovery backpressure
+- Score: 71/100
+- Reviewer: `Carver the 2nd`, confirmed by independent forked discovery.
+- Affected code:
+  - `src/lib.rs`: `P2pNetwork::process_tick` iterates every
+    `discovery.remotes()` entry and sends `ControlCmd::Connect` into
+    `control_tx` on each tick.
+  - `src/lib.rs`: `control_tx/control_rx` are an unbounded channel, so pending
+    connect commands have no fixed admission cap.
+  - `src/discovery.rs`: `PeerDiscovery::remotes()` returns seed remotes every
+    tick so seeds are retried indefinitely.
+  - `src/neighbours.rs`: duplicate suppression only observes already-connected
+    peers; it does not account for queued or in-flight connect commands that
+    have not yet been drained by the main loop.
+- Impact: a node with an unreachable seed or repeatedly advertised remote can
+  enqueue one duplicate `ControlCmd::Connect` per discovery tick if the control
+  queue is not drained fast enough. Under slow main-loop processing, bad
+  network conditions, or many seeds/remotes, this grows unbounded internal
+  control backlog and later amplifies duplicate dial work. This is distinct from
+  ISSUE-113, which covers duplicate outbound QUIC attempts after connect
+  commands are processed while a dial is in flight, and ISSUE-125, which covers
+  requester/API calls filling the same unbounded control queue. This issue is
+  produced internally by normal discovery ticking with no public API spam.
+- Minimal fix proposal: track pending discovery connect targets by peer id or
+  address and skip enqueueing a new `ControlCmd::Connect` while one is already
+  queued or in flight; clear that marker when the connect succeeds, fails, or
+  reaches a bounded retry deadline.
+- Evidence test:
+  - `cargo test discovery_tick_connect_backlog_must_coalesce_duplicate_remotes -- --nocapture`
+  - Failure summary: calling `process_tick` 1,025 times with one unreachable
+    seed leaves `node.control_rx.len() == 1025`; expected discovery retries to
+    coalesce to at most one pending connect per remote.
