@@ -15,6 +15,102 @@ must resolve.
 - Stop condition requested by user: continue until 5 consecutive cycles find no
   new accepted issue.
 
+## Root Cause Summary
+
+This is the short version of the issue ledger. The detailed entries below remain
+the source of truth for evidence and reviewer decisions.
+
+### RC-1: Authenticated connection identity is not the authority for peer claims
+
+- Representative issues: ISSUE-001, ISSUE-004, ISSUE-014, ISSUE-015,
+  ISSUE-018, ISSUE-020, ISSUE-039, ISSUE-048, ISSUE-066, ISSUE-067,
+  ISSUE-068, ISSUE-090, ISSUE-115, ISSUE-116, ISSUE-145.
+- Pattern: message payloads and internal events carry peer ids, RPC ids, or
+  source identities that are trusted without binding them back to the live
+  authenticated connection, local handle, expected responder, or channel role.
+- Minimal fix proposal: add one validation layer at each ingress boundary:
+  derive `source` from the authenticated connection, validate
+  `(ConnectionId, PeerId)` against neighbour state before processing main
+  events, and store expected responder/handle metadata in pending RPC/find
+  records before accepting answers.
+
+### RC-2: Protocol state machines lack request correlation and monotonicity checks
+
+- Representative issues: ISSUE-034, ISSUE-037, ISSUE-038, ISSUE-047,
+  ISSUE-059, ISSUE-071, ISSUE-081 through ISSUE-089, ISSUE-095, ISSUE-099,
+  ISSUE-110, ISSUE-111, ISSUE-138, ISSUE-141, ISSUE-143.
+- Pattern: replicated-KV full sync, changed repair, alias lookup, metrics,
+  visualization, and pubsub flows accept stale, unsolicited, reordered, or
+  mismatched responses because response handlers do not verify outstanding
+  request shape, bounds, version, continuation key, or expected phase.
+- Minimal fix proposal: encode a small pending-request descriptor per flow and
+  reject responses unless they match the descriptor exactly; clear or advance
+  the descriptor only after all range/version invariants are checked.
+
+### RC-3: Backpressure is inconsistent across async boundaries
+
+- Representative issues: ISSUE-049, ISSUE-050, ISSUE-056, ISSUE-118,
+  ISSUE-119, ISSUE-120, ISSUE-123, ISSUE-124, ISSUE-125, ISSUE-126,
+  ISSUE-127, ISSUE-133, ISSUE-136, ISSUE-147.
+- Pattern: some paths use bounded channels and drop on `try_send`, some await
+  bounded sends from critical tasks, and others use unbounded queues. Under load
+  this causes silent data loss, head-of-line blocking, or unbounded memory.
+- Minimal fix proposal: define channel policy by event class: lifecycle and
+  route updates must use bounded retry/coalescing; service payload delivery must
+  return explicit backpressure errors; public request/control queues need fixed
+  admission limits.
+
+### RC-4: Timeouts are partial, coarse, or overflow-prone
+
+- Representative issues: ISSUE-002, ISSUE-009, ISSUE-021, ISSUE-036,
+  ISSUE-042, ISSUE-093, ISSUE-117, ISSUE-121, ISSUE-134, ISSUE-149.
+- Pattern: timeout checks often wrap only one await point, rely on unchecked
+  timestamp arithmetic, or use coarse global sweeps instead of per-operation
+  deadlines.
+- Minimal fix proposal: use `checked_add`/`saturating_add` for deadlines and
+  wrap every protocol phase with one end-to-end setup timeout; for RPCs, track
+  the exact deadline per request and wake on the nearest deadline.
+
+### RC-5: Application-level resource limits are missing
+
+- Representative issues: ISSUE-010, ISSUE-024, ISSUE-027, ISSUE-035,
+  ISSUE-041, ISSUE-043, ISSUE-045, ISSUE-046, ISSUE-100 through ISSUE-108,
+  ISSUE-122, ISSUE-131.
+- Pattern: protocol framing may limit packet size, but decoded service-level
+  collections, pending maps, cache sets, tombstones, remote stores, and retained
+  channel state often have no item-count or lifetime cap.
+- Minimal fix proposal: introduce small per-structure caps with deterministic
+  eviction/rejection: max rows per message, max peers per alias/channel, max
+  pending RPCs/finds, max tombstones/remotes, and prune empty channel state on
+  teardown.
+
+### RC-6: Lifecycle cleanup and stale handles are not consistently modeled
+
+- Representative issues: ISSUE-028, ISSUE-029, ISSUE-051, ISSUE-057,
+  ISSUE-060, ISSUE-064, ISSUE-065, ISSUE-069 through ISSUE-076, ISSUE-108,
+  ISSUE-128 through ISSUE-132, ISSUE-135, ISSUE-139, ISSUE-142, ISSUE-144,
+  ISSUE-148.
+- Pattern: requesters, services, peer aliases, channel state, and cached hints
+  can outlive the owner they represent, while shutdown paths may panic, leak,
+  emit false public events, or keep stale routes/cache entries.
+- Minimal fix proposal: add generation or liveness tokens to cloned requesters
+  and local handles, make closed channels return `Err` instead of panicking, and
+  centralize owner teardown so aliases, metrics, routes, caches, and service ids
+  are cleared together.
+
+### RC-7: Routing and discovery accept unstable or self-referential topology
+
+- Representative issues: ISSUE-003, ISSUE-005, ISSUE-006, ISSUE-007,
+  ISSUE-008, ISSUE-033, ISSUE-044, ISSUE-055, ISSUE-092, ISSUE-103,
+  ISSUE-112 through ISSUE-114.
+- Pattern: route/discovery inputs can include local ids, self seeds, stale
+  addresses, overflowed metrics, over-hop routes, duplicate connection races, or
+  tiny RTT jitter that changes active paths too aggressively.
+- Minimal fix proposal: add route/discovery sanitization before insertion:
+  reject local/self candidates and over-hop routes, use checked metric math,
+  ignore stale discovery timestamps, coalesce duplicate connects, and add a
+  small hysteresis threshold before switching active paths.
+
 ## Accepted Issues
 
 ### ISSUE-001: Forged third-party `PeerStopped` removes a live peer
