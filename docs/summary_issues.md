@@ -7,7 +7,7 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Accepted issues: 193
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 2
+- Current consecutive no-new-issue cycles: 3
 - Stop condition: continue until 5 consecutive cycles find no new accepted
   issue; after that, continue with randomized fuzz tests over node actions.
 
@@ -211,12 +211,17 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Next Candidate To Validate
 
-- None queued. Two consecutive no-new issue cycles are recorded after ISSUE-193.
+- None queued. Three consecutive no-new issue cycles are recorded after ISSUE-193.
   Continue fresh source review until five consecutive no-new cycles, then
   switch to randomized fuzz tests over node actions.
 
 ## Recent No-New Audit
 
+- Cycle after ISSUE-193 no-new cycle 2 reviewed pubsub lifecycle, publisher
+  and subscriber handle/requester behavior, pubsub RPC/member accounting, and
+  replicated-KV service, message, local-storage, and remote-storage paths.
+  Rejected candidates mapped to existing RC-1, RC-2, RC-3, RC-5, and RC-6
+  patterns, so no root-cause summary change was needed.
 - Cycle after ISSUE-193 no-new cycle 1 reviewed public network
   control/shutdown, router/discovery/neighbour tick paths, requesters,
   QUIC/secure handshake admission, and peer stream admission. Rejected

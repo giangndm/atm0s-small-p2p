@@ -11,7 +11,7 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 2
+- Current consecutive no-new-issue cycles: 3
 - Stop condition requested by user: continue until 5 consecutive cycles find no
   new accepted issue.
 
@@ -5358,6 +5358,47 @@ the source of truth for evidence and reviewer decisions.
     teardown must not emit RTT as a counter.
 
 ## No-New-Issue Audit Cycles
+
+### Cycle after ISSUE-193 no-new cycle 2: pubsub lifecycle and replicated-KV storage
+
+- Result: no accepted non-duplicate issue.
+- Reviewer/explorer: `Galileo the 3rd`; local review by main agent.
+- Local/source areas reviewed:
+  - `src/service/pubsub_service.rs`,
+    `src/service/pubsub_service/publisher.rs`,
+    `src/service/pubsub_service/subscriber.rs`, and existing pubsub lifecycle,
+    membership, RPC, requester, and resource-limit tests.
+  - `src/service/replicate_kv_service.rs`,
+    `src/service/replicate_kv_service/messages.rs`,
+    `src/service/replicate_kv_service/local_storage.rs`,
+    `src/service/replicate_kv_service/remote_storage.rs`, and replicated-KV
+    storage/message evidence tests.
+- Duplicate or too-close candidates rejected:
+  - new local pubsub handles missing existing remote members: ISSUE-142.
+  - early remote pubsub joins dropped before local channel creation: ISSUE-188.
+  - stale pubsub leave overriding newer heartbeat: ISSUE-155.
+  - unknown destroy creating phantom pubsub channels and empty channel
+    retention: ISSUE-150 and ISSUE-108.
+  - unbounded pubsub event queues, internal controls, RPC maps, membership,
+    heartbeat, and method sizes: ISSUE-043, ISSUE-100, ISSUE-106, ISSUE-107,
+    ISSUE-123, ISSUE-124, and ISSUE-133.
+  - pubsub RPC destination accounting for failed local or remote fanout:
+    ISSUE-163 and ISSUE-178.
+  - stale cloned pubsub requesters and RPC answer authority gaps:
+    ISSUE-069, ISSUE-070, ISSUE-074, ISSUE-075, ISSUE-115, and ISSUE-116.
+  - forged pubsub source or membership bypass paths:
+    ISSUE-014, ISSUE-015, ISSUE-039, and ISSUE-048.
+  - replicated-KV snapshot producer/consumer mismatch, terminal omissions,
+    malformed snapshot pages, version arithmetic, stale or duplicate
+    `FetchChanged`, empty or partial repair responses, premature resync
+    deletes, absent-key deletes, and ignored broadcast liveness refresh:
+    ISSUE-034, ISSUE-047, ISSUE-081 through ISSUE-089, ISSUE-110, ISSUE-138,
+    ISSUE-141, ISSUE-143, ISSUE-154, ISSUE-171, ISSUE-175, ISSUE-184, and
+    ISSUE-186.
+  - replicated-KV remote store/resource growth and graceful-stop lifecycle:
+    ISSUE-045, ISSUE-102, ISSUE-162, and related RC-5/RC-6 entries.
+- Root-cause summary impact: no new root cause; rejected candidates map to
+  RC-1, RC-2, RC-3, RC-5, and RC-6.
 
 ### Cycle after ISSUE-193 no-new cycle 1: public control, routing/discovery, transport admission
 
