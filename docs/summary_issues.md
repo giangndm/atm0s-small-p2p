@@ -7,9 +7,9 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Accepted issues: 204
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 28
+- Current consecutive no-new-issue cycles: 29
 - Stop condition: continue until 5 consecutive cycles find no new accepted
-  issue; currently 28/5 after ISSUE-204.
+  issue; currently 29/5 after ISSUE-204.
 
 ## Root Cause Summary
 
@@ -256,6 +256,13 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Recent Fuzz Evidence
 
+- Sanitized churn fuzz duplicate:
+  `RUST_LOG=error P2P_FUZZ_SEED=2182001 P2P_FUZZ_NODES=8 P2P_FUZZ_STEPS=2600 cargo test fuzz_random_sanitized_node_churn_actions_must_not_panic_connection_tasks -- --nocapture`
+  failed with duplicate evidence for ISSUE-139. The accepted failure was the
+  outbound `PeerConnectError` path panicking at `src/peer.rs:133` with
+  `should send to main: SendError`; repeated peer-stopped/backpressure logs
+  overlap existing ISSUE-170 and RC-3/RC-6 churn noise without adding a new
+  root cause.
 - Steady-valid random action fuzz pass:
   `RUST_LOG=error P2P_FUZZ_SEED=2181001 P2P_FUZZ_NODES=8 P2P_FUZZ_STEPS=2600 cargo test fuzz_random_steady_valid_node_actions_must_not_panic_connection_tasks -- --nocapture`
   passed with `1 passed; 0 failed; 289 filtered out; finished in 16.84s`.

@@ -11,7 +11,7 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 28
+- Current consecutive no-new-issue cycles: 29
 - Stop condition requested by user: continue until 5 consecutive cycles find no
   new accepted issue.
 
@@ -5783,6 +5783,27 @@ the source of truth for evidence and reviewer decisions.
     `src/peer.rs:1092` with `got 2`.
 
 ## No-New-Issue Audit Cycles
+
+### Cycle after ISSUE-204 no-new cycle 29: sanitized churn duplicate outbound peer-connect panic
+
+- Result: no accepted non-duplicate issue.
+- Classification: `ACCEPT_DUPLICATE_NO_NEW`.
+- Fuzz evidence reviewed:
+  - `RUST_LOG=error P2P_FUZZ_SEED=2182001 P2P_FUZZ_NODES=8 P2P_FUZZ_STEPS=2600 cargo test fuzz_random_sanitized_node_churn_actions_must_not_panic_connection_tasks -- --nocapture`
+    failed at `src/tests/fuzz.rs:372:5` after background connection tasks
+    panicked.
+- Duplicate or too-close symptoms rejected:
+  - background panics at `src/peer.rs:133:113` with
+    `should send to main: SendError { .. }` map directly to ISSUE-139's
+    unchecked outbound `PeerConnectError` reporting after the main loop is
+    closed.
+  - repeated `forward peer stopped over peer alias got error no available
+    capacity` and `try send message ... no available capacity` logs are churn
+    pressure/noise overlapping existing ISSUE-170 and RC-3/RC-6 lifecycle
+    backpressure patterns, but this run's accepted failing assertion is the
+    already-recorded ISSUE-139 panic.
+- Root-cause summary impact: no new root cause; this fuzz cycle strengthens
+  existing ISSUE-139 sanitized-churn evidence without adding ISSUE-205.
 
 ### Cycle after ISSUE-204 no-new cycle 28: steady-valid fuzz pass
 
