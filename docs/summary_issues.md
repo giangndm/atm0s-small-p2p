@@ -7,9 +7,9 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Accepted issues: 204
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 13
+- Current consecutive no-new-issue cycles: 14
 - Stop condition: continue until 5 consecutive cycles find no new accepted
-  issue; currently 13/5 after ISSUE-204.
+  issue; currently 14/5 after ISSUE-204.
 
 ## Root Cause Summary
 
@@ -256,6 +256,12 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Recent Fuzz Evidence
 
+- Focused replicated-KV source/test review:
+  `cargo test full_sync_must_reject_stale_terminal_snapshot_after_continuation_request -- --nocapture`
+  failed with duplicate evidence for ISSUE-143. Reviewer `Sagan the 4th`
+  confirmed the panic at `remote_storage.rs:919` is the already-accepted stale
+  terminal snapshot case where full sync incorrectly transitions to
+  `Working(Version(3))` while a continuation range is outstanding.
 - Extended invalid churn fuzz:
   `P2P_FUZZ_SEED=2179001 P2P_FUZZ_NODES=8 P2P_FUZZ_STEPS=1400 cargo test fuzz_random_node_churn_actions_must_not_panic_connection_tasks -- --nocapture`
   failed with duplicate evidence for ISSUE-053. Reviewer `Nash the 4th`
@@ -364,6 +370,12 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Recent No-New Audit
 
+- Cycle after ISSUE-204 no-new cycle 14 reviewed replicated-KV remote/local
+  storage and message handling with forked reviewer `Sagan the 4th`. The
+  focused stale-terminal-snapshot test failed with exit code 101, but it was
+  duplicate evidence for ISSUE-143: a stale terminal snapshot completed full
+  sync into `Working(Version(3))` while a continuation range was still
+  outstanding. No accepted issue or summary root-cause change was recorded.
 - Cycle after ISSUE-204 no-new cycle 13 ran an eight-node invalid churn fuzz
   pass with forked reviewer `Nash the 4th`. The run failed with exit code 101,
   but the failure was duplicate evidence for ISSUE-053: an invalid service id

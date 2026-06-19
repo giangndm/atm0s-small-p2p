@@ -11,7 +11,7 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 13
+- Current consecutive no-new-issue cycles: 14
 - Stop condition requested by user: continue until 5 consecutive cycles find no
   new accepted issue.
 
@@ -5768,6 +5768,29 @@ the source of truth for evidence and reviewer decisions.
     `src/peer.rs:1092` with `got 2`.
 
 ## No-New-Issue Audit Cycles
+
+### Cycle after ISSUE-204 no-new cycle 14: replicated-KV stale terminal snapshot duplicate
+
+- Result: no accepted non-duplicate issue.
+- Reviewer: `Sagan the 4th`, forked subagent review, confirmed
+  duplicate-only no-new classification.
+- Source and test evidence reviewed:
+  - `src/service/replicate_kv_service/remote_storage.rs`
+  - `src/service/replicate_kv_service/local_storage.rs`
+  - `src/service/replicate_kv_service/messages.rs`
+  - `src/service/replicate_kv_service.rs`
+  - `cargo test full_sync_must_reject_stale_terminal_snapshot_after_continuation_request -- --nocapture`
+    failed with duplicate evidence for ISSUE-143.
+- Duplicate or too-close symptoms rejected:
+  - the failure at
+    `src/service/replicate_kv_service/remote_storage.rs:919:9` shows
+    `SyncFullState` accepting a stale terminal snapshot and setting
+    `ctx.next_state` to `Working(Version(3))` while a continuation range is
+    outstanding.
+  - the same test, assertion, state transition, and root cause are already the
+    accepted evidence for ISSUE-143.
+- Root-cause summary impact: no new root cause; this source/test cycle
+  strengthens existing ISSUE-143 evidence but does not add ISSUE-205.
 
 ### Cycle after ISSUE-204 no-new cycle 13: invalid churn duplicate service-id panic
 
