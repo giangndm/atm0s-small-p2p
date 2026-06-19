@@ -9,6 +9,7 @@ use crate::{
         encode_empty_heartbeat_for_test, encode_heartbeat_for_test, encode_publish_for_test, encode_publish_rpc_answer_for_test, encode_publish_rpc_for_test,
         encode_publisher_joined_for_test, encode_subscriber_joined_for_test, PeerSrc, PublisherEvent, PubsubChannelId, PubsubService, RpcId, SubscriberEvent,
     },
+    P2pNetworkEvent,
 };
 
 use super::create_node;
@@ -453,6 +454,87 @@ async fn pubsub_remote_heartbeat_restore() {
     assert_eq!(
         timeout(ttl, publisher.recv()).await.expect("should not timeout").expect("should recv"),
         PublisherEvent::Feedback(vec![2, 3, 4])
+    );
+}
+
+#[test(tokio::test)]
+async fn pubsub_must_remove_remote_subscriber_on_graceful_peer_stop() {
+    let (mut node1, addr1) = create_node(true, 1, vec![]).await;
+    let mut service1 = PubsubService::new(node1.create_service(0.into()));
+    let service1_requester = service1.requester();
+    tokio::spawn(async move { service1.run_loop().await });
+
+    let (mut node2, addr2) = create_node(false, 2, vec![addr1.clone()]).await;
+    let mut service2 = PubsubService::new(node2.create_service(0.into()));
+    let service2_requester = service2.requester();
+    tokio::spawn(async move { service2.run_loop().await });
+
+    timeout(Duration::from_secs(3), async {
+        let mut node1_connected = false;
+        let mut node2_connected = false;
+        while !node1_connected || !node2_connected {
+            tokio::select! {
+                event = node1.recv() => {
+                    if matches!(event.expect("node1 should keep running during setup"), P2pNetworkEvent::PeerConnected(_, peer) if peer == addr2.peer_id()) {
+                        node1_connected = true;
+                    }
+                }
+                event = node2.recv() => {
+                    if matches!(event.expect("node2 should keep running during setup"), P2pNetworkEvent::PeerConnected(_, peer) if peer == addr1.peer_id()) {
+                        node2_connected = true;
+                    }
+                }
+            }
+        }
+    })
+    .await
+    .expect("nodes should connect before pubsub graceful-stop test");
+
+    let channel_id: PubsubChannelId = 1000.into();
+    let mut publisher = service1_requester.publisher(channel_id).await;
+    let _subscriber = service2_requester.subscriber(channel_id).await;
+
+    timeout(Duration::from_secs(5), async {
+        loop {
+            tokio::select! {
+                event = node1.recv() => {
+                    let _ = event.expect("node1 should keep running while waiting for pubsub join");
+                }
+                event = node2.recv() => {
+                    let _ = event.expect("node2 should keep running while waiting for pubsub join");
+                }
+                event = publisher.recv() => {
+                    if matches!(event, Ok(PublisherEvent::PeerJoined(PeerSrc::Remote(peer))) if peer == addr2.peer_id()) {
+                        break;
+                    }
+                }
+            }
+        }
+    })
+    .await
+    .expect("publisher should learn the remote subscriber before graceful shutdown");
+
+    node2.shutdown_gracefully().await;
+
+    let leaved = timeout(Duration::from_millis(500), async {
+        loop {
+            tokio::select! {
+                event = node1.recv() => {
+                    let _ = event.expect("node1 should keep running while receiving graceful stop");
+                }
+                event = publisher.recv() => {
+                    if matches!(event, Ok(PublisherEvent::PeerLeaved(PeerSrc::Remote(peer))) if peer == addr2.peer_id()) {
+                        break;
+                    }
+                }
+            }
+        }
+    })
+    .await;
+
+    assert!(
+        leaved.is_ok(),
+        "pubsub must emit PeerLeaved and remove a remote subscriber when its peer gracefully stops"
     );
 }
 

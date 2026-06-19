@@ -111,16 +111,19 @@ the source of truth for evidence and reviewer decisions.
   ISSUE-060, ISSUE-064, ISSUE-065, ISSUE-069 through ISSUE-076, ISSUE-108,
   ISSUE-128 through ISSUE-132, ISSUE-135, ISSUE-139, ISSUE-142, ISSUE-144,
   ISSUE-148, ISSUE-150, ISSUE-151, ISSUE-161, ISSUE-162, ISSUE-165,
-  ISSUE-167, ISSUE-168, ISSUE-170, ISSUE-179, ISSUE-183.
+  ISSUE-167, ISSUE-168, ISSUE-170, ISSUE-179, ISSUE-183, ISSUE-185.
 - Pattern: requesters, services, peer aliases, channel state, and cached hints
   can outlive the owner they represent, while shutdown paths may panic, leak,
   emit false public events, or keep stale routes/cache entries. Some shutdown
-  controls announce owner teardown without clearing local authority.
+  controls announce owner teardown without clearing local authority, and
+  peer lifecycle events do not consistently reach service-owned membership.
 - Minimal fix proposal: add generation or liveness tokens to cloned requesters
   and local handles, make closed channels return `Err` instead of panicking, and
   centralize owner teardown so aliases, metrics, routes, caches, and service ids
   are cleared together. Shutdown controls should also enter an explicit
   terminal state so later register/find operations are rejected or no-op.
+  Peer stopped/disconnected events should be fanned out to services that own
+  per-peer state.
 
 ### RC-7: Routing and discovery accept unstable or self-referential topology
 
@@ -4101,6 +4104,45 @@ the source of truth for evidence and reviewer decisions.
     `Changed(version=11)` before timeout/response queues the same
     `FetchChanged { from: Version(1), count: 9 }` again; expected no duplicate
     in-flight repair request.
+
+### ISSUE-185: Pubsub keeps remote subscriber membership after graceful peer stop
+
+- Category: correctness, graceful-shutdown stability, pubsub lifecycle
+- Score: 56/100
+- Reviewer: `Popper the 3rd`, confirmed after `Herschel the 3rd`
+  discovery.
+- Affected code:
+  - `src/lib.rs`: `MainEvent::PeerStopped` updates discovery and router state
+    only.
+  - `src/service.rs`: `P2pServiceEvent` has no peer stopped or disconnected
+    lifecycle variant for service state machines.
+  - `src/service/pubsub_service.rs`: remote publisher/subscriber membership
+    is removed only by pubsub protocol `PublisherLeaved` and
+    `SubscriberLeaved` messages.
+- Impact: when a remote subscriber gracefully stops, the network layer accepts
+  `PeerStopped` and removes routing state, but `PubsubService` keeps that peer
+  in `remote_subscribers` and never emits
+  `PublisherEvent::PeerLeaved(PeerSrc::Remote(peer))`. Publishers continue to
+  believe the stopped peer is a live destination, which can feed later
+  delivery failures or RPC timeout behavior under churn. This is distinct from
+  ISSUE-026 and ISSUE-080, which cover heartbeat repair after missed leave
+  messages; from ISSUE-162 and ISSUE-165, which cover the same missing service
+  lifecycle fanout in replicated-KV and visualization; and from ISSUE-163,
+  which covers RPC behavior after stale remote sends fail.
+- Minimal fix proposal: add a peer lifecycle event such as
+  `P2pServiceEvent::PeerStopped(PeerId)` or
+  `P2pServiceEvent::PeerDisconnected(PeerId)`, fan it out from accepted
+  `P2pNetwork::process_internal` peer lifecycle events, and have pubsub remove
+  that peer from every `remote_subscribers` and `remote_publishers` set while
+  emitting corresponding local `PeerLeaved` events. Keep heartbeat cleanup as
+  fallback for silent loss.
+- Evidence test:
+  - `cargo test pubsub_must_remove_remote_subscriber_on_graceful_peer_stop -- --nocapture`
+  - Failure summary: node1 processes node2's graceful
+    `PeerStopped`/disconnect after node1's publisher learns node2 as a remote
+    subscriber, but the publisher does not receive
+    `PublisherEvent::PeerLeaved(PeerSrc::Remote(node2))` before the prompt
+    leave timeout; expected pubsub membership to be removed immediately.
 
 ### ISSUE-155: Stale pubsub leave removes membership confirmed by newer heartbeat
 
