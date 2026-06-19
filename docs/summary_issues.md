@@ -248,6 +248,11 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   passed with no new issue. The run again produced heavy active-path
   reselection logging and some bounded queue pressure warnings, but no panic or
   failing assertion.
+- Alternate-seed extended steady valid fuzz:
+  `P2P_FUZZ_SEED=0x600df00d P2P_FUZZ_NODES=8 P2P_FUZZ_STEPS=1500 cargo test fuzz_random_steady_valid_node_actions_must_not_panic_connection_tasks -- --nocapture`
+  passed with no new issue. The alternate action ordering reproduced route
+  reselection noise and bounded queue pressure warnings without a new failing
+  assertion.
 
 ## Recent No-New Audit
 
