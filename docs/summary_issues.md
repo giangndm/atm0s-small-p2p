@@ -260,21 +260,22 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   `cargo test active_path_should_not_jump_for_tiny_rtt_jitter -- --nocapture`
   and
   `cargo test should_keep_existing_best_path_on_equal_score -- --nocapture`
-  both failed with duplicate evidence for ISSUE-003. The active route still
-  changes on tiny RTT jitter or equal-cost updates because route selection has
-  no stickiness/hysteresis; this remains under RC-7 with no new root cause.
+  both failed with duplicate evidence for ISSUE-003. Reviewer `Galileo the
+  4th` confirmed the active route still changes on tiny RTT jitter or
+  equal-cost updates because route selection has no stickiness/hysteresis; this
+  remains under RC-7 with no new root cause.
 - Sanitized churn fuzz duplicate:
   `RUST_LOG=error P2P_FUZZ_SEED=2182001 P2P_FUZZ_NODES=8 P2P_FUZZ_STEPS=2600 cargo test fuzz_random_sanitized_node_churn_actions_must_not_panic_connection_tasks -- --nocapture`
-  failed with duplicate evidence for ISSUE-139. The accepted failure was the
-  outbound `PeerConnectError` path panicking at `src/peer.rs:133` with
-  `should send to main: SendError`; repeated peer-stopped/backpressure logs
-  overlap existing ISSUE-170 and RC-3/RC-6 churn noise without adding a new
-  root cause.
+  failed with duplicate evidence for ISSUE-139. Reviewer `Galileo the 4th`
+  confirmed the accepted failure was the outbound `PeerConnectError` path
+  panicking at `src/peer.rs:133` with `should send to main: SendError`;
+  repeated peer-stopped/backpressure logs overlap existing ISSUE-170 and
+  RC-3/RC-6 churn noise without adding a new root cause.
 - Steady-valid random action fuzz pass:
   `RUST_LOG=error P2P_FUZZ_SEED=2181001 P2P_FUZZ_NODES=8 P2P_FUZZ_STEPS=2600 cargo test fuzz_random_steady_valid_node_actions_must_not_panic_connection_tasks -- --nocapture`
   passed with `1 passed; 0 failed; 289 filtered out; finished in 16.84s`.
-  Classification was `NO_NEW_PASS`; because the cycle had no failing evidence,
-  it adds no accepted issue and no root-cause impact.
+  Reviewer `Galileo the 4th` classified it as `NO_NEW_PASS`; because the cycle
+  had no failing evidence, it adds no accepted issue and no root-cause impact.
 - Extended sanitized churn fuzz:
   `RUST_LOG=error P2P_FUZZ_SEED=2180001 P2P_FUZZ_NODES=9 P2P_FUZZ_STEPS=2200 cargo test fuzz_random_sanitized_node_churn_actions_must_not_panic_connection_tasks -- --nocapture`
   failed with duplicate evidence for ISSUE-139. Reviewer `Ptolemy the 4th`

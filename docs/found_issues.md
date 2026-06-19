@@ -5787,7 +5787,8 @@ the source of truth for evidence and reviewer decisions.
 ### Cycle after ISSUE-204 no-new cycle 30: active-path jitter duplicate
 
 - Result: no accepted non-duplicate issue.
-- Classification: `ACCEPT_DUPLICATE_NO_NEW`.
+- Reviewer: `Galileo the 4th`, forked subagent review, confirmed
+  duplicate-only no-new classification.
 - Source and test evidence reviewed:
   - `src/router.rs`
   - `cargo test active_path_should_not_jump_for_tiny_rtt_jitter -- --nocapture`
@@ -5807,7 +5808,8 @@ the source of truth for evidence and reviewer decisions.
 ### Cycle after ISSUE-204 no-new cycle 29: sanitized churn duplicate outbound peer-connect panic
 
 - Result: no accepted non-duplicate issue.
-- Classification: `ACCEPT_DUPLICATE_NO_NEW`.
+- Reviewer: `Galileo the 4th`, forked subagent review, confirmed
+  duplicate-only no-new classification.
 - Fuzz evidence reviewed:
   - `RUST_LOG=error P2P_FUZZ_SEED=2182001 P2P_FUZZ_NODES=8 P2P_FUZZ_STEPS=2600 cargo test fuzz_random_sanitized_node_churn_actions_must_not_panic_connection_tasks -- --nocapture`
     failed at `src/tests/fuzz.rs:372:5` after background connection tasks
@@ -5828,8 +5830,9 @@ the source of truth for evidence and reviewer decisions.
 ### Cycle after ISSUE-204 no-new cycle 28: steady-valid fuzz pass
 
 - Result: no accepted issue; fuzz command passed.
-- Reviewer classification: `NO_NEW_PASS`; no failing test evidence exists in
-  this cycle, so there is no accepted issue to add.
+- Reviewer: `Galileo the 4th`, forked subagent review, classified this cycle
+  as `NO_NEW_PASS`; no failing test evidence exists in this cycle, so there is
+  no accepted issue to add.
 - Fuzz evidence reviewed:
   - `RUST_LOG=error P2P_FUZZ_SEED=2181001 P2P_FUZZ_NODES=8 P2P_FUZZ_STEPS=2600 cargo test fuzz_random_steady_valid_node_actions_must_not_panic_connection_tasks -- --nocapture`
     passed with `1 passed; 0 failed; 289 filtered out; finished in 16.84s`.
