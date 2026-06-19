@@ -39,14 +39,16 @@ the source of truth for evidence and reviewer decisions.
 - Representative issues: ISSUE-034, ISSUE-037, ISSUE-038, ISSUE-047,
   ISSUE-059, ISSUE-071, ISSUE-081 through ISSUE-089, ISSUE-095, ISSUE-099,
   ISSUE-110, ISSUE-111, ISSUE-138, ISSUE-141, ISSUE-143, ISSUE-152,
-  ISSUE-154.
+  ISSUE-154, ISSUE-155.
 - Pattern: replicated-KV full sync, changed repair, alias lookup, metrics,
   visualization, and pubsub flows accept stale, unsolicited, reordered, or
   mismatched responses because response handlers do not verify outstanding
   request shape, bounds, version, continuation key, or expected phase.
 - Minimal fix proposal: encode a small pending-request descriptor per flow and
   reject responses unless they match the descriptor exactly; clear or advance
-  the descriptor only after all range/version invariants are checked.
+  the descriptor only after all range/version invariants are checked; for
+  membership gossip, carry a small generation or epoch and ignore older
+  join/leave/heartbeat state.
 
 ### RC-3: Backpressure is inconsistent across async boundaries
 
@@ -3951,3 +3953,39 @@ the source of truth for evidence and reviewer decisions.
     request is superseded by `{ from: Version(1), count: 5 }`, a delayed
     response containing only `Version(1)` clears the wider repair. The timeout
     tick emits no follow-up `FetchChanged { from: Version(2), count: 4 }`.
+
+### ISSUE-155: Stale pubsub leave removes membership confirmed by newer heartbeat
+
+- Category: bad-network correctness, pubsub membership stability
+- Score: 64/100
+- Reviewer: `Boole the 2nd`, confirmed after `Euclid the 2nd` discovery.
+- Affected code:
+  - `src/service/pubsub_service.rs`: `ChannelHeartbeat` carries only boolean
+    publisher/subscriber state, with no generation, epoch, or timestamp.
+  - `src/service/pubsub_service.rs`: inbound `PubsubMessage::Heartbeat` can add
+    `from_peer` to `remote_publishers` when `publish` is true.
+  - `src/service/pubsub_service.rs`: inbound
+    `PubsubMessage::PublisherLeaved` later removes `from_peer` from
+    `remote_publishers` without proving the leave is newer than the heartbeat.
+  - `src/service/pubsub_service.rs`: `SubscriberLeaved` mirrors the same
+    stale-removal risk for `remote_subscribers`.
+- Impact: under delayed or reordered pubsub control messages, a newer heartbeat
+  can confirm that a remote peer is still publishing a channel, then an older
+  delayed leave can remove that live membership and emit a false
+  `PeerLeaved(Remote(peer))` event to local subscribers. This causes membership
+  flapping and delivery gaps in bad networks. This is distinct from ISSUE-026
+  and ISSUE-080, which cover heartbeat failing to remove stale members after a
+  missed leave; this issue is the inverse ordering bug where stale leave
+  overrides newer heartbeat state. It is also distinct from ISSUE-150, which
+  covers stale local destroy controls creating phantom local channel state.
+- Minimal fix proposal: add per-peer/per-channel publisher and subscriber
+  generation values to join, leave, and heartbeat messages; store the latest
+  observed generation and ignore leave messages older than the stored live
+  generation. Keep the first change scoped to pubsub membership lifecycle
+  messages.
+- Evidence test:
+  - `cargo test stale_pubsub_leave_must_not_remove_membership_after_newer_heartbeat -- --nocapture`
+  - Failure summary: after a heartbeat with `publish=true` inserts `PeerId(2)`
+    into `remote_publishers`, a delayed `PublisherLeaved(channel)` from the same
+    peer removes it; expected stale leave to preserve the heartbeat-confirmed
+    membership and not emit `PeerLeaved`.

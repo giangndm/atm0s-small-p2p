@@ -974,6 +974,41 @@ mod test {
     }
 
     #[tokio::test]
+    async fn stale_pubsub_leave_must_not_remove_membership_after_newer_heartbeat() {
+        let mut service = test_service();
+        let channel = PubsubChannelId(1);
+        let remote = PeerId::from(2);
+        let (sub_tx, mut sub_rx) = unbounded_channel();
+
+        service
+            .on_internal(InternalMsg::SubscriberCreated(SubscriberLocalId::rand(), channel, sub_tx))
+            .await
+            .expect("subscriber should be registered");
+
+        service
+            .on_service(P2pServiceEvent::Unicast(remote, encode_heartbeat_for_test(channel, true, false)))
+            .await
+            .expect("heartbeat should be processed");
+
+        assert_eq!(sub_rx.try_recv(), Ok(SubscriberEvent::PeerJoined(PeerSrc::Remote(remote))));
+
+        let stale_leave = bincode::serialize(&PubsubMessage::PublisherLeaved(channel)).expect("leave message should serialize");
+        service
+            .on_service(P2pServiceEvent::Unicast(remote, stale_leave))
+            .await
+            .expect("stale leave should be processed");
+
+        assert!(
+            service.channels.get(&channel).expect("channel should exist").remote_publishers.contains(&remote),
+            "stale PublisherLeaved must not remove a publisher confirmed by a newer heartbeat"
+        );
+        assert!(
+            sub_rx.try_recv().is_err(),
+            "stale PublisherLeaved must not emit PeerLeaved for a still-live remote publisher"
+        );
+    }
+
+    #[tokio::test]
     async fn pubsub_rpc_methods_must_be_bounded() {
         const MAX_METHOD_LEN: usize = 1024;
         let mut service = test_service();
