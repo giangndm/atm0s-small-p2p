@@ -805,6 +805,42 @@ mod test {
     }
 
     #[tokio::test]
+    async fn pubsub_rpc_must_return_no_destination_when_all_local_sends_fail() {
+        let mut service = test_service();
+        let channel = PubsubChannelId(1);
+        let (sub_tx, sub_rx) = unbounded_channel();
+        drop(sub_rx);
+
+        service
+            .on_internal(InternalMsg::SubscriberCreated(SubscriberLocalId::rand(), channel, sub_tx))
+            .await
+            .expect("closed subscriber sender should still reach current broken state");
+
+        let (tx, mut rx) = oneshot::channel();
+
+        service
+            .on_internal(InternalMsg::GuestPublishRpc(
+                channel,
+                b"payload".to_vec(),
+                "method".to_string(),
+                tx,
+                Duration::from_secs(60),
+            ))
+            .await
+            .expect("RPC should process");
+
+        assert_eq!(
+            rx.try_recv(),
+            Ok(Err(PubsubRpcError::NoDestination)),
+            "if every local RPC event send fails immediately, RPC must fail as NoDestination instead of waiting for timeout"
+        );
+        assert!(
+            service.publish_rpc_reqs.is_empty(),
+            "failed local fanout must not leave a pending RPC request"
+        );
+    }
+
+    #[tokio::test]
     async fn remote_publisher_memberships_must_be_bounded() {
         const MAX_REMOTE_MEMBERS: usize = 1024;
         let mut service = test_service();

@@ -55,17 +55,19 @@ the source of truth for evidence and reviewer decisions.
 - Representative issues: ISSUE-049, ISSUE-050, ISSUE-056, ISSUE-118,
   ISSUE-119, ISSUE-120, ISSUE-123, ISSUE-124, ISSUE-125, ISSUE-126,
   ISSUE-127, ISSUE-133, ISSUE-136, ISSUE-147, ISSUE-153, ISSUE-157,
-  ISSUE-163, ISSUE-164.
+  ISSUE-163, ISSUE-164, ISSUE-178.
 - Pattern: some paths use bounded channels and drop on `try_send`, some await
   bounded sends from critical tasks, and others use unbounded queues or produce
   duplicate internal control work. Under load this causes silent data loss,
-  head-of-line blocking, or unbounded memory.
+  head-of-line blocking, or unbounded memory. RPC fanout can also count failed
+  local or remote delivery attempts as live destinations.
 - Minimal fix proposal: define channel policy by event class: lifecycle and
   route updates must use bounded retry/coalescing; service payload delivery must
   return explicit backpressure errors; public and internal request/control
   queues need fixed admission limits and per-target coalescing; peer tasks must
   not await bounded lifecycle reporting before they can process traffic or
-  cleanup.
+  cleanup. RPC paths should insert pending state only after at least one
+  successful local or remote fanout.
 
 ### RC-4: Timeouts are partial, coarse, or overflow-prone
 
@@ -4359,6 +4361,41 @@ the source of truth for evidence and reviewer decisions.
   - Failure summary: a channel has only stale remote subscriber `PeerId(99)` and
     no route. `GuestPublishRpc` calls `send_unicast`, which fails immediately,
     but `rx.try_recv()` remains `Err(Empty)` and `publish_rpc_reqs` retains the
+    request; expected immediate `Err(NoDestination)` and no pending RPC.
+
+### ISSUE-178: Pubsub RPC treats closed local event channels as live destinations
+
+- Category: correctness, pubsub RPC stability, lifecycle stability
+- Score: 57/100
+- Reviewer: `Russell the 3rd`, confirmed after `Carson the 3rd` discovery.
+- Affected code:
+  - `src/service/pubsub_service.rs`: `GuestPublishRpc` and the mirrored RPC
+    paths treat non-empty local publisher/subscriber maps as valid
+    destinations.
+  - `src/service/pubsub_service.rs`: local RPC delivery ignores
+    `sub_tx.send(...)` or `pub_tx.send(...)` failures.
+  - `src/service/pubsub_service.rs`: pending RPC state is inserted even if
+    every local event-channel send failed immediately.
+  - `src/service/pubsub_service/publisher.rs` and
+    `src/service/pubsub_service/subscriber.rs`: local event receivers can close
+    when handles are dropped.
+- Impact: a dropped or otherwise closed local pubsub handle can remain in
+  channel state and make an RPC appear to have a destination. If every local
+  event send fails immediately, the caller still waits until the RPC timeout
+  sweep instead of receiving `NoDestination`, and pending RPC state is retained.
+  This is distinct from ISSUE-163, which covers failed remote `send_unicast`
+  fanout, and from stale requester/answer-binding issues that cover authority
+  rather than destination accounting.
+- Minimal fix proposal: for RPC paths, count only successful fanout deliveries:
+  increment for local `send(...)` success and remote `send_to(...)` success. If
+  the count is zero, send `PubsubRpcError::NoDestination` and do not insert
+  pending state. Also prune local publisher/subscriber entries whose event
+  sender is closed.
+- Evidence test:
+  - `cargo test pubsub_rpc_must_return_no_destination_when_all_local_sends_fail -- --nocapture`
+  - Failure summary: a channel contains only a local subscriber sender whose
+    receiver is closed. `GuestPublishRpc` ignores the failed local send,
+    `rx.try_recv()` remains `Err(Empty)`, and `publish_rpc_reqs` retains the
     request; expected immediate `Err(NoDestination)` and no pending RPC.
 
 ### ISSUE-164: Tick route/discovery sync is dropped when peer control queue is full
