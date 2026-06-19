@@ -24,15 +24,17 @@ the source of truth for evidence and reviewer decisions.
 
 - Representative issues: ISSUE-001, ISSUE-004, ISSUE-014, ISSUE-015,
   ISSUE-018, ISSUE-020, ISSUE-039, ISSUE-048, ISSUE-066, ISSUE-067,
-  ISSUE-068, ISSUE-090, ISSUE-115, ISSUE-116, ISSUE-145.
+  ISSUE-068, ISSUE-090, ISSUE-115, ISSUE-116, ISSUE-145, ISSUE-189.
 - Pattern: message payloads and internal events carry peer ids, RPC ids, or
   source identities that are trusted without binding them back to the live
-  authenticated connection, local handle, expected responder, or channel role.
+  authenticated connection, local handle, expected responder, channel role, or
+  the invariant that a remote peer may not authenticate as the local node.
 - Minimal fix proposal: add one validation layer at each ingress boundary:
   derive `source` from the authenticated connection, validate
   `(ConnectionId, PeerId)` against neighbour state before processing main
-  events, and store expected responder/handle metadata in pending RPC/find
-  records before accepting answers.
+  events, reject self-identity peer admission before aliases are registered,
+  and store expected responder/handle metadata in pending RPC/find records
+  before accepting answers.
 
 ### RC-2: Protocol state machines lack request correlation and monotonicity checks
 
@@ -5171,6 +5173,40 @@ the source of truth for evidence and reviewer decisions.
     before local channel creation, a later `SubscriberCreated` creates the
     channel with no retained `remote_publishers` entry and emits no
     `SubscriberEvent::PeerJoined(PeerSrc::Remote(PeerId(2)))`.
+
+### ISSUE-189: Inbound handshake accepts a remote peer claiming the local peer id
+
+- Category: security, peer admission, identity validation
+- Score: 72/100
+- Reviewer: `Zeno the 3rd`, confirmed after `Pauli the 3rd` discovery.
+- Affected code:
+  - `src/peer.rs`: inbound `run_connection` reads `ConnectReq` and verifies the
+    request against peer-controlled `req.from` and `req.to`.
+  - `src/peer.rs`: the inbound branch rejects only `req.to != local_id`; it
+    never rejects `req.from == local_id`.
+  - `src/peer.rs`: accepted inbound setup uses `req.from` as `to_id`, registers
+    a `PeerConnectionAlias`, and emits `MainEvent::PeerConnected`.
+  - `src/lib.rs`: `MainEvent::PeerConnected(conn, local_id, ...)` can then
+    install neighbour/router state for the node's own identity.
+- Impact: any peer with the shared key can open an inbound connection and send a
+  fresh valid `ConnectReq { from: local_id, to: local_id, auth }`. The receiver
+  accepts it because verification is asked to validate exactly those claimed
+  ids, creating self-neighbour state, misleading public `PeerConnected` events,
+  metrics/control noise, and unstable route or shutdown behavior. This is
+  distinct from ISSUE-112, which covers the local `connect()` API self-dialing;
+  ISSUE-005/006/103, which cover self identity injected through
+  discovery/router/seed topology; ISSUE-113/114 duplicate connection races; and
+  ISSUE-146/176 replayable handshake tokens.
+- Minimal fix proposal: reject inbound `ConnectReq` when `req.from == local_id`
+  before creating a successful `ConnectRes`, registering the alias, or emitting
+  `PeerConnected`. Add the symmetric outbound guard if a response would bind
+  the remote identity to `local_id`.
+- Evidence test:
+  - `cargo test inbound_handshake_must_reject_peer_claiming_local_id -- --nocapture`
+  - Failure summary: a raw client sends a valid shared-key `ConnectReq` with
+    `from == to == PeerId(1)` to a node whose local id is `PeerId(1)`;
+    current code returns `ConnectRes { result: Ok(_) }`, so the test fails
+    because the inbound handshake was accepted instead of rejected.
 
 ## No-New-Issue Audit Cycles
 

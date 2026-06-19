@@ -5,7 +5,7 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Audit Status
 
-- Accepted issues: 188
+- Accepted issues: 189
 - Missing issue scores: 0
 - Current consecutive no-new-issue cycles: 0
 - Stop condition: continue until 5 consecutive cycles find no new accepted
@@ -17,13 +17,15 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Representative issues: ISSUE-001, ISSUE-004, ISSUE-014, ISSUE-015,
   ISSUE-018, ISSUE-020, ISSUE-039, ISSUE-048, ISSUE-066, ISSUE-067,
-  ISSUE-068, ISSUE-090, ISSUE-115, ISSUE-116, ISSUE-145.
+  ISSUE-068, ISSUE-090, ISSUE-115, ISSUE-116, ISSUE-145, ISSUE-189.
 - Pattern: message payloads and internal events carry peer ids, RPC ids, or
   source identities that are trusted without binding them to the live
-  authenticated connection, local handle, expected responder, or channel role.
+  authenticated connection, local handle, expected responder, channel role, or
+  the invariant that a remote peer may not authenticate as the local node.
 - Minimal fix proposal: derive source identity from authenticated connections,
-  validate `(ConnectionId, PeerId)` before processing main events, and store
-  expected responder/handle metadata before accepting answers.
+  validate `(ConnectionId, PeerId)` before processing main events, reject
+  self-identity peer admission before aliases are registered, and store expected
+  responder/handle metadata before accepting answers.
 
 ### RC-2: Protocol state machines lack correlation/freshness checks
 
@@ -179,9 +181,11 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   events. Reviewer: Mendel the 3rd.
 - ISSUE-188, score 51: pubsub drops early remote publisher joins before local
   channel creation. Reviewer: Noether the 3rd.
+- ISSUE-189, score 72: inbound handshake accepts a remote peer claiming the
+  local peer id. Reviewer: Zeno the 3rd.
 
 ## Next Candidate To Validate
 
-- None queued. ISSUE-188 kept the no-new counter at 0. Continue fresh source
+- None queued. ISSUE-189 kept the no-new counter at 0. Continue fresh source
   review; if five consecutive cycles find no issue, switch to randomized fuzz
   tests over node actions.
