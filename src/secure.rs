@@ -188,6 +188,21 @@ mod tests {
     }
 
     #[test]
+    fn response_handshake_tokens_must_not_be_replayable() {
+        let secure = SharedKeyHandshake::from("test_key");
+        let client = PeerId::from(1);
+        let server = PeerId::from(2);
+
+        let response = secure.create_response(server, client, 1_000);
+
+        assert!(secure.verify_response(response.clone(), server, client, 1_005).is_ok());
+        assert!(
+            secure.verify_response(response, server, client, 1_010).is_err(),
+            "the same response token must not authenticate a second outbound setup"
+        );
+    }
+
+    #[test]
     fn rejects_overflowing_request_timestamp_without_panic() {
         let secure = SharedKeyHandshake::from("test_key");
         let peer1 = PeerId::from(1);

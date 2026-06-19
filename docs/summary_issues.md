@@ -5,7 +5,7 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Audit Status
 
-- Accepted issues: 175
+- Accepted issues: 176
 - Missing issue scores: 0
 - Current consecutive no-new-issue cycles: 0
 - Stop condition: continue until 5 consecutive cycles find no new accepted
@@ -58,13 +58,15 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Representative issues: ISSUE-002, ISSUE-009, ISSUE-021, ISSUE-036,
   ISSUE-042, ISSUE-093, ISSUE-117, ISSUE-121, ISSUE-134, ISSUE-149,
-  ISSUE-156, ISSUE-159, ISSUE-169, ISSUE-172, ISSUE-173.
+  ISSUE-156, ISSUE-159, ISSUE-169, ISSUE-172, ISSUE-173, ISSUE-176.
 - Pattern: timeouts wrap only one await point, rely on unchecked timestamp
   arithmetic, use coarse global sweeps, or complete one side of setup before
-  proving the end-to-end setup is still alive.
+  proving the end-to-end setup is still alive. Handshake tokens also lack
+  nonce/challenge binding or replay caches.
 - Minimal fix proposal: use checked/saturating deadline math, wrap every
   protocol phase in an end-to-end timeout, and tie relay downstream setup to
-  upstream cancellation.
+  upstream cancellation. Bind handshake responses to fresh request nonces and
+  reject recently accepted tokens until expiry.
 
 ### RC-5: Application-level resource limits are missing
 
@@ -125,9 +127,11 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   non-deterministic serialization. Reviewer: Hypatia the 3rd.
 - ISSUE-175, score 42: replicated KV emits delete changes for keys that were
   never present. Reviewer: Volta the 3rd.
+- ISSUE-176, score 66: shared-key handshake response tokens are replayable.
+  Reviewer: Harvey the 3rd.
 
 ## Next Candidate To Validate
 
-- None queued. ISSUE-175 kept the no-new counter at 0. Continue fresh source
+- None queued. ISSUE-176 kept the no-new counter at 0. Continue fresh source
   review; if five consecutive cycles find no issue, switch to randomized fuzz
   tests over node actions.

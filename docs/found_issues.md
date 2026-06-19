@@ -71,16 +71,18 @@ the source of truth for evidence and reviewer decisions.
 
 - Representative issues: ISSUE-002, ISSUE-009, ISSUE-021, ISSUE-036,
   ISSUE-042, ISSUE-093, ISSUE-117, ISSUE-121, ISSUE-134, ISSUE-149,
-  ISSUE-156, ISSUE-159, ISSUE-169, ISSUE-172, ISSUE-173.
+  ISSUE-156, ISSUE-159, ISSUE-169, ISSUE-172, ISSUE-173, ISSUE-176.
 - Pattern: timeout checks often wrap only one await point, rely on unchecked
   timestamp arithmetic, use coarse global sweeps instead of per-operation
   deadlines, or complete one side of setup before the full end-to-end setup is
-  still alive.
+  still alive. Handshake tokens also lack nonce/challenge binding or replay
+  caches.
 - Minimal fix proposal: use `checked_add`/`saturating_add` for deadlines and
   wrap every protocol phase with one end-to-end setup timeout; for RPCs, track
   the exact deadline per request and wake on the nearest deadline; for relays,
   tie downstream setup to upstream cancellation and roll back downstream streams
-  if upstream acknowledgement fails.
+  if upstream acknowledgement fails. Bind handshake responses to fresh request
+  nonces and reject recently accepted tokens until expiry.
 
 ### RC-5: Application-level resource limits are missing
 
@@ -4700,6 +4702,36 @@ the source of truth for evidence and reviewer decisions.
     `ConnectReq` and does not read the large `ConnectRes`; no
     `PeerConnectError` arrives within 2.5 seconds, but setup should fail
     promptly.
+
+### ISSUE-176: Shared-key handshake response tokens are replayable
+
+- Category: security, authentication replay
+- Score: 66/100
+- Reviewer: `Harvey the 3rd`, confirmed after `Curie the 3rd` discovery.
+- Affected code:
+  - `src/secure.rs`: `SharedKeyHandshake::generate_handshake` signs only
+    deterministic `{from, to, timestamp, is_initiator}` payload data.
+  - `src/secure.rs`: `SharedKeyHandshake::validate_handshake` checks timestamp,
+    peer ids, role, and hash, but has no nonce, challenge/session binding, or
+    replay cache.
+  - `src/secure.rs`: `verify_response` delegates directly to that stateless
+    validation.
+  - `src/peer.rs`: outbound setup accepts `ConnectRes` once
+    `verify_response` succeeds.
+- Impact: a captured valid response token can be reused to satisfy another
+  outbound setup within `HANDSHAKE_TIMEOUT`. This is distinct from ISSUE-146,
+  which covers replayed request tokens authenticating inbound connections; this
+  is the response-side verifier accepting the same `ConnectRes` blob more than
+  once.
+- Minimal fix proposal: add a fresh nonce or challenge to `ConnectReq`, require
+  `ConnectRes` to sign and echo that nonce, and cache recently accepted
+  `(from, to, nonce/signature)` values until expiry so replayed response tokens
+  are rejected.
+- Evidence test:
+  - `cargo test response_handshake_tokens_must_not_be_replayable -- --nocapture`
+  - Failure summary: a response token created at timestamp `1000` verifies at
+    `1005` and then verifies again at `1010`; expected the second use of the
+    same response blob to be rejected.
 
 ## No-New-Issue Audit Cycles
 
