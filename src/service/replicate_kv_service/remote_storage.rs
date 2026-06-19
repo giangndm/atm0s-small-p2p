@@ -1425,6 +1425,30 @@ mod tests {
     }
 
     #[test]
+    fn ignored_broadcast_must_not_refresh_remote_activity() {
+        let stale = Instant::now() - Duration::from_secs(11);
+        let mut remote: RemoteStore<u16, u16, u16> = RemoteStore {
+            ctx: StateCtx {
+                remote: 1,
+                slots: BTreeMap::from([(7, Slot::new(70, Version(5)))]),
+                outs: VecDeque::new(),
+                next_state: None,
+            },
+            state: RemoteStoreState::Working(WorkingState::new(Version(5))),
+            last_active: stale,
+        };
+
+        remote.on_broadcast(BroadcastEvent::Version(Version(5)));
+
+        assert_eq!(
+            remote.last_active(),
+            stale,
+            "ignored stale broadcasts must not refresh remote activity and prevent timeout cleanup"
+        );
+        assert_eq!(remote.pop_out(), None, "ignored stale broadcasts must not emit local events");
+    }
+
+    #[test]
     fn working_state_must_reject_duplicate_fetch_changed_versions() {
         let mut ctx: StateCtx<u16, u16, u16> = StateCtx {
             remote: 1,

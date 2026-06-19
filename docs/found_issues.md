@@ -39,16 +39,19 @@ the source of truth for evidence and reviewer decisions.
 - Representative issues: ISSUE-034, ISSUE-037, ISSUE-038, ISSUE-047,
   ISSUE-059, ISSUE-071, ISSUE-081 through ISSUE-089, ISSUE-095, ISSUE-099,
   ISSUE-110, ISSUE-111, ISSUE-138, ISSUE-141, ISSUE-143, ISSUE-152,
-  ISSUE-154, ISSUE-155, ISSUE-158, ISSUE-166, ISSUE-171, ISSUE-175.
+  ISSUE-154, ISSUE-155, ISSUE-158, ISSUE-166, ISSUE-171, ISSUE-175,
+  ISSUE-186.
 - Pattern: replicated-KV full sync, changed repair, alias lookup, metrics,
   visualization, and pubsub flows accept stale, unsolicited, reordered, or
-  mismatched responses because response handlers do not verify outstanding
-  request shape, bounds, version, continuation key, or expected phase.
+  mismatched responses or broadcasts because handlers do not verify
+  outstanding request shape, bounds, version, continuation key, expected phase,
+  or whether an event actually advances activity.
 - Minimal fix proposal: encode a small pending-request descriptor per flow and
   reject responses unless they match the descriptor exactly; clear or advance
   the descriptor only after all range/version invariants are checked; for
   membership gossip, carry a small generation or epoch and ignore older
-  join/leave/heartbeat state.
+  join/leave/heartbeat state. Refresh remote liveness only after an accepted
+  event advances state or emits work.
 
 ### RC-3: Backpressure is inconsistent across async boundaries
 
@@ -4143,6 +4146,41 @@ the source of truth for evidence and reviewer decisions.
     subscriber, but the publisher does not receive
     `PublisherEvent::PeerLeaved(PeerSrc::Remote(node2))` before the prompt
     leave timeout; expected pubsub membership to be removed immediately.
+
+### ISSUE-186: Ignored replicated-KV broadcasts refresh stale remote activity
+
+- Category: stability, resource cleanup, bad-network resilience
+- Score: 54/100
+- Reviewer: `Nietzsche the 3rd`, confirmed after local discovery.
+- Affected code:
+  - `src/service/replicate_kv_service/remote_storage.rs`:
+    `RemoteStore::on_broadcast` sets `last_active = Instant::now()`
+    unconditionally before dispatching to the current state.
+  - `src/service/replicate_kv_service/remote_storage.rs`:
+    `WorkingState::on_broadcast` ignores stale or equal
+    `BroadcastEvent::Version` values when they do not advance the working
+    version or create a repair request.
+  - `src/service/replicate_kv_service.rs`: remote cleanup depends on
+    `remote.last_active().elapsed() < REMOTE_TIMEOUT_MS`.
+- Impact: stale, replayed, or noisy version broadcasts that make no state
+  progress can keep an otherwise inactive remote store alive. Under bad network
+  replay or adversarial traffic, timeout cleanup can be delayed or prevented
+  even though no valid replicated-KV state changed. This is distinct from
+  ISSUE-140, which covers ignored RPC responses refreshing activity through
+  `RemoteStore::on_rpc_res`; this issue covers the broadcast ingress path.
+- Minimal fix proposal: refresh `last_active` only when a broadcast is
+  accepted and actionable. The smallest robust shape is for state handlers to
+  return whether they consumed or progressed from an event, then update
+  liveness only on true. A narrower local fix can compare state/output before
+  and after dispatch and refresh only when there is a state transition,
+  outbound event, version advance, or pending repair change.
+- Evidence test:
+  - `cargo test ignored_broadcast_must_not_refresh_remote_activity -- --nocapture`
+  - Failure summary: a stale `WorkingState` remote already at `Version(5)`
+    receives an ignored `BroadcastEvent::Version(Version(5))`; no output is
+    produced, but `last_active` changes from the stale instant to
+    `Instant::now()`, preventing timeout cleanup from recognizing the remote as
+    inactive.
 
 ### ISSUE-155: Stale pubsub leave removes membership confirmed by newer heartbeat
 

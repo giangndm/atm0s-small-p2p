@@ -5,7 +5,7 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Audit Status
 
-- Accepted issues: 185
+- Accepted issues: 186
 - Missing issue scores: 0
 - Current consecutive no-new-issue cycles: 0
 - Stop condition: continue until 5 consecutive cycles find no new accepted
@@ -30,14 +30,17 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 - Representative issues: ISSUE-034, ISSUE-037, ISSUE-038, ISSUE-047,
   ISSUE-059, ISSUE-071, ISSUE-081 through ISSUE-089, ISSUE-095, ISSUE-099,
   ISSUE-110, ISSUE-111, ISSUE-138, ISSUE-141, ISSUE-143, ISSUE-152,
-  ISSUE-154, ISSUE-155, ISSUE-158, ISSUE-166, ISSUE-171, ISSUE-175.
+  ISSUE-154, ISSUE-155, ISSUE-158, ISSUE-166, ISSUE-171, ISSUE-175,
+  ISSUE-186.
 - Pattern: replicated-KV, alias, metrics, visualization, and pubsub flows accept
-  stale, unsolicited, reordered, or mismatched responses because handlers do
-  not verify request shape, bounds, version, continuation key, expected phase,
-  or membership generation.
+  stale, unsolicited, reordered, or mismatched responses or broadcasts because
+  handlers do not verify request shape, bounds, version, continuation key,
+  expected phase, membership generation, or whether an event actually advances
+  activity.
 - Minimal fix proposal: keep a small pending-request descriptor per flow and
   reject responses unless they match; for membership gossip, carry a generation
-  or epoch and ignore older join/leave/heartbeat state.
+  or epoch and ignore older join/leave/heartbeat state. Refresh remote liveness
+  only after an accepted event advances state or emits work.
 
 ### RC-3: Backpressure is inconsistent across async boundaries
 
@@ -166,9 +169,13 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   for the same gap. Reviewer: Poincare the 3rd.
 - ISSUE-185, score 56: pubsub keeps remote subscriber membership after graceful
   peer stop. Reviewer: Popper the 3rd.
+- ISSUE-186, score 54: ignored replicated-KV broadcasts refresh stale remote
+  activity. Reviewer: Nietzsche the 3rd.
 
 ## Next Candidate To Validate
 
-- None queued. ISSUE-185 kept the no-new counter at 0. Continue fresh source
+- Queued for possible next validation: public `P2pNetworkEvent` hides accepted
+  graceful `PeerStopped` as `Continue`. ISSUE-186 kept the no-new counter at 0.
+  Continue fresh source
   review; if five consecutive cycles find no issue, switch to randomized fuzz
   tests over node actions.
