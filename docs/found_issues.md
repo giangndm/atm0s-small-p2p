@@ -150,23 +150,25 @@ the source of truth for evidence and reviewer decisions.
 - Representative issues: ISSUE-003, ISSUE-005, ISSUE-006, ISSUE-007,
   ISSUE-008, ISSUE-033, ISSUE-044, ISSUE-055, ISSUE-092, ISSUE-103,
   ISSUE-112 through ISSUE-114, ISSUE-160, ISSUE-161, ISSUE-164, ISSUE-167,
-  ISSUE-177, ISSUE-180, ISSUE-181, ISSUE-190, ISSUE-192.
+  ISSUE-177, ISSUE-180, ISSUE-181, ISSUE-190, ISSUE-192, ISSUE-197.
 - Pattern: route/discovery inputs can include local ids, self seeds, stale
   addresses, overflowed metrics, over-hop routes, duplicate connection races, or
   explicit connect addresses that are ignored by peer-id-only fast paths, or
   tiny RTT jitter that changes active paths too aggressively. Malformed route
   or discovery syncs can also contain duplicate destination rows whose last
-  value silently wins before validation. Stream relay setup also trusts route
-  choices without checking whether the next hop is the same ingress connection,
-  and local advertise config can gossip non-dialable addresses.
+  value silently wins before validation. Stream setup and unicast forwarding
+  also trust route choices without checking whether the next hop is the same
+  ingress connection, and local advertise config can gossip non-dialable
+  addresses.
 - Minimal fix proposal: add route/discovery sanitization before insertion:
   reject local/self candidates and over-hop routes, pin authenticated direct
   paths for their peer ids, use checked metric math, ignore stale discovery
   timestamps, reject duplicate destination rows in a single route or discovery
   sync, coalesce duplicate connects, validate already-connected peer addresses,
   add a small hysteresis threshold before switching active paths, and reject
-  relay stream hops that would forward back to their ingress connection.
-  Validate configured local advertise addresses before gossiping them.
+  relay stream or unicast hops that would forward back to their ingress
+  connection. Validate configured local advertise addresses before gossiping
+  them.
 
 ### RC-8: Public examples are not compile-checked against the API
 
@@ -5487,6 +5489,40 @@ the source of truth for evidence and reviewer decisions.
   - Failure summary: after `1025` local `set()` calls, current code retains
     `2050` events in `ReplicatedKvStore::outs` because each set queues one
     broadcast and one local KV event, so the bounded-queue assertion fails.
+
+### ISSUE-197: Unicast relay can forward packets back to the ingress connection
+
+- Category: correctness, unicast relay stability, route-loop handling
+- Score: 64/100
+- Reviewer: `Lagrange the 3rd`, confirmed after `Darwin the 3rd` discovery.
+- Affected code:
+  - `src/peer/peer_internal.rs`: `PeerConnectionInternal::on_msg` handles
+    `PeerMessage::Unicast` by asking `ctx.router().action(&dest)` and
+    forwarding to the selected `RouteAction::Next(next)`.
+  - `src/peer/peer_internal.rs`: the unicast forwarding branch does not reject
+    `next == self.conn_id`, so a packet can be sent back over the same
+    connection that delivered it.
+  - `src/router.rs`: `SharedRouterTable::action` returns only the selected
+    next connection and cannot exclude the ingress connection for a specific
+    forwarding decision.
+- Impact: when route state forms a two-node loop for a destination, an inbound
+  ordinary unicast frame can be forwarded back to the peer that sent it. That
+  can bounce service traffic until hop/routing churn, queue pressure, or
+  connection failure stops it. This is distinct from ISSUE-007 over-hop route
+  acceptance, ISSUE-008 control-plane route advertisement back to the learned
+  peer, ISSUE-147/164 route-sync delivery pressure, and ISSUE-180 stream setup
+  relay loops; this issue is the ordinary unicast data-plane forwarding guard.
+- Minimal fix proposal: pass or use the ingress `ConnectionId` in the unicast
+  forwarding path. If `RouteAction::Next(next) == self.conn_id`, drop or reject
+  the packet and log a route-loop warning instead of forwarding back to the
+  sender. Longer term, add a shared relay guard for unicast and stream setup,
+  plus TTL or visited-path loop control.
+- Evidence test:
+  - `cargo test unicast_relay_must_not_forward_back_to_ingress_peer -- --nocapture`
+  - Failure summary: route state learned from the ingress peer makes
+    `ctx.router().action(&PeerId(99))` return
+    `Some(RouteAction::Next(ingress_conn))`, proving that the current unicast
+    forwarding branch would send the packet back over the ingress connection.
 
 ## No-New-Issue Audit Cycles
 

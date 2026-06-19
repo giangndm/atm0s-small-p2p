@@ -883,6 +883,29 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn unicast_relay_must_not_forward_back_to_ingress_peer() {
+        let local = PeerId::from(2);
+        let ingress_peer = PeerId::from(1);
+        let destination = PeerId::from(99);
+        let ingress_conn = ConnectionId::from(10);
+        let ctx = SharedCtx::new(local, SharedRouterTable::new(local));
+        let (tx, _rx) = channel(1);
+
+        ctx.register_conn(ingress_conn, PeerConnectionAlias::new(local, ingress_peer, ingress_conn, tx));
+        ctx.router().set_direct(ingress_conn, ingress_peer, 10);
+
+        let remote_router = SharedRouterTable::new(ingress_peer);
+        remote_router.set_direct(ConnectionId::from(99), destination, 10);
+        ctx.router().apply_sync(ingress_conn, remote_router.create_sync(&local));
+
+        assert_ne!(
+            ctx.router().action(&destination),
+            Some(RouteAction::Next(ingress_conn)),
+            "inbound unicast must not be forwarded back over its ingress connection"
+        );
+    }
+
+    #[tokio::test]
     async fn tick_sync_must_not_be_dropped_when_peer_control_queue_is_full() {
         let _ = rustls::crypto::ring::default_provider().install_default();
         let listen_addr = UdpSocket::bind("127.0.0.1:0").expect("should bind test udp").local_addr().expect("should read test udp addr");
