@@ -5,7 +5,7 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Audit Status
 
-- Accepted issues: 181
+- Accepted issues: 182
 - Missing issue scores: 0
 - Current consecutive no-new-issue cycles: 0
 - Stop condition: continue until 5 consecutive cycles find no new accepted
@@ -44,17 +44,20 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 - Representative issues: ISSUE-049, ISSUE-050, ISSUE-056, ISSUE-118,
   ISSUE-119, ISSUE-120, ISSUE-123, ISSUE-124, ISSUE-125, ISSUE-126,
   ISSUE-127, ISSUE-133, ISSUE-136, ISSUE-147, ISSUE-153, ISSUE-157,
-  ISSUE-163, ISSUE-164, ISSUE-178.
+  ISSUE-163, ISSUE-164, ISSUE-178, ISSUE-182.
 - Pattern: some paths drop on `try_send`, some await bounded sends from
   critical tasks, and others use unbounded queues or duplicate internal control
   work. Under load this causes silent loss, head-of-line blocking, or unbounded
   memory. RPC fanout can also count failed local or remote delivery attempts as
-  live destinations.
+  live destinations. Transport config can also admit unused stream classes that
+  no application task drains.
 - Minimal fix proposal: define a channel policy by event class; lifecycle and
   route updates need bounded retry/coalescing, service payload delivery needs
   explicit backpressure errors, and peer tasks must not await bounded lifecycle
   reporting before they can process traffic or cleanup. RPC paths should insert
   pending state only after at least one successful local or remote fanout.
+  Disable unused QUIC stream classes or add explicit admission plus
+  drain/reject handlers.
 
 ### RC-4: Timeouts and setup cancellation are incomplete
 
@@ -148,9 +151,11 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   Reviewer: Carver the 3rd.
 - ISSUE-181, score 45: local advertise config can gossip unroutable wildcard
   addresses. Reviewer: Nash the 3rd.
+- ISSUE-182, score 52: QUIC admits unused unidirectional streams. Reviewer:
+  Pascal the 3rd.
 
 ## Next Candidate To Validate
 
-- None queued. ISSUE-181 kept the no-new counter at 0. Continue fresh source
+- None queued. ISSUE-182 kept the no-new counter at 0. Continue fresh source
   review; if five consecutive cycles find no issue, switch to randomized fuzz
   tests over node actions.

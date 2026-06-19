@@ -55,19 +55,21 @@ the source of truth for evidence and reviewer decisions.
 - Representative issues: ISSUE-049, ISSUE-050, ISSUE-056, ISSUE-118,
   ISSUE-119, ISSUE-120, ISSUE-123, ISSUE-124, ISSUE-125, ISSUE-126,
   ISSUE-127, ISSUE-133, ISSUE-136, ISSUE-147, ISSUE-153, ISSUE-157,
-  ISSUE-163, ISSUE-164, ISSUE-178.
+  ISSUE-163, ISSUE-164, ISSUE-178, ISSUE-182.
 - Pattern: some paths use bounded channels and drop on `try_send`, some await
   bounded sends from critical tasks, and others use unbounded queues or produce
   duplicate internal control work. Under load this causes silent data loss,
   head-of-line blocking, or unbounded memory. RPC fanout can also count failed
-  local or remote delivery attempts as live destinations.
+  local or remote delivery attempts as live destinations. Transport config can
+  also admit unused stream classes that no application task drains.
 - Minimal fix proposal: define channel policy by event class: lifecycle and
   route updates must use bounded retry/coalescing; service payload delivery must
   return explicit backpressure errors; public and internal request/control
   queues need fixed admission limits and per-target coalescing; peer tasks must
   not await bounded lifecycle reporting before they can process traffic or
   cleanup. RPC paths should insert pending state only after at least one
-  successful local or remote fanout.
+  successful local or remote fanout. Disable unused QUIC stream classes or add
+  explicit admission plus drain/reject handlers.
 
 ### RC-4: Timeouts are partial, coarse, or overflow-prone
 
@@ -4499,6 +4501,36 @@ the source of truth for evidence and reviewer decisions.
     `create_sync_for` returns
     `PeerDiscoverySync([(PeerId(1), 100, NetworkAddress(0.0.0.0:0))])`;
     expected empty sync so non-dialable local addresses are not gossiped.
+
+### ISSUE-182: QUIC admits unused unidirectional streams
+
+- Category: high-load stability, transport admission, resource exhaustion
+- Score: 52/100
+- Reviewer: `Pascal the 3rd`, confirmed after `Ohm the 3rd` discovery.
+- Affected code:
+  - `src/quic.rs`: `configure_server` sets
+    `max_concurrent_uni_streams(10_000_u32.into())`.
+  - `src/quic.rs`: `configure_client` sets
+    `max_concurrent_uni_streams(10_000_u32.into())`.
+  - Production peer code uses only bidirectional streams and never calls
+    `accept_uni`.
+- Impact: a raw QUIC peer can open many unidirectional streams that the P2P
+  protocol never consumes. Those streams expose unused transport state and flow
+  control surface under bad-network or malicious-peer load. This is distinct
+  from ISSUE-117, which covers authenticated idle bidirectional stream-connect
+  handshakes; ISSUE-134, which covers unauthenticated raw QUIC connections
+  waiting on the P2P control stream; ISSUE-149/169/172/173, which cover stalled
+  bidirectional setup read/write paths; and ISSUE-159, which covers outbound
+  peer setup before the main control stream opens.
+- Minimal fix proposal: set `max_concurrent_uni_streams(0_u32.into())` in both
+  server and client transport config. If future protocol features need
+  unidirectional streams, introduce a small explicit cap plus an application
+  accept/reject/drain path.
+- Evidence test:
+  - `cargo test unused_unidirectional_streams_must_not_be_admitted -- --nocapture`
+  - Failure summary: a raw client opens 17 unidirectional QUIC streams against
+    the endpoint while the protocol has no `accept_uni` path; expected zero
+    admitted unused unidirectional streams.
 
 ### ISSUE-164: Tick route/discovery sync is dropped when peer control queue is full
 

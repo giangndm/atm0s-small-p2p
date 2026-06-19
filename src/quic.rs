@@ -42,7 +42,7 @@ fn configure_client(server_certs: &[CertificateDer]) -> anyhow::Result<ClientCon
 
 #[cfg(test)]
 mod tests {
-    use std::net::Ipv4Addr;
+    use std::net::{Ipv4Addr, UdpSocket};
 
     use futures::AsyncWriteExt;
 
@@ -91,5 +91,40 @@ mod tests {
             assert_eq!(&buf[..len], b"Hello, world!");
             queue.push((send, recv));
         }
+    }
+
+    #[tokio::test]
+    async fn unused_unidirectional_streams_must_not_be_admitted() {
+        let _ = rustls::crypto::ring::default_provider().install_default();
+        let server_addr = UdpSocket::bind("127.0.0.1:0").expect("server udp should bind").local_addr().expect("server addr should exist");
+        let client_addr = UdpSocket::bind("127.0.0.1:0").expect("client udp should bind").local_addr().expect("client addr should exist");
+        let priv_key = PrivatePkcs8KeyDer::from(DEFAULT_CLUSTER_KEY.to_vec());
+        let cert = CertificateDer::from(DEFAULT_CLUSTER_CERT.to_vec());
+
+        let server = make_server_endpoint(server_addr, priv_key.clone_key(), cert.clone()).expect("server endpoint should build");
+        let client = make_server_endpoint(client_addr, priv_key, cert).expect("client endpoint should build");
+
+        let server_task = tokio::spawn(async move {
+            let connecting = server.accept().await.expect("server should accept connection");
+            let _conn = connecting.await.expect("server should complete connection");
+            std::future::pending::<()>().await;
+        });
+
+        let conn = client
+            .connect(server_addr, CERT_DOMAIN_NAME)
+            .expect("client connect should start")
+            .await
+            .expect("client should connect");
+        let mut opened = 0;
+
+        for _ in 0..17 {
+            if tokio::time::timeout(Duration::from_millis(100), conn.open_uni()).await.is_ok() {
+                opened += 1;
+            }
+        }
+
+        server_task.abort();
+
+        assert_eq!(opened, 0, "the P2P protocol does not accept unidirectional QUIC streams, so transport config should not admit them");
     }
 }
