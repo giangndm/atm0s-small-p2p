@@ -71,7 +71,7 @@ the source of truth for evidence and reviewer decisions.
 
 - Representative issues: ISSUE-002, ISSUE-009, ISSUE-021, ISSUE-036,
   ISSUE-042, ISSUE-093, ISSUE-117, ISSUE-121, ISSUE-134, ISSUE-149,
-  ISSUE-156, ISSUE-159, ISSUE-169.
+  ISSUE-156, ISSUE-159, ISSUE-169, ISSUE-172.
 - Pattern: timeout checks often wrap only one await point, rely on unchecked
   timestamp arithmetic, use coarse global sweeps instead of per-operation
   deadlines, or complete one side of setup before the full end-to-end setup is
@@ -4548,6 +4548,38 @@ the source of truth for evidence and reviewer decisions.
     request, a `FetchChanged(Err(MissingData))` fallback immediately clears
     existing slots `{1, 2}`; expected the old slots to remain visible until the
     replacement full snapshot completes.
+
+### ISSUE-172: Outbound peer setup hangs while writing ConnectReq to stalled peer
+
+- Category: bad-network stability, connection lifecycle, setup timeout
+- Score: 68/100
+- Reviewer: `James the 3rd`, confirmed after `Ptolemy the 3rd` discovery.
+- Affected code:
+  - `src/peer.rs`: outbound `run_connection` writes `ConnectReq` with
+    `write_object` after `connection.open_bi()` succeeds, but that write has no
+    peer setup deadline.
+  - `src/stream.rs`: `write_object` awaits `write_all` for the length and
+    payload without any timeout.
+  - `src/lib.rs` and `src/neighbours.rs`: outbound pending neighbour cleanup
+    depends on receiving a later `MainEvent::PeerConnectError`.
+- Impact: a remote endpoint can complete QUIC setup and accept the P2P main
+  control stream, then stop reading. If `ConnectReq` is large enough to hit
+  peer flow control, the outbound peer task can remain stuck while writing the
+  request. No `PeerConnectError` reaches the main loop, so the pending
+  neighbour remains resident until transport idle timeout or longer. This is
+  distinct from ISSUE-159, which stalls before the main control stream opens;
+  ISSUE-169, which covers post-auth service stream setup; ISSUE-016, which
+  covers early connect success; ISSUE-134, which covers inbound unauthenticated
+  admission; and ISSUE-113, which covers duplicate outbound connects.
+- Minimal fix proposal: wrap the whole outbound peer admission sequence in one
+  bounded deadline: `connection.open_bi()`, writing `ConnectReq`, reading
+  `ConnectRes`, and verifying the response. On timeout, emit
+  `MainEvent::PeerConnectError` so pending neighbour cleanup runs.
+- Evidence test:
+  - `cargo test outbound_peer_setup_must_timeout_when_connect_request_write_stalls -- --nocapture`
+  - Failure summary: a raw peer accepts the P2P control stream with a tiny
+    receive window and never reads it. After the setup window, the normal node
+    still has one pending neighbour; expected timeout cleanup to remove it.
 
 ## No-New-Issue Audit Cycles
 

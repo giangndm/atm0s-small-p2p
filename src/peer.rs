@@ -242,7 +242,7 @@ mod tests {
     };
 
     use futures::SinkExt;
-    use quinn::VarInt;
+    use quinn::{Endpoint, ServerConfig, TransportConfig, VarInt};
     use rustls::pki_types::{CertificateDer, PrivatePkcs8KeyDer};
     use tokio_util::codec::Framed;
 
@@ -257,6 +257,41 @@ mod tests {
 
     const DEFAULT_CLUSTER_CERT: &[u8] = include_bytes!("../certs/dev.cluster.cert");
     const DEFAULT_CLUSTER_KEY: &[u8] = include_bytes!("../certs/dev.cluster.key");
+
+    struct LargeAuthHandshake;
+
+    impl HandshakeProtocol for LargeAuthHandshake {
+        fn create_request(&self, _from: PeerId, _to: PeerId, _now: u64) -> Vec<u8> {
+            vec![7; 58_000]
+        }
+
+        fn verify_request(&self, _data: Vec<u8>, _expected_from: PeerId, _expected_to: PeerId, _now: u64) -> Result<(), String> {
+            Ok(())
+        }
+
+        fn create_response(&self, _from: PeerId, _to: PeerId, _now: u64) -> Vec<u8> {
+            vec![8; 64]
+        }
+
+        fn verify_response(&self, _data: Vec<u8>, _expected_from: PeerId, _expected_to: PeerId, _now: u64) -> Result<(), String> {
+            Ok(())
+        }
+    }
+
+    fn make_small_stream_receive_endpoint(bind_addr: SocketAddr, stream_window: u32) -> anyhow::Result<Endpoint> {
+        let priv_key = PrivatePkcs8KeyDer::from(DEFAULT_CLUSTER_KEY.to_vec());
+        let cert = CertificateDer::from(DEFAULT_CLUSTER_CERT.to_vec());
+        let mut server_config = ServerConfig::with_single_cert(vec![cert], priv_key.into())?;
+        let mut transport = TransportConfig::default();
+        let window = VarInt::from_u32(stream_window);
+        transport.stream_receive_window(window);
+        transport.receive_window(window);
+        transport.max_concurrent_uni_streams(10_000_u32.into());
+        transport.max_concurrent_bidi_streams(10_000_u32.into());
+        transport.max_idle_timeout(Some(Duration::from_secs(5).try_into().expect("timeout should configure")));
+        server_config.transport_config(Arc::new(transport));
+        Endpoint::server(server_config, bind_addr).map_err(Into::into)
+    }
 
     #[test]
     fn stale_pending_outgoing_peer_does_not_suppress_reconnect() {
@@ -445,6 +480,73 @@ mod tests {
             ctx.router().action(&advertised_peer),
             Some(RouteAction::Next(conn_id)),
             "dropping the sync leaves a valid destination unreachable for later unicast or stream setup"
+        );
+    }
+
+    #[tokio::test]
+    async fn outbound_peer_setup_must_timeout_when_connect_request_write_stalls() {
+        let _ = rustls::crypto::ring::default_provider().install_default();
+        let listen_addr = UdpSocket::bind("127.0.0.1:0")
+            .expect("should bind node udp")
+            .local_addr()
+            .expect("should read node addr");
+        let raw_addr = UdpSocket::bind("127.0.0.1:0")
+            .expect("should bind raw peer udp")
+            .local_addr()
+            .expect("should read raw peer addr");
+        let raw_peer = make_small_stream_receive_endpoint(raw_addr, 37).expect("raw peer endpoint should build");
+        let raw_peer_id = PeerId::from(2);
+        let (stream_accepted_tx, mut stream_accepted_rx) = tokio::sync::oneshot::channel();
+
+        let raw_task = tokio::spawn(async move {
+            let connecting = raw_peer.accept().await.expect("raw peer should accept transport");
+            let connection = connecting.await.expect("raw peer should complete transport");
+            let stream = connection.accept_bi().await.expect("raw peer should accept p2p control stream");
+            let _ = stream_accepted_tx.send(());
+            let _held_stream = stream;
+            std::future::pending::<()>().await;
+        });
+
+        let priv_key = PrivatePkcs8KeyDer::from(DEFAULT_CLUSTER_KEY.to_vec());
+        let cert = CertificateDer::from(DEFAULT_CLUSTER_CERT.to_vec());
+        let mut node = P2pNetwork::new(P2pNetworkConfig {
+            peer_id: PeerId::from(1),
+            listen_addr,
+            advertise: None,
+            priv_key,
+            cert,
+            tick_ms: 100,
+            seeds: vec![],
+            secure: LargeAuthHandshake,
+        })
+        .await
+        .expect("node should build");
+        let requester = node.requester();
+        requester.try_connect((raw_peer_id, raw_addr.into()).into());
+
+        tokio::time::timeout(Duration::from_secs(1), async {
+            loop {
+                tokio::select! {
+                    _ = &mut stream_accepted_rx => break,
+                    event = node.recv() => {
+                        let _ = event.expect("node recv should keep running");
+                    }
+                }
+            }
+        })
+        .await
+        .expect("raw peer should accept the p2p control stream");
+
+        let deadline = tokio::time::Instant::now() + Duration::from_millis(2500);
+        while tokio::time::Instant::now() < deadline {
+            let _ = tokio::time::timeout(Duration::from_millis(100), node.recv()).await;
+        }
+        raw_task.abort();
+
+        assert_eq!(
+            node.neighbours.len(),
+            0,
+            "outbound peer setup must time out and remove the pending neighbour when writing ConnectReq stalls behind peer flow control"
         );
     }
 

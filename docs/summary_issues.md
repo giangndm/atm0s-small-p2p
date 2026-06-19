@@ -5,7 +5,7 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Audit Status
 
-- Accepted issues: 171
+- Accepted issues: 172
 - Missing issue scores: 0
 - Current consecutive no-new-issue cycles: 0
 - Stop condition: continue until 5 consecutive cycles find no new accepted
@@ -58,7 +58,7 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Representative issues: ISSUE-002, ISSUE-009, ISSUE-021, ISSUE-036,
   ISSUE-042, ISSUE-093, ISSUE-117, ISSUE-121, ISSUE-134, ISSUE-149,
-  ISSUE-156, ISSUE-159, ISSUE-169.
+  ISSUE-156, ISSUE-159, ISSUE-169, ISSUE-172.
 - Pattern: timeouts wrap only one await point, rely on unchecked timestamp
   arithmetic, use coarse global sweeps, or complete one side of setup before
   proving the end-to-end setup is still alive.
@@ -108,8 +108,6 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Recent Accepted Issues
 
-- ISSUE-166, score 58: broadcast replay is accepted again after dedup cache
-  eviction. Reviewer: Avicenna the 3rd.
 - ISSUE-167, score 56: expired non-seed discovery entries remain routable.
   Reviewer: Pasteur the 3rd.
 - ISSUE-168, score 44: duplicate pubsub local ids detach live publisher
@@ -121,9 +119,11 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   meshes. Reviewer: Banach the 3rd.
 - ISSUE-171, score 60: replicated KV full resync deletes visible data before
   replacement snapshot. Reviewer: Fermat the 3rd.
+- ISSUE-172, score 68: outbound peer setup hangs while writing `ConnectReq` to
+  a stalled peer. Reviewer: James the 3rd.
 
 ## Next Candidate To Validate
 
-- None queued. ISSUE-171 reset the no-new counter to 0. Continue fresh source
+- None queued. ISSUE-172 reset the no-new counter to 0. Continue fresh source
   review; if five consecutive cycles find no issue, switch to randomized fuzz
   tests over node actions.
