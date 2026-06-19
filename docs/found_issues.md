@@ -99,7 +99,7 @@ the source of truth for evidence and reviewer decisions.
 - Representative issues: ISSUE-028, ISSUE-029, ISSUE-051, ISSUE-057,
   ISSUE-060, ISSUE-064, ISSUE-065, ISSUE-069 through ISSUE-076, ISSUE-108,
   ISSUE-128 through ISSUE-132, ISSUE-135, ISSUE-139, ISSUE-142, ISSUE-144,
-  ISSUE-148, ISSUE-150, ISSUE-151.
+  ISSUE-148, ISSUE-150, ISSUE-151, ISSUE-161.
 - Pattern: requesters, services, peer aliases, channel state, and cached hints
   can outlive the owner they represent, while shutdown paths may panic, leak,
   emit false public events, or keep stale routes/cache entries.
@@ -112,7 +112,7 @@ the source of truth for evidence and reviewer decisions.
 
 - Representative issues: ISSUE-003, ISSUE-005, ISSUE-006, ISSUE-007,
   ISSUE-008, ISSUE-033, ISSUE-044, ISSUE-055, ISSUE-092, ISSUE-103,
-  ISSUE-112 through ISSUE-114, ISSUE-160.
+  ISSUE-112 through ISSUE-114, ISSUE-160, ISSUE-161.
 - Pattern: route/discovery inputs can include local ids, self seeds, stale
   addresses, overflowed metrics, over-hop routes, duplicate connection races, or
   tiny RTT jitter that changes active paths too aggressively.
@@ -4175,3 +4175,35 @@ the source of truth for evidence and reviewer decisions.
     to `PeerId(2)`. The router changes the active route to
     `Some(Next(ConnectionId(1)))`; expected it to keep the authenticated direct
     route `Some(Next(ConnectionId(2)))`.
+
+### ISSUE-161: Stopped peer route resurrects through third-party route sync
+
+- Category: correctness, graceful-shutdown stability, route lifecycle
+- Score: 64/100
+- Reviewer: `Epicurus the 2nd`, confirmed after `Locke the 2nd` discovery.
+- Affected code:
+  - `src/lib.rs`: `PeerData::Sync` applies router sync unconditionally before
+    applying discovery sync.
+  - `src/lib.rs`: `PeerStopped` records a discovery tombstone and removes the
+    router peer once.
+  - `src/discovery.rs`: stopped-peer tombstones suppress discovery addresses,
+    but are not visible to route sync.
+  - `src/router.rs`: `apply_sync` accepts learned route entries without checking
+    whether a peer is currently stopped.
+- Impact: after a graceful stop removes a peer's route, a different
+  authenticated relay can re-advertise a stale route to that stopped peer and
+  make it routable again during the discovery tombstone window. This keeps
+  graceful shutdown noisy under relay gossip and can send unicast or stream
+  setup toward a peer that already announced it stopped. This is distinct from
+  ISSUE-151, where the stopped peer's own still-running connection ticker
+  resurrects its direct route.
+- Minimal fix proposal: filter route sync entries through stopped-peer
+  tombstones before calling `router.apply_sync`, or move tombstone awareness
+  into `RouterTable` so stopped peer ids are rejected until tombstone expiry or
+  a fresh authenticated direct restart proves the peer is live again.
+- Evidence test:
+  - `cargo test stopped_peer_route_must_not_be_resurrected_by_third_party_sync -- --nocapture`
+  - Failure summary: after `MainEvent::PeerStopped` removes `PeerId(2)`, a
+    third-party relay `PeerId(3)` advertises a route to `PeerId(2)`. The local
+    router changes from `None` to `Some(Next(ConnectionId(30)))`; expected the
+    graceful-stop tombstone to keep the stopped peer unroutable.

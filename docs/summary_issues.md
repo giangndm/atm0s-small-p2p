@@ -5,7 +5,7 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Audit Status
 
-- Accepted issues: 160
+- Accepted issues: 161
 - Missing issue scores: 0
 - Current consecutive no-new-issue cycles: 0
 - Stop condition: continue until 5 consecutive cycles find no new accepted
@@ -83,7 +83,7 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 - Representative issues: ISSUE-028, ISSUE-029, ISSUE-051, ISSUE-057,
   ISSUE-060, ISSUE-064, ISSUE-065, ISSUE-069 through ISSUE-076, ISSUE-108,
   ISSUE-128 through ISSUE-132, ISSUE-135, ISSUE-139, ISSUE-142, ISSUE-144,
-  ISSUE-148, ISSUE-150, ISSUE-151.
+  ISSUE-148, ISSUE-150, ISSUE-151, ISSUE-161.
 - Pattern: requesters, services, peer aliases, channel state, and cached hints
   can outlive the owner they represent; shutdown paths can panic, leak, emit
   false public events, or keep stale routes/cache entries.
@@ -95,7 +95,7 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Representative issues: ISSUE-003, ISSUE-005, ISSUE-006, ISSUE-007,
   ISSUE-008, ISSUE-033, ISSUE-044, ISSUE-055, ISSUE-092, ISSUE-103,
-  ISSUE-112 through ISSUE-114, ISSUE-160.
+  ISSUE-112 through ISSUE-114, ISSUE-160, ISSUE-161.
 - Pattern: route/discovery inputs can include local ids, self seeds, stale
   addresses, overflowed metrics, over-hop routes, duplicate connection races,
   or tiny RTT jitter that changes active paths too aggressively.
@@ -106,8 +106,6 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Recent Accepted Issues
 
-- ISSUE-155, score 64: stale pubsub leave removes membership confirmed by newer
-  heartbeat. Reviewer: Boole the 2nd.
 - ISSUE-156, score 64: relay delivers orphan downstream stream after upstream
   setup closes. Reviewer: Herschel the 2nd.
 - ISSUE-157, score 66: `PeerConnected` backpressure stalls an authenticated
@@ -118,6 +116,8 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   opens. Reviewer: Pascal the 2nd.
 - ISSUE-160, score 68: relayed route replaces a direct authenticated peer
   route. Reviewer: Wegener the 2nd.
+- ISSUE-161, score 64: stopped peer route resurrects through third-party route
+  sync. Reviewer: Epicurus the 2nd.
 
 ## Next Candidate To Validate
 

@@ -154,6 +154,40 @@ async fn peer_stopped_route_must_not_be_resurrected_by_connection_ticker() {
 }
 
 #[tokio::test]
+async fn stopped_peer_route_must_not_be_resurrected_by_third_party_sync() {
+    let (mut node, _addr) = create_node(false, 1, vec![]).await;
+    let stopped = PeerId::from(2);
+    let relay = PeerId::from(3);
+    let stopped_conn = ConnectionId::from(20);
+    let relay_conn = ConnectionId::from(30);
+
+    node.router.set_direct(stopped_conn, stopped, 10);
+    node.router.set_direct(relay_conn, relay, 10);
+
+    node.process_internal(100, MainEvent::PeerStopped(stopped_conn, stopped))
+        .expect("stop should process");
+    assert_eq!(
+        node.router.action(&stopped),
+        None,
+        "test setup should remove the stopped peer route"
+    );
+
+    let remote_router = SharedRouterTable::new(relay);
+    remote_router.set_direct(ConnectionId::from(40), stopped, 5);
+    let route = remote_router.create_sync(&node.local_id);
+    let advertise = node.discovery.create_sync_for(110, &node.local_id);
+
+    node.process_internal(110, MainEvent::PeerData(relay_conn, relay, PeerMainData::Sync { route, advertise }))
+        .expect("relay sync should process");
+
+    assert_eq!(
+        node.router.action(&stopped),
+        None,
+        "a graceful-stop tombstone must prevent third-party route sync from making the stopped peer routable again"
+    );
+}
+
+#[tokio::test]
 async fn forged_peer_stopped_must_not_be_forwarded_to_other_neighbours() {
     let (mut relay, relay_addr) = create_node(true, 2, vec![]).await;
     tokio::spawn(async move { while relay.recv().await.is_ok() {} });
