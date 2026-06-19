@@ -11,7 +11,7 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 29
+- Current consecutive no-new-issue cycles: 30
 - Stop condition requested by user: continue until 5 consecutive cycles find no
   new accepted issue.
 
@@ -5783,6 +5783,26 @@ the source of truth for evidence and reviewer decisions.
     `src/peer.rs:1092` with `got 2`.
 
 ## No-New-Issue Audit Cycles
+
+### Cycle after ISSUE-204 no-new cycle 30: active-path jitter duplicate
+
+- Result: no accepted non-duplicate issue.
+- Classification: `ACCEPT_DUPLICATE_NO_NEW`.
+- Source and test evidence reviewed:
+  - `src/router.rs`
+  - `cargo test active_path_should_not_jump_for_tiny_rtt_jitter -- --nocapture`
+    failed at `src/router.rs:445:9`; the active route switched from
+    `ConnectionId(1)` to `ConnectionId(2)` on a tiny RTT improvement.
+  - `cargo test should_keep_existing_best_path_on_equal_score -- --nocapture`
+    failed at `src/router.rs:420:9`; an equal-cost update switched the active
+    route from `ConnectionId(2)` to `ConnectionId(1)`.
+- Duplicate or too-close symptoms rejected:
+  - both failures map directly to ISSUE-003, where `PeerMemory::select_best`
+    immediately reselects the lowest score with no stickiness or hysteresis for
+    the current active path.
+- Root-cause summary impact: no new root cause; this targeted route-stability
+  cycle strengthens existing ISSUE-003 evidence under RC-7 without adding
+  ISSUE-205.
 
 ### Cycle after ISSUE-204 no-new cycle 29: sanitized churn duplicate outbound peer-connect panic
 

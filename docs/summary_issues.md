@@ -7,9 +7,9 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Accepted issues: 204
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 29
+- Current consecutive no-new-issue cycles: 30
 - Stop condition: continue until 5 consecutive cycles find no new accepted
-  issue; currently 29/5 after ISSUE-204.
+  issue; currently 30/5 after ISSUE-204.
 
 ## Root Cause Summary
 
@@ -256,6 +256,13 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Recent Fuzz Evidence
 
+- Focused router active-path stability review:
+  `cargo test active_path_should_not_jump_for_tiny_rtt_jitter -- --nocapture`
+  and
+  `cargo test should_keep_existing_best_path_on_equal_score -- --nocapture`
+  both failed with duplicate evidence for ISSUE-003. The active route still
+  changes on tiny RTT jitter or equal-cost updates because route selection has
+  no stickiness/hysteresis; this remains under RC-7 with no new root cause.
 - Sanitized churn fuzz duplicate:
   `RUST_LOG=error P2P_FUZZ_SEED=2182001 P2P_FUZZ_NODES=8 P2P_FUZZ_STEPS=2600 cargo test fuzz_random_sanitized_node_churn_actions_must_not_panic_connection_tasks -- --nocapture`
   failed with duplicate evidence for ISSUE-139. The accepted failure was the
