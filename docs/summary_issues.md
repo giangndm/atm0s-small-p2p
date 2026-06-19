@@ -7,9 +7,9 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Accepted issues: 204
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 0
-- Stop condition: reset by ISSUE-204. Continue RED-team review and randomized
-  fuzz tests over node actions.
+- Current consecutive no-new-issue cycles: 1
+- Stop condition: continue until 5 consecutive cycles find no new accepted
+  issue; currently 1/5 after ISSUE-204.
 
 ## Root Cause Summary
 
@@ -294,9 +294,21 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   `P2P_FUZZ_SEED=0xdecafbad P2P_FUZZ_NODES=10 P2P_FUZZ_STEPS=2500 cargo test fuzz_random_steady_valid_node_actions_must_not_panic_connection_tasks -- --nocapture`
   passed with no new issue. Output still showed active-path reselection noise
   and bounded queue pressure warnings, but no panic or failing assertion.
+- Eleven-node extended steady valid fuzz:
+  `P2P_FUZZ_SEED=0x204204 P2P_FUZZ_NODES=11 P2P_FUZZ_STEPS=2800 cargo test fuzz_random_steady_valid_node_actions_must_not_panic_connection_tasks -- --nocapture`
+  passed with no new issue. Output again showed active route reselection noise
+  and endpoint-driver-drop shutdown logs at test end, but no panic or failing
+  assertion.
 
 ## Recent No-New Audit
 
+- Cycle after ISSUE-204 no-new cycle 1 reviewed pubsub directed
+  response/fanout paths, replicated-KV malformed snapshot/repair/resource and
+  lifecycle paths, alias lookup/shutdown/find backlog behavior, and
+  route/discovery/stopped-peer/stale-event behavior with forked reviewer
+  `Russell the 4th`. Rejected candidates mapped to existing RC-2, RC-3, RC-4,
+  RC-5, RC-6, and RC-7 patterns; no accepted issue or summary root-cause
+  change.
 - Fuzz-phase no-new cycle reviewed path flapping, pipe/stream reliability, and
   non-seed/seed graceful-stop hints with forked reviewer `Rawls the 3rd`.
   Rejected candidates mapped to ISSUE-003, ISSUE-004, ISSUE-011, ISSUE-012,

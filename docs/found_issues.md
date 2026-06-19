@@ -11,7 +11,7 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 0
+- Current consecutive no-new-issue cycles: 1
 - Stop condition requested by user: continue until 5 consecutive cycles find no
   new accepted issue.
 
@@ -5768,6 +5768,42 @@ the source of truth for evidence and reviewer decisions.
     `src/peer.rs:1092` with `got 2`.
 
 ## No-New-Issue Audit Cycles
+
+### Cycle after ISSUE-204 no-new cycle 1: pubsub, replicated-KV, alias, route/discovery
+
+- Result: no accepted non-duplicate issue.
+- Reviewer: `Russell the 4th`, forked subagent review, confirmed no-new
+  classification.
+- Local/source areas reviewed:
+  - `src/service/pubsub_service.rs`,
+    `src/service/pubsub_service/publisher.rs`,
+    `src/service/pubsub_service/subscriber.rs`
+  - `src/service/replicate_kv_service.rs`,
+    `src/service/replicate_kv_service/local_storage.rs`,
+    `src/service/replicate_kv_service/remote_storage.rs`,
+    `src/service/replicate_kv_service/messages.rs`
+  - `src/service/alias_service.rs`, `src/lib.rs`, `src/discovery.rs`,
+    `src/router.rs`, and existing fuzz harnesses.
+- Duplicate or too-close candidates rejected:
+  - pubsub directed response/fanout/backpressure paths map to ISSUE-115,
+    ISSUE-116, ISSUE-163, ISSUE-178, and related RC-3/RC-4 entries.
+  - replicated-KV malformed snapshot, repair, resource-bound, and lifecycle
+    paths map to ISSUE-081 through ISSUE-089, ISSUE-110, ISSUE-138,
+    ISSUE-141, ISSUE-143, ISSUE-154, ISSUE-171, ISSUE-175, ISSUE-184, and
+    ISSUE-186.
+  - alias lookup/shutdown/find backlog and cache mutation paths map to
+    ISSUE-022, ISSUE-090, ISSUE-109, ISSUE-148, ISSUE-152, ISSUE-158,
+    ISSUE-179, and ISSUE-183.
+  - route/discovery/stopped-peer/stale-event behavior maps to ISSUE-003,
+    ISSUE-055, ISSUE-092, ISSUE-103, ISSUE-160, ISSUE-167, ISSUE-177,
+    ISSUE-181, ISSUE-190, ISSUE-192, and ISSUE-197.
+- Additional fuzz evidence reviewed:
+  - `P2P_FUZZ_SEED=0x204204 P2P_FUZZ_NODES=11 P2P_FUZZ_STEPS=2800 cargo test fuzz_random_steady_valid_node_actions_must_not_panic_connection_tasks -- --nocapture`
+    passed with no new issue. Output again showed active route reselection
+    noise and endpoint-driver-drop shutdown logs at test end, but no panic or
+    failing assertion.
+- Root-cause summary impact: no new root cause; rejected candidates map to
+  existing RC-2, RC-3, RC-4, RC-5, RC-6, and RC-7 patterns.
 
 ### Cycle after ISSUE-193 no-new cycle 4: public API, examples, fuzz harness, config
 
