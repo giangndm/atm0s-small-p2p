@@ -115,20 +115,24 @@ the source of truth for evidence and reviewer decisions.
   ISSUE-128 through ISSUE-132, ISSUE-135, ISSUE-139, ISSUE-142, ISSUE-144,
   ISSUE-148, ISSUE-150, ISSUE-151, ISSUE-161, ISSUE-162, ISSUE-165,
   ISSUE-167, ISSUE-168, ISSUE-170, ISSUE-179, ISSUE-183, ISSUE-185,
-  ISSUE-187.
+  ISSUE-187, ISSUE-188.
 - Pattern: requesters, services, peer aliases, channel state, and cached hints
   can outlive the owner they represent, while shutdown paths may panic, leak,
-  emit false public events, or keep stale routes/cache entries. Some shutdown
-  controls announce owner teardown without clearing local authority, and
-  peer lifecycle events do not consistently reach service-owned membership or
-  public network-event consumers.
+  emit false public events, or keep stale routes/cache entries. Remote
+  membership events can also arrive before a local channel owner exists and be
+  discarded instead of retained as peer-owned state. Some shutdown controls
+  announce owner teardown without clearing local authority, and peer lifecycle
+  events do not consistently reach service-owned membership or public
+  network-event consumers.
 - Minimal fix proposal: add generation or liveness tokens to cloned requesters
   and local handles, make closed channels return `Err` instead of panicking, and
   centralize owner teardown so aliases, metrics, routes, caches, and service ids
   are cleared together. Shutdown controls should also enter an explicit
   terminal state so later register/find operations are rejected or no-op.
   Peer stopped/disconnected events should be fanned out to services that own
-  per-peer state and surfaced through the public network event API.
+  per-peer state and surfaced through the public network event API. Pubsub
+  should retain bounded remote membership state even before local handles exist
+  and replay it when the first local handle is created.
 
 ### RC-7: Routing and discovery accept unstable or self-referential topology
 
@@ -5133,6 +5137,40 @@ the source of truth for evidence and reviewer decisions.
   - Failure summary: a response token created at timestamp `1000` verifies at
     `1005` and then verifies again at `1010`; expected the second use of the
     same response blob to be rejected.
+
+### ISSUE-188: Pubsub drops early remote publisher joins before local channel creation
+
+- Category: correctness, pubsub membership stability, bad-network ordering
+- Score: 51/100
+- Reviewer: `Noether the 3rd`, confirmed after `Archimedes the 3rd` discovery.
+- Affected code:
+  - `src/service/pubsub_service.rs`: inbound `PublisherJoined(channel)` only
+    records `from_peer` when `self.channels.get_mut(&channel)` already returns
+    a channel state.
+  - `src/service/pubsub_service.rs`: `InternalMsg::SubscriberCreated` later
+    creates the channel state, but the earlier remote publisher membership has
+    already been discarded and cannot be replayed to the new subscriber.
+  - `src/service/pubsub_service.rs`: inbound `SubscriberJoined(channel)` has
+    the symmetric dropped-before-local-publisher risk.
+- Impact: under ordinary message ordering races, a remote publisher can
+  advertise a channel before this node creates its local subscriber. The join is
+  silently dropped, so the later subscriber starts without the live remote
+  publisher and receives no `PeerJoined(Remote(...))` until a later heartbeat or
+  repeated join happens. This is distinct from ISSUE-142, which assumes remote
+  membership was already stored but not replayed; here the inbound join is never
+  stored. It is also distinct from ISSUE-026/080 stale heartbeat cleanup and
+  ISSUE-185 graceful peer-stop cleanup.
+- Minimal fix proposal: retain early remote `PublisherJoined` and
+  `SubscriberJoined` state in bounded per-channel membership state even when no
+  local handle exists yet, then replay existing remote members when the first
+  local subscriber/publisher is created. Add per-channel and global caps so
+  remote peers cannot create unbounded pubsub channel state.
+- Evidence test:
+  - `cargo test early_remote_publisher_join_must_survive_late_local_subscriber_creation -- --nocapture`
+  - Failure summary: after an inbound `PublisherJoined` from `PeerId(2)` arrives
+    before local channel creation, a later `SubscriberCreated` creates the
+    channel with no retained `remote_publishers` entry and emits no
+    `SubscriberEvent::PeerJoined(PeerSrc::Remote(PeerId(2)))`.
 
 ## No-New-Issue Audit Cycles
 

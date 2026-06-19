@@ -956,6 +956,39 @@ mod test {
     }
 
     #[tokio::test]
+    async fn early_remote_publisher_join_must_survive_late_local_subscriber_creation() {
+        let mut service = test_service();
+        let channel = PubsubChannelId(1);
+        let remote = PeerId::from(2);
+
+        service
+            .on_service(P2pServiceEvent::Unicast(remote, encode_publisher_joined_for_test(channel)))
+            .await
+            .expect("early remote publisher join should be processed");
+
+        let (sub_tx, mut sub_rx) = unbounded_channel();
+        service
+            .on_internal(InternalMsg::SubscriberCreated(SubscriberLocalId::rand(), channel, sub_tx))
+            .await
+            .expect("late subscriber should be registered");
+
+        assert!(
+            service
+                .channels
+                .get(&channel)
+                .expect("channel should exist after subscriber creation")
+                .remote_publishers
+                .contains(&remote),
+            "remote publisher join received before local channel creation must be retained"
+        );
+        assert_eq!(
+            sub_rx.try_recv(),
+            Ok(SubscriberEvent::PeerJoined(PeerSrc::Remote(remote))),
+            "late local subscriber must observe the already-joined remote publisher"
+        );
+    }
+
+    #[tokio::test]
     async fn pubsub_heartbeat_channel_batches_must_be_bounded() {
         const MAX_HEARTBEAT_CHANNELS: usize = 1024;
         let mut service = test_service();
