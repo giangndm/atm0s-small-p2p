@@ -450,6 +450,23 @@ mod tests {
     }
 
     #[test_log::test]
+    fn route_sync_must_reject_duplicate_peer_entries() {
+        let mut table = RouterTable::new(PeerId(0));
+        let relay = PeerId(1);
+        let dest = PeerId(9);
+        let conn = ConnectionId(1);
+
+        table.set_direct(conn, relay, 10);
+        table.apply_sync(conn, RouterTableSync(vec![(dest, (0, 500).into()), (dest, (0, 1).into())]));
+
+        assert_eq!(
+            table.next_remote(&dest),
+            None,
+            "malformed route syncs with duplicate destination peer entries must be rejected instead of accepting the last attacker-controlled metric"
+        );
+    }
+
+    #[test_log::test]
     fn direct_peer_route_must_not_be_replaced_by_relayed_path() {
         let mut table = RouterTable::new(PeerId(0));
         let relay = PeerId(1);

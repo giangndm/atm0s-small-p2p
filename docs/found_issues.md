@@ -11,7 +11,7 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 1
+- Current consecutive no-new-issue cycles: 0
 - Stop condition requested by user: continue until 5 consecutive cycles find no
   new accepted issue.
 
@@ -141,22 +141,23 @@ the source of truth for evidence and reviewer decisions.
 - Representative issues: ISSUE-003, ISSUE-005, ISSUE-006, ISSUE-007,
   ISSUE-008, ISSUE-033, ISSUE-044, ISSUE-055, ISSUE-092, ISSUE-103,
   ISSUE-112 through ISSUE-114, ISSUE-160, ISSUE-161, ISSUE-164, ISSUE-167,
-  ISSUE-177, ISSUE-180, ISSUE-181.
+  ISSUE-177, ISSUE-180, ISSUE-181, ISSUE-190.
 - Pattern: route/discovery inputs can include local ids, self seeds, stale
   addresses, overflowed metrics, over-hop routes, duplicate connection races, or
   explicit connect addresses that are ignored by peer-id-only fast paths, or
-  tiny RTT jitter that changes active paths too aggressively. Stream relay setup
-  also trusts route choices without checking whether the next hop is the same
-  ingress connection, and local advertise config can gossip non-dialable
-  addresses.
+  tiny RTT jitter that changes active paths too aggressively. Malformed route
+  syncs can also contain duplicate destination rows whose last value silently
+  wins before validation. Stream relay setup also trusts route choices without
+  checking whether the next hop is the same ingress connection, and local
+  advertise config can gossip non-dialable addresses.
 - Minimal fix proposal: add route/discovery sanitization before insertion:
   reject local/self candidates and over-hop routes, pin authenticated direct
   paths for their peer ids, use checked metric math, ignore stale discovery
-  timestamps, coalesce duplicate connects, validate already-connected peer
-  addresses, add a small hysteresis threshold before switching active paths,
-  and reject relay stream hops that would forward back to their ingress
-  connection. Validate configured local advertise addresses before gossiping
-  them.
+  timestamps, reject duplicate destination rows in a single route sync, coalesce
+  duplicate connects, validate already-connected peer addresses, add a small
+  hysteresis threshold before switching active paths, and reject relay stream
+  hops that would forward back to their ingress connection. Validate configured
+  local advertise addresses before gossiping them.
 
 ## Accepted Issues
 
@@ -5207,6 +5208,43 @@ the source of truth for evidence and reviewer decisions.
     `from == to == PeerId(1)` to a node whose local id is `PeerId(1)`;
     current code returns `ConnectRes { result: Ok(_) }`, so the test fails
     because the inbound handshake was accepted instead of rejected.
+
+### ISSUE-190: Duplicate route-sync destinations silently keep the last metric
+
+- Category: correctness, route stability, malformed-input handling
+- Score: 43/100
+- Reviewer: `Epicurus the 3rd`, confirmed by failing evidence.
+- Affected code:
+  - `src/router.rs`: `RouterTableSync` stores peer-supplied routes as
+    `Vec<(PeerId, PathMetric)>`, so one sync can contain the same destination
+    peer more than once.
+  - `src/router.rs`: `RouterTable::apply_sync` converts that vector with
+    `BTreeMap::<PeerId, PathMetric>::from_iter(sync.0)`, which silently keeps
+    the last metric for duplicate peer ids.
+  - `src/peer/peer_internal.rs` and `src/lib.rs`: authenticated peers can
+    deliver raw `PeerMessage::Sync` route vectors to this path.
+- Impact: a malformed or malicious peer can send two route rows for the same
+  destination in one sync and choose which metric wins by ordering the
+  duplicates. The receiver accepts the last row as authoritative before metric
+  composition and best-path selection, so route state becomes order-dependent
+  and can be biased toward an attacker-controlled low metric. This is distinct
+  from ISSUE-010, which covers excessive route-sync entry count; ISSUE-033 and
+  ISSUE-044, which cover metric arithmetic/overflow; ISSUE-003 and ISSUE-160,
+  which cover best-path instability after accepted route state; and
+  ISSUE-006/007/008, which cover local-id, over-hop, and split-horizon
+  filtering.
+- Minimal fix proposal: validate `RouterTableSync` before converting it into a
+  `BTreeMap`. If a destination `PeerId` appears more than once, reject the whole
+  sync or skip all duplicate rows, and preferably return `Result` from
+  `apply_sync` so malformed syncs are logged and ignored without partial route
+  mutation.
+- Evidence test:
+  - `cargo test route_sync_must_reject_duplicate_peer_entries -- --nocapture`
+  - Failure summary: a sync from `ConnectionId(1)` contains two rows for
+    `PeerId(9)`, first with RTT `500` and then RTT `1`. Current code keeps the
+    last row and installs `Some((ConnectionId(1), PathMetric { relay_hops: 1,
+    rtt_ms: 11 }))`; expected duplicate destination rows to be rejected so no
+    route to `PeerId(9)` is installed.
 
 ## No-New-Issue Audit Cycles
 

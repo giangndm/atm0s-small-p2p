@@ -5,9 +5,9 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Audit Status
 
-- Accepted issues: 189
+- Accepted issues: 190
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 1
+- Current consecutive no-new-issue cycles: 0
 - Stop condition: continue until 5 consecutive cycles find no new accepted
   issue; after that, continue with randomized fuzz tests over node actions.
 
@@ -121,20 +121,22 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 - Representative issues: ISSUE-003, ISSUE-005, ISSUE-006, ISSUE-007,
   ISSUE-008, ISSUE-033, ISSUE-044, ISSUE-055, ISSUE-092, ISSUE-103,
   ISSUE-112 through ISSUE-114, ISSUE-160, ISSUE-161, ISSUE-164, ISSUE-167,
-  ISSUE-177, ISSUE-180, ISSUE-181.
+  ISSUE-177, ISSUE-180, ISSUE-181, ISSUE-190.
 - Pattern: route/discovery inputs can include local ids, self seeds, stale
   addresses, overflowed metrics, over-hop routes, duplicate connection races,
   explicit connect addresses that are ignored by peer-id-only fast paths, or
-  tiny RTT jitter that changes active paths too aggressively. Stream relay setup
-  can also forward back to the ingress connection when route state forms a loop,
-  and local advertise config can gossip non-dialable addresses.
+  tiny RTT jitter that changes active paths too aggressively. Malformed route
+  syncs can also contain duplicate destination rows whose last value silently
+  wins before validation. Stream relay setup can also forward back to the
+  ingress connection when route state forms a loop, and local advertise config
+  can gossip non-dialable addresses.
 - Minimal fix proposal: sanitize before insertion: reject local/self candidates
   and over-hop routes, pin authenticated direct paths for their peer ids, use
-  checked metric math, ignore stale discovery timestamps, coalesce duplicate
-  connects, validate already-connected peer addresses, add hysteresis before
-  switching active paths, and reject relay stream hops that point back to the
-  ingress connection. Validate configured local advertise addresses before
-  gossiping them.
+  checked metric math, ignore stale discovery timestamps, reject duplicate
+  destination rows in one route sync, coalesce duplicate connects, validate
+  already-connected peer addresses, add hysteresis before switching active
+  paths, and reject relay stream hops that point back to the ingress connection.
+  Validate configured local advertise addresses before gossiping them.
 
 ## Recent Accepted Issues
 
@@ -183,12 +185,14 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   channel creation. Reviewer: Noether the 3rd.
 - ISSUE-189, score 72: inbound handshake accepts a remote peer claiming the
   local peer id. Reviewer: Zeno the 3rd.
+- ISSUE-190, score 43: duplicate route-sync destinations silently keep the
+  last metric. Reviewer: Epicurus the 3rd.
 
 ## Next Candidate To Validate
 
-- None queued. One consecutive no-new issue cycle is recorded after ISSUE-189.
-  Continue fresh source review until five consecutive no-new cycles, then
-  switch to randomized fuzz tests over node actions.
+- None queued. ISSUE-190 reset the no-new counter to 0. Continue fresh source
+  review until five consecutive no-new cycles, then switch to randomized fuzz
+  tests over node actions.
 
 ## Recent No-New Audit
 
