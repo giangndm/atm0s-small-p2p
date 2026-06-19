@@ -251,16 +251,13 @@ async fn run_connection<SECURE: HandshakeProtocol>(
     let _ = main_tx.send(MainEvent::PeerDisconnected(conn_id, to_id)).await;
     log::info!("[PeerConnection {conn_id}] end loop for {remote}");
     ctx.unregister_conn(&conn_id);
+    emit_connection_teardown_metrics(local_id, to_id);
+    Ok(())
+}
+
+fn emit_connection_teardown_metrics(local_id: PeerId, to_id: PeerId) {
     gauge!(P2P_LIVE_CONNECTION_COUNT).decrement(1);
     gauge!(P2P_CONNECTION_RTT, "peer_id" => local_id.to_string(), "connect_to" => format!("{to_id}")).set(0);
-    counter!(P2P_CONNECTION_UPTIME, "peer_id" => local_id.to_string(), "connect_to" => format!("{to_id}")).absolute(0);
-    counter!(P2P_CONNECTION_RTT, "peer_id" => local_id.to_string(), "connect_to" => format!("{to_id}")).absolute(0);
-    counter!(P2P_CONNECTION_SENT_BYTES, "peer_id" => local_id.to_string(), "connect_to" => format!("{to_id}")).absolute(0);
-    counter!(P2P_CONNECTION_RECV_BYTES, "peer_id" => local_id.to_string(), "connect_to" => format!("{to_id}")).absolute(0);
-    counter!(P2P_CONNECTION_LOST_BYTES, "peer_id" => local_id.to_string(), "connect_to" => format!("{to_id}")).absolute(0);
-    counter!(P2P_CONNECTION_LOST_PKT, "peer_id" => local_id.to_string(), "connect_to" => format!("{to_id}")).absolute(0);
-    counter!(P2P_CONNECTION_CONGESTION_EVENTS, "peer_id" => local_id.to_string(), "connect_to" => format!("{to_id}")).absolute(0);
-    Ok(())
 }
 
 #[cfg(test)]
@@ -414,8 +411,7 @@ mod tests {
 
         metrics::with_local_recorder(&recorder, || {
             gauge!(P2P_CONNECTION_RTT, "peer_id" => "1", "connect_to" => "2").set(10);
-            gauge!(P2P_CONNECTION_RTT, "peer_id" => "1", "connect_to" => "2").set(0);
-            counter!(P2P_CONNECTION_RTT, "peer_id" => "1", "connect_to" => "2").absolute(0);
+            emit_connection_teardown_metrics(PeerId::from(1), PeerId::from(2));
         });
 
         assert!(
@@ -435,13 +431,7 @@ mod tests {
             counter!(P2P_CONNECTION_LOST_BYTES, "peer_id" => "1", "connect_to" => "2").absolute(64);
             counter!(P2P_CONNECTION_LOST_PKT, "peer_id" => "1", "connect_to" => "2").absolute(4);
             counter!(P2P_CONNECTION_CONGESTION_EVENTS, "peer_id" => "1", "connect_to" => "2").absolute(2);
-
-            counter!(P2P_CONNECTION_UPTIME, "peer_id" => "1", "connect_to" => "2").absolute(0);
-            counter!(P2P_CONNECTION_SENT_BYTES, "peer_id" => "1", "connect_to" => "2").absolute(0);
-            counter!(P2P_CONNECTION_RECV_BYTES, "peer_id" => "1", "connect_to" => "2").absolute(0);
-            counter!(P2P_CONNECTION_LOST_BYTES, "peer_id" => "1", "connect_to" => "2").absolute(0);
-            counter!(P2P_CONNECTION_LOST_PKT, "peer_id" => "1", "connect_to" => "2").absolute(0);
-            counter!(P2P_CONNECTION_CONGESTION_EVENTS, "peer_id" => "1", "connect_to" => "2").absolute(0);
+            emit_connection_teardown_metrics(PeerId::from(1), PeerId::from(2));
         });
 
         assert!(!recorder.has_decrease(), "connection teardown must not reset monotonic connection counters to zero");
