@@ -5681,3 +5681,36 @@ the source of truth for evidence and reviewer decisions.
     ISSUE-091, ISSUE-096, ISSUE-097, ISSUE-098, and ISSUE-174.
 - Root-cause summary impact: no new root cause; rejected candidates map to
   RC-1, RC-2, RC-3, RC-5, RC-6, and RC-7.
+
+### Fuzz-phase no-new cycle: path flapping, pipe reliability, and graceful-stop hints
+
+- Result: no accepted non-duplicate issue.
+- Reviewer: `Rawls the 3rd`, forked subagent review, confirmed no-new
+  classification.
+- Local/source areas reviewed:
+  - `src/router.rs`, `src/ctx.rs`, `src/peer/peer_internal.rs`,
+    `src/service.rs`, `src/discovery.rs`, `src/lib.rs`
+  - existing router, stream, discovery, and graceful-stop tests and ledger
+    entries.
+- Duplicate or too-close candidates rejected:
+  - active route jumping/noisy path selection: ISSUE-003. Representative
+    failing evidence remains
+    `cargo test active_path_should_not_jump_for_tiny_rtt_jitter -- --nocapture`.
+  - pipe/stream setup false success, blocking, and relay-loop failure modes:
+    ISSUE-011, ISSUE-012, ISSUE-056, ISSUE-117, ISSUE-149, ISSUE-156,
+    ISSUE-169, ISSUE-172, ISSUE-173, ISSUE-180, and ISSUE-182.
+    Representative failing evidence remains
+    `cargo test open_stream_does_not_succeed_when_destination_service_queue_is_full -- --nocapture`.
+  - non-seed expiry, seed preservation, and graceful-stop cleanup: ISSUE-004,
+    ISSUE-051, ISSUE-118, ISSUE-167, ISSUE-170, ISSUE-185, and ISSUE-187.
+    Representative failing evidence remains
+    `cargo test discovery_timeout_must_remove_route_to_expired_non_seed -- --nocapture`
+    and
+    `cargo test peer_stopped_for_seed_must_not_remove_active_seed_route -- --nocapture`.
+- Additional fuzz evidence reviewed:
+  - `P2P_FUZZ_NODES=6 P2P_FUZZ_STEPS=800 cargo test fuzz_random_steady_valid_node_actions_must_not_panic_connection_tasks -- --nocapture`
+    passed with no new issue.
+  - `P2P_FUZZ_NODES=8 P2P_FUZZ_STEPS=1500 cargo test fuzz_random_steady_valid_node_actions_must_not_panic_connection_tasks -- --nocapture`
+    passed with no new issue.
+- Root-cause summary impact: no new root cause; candidates map to existing
+  RC-3, RC-4, RC-6, and RC-7 patterns.

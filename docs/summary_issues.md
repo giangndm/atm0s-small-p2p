@@ -251,6 +251,13 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Recent No-New Audit
 
+- Fuzz-phase no-new cycle reviewed path flapping, pipe/stream reliability, and
+  non-seed/seed graceful-stop hints with forked reviewer `Rawls the 3rd`.
+  Rejected candidates mapped to ISSUE-003, ISSUE-004, ISSUE-011, ISSUE-012,
+  ISSUE-051, ISSUE-056, ISSUE-117, ISSUE-118, ISSUE-149, ISSUE-156,
+  ISSUE-167, ISSUE-169, ISSUE-170, ISSUE-172, ISSUE-173, ISSUE-180,
+  ISSUE-182, ISSUE-185, and ISSUE-187. Root causes remain RC-3, RC-4, RC-6,
+  and RC-7; no accepted issue or summary root-cause change.
 - Cycle after ISSUE-193 no-new cycle 4 reviewed public API/node lifecycle,
   config/transport/security helpers, discovery/router config edges,
   README/examples, and the fuzz harness. Rejected candidates mapped to existing
