@@ -73,7 +73,10 @@ impl RouterTable {
     }
 
     fn apply_sync(&mut self, conn: ConnectionId, sync: RouterTableSync) {
-        let (from_peer, direct_metric) = self.directs.get(&conn).expect("should have direct metric with apply_sync");
+        let Some((from_peer, direct_metric)) = self.directs.get(&conn).copied() else {
+            log::debug!("[RouterTable] ignore stale sync from removed connection {conn}");
+            return;
+        };
         // ensure we have memory for each sync paths
         for (peer, _) in sync.0.iter() {
             self.peers.entry(*peer).or_default();
@@ -87,7 +90,7 @@ impl RouterTable {
             match (previous, current) {
                 (true, Some(mut new_metric)) => {
                     // has update
-                    new_metric += *direct_metric;
+                    new_metric += direct_metric;
                     memory.paths.insert(conn, new_metric);
                     Self::select_best_for(peer, memory);
                 }
@@ -100,7 +103,7 @@ impl RouterTable {
                 (false, Some(mut new_metric)) => {
                     // new create
                     log::info!("[RouterTable] create path for {peer}");
-                    new_metric += *direct_metric;
+                    new_metric += direct_metric;
                     memory.paths.insert(conn, new_metric);
                     Self::select_best_for(peer, memory);
                 }
@@ -379,6 +382,31 @@ mod tests {
 
         // we should not have peer2 anymore
         assert_eq!(table.next_remote(&peer2), None);
+    }
+
+    #[test_log::test]
+    fn should_ignore_stale_sync_after_direct_disconnect() {
+        let mut table = RouterTable::new(PeerId(0));
+
+        let relay = PeerId(1);
+        let dest = PeerId(2);
+        let conn = ConnectionId(1);
+
+        table.set_direct(conn, relay, 100);
+        table.apply_sync(conn, RouterTableSync(vec![(dest, (0, 200).into())]));
+
+        assert_eq!(table.next_remote(&relay), Some((conn, (0, 100).into())));
+        assert_eq!(table.next_remote(&dest), Some((conn, (1, 300).into())));
+
+        table.del_direct(&conn);
+
+        assert_eq!(table.next_remote(&relay), None);
+        assert_eq!(table.next_remote(&dest), None);
+
+        table.apply_sync(conn, RouterTableSync(vec![(dest, (0, 200).into())]));
+
+        assert_eq!(table.next_remote(&relay), None);
+        assert_eq!(table.next_remote(&dest), None);
     }
 
     #[test_log::test]
