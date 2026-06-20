@@ -11,7 +11,7 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 330
+- Current consecutive no-new-issue cycles: 331
 - Stop condition requested by user: continue until 5 consecutive cycles find no
   new accepted issue.
 
@@ -5783,6 +5783,35 @@ the source of truth for evidence and reviewer decisions.
     `src/peer.rs:1092` with `got 2`.
 
 ## No-New-Issue Audit Cycles
+
+### Cycle after ISSUE-204 no-new cycle 331: sanitized churn incoming shutdown-send duplicate
+
+- Result: no accepted non-duplicate issue.
+- Reviewer: `Erdos the 7th`, forked subagent review, confirmed
+  duplicate/no-new.
+- Source and test evidence reviewed:
+  - `src/tests/fuzz.rs`
+  - `src/peer.rs`
+  - `RUST_LOG=error P2P_FUZZ_SEED=331 P2P_FUZZ_NODES=8 P2P_FUZZ_STEPS=5200 cargo test fuzz_random_sanitized_node_churn_actions_must_not_panic_connection_tasks -- --nocapture`
+    failed with `seed=331, nodes=8, steps=5200`.
+- Evidence summary:
+  - exit status 101; log had 50 lines; the fuzz assertion at
+    `src/tests/fuzz.rs:372:5` reported background connection/service task
+    failure.
+  - two incoming shutdown-send panics at `src/peer.rs:92:104` with
+    `should send to main: SendError { .. }`.
+  - invalid-service, stale-route, PeerStopped storm, no-capacity,
+    channel-closed, endpoint-driver-dropped, and internal-channel-error
+    signatures were absent.
+  - lifecycle context included seven `connection lost`, eight closed-by-peer
+    shutdown, and five `aborted by peer` connection-error markers.
+- Duplicate mapping: ISSUE-139 for the shutdown/closed-main reporting panic.
+- Root-cause summary impact: no new root cause; reviewer classified both hard
+  panics as the already accepted incoming `PeerConnectError` reporting race
+  after main-loop shutdown.
+- Smallest fix proposal: no summary fix change; keep ISSUE-139 fix proposal to
+  replace shutdown-path `expect("should send to main")` calls at
+  `src/peer.rs:89/92/130/133` with graceful closed-channel handling.
 
 ### Cycle after ISSUE-204 no-new cycle 330: steady valid clean pass
 
