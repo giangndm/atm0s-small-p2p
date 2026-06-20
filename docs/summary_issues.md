@@ -7,9 +7,9 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Accepted issues: 204
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 217
+- Current consecutive no-new-issue cycles: 218
 - Stop condition: continue until 5 consecutive cycles find no new accepted
-  issue; currently 217/5 after ISSUE-204.
+  issue; currently 218/5 after ISSUE-204.
 
 ## Root Cause Summary
 
@@ -256,6 +256,18 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Recent Fuzz Evidence
 
+- Broad random fuzz review:
+  `RUST_LOG=error P2P_FUZZ_SEED=218 P2P_FUZZ_NODES=8 P2P_FUZZ_STEPS=1800 cargo test fuzz_random_node_actions_must_not_panic_connection_tasks -- --nocapture`
+  failed with duplicate evidence for ISSUE-063 only. Reviewer
+  `Euclid the 6th` confirmed the three `src/router.rs:76` panics with
+  `should have direct metric with apply_sync` are the existing stale-sync root
+  cause. The single `forward peer stopped over peer alias got error no
+  available capacity` line was reviewed as too small to classify as ISSUE-170
+  storm/backpressure evidence by itself. No ISSUE-053 or ISSUE-139 evidence
+  was present, and no new invariant appeared. The smallest fix proposal remains
+  unchanged: guard/drop stale sync when the direct metric is gone and
+  invalidate queued sync state on direct-route removal. No new issue was
+  created.
 - Valid-action fuzz review:
   `RUST_LOG=error P2P_FUZZ_SEED=217 P2P_FUZZ_NODES=8 P2P_FUZZ_STEPS=1800 cargo test fuzz_random_valid_node_actions_must_not_panic_connection_tasks -- --nocapture`
   failed with duplicate evidence for ISSUE-063 only. Reviewer
