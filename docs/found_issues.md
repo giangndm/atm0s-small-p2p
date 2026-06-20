@@ -11,7 +11,7 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 257
+- Current consecutive no-new-issue cycles: 258
 - Stop condition requested by user: continue until 5 consecutive cycles find no
   new accepted issue.
 
@@ -5783,6 +5783,38 @@ the source of truth for evidence and reviewer decisions.
     `src/peer.rs:1092` with `got 2`.
 
 ## No-New-Issue Audit Cycles
+
+### Cycle after ISSUE-204 no-new cycle 258: broad invalid service and shutdown send panics
+
+- Result: no accepted non-duplicate issue.
+- Reviewer: `James the 6th`, forked subagent review, confirmed
+  duplicate/no-new.
+- Source and test evidence reviewed:
+  - `src/tests/fuzz.rs`
+  - `src/ctx.rs`
+  - `src/peer.rs`
+  - `RUST_LOG=error P2P_FUZZ_SEED=258 P2P_FUZZ_NODES=10 P2P_FUZZ_STEPS=2400 cargo test fuzz_random_node_actions_must_not_panic_connection_tasks -- --nocapture`
+    failed; the test assertion reported `seed=258, nodes=8, steps=2400`.
+- Evidence summary:
+  - exit status 101; log had 53 lines; the fuzz assertion at
+    `src/tests/fuzz.rs:183:5` reported background connection/service task
+    failure with `seed=258, nodes=8, steps=2400`.
+  - seven `src/ctx.rs:34` panic markers with
+    `index out of bounds: the len is 256 but the index is 256`.
+  - one shutdown-send panic marker at `src/peer.rs:133:113` with
+    `should send to main: SendError { .. }`.
+  - seven `channel closed`, six closed-by-peer, one connection-lost, and two
+    aborted-by-peer markers were reviewed as teardown fallout in the same
+    invalid-service/shutdown context.
+  - no stale-sync, open_bi, connect-answer, no-capacity, forwarded-stop,
+    broadcast-data, or path-not-found evidence.
+- Duplicate mapping: ISSUE-053 and ISSUE-139.
+- Root-cause summary impact: no new root cause; this strengthens existing
+  invalid-service-id validation and shutdown-send teardown evidence without
+  adding a new issue.
+- Smallest fix proposal: validate service ids before indexing, and replace
+  shutdown-path `expect("should send to main")` calls with graceful
+  closed-main handling when reporting peer lifecycle events.
 
 ### Cycle after ISSUE-204 no-new cycle 257: steady valid fuzz pass
 

@@ -7,9 +7,9 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Accepted issues: 204
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 257
+- Current consecutive no-new-issue cycles: 258
 - Stop condition: continue until 5 consecutive cycles find no new accepted
-  issue; currently 257/5 after ISSUE-204.
+  issue; currently 258/5 after ISSUE-204.
 
 ## Root Cause Summary
 
@@ -2389,6 +2389,15 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Recent No-New Audit
 
+- Cycle after ISSUE-204 no-new cycle 258 ran a broad invalid-action fuzz pass
+  with forked reviewer `James the 6th`. The command set `P2P_FUZZ_NODES=10`,
+  while the failing assertion reported `seed=258, nodes=8, steps=2400`. The
+  run failed with exit code 101, but the hard failures were duplicate
+  ISSUE-053 evidence, seven `src/ctx.rs:34:9` invalid-service panics, and
+  duplicate ISSUE-139 evidence, one `src/peer.rs:133:113` shutdown-send panic.
+  The seven channel-closed, six closed-by-peer, one connection-lost, and two
+  aborted-by-peer markers were reviewed as teardown fallout. No accepted issue
+  or summary root-cause change was recorded.
 - Cycle after ISSUE-204 no-new cycle 257 ran a twelve-node steady-valid fuzz
   pass with forked reviewer `Raman the 6th`. The run passed with exit code 0
   and `test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 289
