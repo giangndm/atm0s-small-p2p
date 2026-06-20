@@ -1236,6 +1236,11 @@ the source of truth for evidence and reviewer decisions.
 
 - Category: security, bad-network stability
 - Score: 84/100
+- Fix status: fixed in `648cfd0` (`fix: reject out-of-range service ids`).
+  Verification: `cargo test ctx::tests -- --nocapture` passed, and
+  `P2P_FUZZ_SEED=340 P2P_FUZZ_NODES=8 P2P_FUZZ_STEPS=5200 cargo test
+  fuzz_random_node_actions_must_not_panic_connection_tasks -- --nocapture`
+  passed with no `src/ctx.rs:34` or index-out-of-bounds panic.
 - Reviewer: `Hooke`, confirmed. Additional fuzz evidence confirmed by
   `Socrates the 2nd` and `Hilbert the 3rd`.
 - Affected code:
@@ -1497,6 +1502,11 @@ the source of truth for evidence and reviewer decisions.
 
 - Category: correctness, async race stability
 - Score: 72/100
+- Fix status: fixed in `2cbf096`
+  (`fix: ignore stale router sync after disconnect`). Verification:
+  `cargo test router::tests::should_ignore_stale_sync_after_direct_disconnect
+  -- --nocapture` passed; the seed-341 churn reproducer no longer reported
+  `src/router.rs:76` or `should have direct metric`.
 - Reviewer: `Chandrasekhar`, confirmed.
 - Affected code:
   - `src/lib.rs`: `P2pNetwork::process_internal` handles
@@ -3621,6 +3631,13 @@ the source of truth for evidence and reviewer decisions.
 
 - Category: shutdown stability, bad-network stability, connection lifecycle
 - Score: 63/100
+- Fix status: fixed in `15b788c`
+  (`fix: tolerate closed main loop on connect errors`). Verification:
+  `cargo test peer::tests::connect_error_report_after_main_drop_must_not_panic
+  -- --nocapture` and
+  `cargo test peer::tests::incoming_connect_error_after_main_drop_must_not_panic_task
+  -- --nocapture` passed; seed-341 churn fuzz no longer reported
+  `should send to main`.
 - Reviewer: `Mill the 2nd`, confirmed. Additional churn fuzz evidence
   confirmed by `Huygens the 3rd`.
 - Affected code:
@@ -5010,6 +5027,14 @@ the source of truth for evidence and reviewer decisions.
 
 - Category: correctness, graceful-shutdown stability, mesh control traffic
 - Score: 62/100
+- Fix status: fixed in `4997404`
+  (`fix: deduplicate peer stopped forwarding`). Verification:
+  `cargo test ctx::tests -- --nocapture`,
+  `cargo test peer_stopped_forwarding_must_be_deduplicated_in_mesh --
+  --nocapture`, and
+  `cargo test peer_stopped_must_not_block_connection_task_on_full_main_queue
+  -- --nocapture` passed; seed-341 churn fuzz passed with zero
+  forwarded-stop/capacity/channel-closed storm markers.
 - Reviewer: `Banach the 3rd`, confirmed after `Lorentz the 3rd` discovery.
 - Affected code:
   - `src/peer/peer_internal.rs`: `PeerMessage::PeerStopped(peer_id)` is

@@ -10,6 +10,8 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 - Current consecutive no-new-issue cycles: 341
 - Stop condition: continue until 5 consecutive cycles find no new accepted
   issue; currently 341/5 after ISSUE-204.
+- Fix phase status: ISSUE-053, ISSUE-063, ISSUE-139, and ISSUE-170 have
+  focused fixes committed as `648cfd0`, `2cbf096`, `15b788c`, and `4997404`.
 
 ## Root Cause Summary
 
@@ -168,6 +170,24 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   and add a focused compile gate for the getting-started path. Keep snippets
   using real `Result` handling and mutable bindings where the API requires
   mutation.
+
+## Recently Fixed Issues
+
+- ISSUE-053: fixed by `648cfd0` with range-checked service table indexing.
+  Verified with `cargo test ctx::tests -- --nocapture` and seed-340
+  invalid-service fuzz passing without `src/ctx.rs` panics.
+- ISSUE-063: fixed by `2cbf096` with stale router sync ignored after direct
+  disconnect. Verified with
+  `cargo test router::tests::should_ignore_stale_sync_after_direct_disconnect -- --nocapture`;
+  the seed-341 reproducer no longer reports the `should have direct metric`
+  signature.
+- ISSUE-139: fixed by `15b788c` with closed-main tolerant connect-error
+  reporting. Verified with focused peer tests and seed-341 churn fuzz no
+  longer reporting `should send to main`.
+- ISSUE-170: fixed by `4997404` with per-context stopped-peer dedupe and
+  nonblocking main-loop reporting. Verified with ctx tests, PeerStopped mesh
+  tests, and seed-341 churn fuzz showing zero forwarded-stop/capacity/channel
+  closed storm markers.
 
 ## Recent Accepted Issues
 
