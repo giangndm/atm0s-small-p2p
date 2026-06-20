@@ -11,7 +11,7 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 248
+- Current consecutive no-new-issue cycles: 249
 - Stop condition requested by user: continue until 5 consecutive cycles find no
   new accepted issue.
 
@@ -5783,6 +5783,39 @@ the source of truth for evidence and reviewer decisions.
     `src/peer.rs:1092` with `got 2`.
 
 ## No-New-Issue Audit Cycles
+
+### Cycle after ISSUE-204 no-new cycle 249: valid stale sync and shutdown send panics
+
+- Result: no accepted non-duplicate issue.
+- Reviewer: `Ohm the 6th`, forked subagent review, confirmed
+  duplicate/no-new.
+- Source and test evidence reviewed:
+  - `src/tests/fuzz.rs`
+  - `src/router.rs`
+  - `src/peer.rs`
+  - `RUST_LOG=error P2P_FUZZ_SEED=249 P2P_FUZZ_NODES=8 P2P_FUZZ_STEPS=1800 cargo test fuzz_random_valid_node_actions_must_not_panic_connection_tasks -- --nocapture`
+    failed.
+- Evidence summary:
+  - exit status 101; log had 27 lines; the fuzz assertion at
+    `src/tests/fuzz.rs:183:5` reported background connection/service task
+    failure with `seed=249, nodes=8, steps=1800`.
+  - two `src/router.rs:76` panic markers with
+    `should have direct metric with apply_sync`.
+  - one `src/peer.rs:92` panic marker with
+    `should send to main: SendError { .. }`.
+  - two closed-by-peer markers were reviewed as teardown fallout in the same
+    compact stale-sync/shutdown-send context.
+  - no invalid-service-id, no-capacity, channel-closed, forwarded-stop,
+    broadcast-data, open_bi, connect-answer, or path-not-found evidence.
+- Duplicate mapping: ISSUE-063 and ISSUE-139.
+- Root-cause summary impact: no new root cause; this strengthens existing
+  stale-route-sync and shutdown-reporting evidence without adding a new issue.
+- Smallest fix proposal:
+  - for ISSUE-063, guard the direct-route lookup, ignore stale sync for unknown
+    direct connections, and clear queued sync when direct connection state is
+    removed.
+  - for ISSUE-139, replace `expect("should send to main")` with
+    shutdown-aware non-panicking handling.
 
 ### Cycle after ISSUE-204 no-new cycle 248: broad stale sync and stopped storm with broadcast fallout
 
