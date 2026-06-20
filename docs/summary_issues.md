@@ -7,9 +7,9 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Accepted issues: 204
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 304
+- Current consecutive no-new-issue cycles: 305
 - Stop condition: continue until 5 consecutive cycles find no new accepted
-  issue; currently 304/5 after ISSUE-204.
+  issue; currently 305/5 after ISSUE-204.
 
 ## Root Cause Summary
 
@@ -2389,6 +2389,15 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Recent No-New Audit
 
+- Cycle after ISSUE-204 no-new cycle 305 ran a valid churn fuzz pass with
+  forked reviewer `Mendel the 7th`. The run failed with exit code 101 and
+  assertion `seed=305, nodes=8, steps=3600`. The hard failure was duplicate
+  ISSUE-063 evidence: two `src/router.rs:76:66` stale-sync panics with `should
+  have direct metric with apply_sync`. The same log had duplicate ISSUE-170
+  stopped-peer pressure (`forward peer stopped over peer alias` 8950,
+  `no available capacity` 6154, `channel closed` 2796). Invalid-service-id and
+  shutdown-send counts were zero. No accepted issue or summary root-cause
+  change was recorded.
 - Cycle after ISSUE-204 no-new cycle 304 ran a broad invalid-action fuzz pass
   with forked reviewer `Confucius the 7th`. The run failed with exit code 101
   and assertion `seed=304, nodes=8, steps=3600`. The hard failure was duplicate

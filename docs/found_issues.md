@@ -11,7 +11,7 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 304
+- Current consecutive no-new-issue cycles: 305
 - Stop condition requested by user: continue until 5 consecutive cycles find no
   new accepted issue.
 
@@ -5783,6 +5783,36 @@ the source of truth for evidence and reviewer decisions.
     `src/peer.rs:1092` with `got 2`.
 
 ## No-New-Issue Audit Cycles
+
+### Cycle after ISSUE-204 no-new cycle 305: valid churn stale sync duplicate
+
+- Result: no accepted non-duplicate issue.
+- Reviewer: `Mendel the 7th`, forked subagent review, confirmed
+  duplicate/no-new.
+- Source and test evidence reviewed:
+  - `src/tests/fuzz.rs`
+  - `src/router.rs`
+  - `RUST_LOG=error P2P_FUZZ_SEED=305 P2P_FUZZ_NODES=8 P2P_FUZZ_STEPS=3600 cargo test fuzz_random_valid_node_churn_actions_must_not_panic_connection_tasks -- --nocapture`
+    failed with `seed=305, nodes=8, steps=3600`.
+- Evidence summary:
+  - exit status 101; log had 8996 lines; the fuzz assertion at
+    `src/tests/fuzz.rs:372:5` reported background connection/service task
+    failure.
+  - two hard stale-sync route panics at `src/router.rs:76:66` with
+    `should have direct metric with apply_sync`.
+  - invalid-service-id and shutdown-send counts were zero.
+  - the same run also showed duplicate ISSUE-170 pressure markers:
+    `forward peer stopped over peer alias` 8950 times, `no available capacity`
+    6154 times, and `channel closed` 2796 times.
+  - eight `connection lost` and nine `closed by peer` markers were reviewed as
+    churn lifecycle fallout.
+- Duplicate mapping: ISSUE-063 for the stale-sync route panics; ISSUE-170 for
+  secondary stopped-forwarding/capacity storm noise.
+- Root-cause summary impact: no new root cause; reviewer classified the hard
+  failure signature and secondary pressure as already accepted issues.
+- Smallest fix proposal: no summary fix change; keep ISSUE-063 fix proposal to
+  drop stale route sync when the direct metric is gone and ISSUE-170 fix
+  proposal to dedupe/coalesce stopped-peer forwarding.
 
 ### Cycle after ISSUE-204 no-new cycle 304: broad invalid service duplicate
 
