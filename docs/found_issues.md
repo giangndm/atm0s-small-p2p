@@ -11,7 +11,7 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 242
+- Current consecutive no-new-issue cycles: 243
 - Stop condition requested by user: continue until 5 consecutive cycles find no
   new accepted issue.
 
@@ -5783,6 +5783,42 @@ the source of truth for evidence and reviewer decisions.
     `src/peer.rs:1092` with `got 2`.
 
 ## No-New-Issue Audit Cycles
+
+### Cycle after ISSUE-204 no-new cycle 243: valid stale sync panic and large stopped storm
+
+- Result: no accepted non-duplicate issue.
+- Reviewer: `Pascal the 6th`, forked subagent review, confirmed
+  duplicate/no-new.
+- Source and test evidence reviewed:
+  - `src/tests/fuzz.rs`
+  - `src/router.rs`
+  - `src/peer.rs`
+  - `src/peer/peer_alias.rs`
+  - `RUST_LOG=error P2P_FUZZ_SEED=243 P2P_FUZZ_NODES=8 P2P_FUZZ_STEPS=1800 cargo test fuzz_random_valid_node_actions_must_not_panic_connection_tasks -- --nocapture`
+    failed.
+- Evidence summary:
+  - exit status 101; log had 7591 lines; the fuzz assertion at
+    `src/tests/fuzz.rs:183:5` reported a background connection/service task
+    panic with `seed=243, nodes=8, steps=1800`.
+  - one `src/router.rs:76` panic marker with
+    `should have direct metric with apply_sync`.
+  - 7555 `forward peer stopped over peer alias` errors, with 5874
+    `no available capacity` markers and 1693 `channel closed` markers in the
+    log.
+  - four connection lost/closed/internal markers were reviewed as fallout in
+    the stale-sync/stopped-storm context.
+  - no invalid-service-id, shutdown-send, broadcast-data, open_bi,
+    connect-answer, or path-not-found evidence.
+- Duplicate mapping: ISSUE-063 and ISSUE-170.
+- Root-cause summary impact: no new root cause; this strengthens existing
+  stale-route-sync and PeerStopped storm evidence without adding a new issue.
+- Smallest fix proposal:
+  - for ISSUE-063, guard the direct-route lookup, ignore stale sync for unknown
+    direct connections, and clear queued sync when direct connection state is
+    removed.
+  - for ISSUE-170, add per-event dedupe or tombstones, bound forwarded stop
+    propagation with TTL, and suppress or rate-limit repeated send failures
+    during shutdown.
 
 ### Cycle after ISSUE-204 no-new cycle 242: broad invalid service id panic
 
