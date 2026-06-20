@@ -5878,13 +5878,17 @@ the source of truth for evidence and reviewer decisions.
   still pending. A small fix is a `JoinHandle` or flag tracked by the service;
   a longer-term fix should use a bounded, observable broadcast API so
   coalescing can react to delivery status.
+- Fix status: fixed by `MetricsService::pending_scan_broadcast`, which tracks
+  the active scan-broadcast `JoinHandle`, clears it only after completion, and
+  spawns a new scan broadcast only when no previous broadcast task remains
+  pending. ISSUE-201 remains separate for visualization scan broadcasts, and
+  ISSUE-202/203/204 remain separate for scan-response backpressure.
 - Evidence test:
   - `cargo test metrics_collector_must_not_spawn_duplicate_scans_when_previous_broadcast_is_backpressured -- --nocapture`
-  - Failure summary: the test keeps a synthetic peer-control queue full across
-    eight 1 ms collector ticks, drains the filler item, and observes more than
-    one queued `PeerMessage::Broadcast` scan. It fails at `src/peer.rs:895`
-    with `got 2`, proving scans accumulate while a prior broadcast remains
-    backpressured.
+  - Current result: passes. The test keeps a synthetic peer-control queue full
+    across eight 1 ms collector ticks, drains the filler item, and verifies
+    that only one queued `PeerMessage::Broadcast` scan is admitted while the
+    prior scan broadcast remains backpressured.
 
 ### ISSUE-201: visualization collector duplicates scan broadcasts behind hidden backpressure
 
