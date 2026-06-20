@@ -185,6 +185,12 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Recently Fixed Issues
 
+- ISSUE-144: fixed by cleaning up the just-registered peer alias and connection
+  teardown metrics when `run_connection` cannot deliver `PeerConnected` because
+  the main loop is closed. The branch returns without emitting
+  `PeerDisconnected`, since the main loop never accepted the connection.
+  Verification:
+  `cargo test authenticated_peer_alias_must_be_cleaned_if_main_loop_closed_before_connected_event -- --nocapture`.
 - ISSUE-141: fixed by deriving the remaining requested `FetchChanged` range
   from the pending repair request and validating the response before mutation.
   Zero-count requests, duplicate returned versions, and versions outside the

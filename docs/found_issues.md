@@ -4162,6 +4162,11 @@ the source of truth for evidence and reviewer decisions.
     after the task tries to send `PeerConnected`, `ctx.conn(&conn_id)` remains
     `Some`, but expected cleanup should unregister the alias and leave it
     `None`.
+- Fix status: fixed. If `PeerConnected` cannot be delivered because the main
+  loop is closed, `run_connection` now unregisters the alias and emits teardown
+  metrics before returning without a synthetic `PeerDisconnected`.
+- Fixed verification:
+  - `cargo test authenticated_peer_alias_must_be_cleaned_if_main_loop_closed_before_connected_event -- --nocapture`
 
 ### ISSUE-145: Mismatched PeerData can mutate routes on a live connection
 

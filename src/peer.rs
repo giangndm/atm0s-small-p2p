@@ -234,6 +234,8 @@ async fn run_connection<SECURE: HandshakeProtocol>(
     gauge!(P2P_LIVE_CONNECTION_COUNT).increment(1);
     if main_tx.send(MainEvent::PeerConnected(conn_id, to_id, rtt_ms)).await.is_err() {
         log::warn!("[PeerConnection {conn_id}] main loop closed before connected event");
+        ctx.unregister_conn(&conn_id);
+        emit_connection_teardown_metrics(local_id, to_id);
         return Ok(());
     }
     log::info!("[PeerConnection {conn_id}] run loop for {remote}");
