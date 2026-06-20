@@ -29,6 +29,7 @@ use messages::{BroadcastEvent, Event, NetEvent, RpcEvent};
 pub use messages::KvEvent;
 
 const REMOTE_TIMEOUT_MS: u128 = 10_000;
+const MAX_PENDING_OUT_EVENTS: usize = 1024;
 
 pub struct ReplicatedKvStore<N, K, V> {
     remotes: HashMap<N, RemoteStore<N, K, V>>,
@@ -53,8 +54,9 @@ where
     pub fn on_tick(&mut self) {
         self.local.on_tick();
         while let Some(event) = self.local.pop_out() {
-            self.outs.push_back(event);
+            Self::push_out(&mut self.outs, event);
         }
+        let outs = &mut self.outs;
         self.remotes.retain(|node, remote| {
             let keep = remote.last_active().elapsed().as_millis() < REMOTE_TIMEOUT_MS;
             if !keep {
@@ -64,7 +66,7 @@ where
                 remote.on_tick();
             }
             while let Some(event) = remote.pop_out() {
-                self.outs.push_back(event);
+                Self::push_out(outs, event);
             }
             keep
         });
@@ -73,14 +75,14 @@ where
     pub fn set(&mut self, key: K, value: V) {
         self.local.set(key.clone(), value.clone());
         while let Some(event) = self.local.pop_out() {
-            self.outs.push_back(event);
+            Self::push_out(&mut self.outs, event);
         }
     }
 
     pub fn del(&mut self, key: K) {
         self.local.del(key.clone());
         while let Some(event) = self.local.pop_out() {
-            self.outs.push_back(event);
+            Self::push_out(&mut self.outs, event);
         }
     }
 
@@ -89,7 +91,7 @@ where
             log::info!("[ReplicatedKvService] add remote {from:?}");
             let mut remote = RemoteStore::new(from.clone());
             while let Some(event) = remote.pop_out() {
-                self.outs.push_back(event);
+                Self::push_out(&mut self.outs, event);
             }
             self.remotes.insert(from.clone(), remote);
         }
@@ -99,7 +101,7 @@ where
                 if let Some(remote) = self.remotes.get_mut(&from) {
                     remote.on_broadcast(event);
                     while let Some(event) = remote.pop_out() {
-                        self.outs.push_back(event);
+                        Self::push_out(&mut self.outs, event);
                     }
                 }
             }
@@ -107,19 +109,26 @@ where
                 RpcEvent::RpcReq(rpc_req) => {
                     self.local.on_rpc_req(from, rpc_req);
                     while let Some(event) = self.local.pop_out() {
-                        self.outs.push_back(event);
+                        Self::push_out(&mut self.outs, event);
                     }
                 }
                 RpcEvent::RpcRes(rpc_res) => {
                     if let Some(remote) = self.remotes.get_mut(&from) {
                         remote.on_rpc_res(rpc_res);
                         while let Some(event) = remote.pop_out() {
-                            self.outs.push_back(event);
+                            Self::push_out(&mut self.outs, event);
                         }
                     }
                 }
             },
         }
+    }
+
+    fn push_out(outs: &mut VecDeque<Event<N, K, V>>, event: Event<N, K, V>) {
+        if outs.len() >= MAX_PENDING_OUT_EVENTS {
+            outs.pop_front();
+        }
+        outs.push_back(event);
     }
 
     fn pop(&mut self) -> Option<Event<N, K, V>> {

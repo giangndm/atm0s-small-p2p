@@ -5730,6 +5730,11 @@ the source of truth for evidence and reviewer decisions.
   - Failure summary: after `1025` local `set()` calls, current code retains
     `2050` events in `ReplicatedKvStore::outs` because each set queues one
     broadcast and one local KV event, so the bounded-queue assertion fails.
+- Fix status: fixed by bounding `ReplicatedKvStore::outs` at `1024` pending
+  events with drop-oldest admission before pushing a new outbound event. The
+  public mutation API is unchanged, and the fix is scoped to the outer service
+  queue rather than `LocalStore` or `RemoteStore`. Verified with
+  `cargo test replicated_kv_local_outbound_event_queue_must_be_bounded -- --nocapture`.
 
 ### ISSUE-197: Unicast relay can forward packets back to the ingress connection
 
