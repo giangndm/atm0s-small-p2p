@@ -5976,6 +5976,13 @@ the source of truth for evidence and reviewer decisions.
   work
 - Score: 56/100
 - Reviewer: `Sartre the 3rd`, confirmed after `Boole the 3rd` discovery.
+- Fix status: fixed by `VisualizationService::pending_scan_responses`, which
+  keeps one bounded in-flight `Info` response task per scanning peer and sends
+  it with `requester.send_unicast(...)` under `SCAN_RESPONSE_SEND_TIMEOUT`.
+  ISSUE-201 remains separate for periodic visualization scan-broadcast
+  coalescing, ISSUE-204 remains separate for metrics response accumulation,
+  and ISSUE-079/related issues remain separate for unauthorized topology
+  disclosure.
 - Affected code:
   - `src/service/visualization_service.rs`: when a `Message::Scan` arrives,
     the service gathers neighbour topology from the requester router.
@@ -5999,11 +6006,11 @@ the source of truth for evidence and reviewer decisions.
   accounting.
 - Evidence test:
   - `cargo test visualization_scan_responses_must_not_accumulate_behind_full_peer_control_queue -- --nocapture`
-  - Failure summary: the test injects eight visualization `Scan` messages while
-    the selected next-hop peer-control queue is full, yields while response
-    tasks are blocked, then drains the filler item. More than one queued
-    `PeerMessage::Unicast` response appears, and the test fails at
-    `src/peer.rs:1021` with `got 2`.
+  - Current result: passes. The test injects eight visualization `Scan`
+    messages while the selected next-hop peer-control queue is full, yields
+    while the bounded response task remains pending, then drains the filler item
+    and verifies that only one queued `PeerMessage::Unicast` visualization
+    response is admitted for that scanning peer.
 
 ### ISSUE-204: metrics scan responses accumulate behind peer-control backpressure
 

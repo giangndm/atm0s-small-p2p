@@ -14,8 +14,8 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   ISSUE-002, ISSUE-008, ISSUE-009, ISSUE-021, ISSUE-033, ISSUE-055, ISSUE-103,
   ISSUE-053, ISSUE-063, ISSUE-139, ISSUE-146, ISSUE-170, ISSUE-176,
   ISSUE-189, ISSUE-190, ISSUE-191, ISSUE-192, ISSUE-193, ISSUE-195,
-  ISSUE-196, ISSUE-197, ISSUE-198, ISSUE-199, ISSUE-200, ISSUE-201, and
-  ISSUE-202 have focused fixes committed.
+  ISSUE-196, ISSUE-197, ISSUE-198, ISSUE-199, ISSUE-200, ISSUE-201,
+  ISSUE-202, and ISSUE-203 have focused fixes committed.
   ISSUE-003 is fixed by `cfc8e57`;
   ISSUE-004 is covered by the ISSUE-170 ownership-validation follow-up
   `87cf6ce`; earlier fixes are `648cfd0`, `2cbf096`, `15b788c`, and
@@ -181,6 +181,15 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Recently Fixed Issues
 
+- ISSUE-203: fixed by `VisualizationService::pending_scan_responses` plus
+  bounded `requester.send_unicast(...)` response tasks, so duplicate
+  visualization scans from one peer coalesce while a response is still
+  backpressured. Verified with
+  `cargo test visualization_scan_responses_must_not_accumulate_behind_full_peer_control_queue -- --nocapture`
+  and `cargo fmt -- --check`. ISSUE-201 remains separate for periodic
+  visualization scan-broadcast coalescing, ISSUE-204 remains separate for
+  metrics response accumulation, and ISSUE-079/related issues remain separate
+  for unauthorized topology disclosure.
 - ISSUE-202: fixed by awaiting `requester.send_unicast(...)` with
   `SCAN_RESPONSE_SEND_TIMEOUT` and tracking `pending_scan_responses`, so a
   metrics scan response waits through transient peer-control backpressure
