@@ -243,6 +243,15 @@ the source of truth for evidence and reviewer decisions.
   - `cargo test should_keep_existing_best_path_on_equal_score -- --nocapture`
   - Failure summary: equal-cost route switches from `ConnectionId(2)` to
     `ConnectionId(1)` due to map ordering.
+- Fix status: fixed by the current route stability commit. The fix keeps the
+  existing active path for equal or tiny-score improvements, gives direct paths
+  priority over relayed paths, and widens route score math to avoid comparison
+  overflow. Verified with both evidence tests plus
+  `cargo test direct_peer_route_must_not_be_replaced_by_relayed_path -- --nocapture`,
+  `cargo test should_not_overflow_score_during_best_path_selection -- --nocapture`,
+  `cargo test should_remove_relay_path_after_disconnect -- --nocapture`, and
+  `cargo test should_remove_stopped_peer_path -- --nocapture`. Reviewer
+  `Chandrasekhar the 7th` approved.
 
 ### ISSUE-004: `PeerStopped(seed)` preserves seed discovery but deletes seed route
 

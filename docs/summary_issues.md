@@ -10,9 +10,10 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 - Current consecutive no-new-issue cycles: 341
 - Stop condition: continue until 5 consecutive cycles find no new accepted
   issue; currently 341/5 after ISSUE-204.
-- Fix phase status: ISSUE-053, ISSUE-063, ISSUE-139, and ISSUE-170 have
-  focused fixes committed as `648cfd0`, `2cbf096`, `15b788c`, `4997404`, and
-  corrective ISSUE-170 follow-up `87cf6ce`.
+- Fix phase status: ISSUE-003, ISSUE-053, ISSUE-063, ISSUE-139, and ISSUE-170
+  have focused fixes committed. ISSUE-003 is fixed by the current route
+  stability commit; earlier fixes are `648cfd0`, `2cbf096`, `15b788c`,
+  `4997404`, and corrective ISSUE-170 follow-up `87cf6ce`.
 
 ## Root Cause Summary
 
@@ -174,6 +175,16 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Recently Fixed Issues
 
+- ISSUE-003: fixed with stable route selection hysteresis in
+  `PeerMemory::select_best`, direct-path priority over relayed candidates, and
+  widened route score math. Verified with
+  `cargo test active_path_should_not_jump_for_tiny_rtt_jitter -- --nocapture`,
+  `cargo test should_keep_existing_best_path_on_equal_score -- --nocapture`,
+  `cargo test direct_peer_route_must_not_be_replaced_by_relayed_path -- --nocapture`,
+  `cargo test should_not_overflow_score_during_best_path_selection -- --nocapture`,
+  `cargo test should_remove_relay_path_after_disconnect -- --nocapture`, and
+  `cargo test should_remove_stopped_peer_path -- --nocapture`. Reviewer
+  `Chandrasekhar the 7th` approved the revised patch.
 - ISSUE-053: fixed by `648cfd0` with range-checked service table indexing.
   Verified with `cargo test ctx::tests -- --nocapture` and seed-340
   invalid-service fuzz passing without `src/ctx.rs` panics.

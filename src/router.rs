@@ -15,6 +15,7 @@ use crate::ConnectionId;
 use super::PeerId;
 
 const MAX_HOPS: u8 = 6;
+const PATH_SWITCH_SCORE_MARGIN: u32 = 2;
 const REMOVED_DIRECT_CACHE_SIZE: usize = 8192;
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Clone, Copy)]
@@ -204,8 +205,8 @@ impl RouterTable {
 }
 
 impl PathMetric {
-    fn score(&self) -> u16 {
-        self.rtt_ms + self.relay_hops as u16 * 10
+    fn score(&self) -> u32 {
+        self.rtt_ms as u32 + self.relay_hops as u32 * 10
     }
 }
 
@@ -227,23 +228,43 @@ impl PeerMemory {
 
     fn select_best(&mut self) -> Option<(ConnectionId, PathMetric)> {
         let previous = self.best;
-        self.best = None;
-        let mut iter = self.paths.iter();
-        let (peer, metric) = iter.next()?;
-        let mut best_peer = peer;
-        let mut best_score = metric.score();
+        let direct_available = self.paths.values().any(|metric| metric.relay_hops == 0);
+        let previous_candidate = previous.and_then(|peer| {
+            self.paths.get(&peer).and_then(|metric| {
+                if !direct_available || metric.relay_hops == 0 {
+                    Some((peer, metric.score()))
+                } else {
+                    None
+                }
+            })
+        });
 
-        for (peer, metric) in iter {
-            if best_score > metric.score() {
-                best_peer = peer;
-                best_score = metric.score();
+        let Some((mut best_peer, mut best_score)) = previous_candidate.or_else(|| {
+            self.paths
+                .iter()
+                .filter(|(_, metric)| !direct_available || metric.relay_hops == 0)
+                .map(|(peer, metric)| (*peer, metric.score()))
+                .min_by_key(|(_, score)| *score)
+        }) else {
+            self.best = None;
+            return None;
+        };
+
+        for (peer, metric) in &self.paths {
+            if direct_available && metric.relay_hops != 0 {
+                continue;
+            }
+            let score = metric.score();
+            if score + PATH_SWITCH_SCORE_MARGIN < best_score {
+                best_peer = *peer;
+                best_score = score;
             }
         }
 
-        self.best = Some(*best_peer);
+        self.best = Some(best_peer);
         if self.best != previous {
             let metric = self.best_metric().expect("should have best metric after select success");
-            Some((*best_peer, metric))
+            Some((best_peer, metric))
         } else {
             None
         }
