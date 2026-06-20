@@ -1109,19 +1109,39 @@ async fn concurrent_connects_to_same_peer_must_be_coalesced() {
 
 #[tokio::test]
 async fn requester_connect_backlog_must_be_bounded() {
-    const MAX_PENDING_CONNECTS: usize = 1024;
     let (mut node, _addr) = create_node(false, 1, vec![]).await;
     let requester = node.requester();
 
-    for peer in 0..=MAX_PENDING_CONNECTS {
+    for peer in 0..=crate::NETWORK_CONTROL_QUEUE_SIZE {
         let target: PeerAddress = format!("{}@127.0.0.1:10000", peer + 10).parse().expect("target address should parse");
         requester.try_connect(target);
     }
 
     assert!(
-        node.control_rx.len() <= MAX_PENDING_CONNECTS,
+        node.control_rx.len() <= crate::NETWORK_CONTROL_QUEUE_SIZE,
         "pending requester connect commands must be bounded, got {}",
         node.control_rx.len()
+    );
+}
+
+#[tokio::test]
+async fn requester_connect_returns_error_when_control_queue_full() {
+    let (mut node, _addr) = create_node(false, 1, vec![]).await;
+    let requester = node.requester();
+
+    for peer in 0..crate::NETWORK_CONTROL_QUEUE_SIZE {
+        let target: PeerAddress = format!("{}@127.0.0.1:10000", peer + 10).parse().expect("target address should parse");
+        requester.try_connect(target);
+    }
+
+    let target: PeerAddress = "99999@127.0.0.1:10000".parse().expect("target address should parse");
+    let result = requester.connect(target).await;
+
+    assert!(result.is_err(), "connect must return Err when the network control queue is full");
+    assert_eq!(
+        node.control_rx.len(),
+        crate::NETWORK_CONTROL_QUEUE_SIZE,
+        "failed connect admission must not grow the bounded control queue"
     );
 }
 

@@ -22,7 +22,7 @@ use serde::{Deserialize, Serialize};
 use tokio::{
     select,
     sync::{
-        mpsc::{channel, unbounded_channel, Receiver, Sender, UnboundedReceiver, UnboundedSender},
+        mpsc::{channel, Receiver, Sender},
         oneshot,
     },
     time::Interval,
@@ -137,6 +137,7 @@ impl InboundPeerBindings {
 }
 
 pub const CERT_DOMAIN_NAME: &str = "cluster";
+pub(crate) const NETWORK_CONTROL_QUEUE_SIZE: usize = 1024;
 
 #[derive(Debug)]
 enum PeerMainData {
@@ -179,8 +180,8 @@ pub enum P2pNetworkEvent {
 pub struct P2pNetwork<SECURE> {
     local_id: PeerId,
     endpoint: Endpoint,
-    control_tx: UnboundedSender<ControlCmd>,
-    control_rx: UnboundedReceiver<ControlCmd>,
+    control_tx: Sender<ControlCmd>,
+    control_rx: Receiver<ControlCmd>,
     main_tx: Sender<MainEvent>,
     main_rx: Receiver<MainEvent>,
     neighbours: NetworkNeighbours,
@@ -197,7 +198,7 @@ impl<SECURE: HandshakeProtocol> P2pNetwork<SECURE> {
         log::info!("[P2pNetwork] starting node {}@{}", cfg.peer_id, cfg.listen_addr);
         let endpoint = make_server_endpoint(cfg.listen_addr, cfg.priv_key, cfg.cert)?;
         let (main_tx, main_rx) = channel(10);
-        let (control_tx, control_rx) = unbounded_channel();
+        let (control_tx, control_rx) = channel(NETWORK_CONTROL_QUEUE_SIZE);
         let mut discovery = PeerDiscovery::new(cfg.seeds);
         let router = SharedRouterTable::new(cfg.peer_id);
 
@@ -280,8 +281,9 @@ impl<SECURE: HandshakeProtocol> P2pNetwork<SECURE> {
                 }
             }
         }
-        for addr in self.discovery.remotes() {
-            self.control_tx.send(ControlCmd::Connect(addr.clone(), None))?;
+        let remotes: Vec<_> = self.discovery.remotes().collect();
+        for addr in remotes {
+            self.process_connect(addr, None)?;
         }
 
         Ok(P2pNetworkEvent::Continue)
@@ -346,27 +348,29 @@ impl<SECURE: HandshakeProtocol> P2pNetwork<SECURE> {
 
     fn process_control(&mut self, cmd: ControlCmd) -> anyhow::Result<P2pNetworkEvent> {
         match cmd {
-            ControlCmd::Connect(addr, tx) => {
-                let res = if self.neighbours.has_peer(&addr.peer_id()) {
-                    Ok(())
-                } else {
-                    log::info!("[P2pNetwork] connecting to {addr}");
-                    match self.endpoint.connect(*addr.network_address().deref(), CERT_DOMAIN_NAME) {
-                        Ok(connecting) => {
-                            let conn = PeerConnection::new_connecting(self.secure.clone(), self.local_id, addr.peer_id(), connecting, self.main_tx.clone(), self.ctx.clone());
-                            self.neighbours.insert(conn.conn_id(), conn);
-                            Ok(())
-                        }
-                        Err(err) => Err(err.into()),
-                    }
-                };
-
-                if let Some(tx) = tx {
-                    tx.send(res).print_on_err2("[P2pNetwork] send connect answer");
-                }
-
-                Ok(P2pNetworkEvent::Continue)
-            }
+            ControlCmd::Connect(addr, tx) => self.process_connect(addr, tx),
         }
+    }
+
+    fn process_connect(&mut self, addr: PeerAddress, tx: Option<oneshot::Sender<anyhow::Result<()>>>) -> anyhow::Result<P2pNetworkEvent> {
+        let res = if self.neighbours.has_peer(&addr.peer_id()) {
+            Ok(())
+        } else {
+            log::info!("[P2pNetwork] connecting to {addr}");
+            match self.endpoint.connect(*addr.network_address().deref(), CERT_DOMAIN_NAME) {
+                Ok(connecting) => {
+                    let conn = PeerConnection::new_connecting(self.secure.clone(), self.local_id, addr.peer_id(), connecting, self.main_tx.clone(), self.ctx.clone());
+                    self.neighbours.insert(conn.conn_id(), conn);
+                    Ok(())
+                }
+                Err(err) => Err(err.into()),
+            }
+        };
+
+        if let Some(tx) = tx {
+            tx.send(res).print_on_err2("[P2pNetwork] send connect answer");
+        }
+
+        Ok(P2pNetworkEvent::Continue)
     }
 }

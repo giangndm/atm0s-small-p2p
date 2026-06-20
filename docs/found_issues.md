@@ -3499,6 +3499,16 @@ the source of truth for evidence and reviewer decisions.
   - `cargo test requester_connect_backlog_must_be_bounded -- --nocapture`
   - Failure summary: 1,025 `try_connect` calls for distinct target peers remain
     queued in `node.control_rx`, exceeding the bounded-backlog assertion.
+- Fixed summary: requester connect commands now enter a bounded
+  `NETWORK_CONTROL_QUEUE_SIZE` queue. Best-effort `try_connect` drops on full or
+  closed queues, while awaited `connect` returns an immediate error when the
+  command cannot be admitted. Discovery tick retries call the connect helper
+  directly instead of self-enqueueing into the bounded control queue. Verified
+  with `cargo test requester_connect_backlog_must_be_bounded -- --nocapture`,
+  `cargo test requester_connect_returns_error_when_control_queue_full -- --nocapture`,
+  `cargo test requester_connect_after_network_drop_returns_error_not_panic -- --nocapture`,
+  `cargo test requester_try_connect_after_network_drop_must_not_panic -- --nocapture`,
+  and `cargo fmt -- --check`.
 
 ### ISSUE-126: Pubsub internal control messages can accumulate without bound
 
