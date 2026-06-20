@@ -13,6 +13,10 @@ fn timestamp_is_live(timestamp: u64, now_ms: u64) -> bool {
     timestamp <= now_ms && timestamp.checked_add(TIMEOUT_AFTER).is_some_and(|expires_at| expires_at > now_ms)
 }
 
+fn is_dialable_advertise_address(address: &NetworkAddress) -> bool {
+    !address.ip().is_unspecified() && address.port() != 0
+}
+
 #[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PeerDiscoverySync(Vec<(PeerId, u64, NetworkAddress)>);
 
@@ -35,6 +39,12 @@ impl PeerDiscovery {
     }
 
     pub fn enable_local(&mut self, peer_id: PeerId, address: NetworkAddress) {
+        if !is_dialable_advertise_address(&address) {
+            log::warn!("[PeerDiscovery] ignore non-dialable local advertise address {address}");
+            self.local = None;
+            return;
+        }
+
         log::info!("[PeerDiscovery] enable local as {address}");
         self.local = Some((peer_id, address));
     }
@@ -131,7 +141,7 @@ impl PeerDiscovery {
 mod test {
     use crate::{discovery::PeerDiscoverySync, PeerAddress, PeerId};
 
-    use super::{PeerDiscovery, MAX_SYNC_ENTRIES, TIMEOUT_AFTER};
+    use super::{is_dialable_advertise_address, PeerDiscovery, MAX_SYNC_ENTRIES, TIMEOUT_AFTER};
 
     fn peer_addr(addr: &str) -> PeerAddress {
         addr.parse().expect("should parse peer address")
@@ -168,6 +178,63 @@ mod test {
             PeerDiscoverySync(vec![]),
             "unroutable wildcard or port-zero local advertise addresses must not be gossiped as dial candidates"
         );
+    }
+
+    #[test_log::test]
+    fn local_sync_must_not_advertise_unspecified_ip_address() {
+        let mut discovery = PeerDiscovery::default();
+        let local = PeerId(1);
+        let remote = PeerId(2);
+        let unspecified_ip = peer_addr("1@0.0.0.0:9000");
+
+        discovery.enable_local(local, unspecified_ip.network_address().clone());
+
+        assert_eq!(
+            discovery.create_sync_for(100, &remote),
+            PeerDiscoverySync(vec![]),
+            "unspecified local advertise IPs must not be gossiped as dial candidates"
+        );
+    }
+
+    #[test_log::test]
+    fn local_sync_must_not_advertise_port_zero_address() {
+        let mut discovery = PeerDiscovery::default();
+        let local = PeerId(1);
+        let remote = PeerId(2);
+        let port_zero = peer_addr("1@127.0.0.1:0");
+
+        discovery.enable_local(local, port_zero.network_address().clone());
+
+        assert_eq!(
+            discovery.create_sync_for(100, &remote),
+            PeerDiscoverySync(vec![]),
+            "port-zero local advertise addresses must not be gossiped as dial candidates"
+        );
+    }
+
+    #[test_log::test]
+    fn invalid_local_advertise_clears_previous_valid_address() {
+        let mut discovery = PeerDiscovery::default();
+        let local = PeerId(1);
+        let remote = PeerId(2);
+        let valid = peer_addr("1@127.0.0.1:9000");
+        let invalid = peer_addr("1@127.0.0.1:0");
+
+        discovery.enable_local(local, valid.network_address().clone());
+        discovery.enable_local(local, invalid.network_address().clone());
+
+        assert_eq!(
+            discovery.create_sync_for(100, &remote),
+            PeerDiscoverySync(vec![]),
+            "invalid local advertise reconfiguration must clear a previously gossiped valid address"
+        );
+    }
+
+    #[test]
+    fn dialable_advertise_address_validation_accepts_valid_addresses() {
+        let valid = peer_addr("1@127.0.0.1:9000");
+
+        assert!(is_dialable_advertise_address(valid.network_address()));
     }
 
     #[test_log::test]

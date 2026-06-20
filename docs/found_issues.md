@@ -4976,6 +4976,11 @@ the source of truth for evidence and reviewer decisions.
   `PeerDiscovery::enable_local` reject/suppress non-dialable addresses. At
   minimum reject `ip().is_unspecified()` and `port() == 0`; return a config
   error if strict behavior is preferred.
+- Fix status: fixed by `PeerDiscovery::enable_local` suppressing and clearing
+  local advertisements whose `NetworkAddress` has an unspecified IP or port
+  zero. Valid dialable advertise addresses continue to be gossiped normally.
+  Verified with
+  `cargo test local_sync_must_not_advertise -- --nocapture`.
 - Evidence test:
   - `cargo test local_sync_must_not_advertise_unroutable_wildcard_address -- --nocapture`
   - Failure summary: after `enable_local(PeerId(1), 0.0.0.0:0)`,
