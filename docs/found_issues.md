@@ -5935,24 +5935,27 @@ the source of truth for evidence and reviewer decisions.
   backpressure
 - Score: 55/100
 - Reviewer: `Ramanujan the 3rd`, confirmed after `Aquinas the 3rd` discovery.
+- Fix status: fixed by awaiting `requester.send_unicast(...)` with
+  `SCAN_RESPONSE_SEND_TIMEOUT` and tracking `pending_scan_responses` so one
+  response per scanned peer can remain in flight through transient
+  peer-control backpressure.
 - Affected code:
   - `src/service/metrics_service.rs`: when a `Message::Scan` arrives, the
-    service gathers metrics and spawns a detached response task.
-  - `src/service/metrics_service.rs`: that task calls
-    `requester.try_send_unicast(...)` and only logs errors.
-  - `src/ctx.rs`: `SharedCtx::try_send_unicast` delegates to the next-hop
-    peer alias and returns an error immediately if the bounded peer-control
-    queue is full.
-  - `src/peer/peer_alias.rs`: `PeerConnectionAlias::try_send` uses bounded
-    channel `try_send`.
+    service gathers metrics, inserts the source peer into
+    `pending_scan_responses`, and spawns one bounded response task for that
+    peer.
+  - `src/service/metrics_service.rs`: that task awaits
+    `requester.send_unicast(...)` under `SCAN_RESPONSE_SEND_TIMEOUT`, then
+    returns the peer id so the pending-response set can be cleared.
 - Impact: after a metrics `Scan` is accepted, a transiently full next-hop
-  peer-control queue drops the `Info` response immediately. The sender gets no
-  retry, backpressure, or observable failure from the metrics service. This is
-  distinct from ISSUE-050, which covers direct awaited `send_unicast`
-  blocking; ISSUE-119/120, which cover local service ingress queue drops;
-  ISSUE-198, which covers broadcast `try_send_broadcast`; ISSUE-200/201, which
-  cover duplicate collector scan scheduling; and ISSUE-078, which covers
-  unauthorized metrics disclosure.
+  peer-control queue no longer drops the `Info` response immediately; the
+  response task waits through temporary backpressure and is bounded by a
+  timeout. This is distinct from ISSUE-204, which covers duplicate
+  response-task accumulation; ISSUE-050, which covers direct awaited
+  `send_unicast` blocking; ISSUE-119/120, which cover local service ingress
+  queue drops; ISSUE-198, which covers broadcast `try_send_broadcast`;
+  ISSUE-200/201, which cover duplicate collector scan scheduling; and
+  ISSUE-078, which covers unauthorized metrics disclosure.
 - Minimal fix proposal: do not use fire-and-forget `try_send_unicast` for
   metrics `Scan` responses. Use an awaited send with timeout, or keep a small
   bounded retry/coalescing state for pending metrics responses. Surface
@@ -5960,10 +5963,12 @@ the source of truth for evidence and reviewer decisions.
   caller-visible backpressure.
 - Evidence test:
   - `cargo test metrics_scan_response_must_not_be_dropped_when_peer_control_queue_is_full -- --nocapture`
-  - Failure summary: the test injects a metrics `Scan` while the selected
-    next-hop peer-control queue is full, yields while the queue remains full,
-    then drains the filler item. No `PeerMessage::Unicast` metrics response is
-    observed afterward, and the test fails at `src/peer.rs:977`.
+  - Current result: passes. The test injects a metrics `Scan` while the
+    selected next-hop peer-control queue is full, yields while the queue remains
+    full, then drains the filler item and observes the delayed
+    `PeerMessage::Unicast` metrics response afterward. ISSUE-204 remains
+    separate for duplicate response-task accumulation behind sustained
+    backpressure.
 
 ### ISSUE-203: visualization scan responses accumulate behind peer-control backpressure
 
@@ -5986,8 +5991,8 @@ the source of truth for evidence and reviewer decisions.
   ISSUE-050, which covers direct awaited unicast blocking; ISSUE-079, which
   covers unauthorized topology disclosure; ISSUE-119/120, which cover local
   service ingress drops; ISSUE-200/201, which cover periodic collector scan
-  broadcast scheduling; and ISSUE-202, where metrics uses nonblocking
-  `try_send_unicast` and drops the response instead of accumulating tasks.
+  broadcast scheduling; and ISSUE-202, which covers the metrics
+  dropped-response path instead of visualization response accumulation.
 - Minimal fix proposal: do not spawn unbounded detached response tasks for
   visualization `Scan`. Keep bounded in-flight response state per requester and
   coalesce duplicates, or await/send with a timeout and explicit failure

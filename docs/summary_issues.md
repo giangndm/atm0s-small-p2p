@@ -14,8 +14,8 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   ISSUE-002, ISSUE-008, ISSUE-009, ISSUE-021, ISSUE-033, ISSUE-055, ISSUE-103,
   ISSUE-053, ISSUE-063, ISSUE-139, ISSUE-146, ISSUE-170, ISSUE-176,
   ISSUE-189, ISSUE-190, ISSUE-191, ISSUE-192, ISSUE-193, ISSUE-195,
-  ISSUE-196, ISSUE-197, ISSUE-198, ISSUE-199, ISSUE-200, and ISSUE-201 have
-  focused fixes committed.
+  ISSUE-196, ISSUE-197, ISSUE-198, ISSUE-199, ISSUE-200, ISSUE-201, and
+  ISSUE-202 have focused fixes committed.
   ISSUE-003 is fixed by `cfc8e57`;
   ISSUE-004 is covered by the ISSUE-170 ownership-validation follow-up
   `87cf6ce`; earlier fixes are `648cfd0`, `2cbf096`, `15b788c`, and
@@ -181,6 +181,14 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Recently Fixed Issues
 
+- ISSUE-202: fixed by awaiting `requester.send_unicast(...)` with
+  `SCAN_RESPONSE_SEND_TIMEOUT` and tracking `pending_scan_responses`, so a
+  metrics scan response waits through transient peer-control backpressure
+  instead of being dropped immediately. Verified with
+  `cargo test metrics_scan_response_must_not_be_dropped_when_peer_control_queue_is_full -- --nocapture`
+  and `cargo fmt -- --check`. ISSUE-204 remains separate for duplicate
+  response-task accumulation under sustained backpressure, and broad metrics
+  correctness remains covered by other accepted issues.
 - ISSUE-201: fixed by `VisualizationService::pending_scan_broadcast`, which
   keeps one active scan-broadcast task and skips/coalesces visualization
   collection ticks until that task completes. Verified with
