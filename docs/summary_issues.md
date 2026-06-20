@@ -7,9 +7,9 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Accepted issues: 204
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 301
+- Current consecutive no-new-issue cycles: 302
 - Stop condition: continue until 5 consecutive cycles find no new accepted
-  issue; currently 301/5 after ISSUE-204.
+  issue; currently 302/5 after ISSUE-204.
 
 ## Root Cause Summary
 
@@ -2389,6 +2389,14 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Recent No-New Audit
 
+- Cycle after ISSUE-204 no-new cycle 302 ran a sanitized churn fuzz pass with
+  forked reviewer `Epicurus the 7th`. The run failed with exit code 101; the
+  command requested `P2P_FUZZ_NODES=10`, and the harness reported
+  `seed=302, nodes=8, steps=3600` because the test clamps nodes to 8. The hard
+  failure was duplicate ISSUE-139 evidence: three `src/peer.rs:133:113`
+  shutdown-send panics with `should send to main: SendError { .. }`. The two
+  connection-lost and three aborted-by-peer markers were reviewed as lifecycle
+  fallout. No accepted issue or summary root-cause change was recorded.
 - Cycle after ISSUE-204 no-new cycle 301 ran a twelve-node steady valid-node
   fuzz pass with forked reviewer `Gibbs the 7th`. The run passed cleanly with
   exit code 0: `1 passed`, `0 failed`. No panic, failed assertion, invalid
