@@ -7,9 +7,9 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Accepted issues: 204
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 206
+- Current consecutive no-new-issue cycles: 207
 - Stop condition: continue until 5 consecutive cycles find no new accepted
-  issue; currently 206/5 after ISSUE-204.
+  issue; currently 207/5 after ISSUE-204.
 
 ## Root Cause Summary
 
@@ -256,6 +256,19 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Recent Fuzz Evidence
 
+- Valid-action fuzz review:
+  `RUST_LOG=error P2P_FUZZ_SEED=207 P2P_FUZZ_NODES=8 P2P_FUZZ_STEPS=1800 cargo test fuzz_random_valid_node_actions_must_not_panic_connection_tasks -- --nocapture`
+  failed with duplicate evidence for ISSUE-063 and ISSUE-139. Reviewer
+  `Mill the 6th` confirmed the single `src/router.rs:76` panic with
+  `should have direct metric with apply_sync` is the existing stale-sync root
+  cause, and the `src/peer.rs:92:104` `should send to main: SendError { .. }`
+  panic is the existing shutdown reporting race. The endpoint internal-error
+  log was reviewed as fallout from the router panic or dropped endpoint driver.
+  No ISSUE-053 or ISSUE-170 evidence was present, and no new invariant
+  appeared. The smallest fix proposals remain unchanged: guard/drop stale sync
+  when the direct metric is gone and invalidate queued sync state on
+  direct-route removal; replace peer main-channel `expect` calls with normal
+  teardown handling when the main receiver is closed. No new issue was created.
 - Broad random fuzz review:
   `RUST_LOG=error P2P_FUZZ_SEED=206 P2P_FUZZ_NODES=8 P2P_FUZZ_STEPS=1800 cargo test fuzz_random_node_actions_must_not_panic_connection_tasks -- --nocapture`
   failed with duplicate evidence for ISSUE-053 only. Reviewer
