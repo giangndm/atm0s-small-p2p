@@ -11,7 +11,7 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 295
+- Current consecutive no-new-issue cycles: 296
 - Stop condition requested by user: continue until 5 consecutive cycles find no
   new accepted issue.
 
@@ -5783,6 +5783,34 @@ the source of truth for evidence and reviewer decisions.
     `src/peer.rs:1092` with `got 2`.
 
 ## No-New-Issue Audit Cycles
+
+### Cycle after ISSUE-204 no-new cycle 296: broad invalid service panic
+
+- Result: no accepted non-duplicate issue.
+- Reviewer: `Helmholtz the 7th`, forked subagent review, confirmed
+  duplicate/no-new.
+- Source and test evidence reviewed:
+  - `src/tests/fuzz.rs`
+  - `src/ctx.rs`
+  - `RUST_LOG=error P2P_FUZZ_SEED=296 P2P_FUZZ_NODES=8 P2P_FUZZ_STEPS=3200 cargo test fuzz_random_node_actions_must_not_panic_connection_tasks -- --nocapture`
+    failed with `seed=296, nodes=8, steps=3200`.
+- Evidence summary:
+  - exit status 101; log had 22 lines; the fuzz assertion at
+    `src/tests/fuzz.rs:183:5` reported background connection/service task
+    failure.
+  - one hard invalid-service panic at `src/ctx.rs:34:9` with
+    `index out of bounds: the len is 256 but the index is 256`.
+  - one channel-closed marker and one closed-by-peer marker were reviewed as
+    teardown fallout after the background task panic.
+  - no stale-sync, shutdown-send, stopped-forwarding, broadcast-alias,
+    path-not-found, no-capacity, connection-lost, or aborted-by-peer evidence.
+- Duplicate mapping: ISSUE-053.
+- Root-cause summary impact: no new root cause; this strengthens existing
+  unchecked inbound service-id validation evidence without adding a new issue.
+- Smallest fix proposal: validate service ids before indexing the fixed
+  256-entry service table; reject or drop inbound ids outside `0..256` before
+  calling `get_service`, and keep seed `296` as regression evidence for the
+  invalid-service broadcast path.
 
 ### Cycle after ISSUE-204 no-new cycle 295: steady valid clean pass with lifecycle logs
 

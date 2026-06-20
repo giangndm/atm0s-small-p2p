@@ -7,9 +7,9 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Accepted issues: 204
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 295
+- Current consecutive no-new-issue cycles: 296
 - Stop condition: continue until 5 consecutive cycles find no new accepted
-  issue; currently 295/5 after ISSUE-204.
+  issue; currently 296/5 after ISSUE-204.
 
 ## Root Cause Summary
 
@@ -2389,6 +2389,13 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Recent No-New Audit
 
+- Cycle after ISSUE-204 no-new cycle 296 ran a broad invalid-action fuzz pass
+  with forked reviewer `Helmholtz the 7th`. The run failed with exit code 101
+  and assertion `seed=296, nodes=8, steps=3200`. The hard failure was duplicate
+  ISSUE-053 evidence: one `src/ctx.rs:34:9` invalid-service panic with
+  `index out of bounds: the len is 256 but the index is 256`. The channel-closed
+  and closed-by-peer markers were reviewed as teardown fallout. No accepted
+  issue or summary root-cause change was recorded.
 - Cycle after ISSUE-204 no-new cycle 295 ran a steady valid-node fuzz pass with
   forked reviewer `Goodall the 7th`. The run passed with exit code 0:
   `1 passed`, `0 failed`. The two connection-lost and three
