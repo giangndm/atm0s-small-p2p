@@ -492,17 +492,26 @@ the source of truth for evidence and reviewer decisions.
   - `src/msg.rs`: `PeerMessage::Unicast(source, dest, ...)` carries a
     peer-controlled `source`.
   - `src/peer/peer_internal.rs`: inbound unicast delivery and forwarding trust
-    the message-body `source` instead of the authenticated connection peer.
+    the authenticated immediate peer instead of the message-body `source`.
   - `src/service.rs`: `P2pServiceEvent::Unicast` exposes the trusted-looking
     sender id directly to service consumers.
+- Fix status: fixed by binding inbound unicast sender identity to the
+  authenticated immediate peer (`PeerConnectionInternal::to_id`) before local
+  delivery or forwarding. Relayed unicasts now expose the previous hop rather
+  than a message-body original source; end-to-end original sender identity
+  requires a later authenticated forwarding protocol.
 - Impact: any connected peer can impersonate another peer to application
   services, including multi-hop services that make authorization or replication
   decisions based on the reported sender id.
 - Evidence test:
   - `cargo test unicast_source_must_be_bound_to_authenticated_connection_peer -- --nocapture`
-  - Failure summary: node2 receives
-    `P2pServiceEvent::Unicast(PeerId(99), ...)` from a message sent over
-    node1's authenticated connection.
+  - Current result: passes. Node2 receives
+    `P2pServiceEvent::Unicast(PeerId(1), ...)` from a forged
+    `PeerMessage::Unicast(PeerId(99), ...)` sent over node1's authenticated
+    connection.
+  - Additional current result:
+    `cargo test forwarded_unicast_source_must_be_bound_to_ingress_peer -- --nocapture`
+    passes, proving a forged relayed source is normalized before forwarding.
 
 ### ISSUE-015: Broadcast sender identity is not bound to the authenticated connection
 

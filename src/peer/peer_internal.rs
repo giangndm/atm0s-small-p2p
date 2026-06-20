@@ -215,29 +215,40 @@ impl PeerConnectionInternal {
                     log::debug!("[PeerConnectionInternal {}] broadcast msg {msg_id} already deliveried", self.remote);
                 }
             }
-            PeerMessage::Unicast(source, dest, service_id, data) => match unicast_route_decision(self.ctx.router().action(&dest), self.conn_id) {
-                UnicastRouteDecision::Local => {
-                    if let Some(service) = self.ctx.get_service(&service_id) {
-                        send_local_service_event(self.remote, service_id, &service, P2pServiceEvent::Unicast(source, data)).await;
-                    } else {
-                        log::warn!("[PeerConnectionInternal {}] service {service_id} not found", self.remote);
+            PeerMessage::Unicast(source, dest, service_id, data) => {
+                let effective_source = self.to_id;
+                if source != effective_source {
+                    log::warn!(
+                        "[PeerConnectionInternal {}] normalize forged unicast source {source} from authenticated peer {}",
+                        self.remote,
+                        self.to_id
+                    );
+                }
+
+                match unicast_route_decision(self.ctx.router().action(&dest), self.conn_id) {
+                    UnicastRouteDecision::Local => {
+                        if let Some(service) = self.ctx.get_service(&service_id) {
+                            send_local_service_event(self.remote, service_id, &service, P2pServiceEvent::Unicast(effective_source, data)).await;
+                        } else {
+                            log::warn!("[PeerConnectionInternal {}] service {service_id} not found", self.remote);
+                        }
+                    }
+                    UnicastRouteDecision::Forward(next) => {
+                        if let Some(conn) = self.ctx.conn(&next) {
+                            conn.try_send(PeerMessage::Unicast(effective_source, dest, service_id, data))
+                                .print_on_err("[PeerConnectionInternal] send data over peer alias");
+                        } else {
+                            log::warn!("[PeerConnectionInternal {}] peer {next} not found", self.remote);
+                        }
+                    }
+                    UnicastRouteDecision::DropIngressLoop(next) => {
+                        log::warn!("[PeerConnectionInternal {}] drop unicast relay to {dest}: next hop {next} is ingress connection", self.remote);
+                    }
+                    UnicastRouteDecision::NoRoute => {
+                        log::warn!("[PeerConnectionInternal {}] path to {dest} not found", self.remote);
                     }
                 }
-                UnicastRouteDecision::Forward(next) => {
-                    if let Some(conn) = self.ctx.conn(&next) {
-                        conn.try_send(PeerMessage::Unicast(source, dest, service_id, data))
-                            .print_on_err("[PeerConnectionInternal] send data over peer alias");
-                    } else {
-                        log::warn!("[PeerConnectionInternal {}] peer {next} not found", self.remote);
-                    }
-                }
-                UnicastRouteDecision::DropIngressLoop(next) => {
-                    log::warn!("[PeerConnectionInternal {}] drop unicast relay to {dest}: next hop {next} is ingress connection", self.remote);
-                }
-                UnicastRouteDecision::NoRoute => {
-                    log::warn!("[PeerConnectionInternal {}] path to {dest} not found", self.remote);
-                }
-            },
+            }
         }
         Ok(())
     }

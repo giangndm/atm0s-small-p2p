@@ -11,7 +11,7 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 - Stop condition: continue until 5 consecutive cycles find no new accepted
   issue; currently 341/5 after ISSUE-204.
 - Fix phase status: ISSUE-003, ISSUE-004, ISSUE-005, ISSUE-006, ISSUE-007,
-  ISSUE-002, ISSUE-008, ISSUE-009, ISSUE-021, ISSUE-033, ISSUE-055, ISSUE-103,
+  ISSUE-002, ISSUE-008, ISSUE-009, ISSUE-014, ISSUE-021, ISSUE-033, ISSUE-055, ISSUE-103,
   ISSUE-053, ISSUE-063, ISSUE-139, ISSUE-146, ISSUE-168, ISSUE-170,
   ISSUE-176, ISSUE-189, ISSUE-190, ISSUE-191, ISSUE-192, ISSUE-193,
   ISSUE-194, ISSUE-195, ISSUE-196, ISSUE-197, ISSUE-198, ISSUE-199,
@@ -182,6 +182,14 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Recently Fixed Issues
 
+- ISSUE-014: fixed by binding inbound unicast sender identity to the
+  authenticated immediate peer before delivery or forwarding. Message-body
+  `source` can no longer spoof service-visible unicast sender ids; relayed
+  unicasts now expose previous-hop identity until a future authenticated
+  end-to-end origin protocol exists. Verified with
+  `cargo test unicast_source_must_be_bound_to_authenticated_connection_peer -- --nocapture`,
+  `cargo test forwarded_unicast_source_must_be_bound_to_ingress_peer -- --nocapture`,
+  `cargo test send_relay -- --nocapture`, and `cargo fmt -- --check`.
 - ISSUE-194: fixed by `InboundPeerBindings`, whose default is a strict static
   binding set. Inbound shared-key `ConnectReq.from` claims are now rejected
   unless the claimed peer id is explicitly bound to the observed remote address;

@@ -860,7 +860,7 @@ async fn unicast_source_must_be_bound_to_authenticated_connection_peer() {
     let _service1 = node1.create_service(0.into());
     tokio::spawn(async move { while node1.recv().await.is_ok() {} });
 
-    let (mut node2, addr2) = create_node(false, 2, vec![addr1]).await;
+    let (mut node2, addr2) = create_node(false, 2, vec![addr1.clone()]).await;
     let mut service2 = node2.create_service(0.into());
     tokio::spawn(async move { while node2.recv().await.is_ok() {} });
 
@@ -885,10 +885,65 @@ async fn unicast_source_must_be_bound_to_authenticated_connection_peer() {
         .expect("destination service should receive or reject the injected unicast")
         .expect("destination service channel should stay open");
 
-    assert_ne!(
+    assert_eq!(
         event,
-        P2pServiceEvent::Unicast(forged_source, data),
-        "service must not observe a sender id that was forged inside the message body"
+        P2pServiceEvent::Unicast(addr1.peer_id(), data),
+        "service must see the authenticated connection peer instead of the sender id forged inside the message body"
+    );
+}
+
+#[tokio::test]
+async fn forwarded_unicast_source_must_be_bound_to_ingress_peer() {
+    let (mut node1, _addr1) = create_node(false, 1, vec![]).await;
+    let node1_ctx = node1.ctx.clone();
+    let requester1 = node1.requester();
+    tokio::spawn(async move { while node1.recv().await.is_ok() {} });
+
+    let (mut node2, addr2) = create_node(false, 2, vec![]).await;
+    let node2_ctx = node2.ctx.clone();
+    tokio::spawn(async move { while node2.recv().await.is_ok() {} });
+
+    let (mut node3, addr3) = create_node(false, 3, vec![]).await;
+    let mut service3 = node3.create_service(0.into());
+    let requester3 = node3.requester();
+    tokio::spawn(async move { while node3.recv().await.is_ok() {} });
+
+    requester1.connect(addr2.clone()).await.expect("node1 should connect to relay");
+    requester3.connect(addr2).await.expect("node3 should connect to relay");
+
+    tokio::time::timeout(Duration::from_secs(3), async {
+        loop {
+            if matches!(node2_ctx.router().action(&addr3.peer_id()), Some(RouteAction::Next(_))) {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .expect("relay should learn route to destination");
+
+    let conn = tokio::time::timeout(Duration::from_secs(3), async {
+        loop {
+            if let Some(conn) = node1_ctx.conns().into_iter().next() {
+                return conn;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .expect("node1 should have relay connection");
+
+    let forged_source = PeerId::from(99);
+    let data = b"forged-relay-source".to_vec();
+    conn.try_send(PeerMessage::Unicast(forged_source, addr3.peer_id(), 0.into(), data.clone()))
+        .expect("forged relayed message should be sent over the authenticated connection");
+
+    assert_eq!(
+        tokio::time::timeout(Duration::from_secs(1), service3.recv())
+            .await
+            .expect("destination service should receive forwarded unicast"),
+        Some(P2pServiceEvent::Unicast(PeerId::from(2), data)),
+        "forwarded unicast must carry the authenticated immediate relay, not a forged message source"
     );
 }
 
