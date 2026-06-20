@@ -3883,6 +3883,12 @@ the source of truth for evidence and reviewer decisions.
   - Failure summary: after a missing-alias find starts a scan, local
     registration of that alias does not complete the pending find; a later
     remote `Found` returns `Some(Scan(PeerId(2)))` instead of `Some(Local)`.
+- Fix status: fixed. `AliasControl::Register` now removes any pending find for
+  the registered alias, decrements `P2P_ALIAS_LIVE_FIND_REQUEST`, and completes
+  every waiter with `Some(AliasFoundLocation::Local)` before keeping the
+  existing `NotifySet` broadcast.
+- Verification intent:
+  - `cargo test pending_find_must_prefer_late_local_registration_over_remote_found -- --nocapture`
 
 ### ISSUE-138: Replicated KV snapshot producer declares live version for bounded continuation pages
 

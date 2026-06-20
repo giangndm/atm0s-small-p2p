@@ -383,6 +383,13 @@ impl AliasServiceInternal {
             AliasControl::Register(alias_id) => {
                 let ref_count = self.local.entry(alias_id).or_default();
                 *ref_count += 1;
+                if let Some(req) = self.find_reqs.remove(&alias_id) {
+                    gauge!(P2P_ALIAS_LIVE_FIND_REQUEST).decrement(1);
+                    for tx in req.waits {
+                        tx.send(Some(AliasFoundLocation::Local))
+                            .print_on_err2("[AliasServiceInternal] send query response");
+                    }
+                }
                 self.outs.push_back(InternalOutput::Broadcast(AliasMessage::NotifySet(alias_id)));
             }
             AliasControl::Unregister(alias_id) => {
