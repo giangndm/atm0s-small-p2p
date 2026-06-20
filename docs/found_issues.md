@@ -11,7 +11,7 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 316
+- Current consecutive no-new-issue cycles: 317
 - Stop condition requested by user: continue until 5 consecutive cycles find no
   new accepted issue.
 
@@ -5783,6 +5783,39 @@ the source of truth for evidence and reviewer decisions.
     `src/peer.rs:1092` with `got 2`.
 
 ## No-New-Issue Audit Cycles
+
+### Cycle after ISSUE-204 no-new cycle 317: sanitized churn shutdown storm duplicate
+
+- Result: no accepted non-duplicate issue.
+- Reviewer: `Lagrange the 7th`, forked subagent review, confirmed
+  duplicate/no-new.
+- Source and test evidence reviewed:
+  - `src/tests/fuzz.rs`
+  - `src/peer.rs`
+  - `RUST_LOG=error P2P_FUZZ_SEED=317 P2P_FUZZ_NODES=8 P2P_FUZZ_STEPS=4800 cargo test fuzz_random_sanitized_node_churn_actions_must_not_panic_connection_tasks -- --nocapture`
+    failed with `seed=317, nodes=8, steps=4800`.
+- Evidence summary:
+  - exit status 101; log had 14,071 lines; the fuzz assertion at
+    `src/tests/fuzz.rs:372:5` reported background connection/service task
+    failure.
+  - nine hard shutdown-send panics at `src/peer.rs:133:113` with
+    `should send to main: SendError { .. }`.
+  - `forward peer stopped over peer alias` appeared 13,976 times, with 14,000
+    `no available capacity` markers and 12 `broadcast data over peer alias`
+    markers.
+  - invalid-service and stale-route panic signatures were absent; network
+    churn context included six `connection lost`, ten `closed by peer`, and
+    eight `aborted by peer` markers.
+- Duplicate mapping: ISSUE-139 for the shutdown/closed-main reporting panic;
+  ISSUE-170 for the PeerStopped forwarding/capacity storm context.
+- Root-cause summary impact: no new root cause; reviewer classified the hard
+  failure as the already accepted closed-main shutdown path and the storm
+  volume as already accepted stopped-forwarding pressure behavior.
+- Smallest fix proposal: no summary fix change; keep ISSUE-139 fix proposal to
+  replace shutdown-path `expect("should send to main")` calls at
+  `src/peer.rs:89/92/130/133` with graceful closed-channel handling, and keep
+  ISSUE-170 fix proposal to dedupe/coalesce stopped forwarding with bounded
+  retry/backpressure and TTL/tombstones.
 
 ### Cycle after ISSUE-204 no-new cycle 316: invalid service-id duplicate
 

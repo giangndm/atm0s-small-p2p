@@ -7,9 +7,9 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Accepted issues: 204
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 316
+- Current consecutive no-new-issue cycles: 317
 - Stop condition: continue until 5 consecutive cycles find no new accepted
-  issue; currently 316/5 after ISSUE-204.
+  issue; currently 317/5 after ISSUE-204.
 
 ## Root Cause Summary
 
@@ -2389,6 +2389,17 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Recent No-New Audit
 
+- Cycle after ISSUE-204 no-new cycle 317 ran a sanitized node-churn fuzz pass
+  with forked reviewer `Lagrange the 7th`. The run failed with exit code 101
+  and assertion `seed=317, nodes=8, steps=4800`. The hard failure was
+  duplicate ISSUE-139 evidence: nine `src/peer.rs:133:113` shutdown-send
+  panics with `should send to main: SendError { .. }`. The run also showed
+  duplicate ISSUE-170 storm context: 13,976 `forward peer stopped over peer
+  alias` reports, 14,000 `no available capacity` markers, and 12
+  `broadcast data over peer alias` markers. Invalid-service and stale-route
+  panic signatures were absent. Six `connection lost`, ten `closed by peer`,
+  and eight `aborted by peer` markers were reviewed as churn context. No
+  accepted issue or summary root-cause change was recorded.
 - Cycle after ISSUE-204 no-new cycle 316 ran a broad invalid-action fuzz pass
   with forked reviewer `Godel the 7th`. The run failed with exit code 101 and
   assertion `seed=316, nodes=8, steps=3600`. The hard failure was duplicate
