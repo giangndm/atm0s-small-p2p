@@ -4288,6 +4288,12 @@ the source of truth for evidence and reviewer decisions.
     `PeerMessage::Sync` advertising `PeerId(4)`. After draining the dummy event,
     no `MainEvent::PeerData` arrives within one second, so the advertised route
     cannot be applied and `PeerId(4)` remains unreachable.
+- Fix status: fixed by changing only inbound `PeerMessage::Sync` delivery in
+  `PeerConnectionInternal::on_msg` from lossy `try_send` to bounded
+  `send().await`, so a briefly full main queue backpressures the peer connection
+  task instead of dropping correctness-bearing route/discovery sync. Metrics,
+  lifecycle, outbound alias sync, and peer-stopped paths remain unchanged.
+  Verification: `cargo test valid_sync_must_survive_full_main_event_queue -- --nocapture`.
 
 ### ISSUE-148: Alias shutdown leaves pending cached-hint lookups stuck
 

@@ -175,8 +175,12 @@ impl PeerConnectionInternal {
     async fn on_msg(&mut self, msg: PeerMessage) -> anyhow::Result<()> {
         match msg {
             PeerMessage::Sync { route, advertise } => {
-                if let Err(_e) = self.main_tx.try_send(MainEvent::PeerData(self.conn_id, self.to_id, PeerMainData::Sync { route, advertise })) {
-                    log::warn!("[PeerConnectionInternal {}] queue main loop full", self.remote);
+                if let Err(_e) = self
+                    .main_tx
+                    .send(MainEvent::PeerData(self.conn_id, self.to_id, PeerMainData::Sync { route, advertise }))
+                    .await
+                {
+                    log::warn!("[PeerConnectionInternal {}] main loop closed", self.remote);
                 }
             }
             PeerMessage::PeerStopped(peer_id) => {
