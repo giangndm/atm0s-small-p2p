@@ -4857,8 +4857,24 @@ the source of truth for evidence and reviewer decisions.
   the peer run loop. Register the alias, start traffic processing, and report
   `PeerConnected` through a non-blocking or coalesced lifecycle path; if the
   main queue is full, keep bounded retry state outside the peer traffic loop.
+- Fix status: fixed by replacing the awaited `PeerConnected` startup send with
+  a nonblocking send plus one abortable retry task. A temporarily full main
+  queue no longer prevents `PeerConnectionInternal::run_loop` from processing
+  traffic; the retry task preserves eventual `PeerConnected` delivery when the
+  queue drains. If the main loop is already closed, the existing immediate
+  alias cleanup and teardown metrics path is preserved. On peer-task teardown,
+  any still-pending connected retry is aborted before alias cleanup and
+  `PeerDisconnected` reporting. A retry that has already completed just before
+  teardown can still produce `PeerConnected` followed by `PeerDisconnected`,
+  which matches the connection lifecycle order visible to the main loop.
 - Evidence test:
   - `cargo test peer_connected_must_not_block_authenticated_connection_run_loop_on_full_main_queue -- --nocapture`
+  - Current status: passes after moving the backpressured lifecycle send out of
+    the peer traffic loop.
+  - Related verification:
+    `cargo test authenticated_peer_alias_must_be_cleaned_if_main_loop_closed_before_connected_event -- --nocapture`
+    and
+    `cargo test peer_disconnected_must_not_block_alias_cleanup_on_full_main_queue -- --nocapture`
   - Failure summary: after node1 accepts node2 and its bounded main queue is
     filled, node2 has a registered alias and enqueues a unicast to node1, but
     node1's service receive times out. The authenticated node1 peer task is

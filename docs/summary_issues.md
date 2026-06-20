@@ -15,7 +15,7 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   ISSUE-124, ISSUE-125, ISSUE-126, ISSUE-127, ISSUE-128, ISSUE-129, ISSUE-130,
   ISSUE-131, ISSUE-132, ISSUE-133, ISSUE-134, ISSUE-135, ISSUE-136, ISSUE-137,
   ISSUE-140, ISSUE-143, ISSUE-145, ISSUE-147, ISSUE-148, ISSUE-150, ISSUE-151,
-  ISSUE-152, ISSUE-153, ISSUE-154, ISSUE-155, ISSUE-156,
+  ISSUE-152, ISSUE-153, ISSUE-154, ISSUE-155, ISSUE-156, ISSUE-157,
   ISSUE-053, ISSUE-063, ISSUE-139, ISSUE-146, ISSUE-168, ISSUE-170,
   ISSUE-149, ISSUE-169, ISSUE-174, ISSUE-176, ISSUE-181, ISSUE-189, ISSUE-190, ISSUE-191, ISSUE-192, ISSUE-193,
   ISSUE-194, ISSUE-195, ISSUE-196, ISSUE-197, ISSUE-198, ISSUE-199,
@@ -66,7 +66,7 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Representative issues: ISSUE-049, ISSUE-050, ISSUE-056, ISSUE-118,
   ISSUE-119, ISSUE-120, ISSUE-123, ISSUE-124, ISSUE-125, ISSUE-126,
-  ISSUE-127, ISSUE-136, ISSUE-153, ISSUE-157,
+  ISSUE-127, ISSUE-136, ISSUE-153,
   ISSUE-163, ISSUE-164, ISSUE-178, ISSUE-182, ISSUE-184, ISSUE-198,
   ISSUE-199, ISSUE-200, ISSUE-201, ISSUE-202, ISSUE-203, ISSUE-204.
 - Pattern: some paths drop on `try_send`, some await bounded sends from
@@ -261,6 +261,18 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   response; preserving downstream setup errors would require a broader
   two-phase relay protocol. Verification:
   `cargo test relay_must_not_deliver_downstream_stream_after_upstream_setup_closes -- --nocapture`.
+- ISSUE-157: fixed by replacing the awaited startup `PeerConnected` send with a
+  nonblocking send plus one abortable retry task. A full main event queue no
+  longer parks the authenticated peer task before `run_loop`; temporary
+  backpressure still preserves eventual `PeerConnected` delivery, while an
+  already-closed main loop keeps the existing immediate alias cleanup path. A
+  pending connected retry is aborted during peer teardown before alias cleanup
+  and `PeerDisconnected` reporting; if the retry already completed just before
+  teardown, the main loop may still observe `PeerConnected` followed by
+  `PeerDisconnected`. Verification:
+  `cargo test peer_connected_must_not_block_authenticated_connection_run_loop_on_full_main_queue -- --nocapture`,
+  `cargo test authenticated_peer_alias_must_be_cleaned_if_main_loop_closed_before_connected_event -- --nocapture`, and
+  `cargo test peer_disconnected_must_not_block_alias_cleanup_on_full_main_queue -- --nocapture`.
 - ISSUE-145: fixed by validating `MainEvent::PeerData(conn, peer, ...)`
   against the router's live direct `(ConnectionId, PeerId)` binding before
   applying route sync or discovery advertisements. Stale or mismatched peer-data

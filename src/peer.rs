@@ -8,7 +8,7 @@ use peer_internal::PeerConnectionInternal;
 use quinn::{Connecting, Connection, Incoming, RecvStream, SendStream};
 use serde::{Deserialize, Serialize};
 use tokio::sync::{
-    mpsc::{channel, Sender},
+    mpsc::{channel, error::TrySendError, Sender},
     oneshot,
 };
 
@@ -232,17 +232,33 @@ async fn run_connection<SECURE: HandshakeProtocol>(
     log::info!("[PeerConnection {conn_id}] started {remote}, rtt: {rtt_ms}");
     ctx.register_conn(conn_id, alias);
     gauge!(P2P_LIVE_CONNECTION_COUNT).increment(1);
-    if main_tx.send(MainEvent::PeerConnected(conn_id, to_id, rtt_ms)).await.is_err() {
-        log::warn!("[PeerConnection {conn_id}] main loop closed before connected event");
-        ctx.unregister_conn(&conn_id);
-        emit_connection_teardown_metrics(local_id, to_id);
-        return Ok(());
-    }
+    let mut connected_retry = match main_tx.try_send(MainEvent::PeerConnected(conn_id, to_id, rtt_ms)) {
+        Ok(()) => None,
+        Err(TrySendError::Closed(_)) => {
+            log::warn!("[PeerConnection {conn_id}] main loop closed before connected event");
+            ctx.unregister_conn(&conn_id);
+            emit_connection_teardown_metrics(local_id, to_id);
+            return Ok(());
+        }
+        Err(TrySendError::Full(event)) => {
+            let retry_tx = main_tx.clone();
+            Some(tokio::spawn(async move {
+                if retry_tx.send(event).await.is_err() {
+                    log::warn!("[PeerConnection {conn_id}] main loop closed before delayed connected event");
+                }
+            }))
+        }
+    };
     log::info!("[PeerConnection {conn_id}] run loop for {remote}");
     if let Err(e) = internal.run_loop().await {
         log::error!("[PeerConnection {conn_id}] {remote} error {e}");
     }
     log::info!("[PeerConnection {conn_id}] end loop for {remote}");
+    if let Some(retry) = connected_retry.take() {
+        if !retry.is_finished() {
+            retry.abort();
+        }
+    }
     ctx.unregister_conn(&conn_id);
     emit_connection_teardown_metrics(local_id, to_id);
     let _ = main_tx.send(MainEvent::PeerDisconnected(conn_id, to_id)).await;
