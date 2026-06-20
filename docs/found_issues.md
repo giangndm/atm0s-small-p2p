@@ -3352,6 +3352,10 @@ the source of truth for evidence and reviewer decisions.
 
 ### ISSUE-122: Discovery records unbounded stop tombstones for unknown peers
 
+- Status: fixed by bounding `PeerDiscovery::stopped` at 1,024 entries and
+  deterministically evicting the oldest stopped tombstone after non-seed
+  insertion, with peer-id tie-breaking. Seed stop behavior remains unchanged:
+  configured seeds do not receive tombstones and remain retryable.
 - Category: security, high-load stability, discovery resource exhaustion
 - Score: 68/100
 - Reviewer: `Aristotle the 2nd`, confirmed.
@@ -3377,9 +3381,14 @@ the source of truth for evidence and reviewer decisions.
   which covers tombstones suppressing valid restart advertisements.
 - Evidence test:
   - `cargo test graceful_stop_tombstones_must_be_bounded_for_unknown_peers -- --nocapture`
+  - `cargo test graceful_stop_tombstones_evict_oldest_deterministically -- --nocapture`
   - Failure summary: calling `PeerDiscovery::remove_remote` for 1,025 distinct
     unknown non-seed peer ids leaves 1,025 entries in `discovery.stopped`,
     exceeding the bounded-tombstone assertion.
+  - Fixed summary: stopped-peer tombstones are capped by
+    `MAX_STOPPED_TOMBSTONES`; cap overflow evicts the minimum
+    `(stopped_at, peer_id)` tombstone, preserving newer restart-protection
+    tombstones and deterministic behavior under timestamp ties.
 
 ### ISSUE-123: Local pubsub subscriber event queues are unbounded
 

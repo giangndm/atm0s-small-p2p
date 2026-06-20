@@ -8,6 +8,7 @@ use super::PeerId;
 
 const TIMEOUT_AFTER: u64 = 30_000;
 const MAX_SYNC_ENTRIES: usize = 1024;
+const MAX_STOPPED_TOMBSTONES: usize = 1024;
 
 fn timestamp_is_live(timestamp: u64, now_ms: u64) -> bool {
     timestamp <= now_ms && timestamp.checked_add(TIMEOUT_AFTER).is_some_and(|expires_at| expires_at > now_ms)
@@ -73,6 +74,12 @@ impl PeerDiscovery {
             return;
         }
         self.stopped.insert(*peer, now_ms);
+        if self.stopped.len() > MAX_STOPPED_TOMBSTONES {
+            if let Some(evicted) = self.stopped.iter().map(|(peer, stopped_at)| (*stopped_at, *peer)).min().map(|(_, peer)| peer) {
+                self.stopped.remove(&evicted);
+                log::debug!("[PeerDiscovery] evict stopped tombstone {evicted}");
+            }
+        }
         if self.remotes.remove(peer).is_some() {
             log::info!("[PeerDiscovery] remove stopped peer {peer}");
         }
@@ -141,7 +148,7 @@ impl PeerDiscovery {
 mod test {
     use crate::{discovery::PeerDiscoverySync, PeerAddress, PeerId};
 
-    use super::{is_dialable_advertise_address, PeerDiscovery, MAX_SYNC_ENTRIES, TIMEOUT_AFTER};
+    use super::{is_dialable_advertise_address, PeerDiscovery, MAX_STOPPED_TOMBSTONES, MAX_SYNC_ENTRIES, TIMEOUT_AFTER};
 
     fn peer_addr(addr: &str) -> PeerAddress {
         addr.parse().expect("should parse peer address")
@@ -399,7 +406,6 @@ mod test {
 
     #[test_log::test]
     fn graceful_stop_tombstones_must_be_bounded_for_unknown_peers() {
-        const MAX_STOPPED_TOMBSTONES: usize = 1024;
         let mut discovery = PeerDiscovery::default();
 
         for peer in 0..=MAX_STOPPED_TOMBSTONES {
@@ -411,6 +417,30 @@ mod test {
             "stopped-peer tombstones must be bounded even for unknown non-seed peers, got {}",
             discovery.stopped.len()
         );
+    }
+
+    #[test_log::test]
+    fn graceful_stop_tombstones_evict_oldest_deterministically() {
+        let mut discovery = PeerDiscovery::default();
+
+        for peer in 0..MAX_STOPPED_TOMBSTONES {
+            discovery.remove_remote(200, &PeerId(peer as u64 + 10));
+        }
+
+        let tied_oldest = PeerId(9);
+        discovery.remove_remote(200, &tied_oldest);
+
+        assert_eq!(discovery.stopped.len(), MAX_STOPPED_TOMBSTONES);
+        assert!(
+            !discovery.stopped.contains_key(&tied_oldest),
+            "when tombstones tie on timestamp, the lowest peer id should be evicted deterministically"
+        );
+
+        let oldest = PeerId(2_000);
+        discovery.remove_remote(100, &oldest);
+
+        assert_eq!(discovery.stopped.len(), MAX_STOPPED_TOMBSTONES);
+        assert!(!discovery.stopped.contains_key(&oldest), "the oldest stopped tombstone should be evicted after cap overflow");
     }
 
     #[test_log::test]

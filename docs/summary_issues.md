@@ -11,7 +11,7 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 - Stop condition: continue until 5 consecutive cycles find no new accepted
   issue; currently 341/5 after ISSUE-204.
 - Fix phase status: ISSUE-001, ISSUE-003, ISSUE-004, ISSUE-005, ISSUE-006, ISSUE-007,
-  ISSUE-002, ISSUE-008, ISSUE-009, ISSUE-010, ISSUE-011, ISSUE-012, ISSUE-013, ISSUE-014, ISSUE-015, ISSUE-021, ISSUE-024, ISSUE-033, ISSUE-055, ISSUE-103,
+  ISSUE-002, ISSUE-008, ISSUE-009, ISSUE-010, ISSUE-011, ISSUE-012, ISSUE-013, ISSUE-014, ISSUE-015, ISSUE-021, ISSUE-024, ISSUE-033, ISSUE-055, ISSUE-103, ISSUE-122,
   ISSUE-053, ISSUE-063, ISSUE-139, ISSUE-146, ISSUE-168, ISSUE-170,
   ISSUE-149, ISSUE-169, ISSUE-174, ISSUE-176, ISSUE-181, ISSUE-189, ISSUE-190, ISSUE-191, ISSUE-192, ISSUE-193,
   ISSUE-194, ISSUE-195, ISSUE-196, ISSUE-197, ISSUE-198, ISSUE-199,
@@ -182,6 +182,14 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Recently Fixed Issues
 
+- ISSUE-122: fixed by bounding `PeerDiscovery::stopped` at 1,024 entries and
+  evicting the oldest stopped tombstone after non-seed insertion, with peer-id
+  tie-breaking for deterministic timestamp ties. Configured seeds still skip
+  tombstone insertion and remain retryable. Verified with
+  `cargo test graceful_stop_tombstones_must_be_bounded_for_unknown_peers -- --nocapture`,
+  `cargo test graceful_stop_tombstones_evict_oldest_deterministically -- --nocapture`,
+  `cargo test graceful_stop_tombstone -- --nocapture`,
+  and `cargo fmt -- --check`.
 - ISSUE-181: fixed by validating local discovery advertise addresses in
   `PeerDiscovery::enable_local`. Addresses with an unspecified IP or port zero
   are now warned about, suppressed, and clear any previous local advertise
