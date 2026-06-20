@@ -11,7 +11,7 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 299
+- Current consecutive no-new-issue cycles: 300
 - Stop condition requested by user: continue until 5 consecutive cycles find no
   new accepted issue.
 
@@ -5783,6 +5783,36 @@ the source of truth for evidence and reviewer decisions.
     `src/peer.rs:1092` with `got 2`.
 
 ## No-New-Issue Audit Cycles
+
+### Cycle after ISSUE-204 no-new cycle 300: broad invalid service duplicate
+
+- Result: no accepted non-duplicate issue.
+- Reviewer: `James the 7th`, forked subagent review, confirmed
+  duplicate/no-new.
+- Source and test evidence reviewed:
+  - `src/tests/fuzz.rs`
+  - `src/ctx.rs`
+  - `RUST_LOG=error P2P_FUZZ_SEED=300 P2P_FUZZ_NODES=8 P2P_FUZZ_STEPS=3400 cargo test fuzz_random_node_actions_must_not_panic_connection_tasks -- --nocapture`
+    failed with `seed=300, nodes=8, steps=3400`.
+- Evidence summary:
+  - exit status 101; log had 6937 lines; the fuzz assertion at
+    `src/tests/fuzz.rs:183:5` reported background connection/service task
+    failure.
+  - four hard invalid-service panics at `src/ctx.rs:34:9` with
+    `index out of bounds: the len is 256 but the index is 256`.
+  - `src/router.rs:76`, `should have direct metric`, and `should send to main`
+    counts were zero.
+  - the same run also showed duplicate ISSUE-170 pressure markers:
+    `forward peer stopped over peer alias` 6888 times, `no available capacity`
+    3531 times, and `channel closed` 3373 times.
+- Duplicate mapping: ISSUE-053 for the failing service-table panic; ISSUE-170
+  for secondary stopped-forwarding/capacity storm noise.
+- Root-cause summary impact: no new root cause; reviewer classified the crash
+  as the existing unchecked out-of-range `P2pServiceId(256)` service-table
+  index.
+- Smallest fix proposal: no summary fix change; keep ISSUE-053 fix proposal to
+  bounds-check service IDs before table indexing and drop/reject out-of-range
+  messages.
 
 ### Cycle after ISSUE-204 no-new cycle 299: steady valid clean pass
 
