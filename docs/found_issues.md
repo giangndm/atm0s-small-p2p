@@ -11,7 +11,7 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 302
+- Current consecutive no-new-issue cycles: 303
 - Stop condition requested by user: continue until 5 consecutive cycles find no
   new accepted issue.
 
@@ -5783,6 +5783,40 @@ the source of truth for evidence and reviewer decisions.
     `src/peer.rs:1092` with `got 2`.
 
 ## No-New-Issue Audit Cycles
+
+### Cycle after ISSUE-204 no-new cycle 303: valid stale sync and shutdown duplicates
+
+- Result: no accepted non-duplicate issue.
+- Reviewer: `Hypatia the 7th`, forked subagent review, confirmed
+  duplicate/no-new.
+- Source and test evidence reviewed:
+  - `src/tests/fuzz.rs`
+  - `src/router.rs`
+  - `src/peer.rs`
+  - `RUST_LOG=error P2P_FUZZ_SEED=303 P2P_FUZZ_NODES=8 P2P_FUZZ_STEPS=3600 cargo test fuzz_random_valid_node_actions_must_not_panic_connection_tasks -- --nocapture`
+    failed with `seed=303, nodes=8, steps=3600`.
+- Evidence summary:
+  - exit status 101; log had 4689 lines; the fuzz assertion at
+    `src/tests/fuzz.rs:183:5` reported background connection/service task
+    failure.
+  - three hard stale-sync route panics at `src/router.rs:76:66` with
+    `should have direct metric with apply_sync`.
+  - one hard shutdown-send panic at `src/peer.rs:92:104` with
+    `should send to main: SendError { .. }`.
+  - the same run also showed duplicate ISSUE-170 pressure markers:
+    `forward peer stopped over peer alias` 4646 times, `no available capacity`
+    4192 times, `channel closed` 465 times, and two
+    `endpoint driver future was dropped` markers.
+  - invalid-service-id and path-not-found counts were zero.
+- Duplicate mapping: ISSUE-063 for the stale-sync route panics; ISSUE-139 for
+  the shutdown-send panic; ISSUE-170 for secondary stopped-forwarding/capacity
+  storm noise.
+- Root-cause summary impact: no new root cause; reviewer classified all hard
+  failure signatures as already accepted issues.
+- Smallest fix proposal: no summary fix change; keep ISSUE-063 fix proposal to
+  drop stale route sync when the direct metric is gone, ISSUE-139 fix proposal
+  to gracefully handle closed peer-to-main reporting channels, and ISSUE-170
+  fix proposal to dedupe/coalesce stopped-peer forwarding.
 
 ### Cycle after ISSUE-204 no-new cycle 302: sanitized churn shutdown send panic
 
