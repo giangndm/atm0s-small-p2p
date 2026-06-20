@@ -7,9 +7,9 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Accepted issues: 204
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 53
+- Current consecutive no-new-issue cycles: 54
 - Stop condition: continue until 5 consecutive cycles find no new accepted
-  issue; currently 53/5 after ISSUE-204.
+  issue; currently 54/5 after ISSUE-204.
 
 ## Root Cause Summary
 
@@ -256,6 +256,12 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Recent Fuzz Evidence
 
+- Focused pubsub empty-channel lifecycle review:
+  `cargo test empty_pubsub_channels_must_be_removed_after_last_local_handle_drops -- --nocapture`
+  failed with duplicate evidence for ISSUE-108. Reviewer `Arendt the 4th`
+  confirmed pubsub channel bookkeeping still leaves empty channel state in
+  `PubsubService::channels` after the last local handle drops; 1,025 create/drop
+  cycles retained 1,025 empty entries. No root-cause summary change was needed.
 - Focused pubsub heartbeat resource-bound review:
   `cargo test pubsub_heartbeat_channel_batches_must_be_bounded -- --nocapture`
   failed with duplicate evidence for ISSUE-106. Reviewer `Darwin the 4th`

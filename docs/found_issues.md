@@ -11,7 +11,7 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 53
+- Current consecutive no-new-issue cycles: 54
 - Stop condition requested by user: continue until 5 consecutive cycles find no
   new accepted issue.
 
@@ -5783,6 +5783,25 @@ the source of truth for evidence and reviewer decisions.
     `src/peer.rs:1092` with `got 2`.
 
 ## No-New-Issue Audit Cycles
+
+### Cycle after ISSUE-204 no-new cycle 54: pubsub empty channel duplicate
+
+- Result: no accepted non-duplicate issue.
+- Reviewer: `Arendt the 4th`, forked subagent review, confirmed
+  duplicate-only no-new classification.
+- Source and test evidence reviewed:
+  - `src/service/pubsub_service.rs`
+  - `cargo test empty_pubsub_channels_must_be_removed_after_last_local_handle_drops -- --nocapture`
+    failed at `src/service/pubsub_service.rs:1056:9`.
+- Duplicate or too-close symptoms rejected:
+  - repeated local subscriber create/drop cycles over distinct channel ids
+    leave fully empty `PubsubChannelState` entries in `PubsubService::channels`.
+  - after 1,025 such cycles the service still retained 1,025 empty channel
+    entries, exceeding the bounded-resource assertion.
+  - this maps directly to ISSUE-108: empty pubsub channel state is retained
+    after local handle teardown. Existing score: 60/100.
+- Root-cause summary impact: no new root cause; this source/test cycle
+  strengthens existing ISSUE-108 evidence without adding ISSUE-205.
 
 ### Cycle after ISSUE-204 no-new cycle 53: pubsub heartbeat batch duplicate
 
