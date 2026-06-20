@@ -181,7 +181,7 @@ impl MetricsService {
                             }
                         }
                     }
-                    Some(P2pServiceEvent::Stream(..)) => {}
+                    Some(P2pServiceEvent::Stream(..) | P2pServiceEvent::PeerDisconnected(..)) => {}
                     None => anyhow::bail!("metrics base service channel closed"),
                 }
             }

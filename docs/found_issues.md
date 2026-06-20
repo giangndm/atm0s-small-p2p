@@ -122,7 +122,7 @@ the source of truth for evidence and reviewer decisions.
 - Representative issues: ISSUE-028, ISSUE-029, ISSUE-051, ISSUE-057,
   ISSUE-060, ISSUE-064, ISSUE-065, ISSUE-069 through ISSUE-076, ISSUE-108,
   ISSUE-128 through ISSUE-132, ISSUE-135, ISSUE-139, ISSUE-142, ISSUE-144,
-  ISSUE-148, ISSUE-150, ISSUE-151, ISSUE-161, ISSUE-162, ISSUE-165,
+  ISSUE-148, ISSUE-150, ISSUE-151, ISSUE-161, ISSUE-165,
   ISSUE-167, ISSUE-168, ISSUE-170, ISSUE-179, ISSUE-183, ISSUE-185,
   ISSUE-187, ISSUE-188, ISSUE-193, ISSUE-195.
 - Pattern: requesters, services, peer aliases, channel state, and cached hints
@@ -5066,6 +5066,16 @@ the source of truth for evidence and reviewer decisions.
 
 - Category: correctness, graceful-shutdown stability, service lifecycle
 - Score: 63/100
+- Status: fixed. Accepted peer lifecycle cleanup now fans
+  `P2pServiceEvent::PeerDisconnected(peer)` out to registered services, and
+  replicated KV consumes that event by destroying the matching `RemoteStore`
+  immediately. This reuses the existing `RemoteStore::destroy()` delete-event
+  path, so remote keys are emitted as `KvEvent::Del(Some(peer), key)` during
+  graceful shutdown instead of waiting for `REMOTE_TIMEOUT_MS`. The fanout is
+  nonblocking; a full or closed service queue still falls back to idle-timeout
+  cleanup. Verified with the evidence test below, plus
+  `cargo test single_node -- --nocapture` and
+  `cargo test peer_stopped_must_emit_public_disconnect_event -- --nocapture`.
 - Reviewer: `Franklin the 2nd`, confirmed after `Noether the 2nd` discovery.
 - Affected code:
   - `src/service/replicate_kv_service.rs`: remote KV data is deleted only when

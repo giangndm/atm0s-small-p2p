@@ -161,7 +161,7 @@ impl VisualizationService {
                             }
                         }
                     }
-                    Some(P2pServiceEvent::Stream(..)) => {}
+                    Some(P2pServiceEvent::Stream(..) | P2pServiceEvent::PeerDisconnected(..)) => {}
                     None => anyhow::bail!("visualization base service channel closed"),
                 }
             }

@@ -17,6 +17,7 @@ pub enum P2pServiceEvent {
     Unicast(PeerId, Vec<u8>),
     Broadcast(PeerId, Vec<u8>),
     Stream(PeerId, Vec<u8>, P2pQuicStream),
+    PeerDisconnected(PeerId),
 }
 
 #[derive(Debug, Clone)]

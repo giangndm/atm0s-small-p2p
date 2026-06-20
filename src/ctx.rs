@@ -40,6 +40,10 @@ impl SharedCtxInternal {
         self.services[index].clone()
     }
 
+    fn service_senders(&self) -> Vec<Sender<P2pServiceEvent>> {
+        self.services.iter().filter_map(Clone::clone).collect()
+    }
+
     fn register_conn(&mut self, conn: ConnectionId, alias: PeerConnectionAlias) {
         self.conns.insert(conn, alias);
     }
@@ -186,6 +190,15 @@ impl SharedCtx {
 
     pub fn get_service(&self, service_id: &P2pServiceId) -> Option<Sender<P2pServiceEvent>> {
         self.ctx.read().get_service(service_id)
+    }
+
+    pub fn try_send_peer_disconnected_to_services(&self, peer: PeerId) {
+        let services = self.ctx.read().service_senders();
+        for service in services {
+            if let Err(err) = service.try_send(P2pServiceEvent::PeerDisconnected(peer)) {
+                log::warn!("[SharedCtx] send peer disconnected for {peer} to service failed: {err}");
+            }
+        }
     }
 
     /// check if we already got the message

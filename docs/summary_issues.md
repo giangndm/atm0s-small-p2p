@@ -127,7 +127,7 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 - Representative issues: ISSUE-028, ISSUE-029, ISSUE-051, ISSUE-057,
   ISSUE-060, ISSUE-064, ISSUE-065, ISSUE-069 through ISSUE-076, ISSUE-108,
   ISSUE-128 through ISSUE-132, ISSUE-135, ISSUE-139, ISSUE-142, ISSUE-144,
-  ISSUE-148, ISSUE-150, ISSUE-151, ISSUE-161, ISSUE-162, ISSUE-165,
+  ISSUE-148, ISSUE-150, ISSUE-151, ISSUE-161, ISSUE-165,
   ISSUE-167, ISSUE-168, ISSUE-170, ISSUE-179, ISSUE-183, ISSUE-185,
   ISSUE-187, ISSUE-188, ISSUE-193, ISSUE-195.
 - Pattern: requesters, services, peer aliases, channel state, and cached hints
@@ -685,6 +685,18 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   `cargo test stopped_peer_route_must_not_be_resurrected_by_third_party_sync -- --nocapture`,
   `cargo test graceful_stop_tombstone -- --nocapture`, and
   `cargo test router -- --nocapture`.
+- ISSUE-162: fixed by fanning accepted peer-disconnect lifecycle events to
+  registered services and teaching replicated KV to destroy the matching remote
+  store immediately. Root cause was that graceful `PeerStopped` cleanup updated
+  discovery and routing only; service-owned remote KV state kept waiting for
+  the 10-second idle timeout. The smallest fix adds
+  `P2pServiceEvent::PeerDisconnected(peer)`, sends it nonblocking after
+  accepted peer stop/disconnect handling, and reuses `RemoteStore::destroy()`
+  to emit `KvEvent::Del(Some(peer), key)` rows. Full or closed service queues
+  still fall back to timeout cleanup. Verified with
+  `cargo test replicated_kv_must_delete_remote_data_when_peer_gracefully_stops -- --nocapture`,
+  `cargo test single_node -- --nocapture`, and
+  `cargo test peer_stopped_must_emit_public_disconnect_event -- --nocapture`.
 - ISSUE-004: fixed by the ISSUE-170 ownership-validation follow-up `87cf6ce`.
   `MainEvent::PeerStopped(conn, peer)` is ignored unless `conn` is the direct
   authenticated connection for `peer`, so a third-party stop cannot delete a

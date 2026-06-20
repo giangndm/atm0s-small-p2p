@@ -500,7 +500,7 @@ impl PubsubService {
                 }
                 Ok(())
             }
-            P2pServiceEvent::Stream(..) => Ok(()),
+            P2pServiceEvent::Stream(..) | P2pServiceEvent::PeerDisconnected(..) => Ok(()),
         }
     }
 

@@ -337,6 +337,7 @@ impl<SECURE: HandshakeProtocol> P2pNetwork<SECURE> {
                 self.discovery.remove_remote(now_ms, &peer);
                 self.router.del_peer(&peer);
                 self.neighbours.remove(&conn);
+                self.ctx.try_send_peer_disconnected_to_services(peer);
                 Ok(P2pNetworkEvent::PeerDisconnected(conn, peer))
             }
             MainEvent::PeerConnectError(conn, peer, err) => {
@@ -351,8 +352,14 @@ impl<SECURE: HandshakeProtocol> P2pNetwork<SECURE> {
             }
             MainEvent::PeerDisconnected(conn, peer) => {
                 log::info!("[P2pNetwork] connection {conn} disconnected from {peer}");
+                if !self.router.is_direct_peer(&conn, &peer) {
+                    log::warn!("[P2pNetwork] ignore peer disconnected for {peer} from non-direct connection {conn}");
+                    return Ok(P2pNetworkEvent::Continue);
+                }
+
                 self.router.del_direct(&conn);
                 self.neighbours.remove(&conn);
+                self.ctx.try_send_peer_disconnected_to_services(peer);
                 Ok(P2pNetworkEvent::PeerDisconnected(conn, peer))
             }
             MainEvent::PeerStats(conn, to_peer, metrics) => {

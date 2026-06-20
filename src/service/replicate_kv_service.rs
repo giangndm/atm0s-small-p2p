@@ -124,6 +124,16 @@ where
         }
     }
 
+    pub fn on_peer_disconnected(&mut self, peer: N) {
+        if let Some(mut remote) = self.remotes.remove(&peer) {
+            log::info!("[ReplicatedKvService] remove remote {peer:?} after peer disconnected");
+            remote.destroy();
+            while let Some(event) = remote.pop_out() {
+                Self::push_out(&mut self.outs, event);
+            }
+        }
+    }
+
     fn push_out(outs: &mut VecDeque<Event<N, K, V>>, event: Event<N, K, V>) {
         if outs.len() >= MAX_PENDING_OUT_EVENTS {
             outs.pop_front();
@@ -201,6 +211,9 @@ where
                         }
                     }
                     super::P2pServiceEvent::Stream(..) => {}
+                    super::P2pServiceEvent::PeerDisconnected(peer_id) => {
+                        self.store.on_peer_disconnected(peer_id);
+                    }
                 }
             }
         }

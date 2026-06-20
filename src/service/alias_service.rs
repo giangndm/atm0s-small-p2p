@@ -214,7 +214,7 @@ impl AliasService {
                             self.on_msg(from, msg).await;
                         }
                     }
-                    Some(P2pServiceEvent::Stream(..)) => {},
+                    Some(P2pServiceEvent::Stream(..) | P2pServiceEvent::PeerDisconnected(..)) => {},
                     None => anyhow::bail!("alias base service channel closed"),
                 },
                 control = self.rx.recv() => {

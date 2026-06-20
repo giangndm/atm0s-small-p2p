@@ -67,6 +67,7 @@ async fn main() {
         match event {
             atm0s_small_p2p::P2pServiceEvent::Unicast(..) => {}
             atm0s_small_p2p::P2pServiceEvent::Broadcast(..) => {}
+            atm0s_small_p2p::P2pServiceEvent::PeerDisconnected(..) => {}
             atm0s_small_p2p::P2pServiceEvent::Stream(.., mut p2p_quic_stream) => {
                 tokio::spawn(async move {
                     let mut buf = [0; 65000];

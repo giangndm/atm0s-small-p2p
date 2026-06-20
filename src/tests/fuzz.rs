@@ -93,7 +93,7 @@ async fn run_random_node_action_fuzz(include_known_invalid_service: bool, defaul
                     }
                     service_event = service.recv() => {
                         match service_event {
-                            Some(P2pServiceEvent::Stream(_, _, _stream)) => {}
+                            Some(P2pServiceEvent::Stream(..) | P2pServiceEvent::PeerDisconnected(_)) => {}
                             Some(P2pServiceEvent::Unicast(_, _)) | Some(P2pServiceEvent::Broadcast(_, _)) => {}
                             None => break,
                         }
@@ -223,7 +223,7 @@ async fn spawn_fuzz_node(peer_id: u64) -> RunningFuzzNode {
                 }
                 service_event = service.recv() => {
                     match service_event {
-                        Some(P2pServiceEvent::Stream(_, _, _stream)) => {}
+                        Some(P2pServiceEvent::Stream(..) | P2pServiceEvent::PeerDisconnected(_)) => {}
                         Some(P2pServiceEvent::Unicast(_, _)) | Some(P2pServiceEvent::Broadcast(_, _)) => {}
                         None => break,
                     }
