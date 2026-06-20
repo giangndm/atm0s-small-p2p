@@ -150,6 +150,11 @@ fn encode_publisher_leaved_for_test(channel: PubsubChannelId, generation: u64) -
 }
 
 #[cfg(test)]
+fn encode_subscriber_leaved_for_test(channel: PubsubChannelId, generation: u64) -> Vec<u8> {
+    bincode::serialize(&PubsubMessage::SubscriberLeaved(channel, generation)).expect("test message should serialize")
+}
+
+#[cfg(test)]
 pub(crate) fn encode_empty_heartbeat_for_test() -> Vec<u8> {
     bincode::serialize(&PubsubMessage::Heartbeat(vec![])).expect("test message should serialize")
 }
@@ -206,6 +211,10 @@ impl PubsubChannelState {
 
     fn has_remote_publisher(&self, peer: PeerId) -> bool {
         self.remote_publishers.get(&peer).is_some_and(|state| state.active)
+    }
+
+    fn has_remote_subscriber(&self, peer: PeerId) -> bool {
+        self.remote_subscribers.get(&peer).is_some_and(|state| state.active)
     }
 
     fn active_remote_publishers_count(&self) -> usize {
@@ -500,7 +509,29 @@ impl PubsubService {
                 }
                 Ok(())
             }
-            P2pServiceEvent::Stream(..) | P2pServiceEvent::PeerDisconnected(..) => Ok(()),
+            P2pServiceEvent::Stream(..) => Ok(()),
+            P2pServiceEvent::PeerDisconnected(peer) => {
+                self.on_peer_disconnected(peer);
+                Ok(())
+            }
+        }
+    }
+
+    fn on_peer_disconnected(&mut self, peer: PeerId) {
+        for (channel, state) in self.channels.iter_mut() {
+            if state.remote_publishers.remove(&peer).is_some_and(|role| role.active) {
+                log::info!("[PubsubService] remote peer {peer} disconnected from {channel} as publisher");
+                for sub_tx in state.local_subscribers.values() {
+                    Self::try_send_subscriber_event(sub_tx, SubscriberEvent::PeerLeaved(PeerSrc::Remote(peer)));
+                }
+            }
+
+            if state.remote_subscribers.remove(&peer).is_some_and(|role| role.active) {
+                log::info!("[PubsubService] remote peer {peer} disconnected from {channel} as subscriber");
+                for pub_tx in state.local_publishers.values() {
+                    Self::try_send_publisher_event(pub_tx, PublisherEvent::PeerLeaved(PeerSrc::Remote(peer)));
+                }
+            }
         }
     }
 
@@ -1568,6 +1599,128 @@ mod test {
             "stale PublisherLeaved must not remove a publisher confirmed by a newer heartbeat"
         );
         assert!(sub_rx.try_recv().is_err(), "stale PublisherLeaved must not emit PeerLeaved for a still-live remote publisher");
+    }
+
+    #[tokio::test]
+    async fn pubsub_restart_with_reset_generation_must_restore_remote_membership() {
+        let mut service = test_service();
+        let channel = PubsubChannelId(1);
+        let remote = PeerId::from(2);
+        let (sub_tx, mut sub_rx) = subscriber_event_channel();
+
+        service
+            .on_internal(InternalMsg::SubscriberCreated(subscriber_handle(SubscriberLocalId::rand()), channel, sub_tx))
+            .await
+            .expect("subscriber should be registered");
+
+        service
+            .on_service(P2pServiceEvent::Unicast(remote, encode_heartbeat_for_test_with_generation(channel, true, 2, false, 0)))
+            .await
+            .expect("old live heartbeat should be processed");
+        assert_eq!(sub_rx.try_recv(), Ok(SubscriberEvent::PeerJoined(PeerSrc::Remote(remote))));
+
+        service
+            .on_service(P2pServiceEvent::Unicast(remote, encode_publisher_leaved_for_test(channel, 3)))
+            .await
+            .expect("old leave should be processed");
+        assert_eq!(sub_rx.try_recv(), Ok(SubscriberEvent::PeerLeaved(PeerSrc::Remote(remote))));
+
+        service
+            .on_service(P2pServiceEvent::PeerDisconnected(remote))
+            .await
+            .expect("disconnect should clear remote pubsub tombstone");
+
+        service
+            .on_service(P2pServiceEvent::Unicast(remote, encode_heartbeat_for_test_with_generation(channel, true, 1, false, 0)))
+            .await
+            .expect("fresh post-restart heartbeat should be processed");
+
+        assert!(
+            service.channels.get(&channel).expect("channel should exist").has_remote_publisher(remote),
+            "a restarted peer with reset pubsub generation must be able to restore membership"
+        );
+        assert_eq!(sub_rx.try_recv(), Ok(SubscriberEvent::PeerJoined(PeerSrc::Remote(remote))));
+    }
+
+    #[tokio::test]
+    async fn pubsub_restart_with_reset_subscriber_generation_must_restore_remote_membership() {
+        let mut service = test_service();
+        let channel = PubsubChannelId(1);
+        let remote = PeerId::from(2);
+        let (pub_tx, mut pub_rx) = publisher_event_channel();
+
+        service
+            .on_internal(InternalMsg::PublisherCreated(publisher_handle(PublisherLocalId::rand()), channel, pub_tx))
+            .await
+            .expect("publisher should be registered");
+
+        service
+            .on_service(P2pServiceEvent::Unicast(remote, encode_heartbeat_for_test_with_generation(channel, false, 0, true, 2)))
+            .await
+            .expect("old live heartbeat should be processed");
+        assert_eq!(pub_rx.try_recv(), Ok(PublisherEvent::PeerJoined(PeerSrc::Remote(remote))));
+
+        service
+            .on_service(P2pServiceEvent::Unicast(remote, encode_subscriber_leaved_for_test(channel, 3)))
+            .await
+            .expect("old leave should be processed");
+        assert_eq!(pub_rx.try_recv(), Ok(PublisherEvent::PeerLeaved(PeerSrc::Remote(remote))));
+
+        service
+            .on_service(P2pServiceEvent::PeerDisconnected(remote))
+            .await
+            .expect("disconnect should clear remote pubsub tombstone");
+
+        service
+            .on_service(P2pServiceEvent::Unicast(remote, encode_heartbeat_for_test_with_generation(channel, false, 0, true, 1)))
+            .await
+            .expect("fresh post-restart heartbeat should be processed");
+
+        assert!(
+            service.channels.get(&channel).expect("channel should exist").has_remote_subscriber(remote),
+            "a restarted peer with reset pubsub subscriber generation must be able to restore membership"
+        );
+        assert_eq!(pub_rx.try_recv(), Ok(PublisherEvent::PeerJoined(PeerSrc::Remote(remote))));
+    }
+
+    #[tokio::test]
+    async fn pubsub_peer_disconnect_must_remove_active_remote_membership() {
+        let mut service = test_service();
+        let channel = PubsubChannelId(1);
+        let remote = PeerId::from(2);
+        let (sub_tx, mut sub_rx) = subscriber_event_channel();
+        let (pub_tx, mut pub_rx) = publisher_event_channel();
+
+        service
+            .on_internal(InternalMsg::SubscriberCreated(subscriber_handle(SubscriberLocalId::rand()), channel, sub_tx))
+            .await
+            .expect("subscriber should be registered");
+        service
+            .on_internal(InternalMsg::PublisherCreated(publisher_handle(PublisherLocalId::rand()), channel, pub_tx))
+            .await
+            .expect("publisher should be registered");
+        assert_eq!(sub_rx.try_recv(), Ok(SubscriberEvent::PeerJoined(PeerSrc::Local)));
+        assert_eq!(pub_rx.try_recv(), Ok(PublisherEvent::PeerJoined(PeerSrc::Local)));
+
+        service
+            .on_service(P2pServiceEvent::Unicast(remote, encode_heartbeat_for_test_with_generation(channel, true, 2, true, 2)))
+            .await
+            .expect("remote live heartbeat should be processed");
+        assert_eq!(sub_rx.try_recv(), Ok(SubscriberEvent::PeerJoined(PeerSrc::Remote(remote))));
+        assert_eq!(pub_rx.try_recv(), Ok(PublisherEvent::PeerJoined(PeerSrc::Remote(remote))));
+
+        service.on_service(P2pServiceEvent::PeerDisconnected(remote)).await.expect("disconnect should be processed");
+
+        assert!(
+            !service.channels.get(&channel).expect("channel should exist").has_remote_publisher(remote),
+            "disconnect must remove remote publisher membership"
+        );
+        assert!(
+            !service.channels.get(&channel).expect("channel should exist").has_remote_subscriber(remote),
+            "disconnect must remove remote subscriber membership"
+        );
+        assert_eq!(sub_rx.try_recv(), Ok(SubscriberEvent::PeerLeaved(PeerSrc::Remote(remote))));
+        assert_eq!(pub_rx.try_recv(), Ok(PublisherEvent::PeerLeaved(PeerSrc::Remote(remote))));
     }
 
     #[tokio::test]

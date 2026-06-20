@@ -3,7 +3,7 @@ use std::{collections::HashMap, sync::Arc, time::Duration};
 use anyhow::anyhow;
 use lru::LruCache;
 use parking_lot::RwLock;
-use tokio::sync::mpsc::Sender;
+use tokio::sync::mpsc::{error::TrySendError, Sender};
 
 use crate::{
     msg::{BroadcastMsgId, P2pServiceId, PeerMessage},
@@ -128,6 +128,26 @@ mod tests {
         assert!(!ctx.check_peer_stopped_msg(stopped));
         assert!(ctx.check_peer_stopped_msg(PeerId::from(3)));
     }
+
+    #[tokio::test]
+    async fn peer_disconnected_notification_must_retry_when_service_queue_full() {
+        let mut ctx = SharedCtx::new(PeerId::from(1), SharedRouterTable::new(PeerId::from(1)));
+        let (tx, mut rx) = channel(1);
+        let disconnected = PeerId::from(2);
+
+        tx.try_send(P2pServiceEvent::Unicast(PeerId::from(9), b"filler".to_vec()))
+            .expect("test service queue should accept filler");
+        ctx.set_service(P2pServiceId::from(7), tx);
+
+        ctx.try_send_peer_disconnected_to_services(disconnected);
+
+        assert!(matches!(rx.recv().await, Some(P2pServiceEvent::Unicast(_, _))));
+        assert_eq!(
+            tokio::time::timeout(Duration::from_millis(100), rx.recv()).await,
+            Ok(Some(P2pServiceEvent::PeerDisconnected(disconnected))),
+            "peer disconnect notifications must survive transient full service queues"
+        );
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -195,8 +215,20 @@ impl SharedCtx {
     pub fn try_send_peer_disconnected_to_services(&self, peer: PeerId) {
         let services = self.ctx.read().service_senders();
         for service in services {
-            if let Err(err) = service.try_send(P2pServiceEvent::PeerDisconnected(peer)) {
-                log::warn!("[SharedCtx] send peer disconnected for {peer} to service failed: {err}");
+            match service.try_send(P2pServiceEvent::PeerDisconnected(peer)) {
+                Ok(()) => {}
+                Err(TrySendError::Full(event)) => {
+                    tokio::spawn(async move {
+                        match tokio::time::timeout(BROADCAST_ADMISSION_TIMEOUT, service.send(event)).await {
+                            Ok(Ok(())) => {}
+                            Ok(Err(err)) => log::warn!("[SharedCtx] send peer disconnected for {peer} to service failed: {err}"),
+                            Err(_) => log::warn!("[SharedCtx] send peer disconnected for {peer} to service timed out"),
+                        }
+                    });
+                }
+                Err(TrySendError::Closed(_)) => {
+                    log::warn!("[SharedCtx] send peer disconnected for {peer} to service failed: receiving half closed");
+                }
             }
         }
     }

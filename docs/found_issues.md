@@ -6518,6 +6518,66 @@ the source of truth for evidence and reviewer decisions.
     verifies that only one queued `PeerMessage::Unicast` metrics response is
     admitted for that requester.
 
+### ISSUE-205: Pubsub membership generations reset on restart
+
+- Category: bad-network correctness, restart recovery, pubsub membership
+- Score: 62/100
+- Reviewer: `Noether the 5th`, confirmed.
+- Affected code:
+  - `src/service/pubsub_service.rs`: remote publisher/subscriber state used a
+    process-local monotonic generation without an incarnation/epoch.
+  - `src/service/pubsub_service.rs`: remote role updates ignored
+    `generation <= state.generation`, including fresh post-restart joins with
+    reset generation `1`.
+- Impact: if peer B observed peer A leave a pubsub channel at generation `3`,
+  B retained an inactive tombstone at generation `3`. If A restarted with the
+  same `PeerId`, its first fresh publisher/subscriber heartbeat or join reset
+  to generation `1`, so B ignored it as stale and kept treating A as absent.
+  This can create persistent pubsub delivery gaps after legitimate node
+  restarts, especially in bad-network churn where leave/heartbeat ordering is
+  already noisy. This is distinct from ISSUE-155, which covered stale
+  same-process leave ordering, and ISSUE-093, which covered discovery
+  tombstones rather than pubsub membership state.
+- Root cause: pubsub freshness compared only a volatile per-role generation.
+  That generation is monotonic only within a single process lifetime, but the
+  receiver stores it across remote restarts under the same peer id.
+- Minimal fix proposal: keep same-process generation checks for reordered
+  pubsub join/leave/heartbeat messages, but treat authenticated
+  `PeerDisconnected(peer)` as a remote incarnation boundary. On disconnect,
+  remove that peer's remote publisher/subscriber state from every channel and
+  notify local handles for any active roles removed. A real restart then joins
+  from a clean slate with generation `1` without requiring a cross-process
+  clock or persisted epoch.
+- Fix status: fixed by handling `P2pServiceEvent::PeerDisconnected(peer)` in
+  `PubsubService`, removing remote publisher/subscriber tombstones and active
+  memberships for that peer, and emitting local `PeerLeaved(Remote(peer))`
+  events for active roles that disappear on disconnect. `SharedCtx` now also
+  retries peer-disconnect service notifications when a service queue is
+  transiently full, so high-load queue pressure does not silently preserve the
+  stale pubsub tombstone.
+- Evidence tests:
+  - Red evidence before fix:
+    `cargo test pubsub_restart_with_reset_generation_must_restore_remote_membership -- --nocapture`
+    failed at `src/service/pubsub_service.rs` because the remote publisher
+    stayed inactive after a fresh post-restart generation reset.
+  - Verification after fix:
+    `cargo test pubsub_restart_with_reset_generation_must_restore_remote_membership -- --nocapture`
+    passes.
+  - Verification after fix:
+    `cargo test pubsub_restart_with_reset_subscriber_generation_must_restore_remote_membership -- --nocapture`
+    passes.
+  - Regression guard:
+    `cargo test pubsub_peer_disconnect_must_remove_active_remote_membership -- --nocapture`
+    passes and ensures disconnect removes active remote publisher and
+    subscriber roles while notifying local handles.
+  - High-load delivery guard:
+    `cargo test peer_disconnected_notification_must_retry_when_service_queue_full -- --nocapture`
+    passes and ensures a full service queue does not drop the disconnect event
+    needed to clear pubsub tombstones.
+  - Existing same-process stale-ordering guard:
+    `cargo test stale_pubsub_leave_must_not_remove_membership_after_newer_heartbeat -- --nocapture`
+    passes.
+
 ## No-New-Issue Audit Cycles
 
 ### Cycle after ISSUE-204 no-new cycle 341: valid churn stale-sync duplicate
