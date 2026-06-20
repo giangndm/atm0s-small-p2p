@@ -7,9 +7,9 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Accepted issues: 204
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 61
+- Current consecutive no-new-issue cycles: 62
 - Stop condition: continue until 5 consecutive cycles find no new accepted
-  issue; currently 61/5 after ISSUE-204.
+  issue; currently 62/5 after ISSUE-204.
 
 ## Root Cause Summary
 
@@ -256,6 +256,12 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Recent Fuzz Evidence
 
+- Valid-action fuzz review:
+  `RUST_LOG=error P2P_FUZZ_SEED=62 P2P_FUZZ_NODES=8 P2P_FUZZ_STEPS=1800 cargo test fuzz_random_valid_node_actions_must_not_panic_connection_tasks -- --nocapture`
+  failed with duplicate evidence for ISSUE-063. Reviewer `Carson the 4th`
+  confirmed the `src/router.rs:76` panic is the existing stale
+  `PeerData::Sync` after route removal root cause, with no secondary
+  capacity/channel/path storm observed.
 - Sanitized churn fuzz review:
   `RUST_LOG=error P2P_FUZZ_SEED=61 P2P_FUZZ_NODES=8 P2P_FUZZ_STEPS=1800 cargo test fuzz_random_sanitized_node_churn_actions_must_not_panic_connection_tasks -- --nocapture`
   failed with duplicate evidence for ISSUE-139. Reviewer `Lorentz the 4th`
