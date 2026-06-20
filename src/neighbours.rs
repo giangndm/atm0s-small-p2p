@@ -12,6 +12,10 @@ impl NetworkNeighbours {
         self.conns.insert(conn_id, conn);
     }
 
+    pub fn get(&self, conn_id: &ConnectionId) -> Option<&PeerConnection> {
+        self.conns.get(conn_id)
+    }
+
     pub fn has_peer(&self, peer: &PeerId) -> bool {
         self.conns.values().any(|c| c.is_connected() && c.peer_id().eq(&Some(*peer)))
     }

@@ -336,6 +336,11 @@ impl<SECURE: HandshakeProtocol> P2pNetwork<SECURE> {
             }
             MainEvent::PeerConnectError(conn, peer, err) => {
                 log::error!("[P2pNetwork] connection {conn} outgoing: {peer:?} error {err}");
+                if self.neighbours.get(&conn).is_some_and(|conn| conn.is_connected()) {
+                    log::warn!("[P2pNetwork] ignore stale connect error for already connected {conn}");
+                    return Ok(P2pNetworkEvent::Continue);
+                }
+
                 self.neighbours.remove(&conn);
                 Ok(P2pNetworkEvent::Continue)
             }
