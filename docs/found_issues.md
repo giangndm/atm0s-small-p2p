@@ -4761,8 +4761,24 @@ the source of truth for evidence and reviewer decisions.
   observed generation and ignore leave messages older than the stored live
   generation. Keep the first change scoped to pubsub membership lifecycle
   messages.
+- Fix status: fixed by adding per-role pubsub membership generations to
+  publisher/subscriber join, leave, and heartbeat control messages. Remote
+  publisher/subscriber state now records the latest generation plus an active
+  flag, so stale leave messages with older generations cannot remove a
+  heartbeat-confirmed live member, and stale active messages cannot resurrect a
+  newer tombstone. Local first-join and last-leave transitions increment the
+  role generation before broadcasting; heartbeats carry the current generation
+  for both roles. This changes pubsub control-message wire serialization, so
+  mixed old/new nodes will not be membership-control compatible without a
+  separate versioning layer.
 - Evidence test:
   - `cargo test stale_pubsub_leave_must_not_remove_membership_after_newer_heartbeat -- --nocapture`
+  - Current status: passes with a newer publisher heartbeat generation followed
+    by an older publisher-leave generation.
+  - Related verification:
+    `cargo test pubsub_remote_heartbeat_restore -- --nocapture`
+    and
+    `cargo test pubsub_remote_single_pair_pub_first -- --nocapture`
   - Failure summary: after a heartbeat with `publish=true` inserts `PeerId(2)`
     into `remote_publishers`, a delayed `PublisherLeaved(channel)` from the same
     peer removes it; expected stale leave to preserve the heartbeat-confirmed
