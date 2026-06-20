@@ -877,6 +877,16 @@ the source of truth for evidence and reviewer decisions.
   - `cargo test should_reject_overflowing_route_sync_metric_without_panic -- --nocapture`
   - Failure summary: applying a route sync with `(u8::MAX, u16::MAX)` panics at
     `src/router.rs:196` with `attempt to add with overflow`.
+- Fix status: fixed by checked metric composition in `RouterTable::apply_sync`.
+  Peer-advertised route metrics are combined with the direct-link metric only
+  through `PathMetric::checked_add`, and rows that overflow `u8` hop count or
+  `u16` RTT are rejected before route memory or active paths are updated.
+  Verified with the evidence test plus
+  `cargo test should_not_overflow_score_during_best_path_selection -- --nocapture`,
+  `cargo test should_reject_over_max_hops_for_forwarding -- --nocapture`,
+  `cargo test apply_correct_direct_sync -- --nocapture`,
+  `cargo test create_correct_direct_sync -- --nocapture`,
+  and `cargo fmt -- --check`. Reviewer accepted.
 
 ### ISSUE-034: Replicated KV full sync accepts future-version snapshot slots
 

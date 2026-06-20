@@ -11,8 +11,9 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 - Stop condition: continue until 5 consecutive cycles find no new accepted
   issue; currently 341/5 after ISSUE-204.
 - Fix phase status: ISSUE-003, ISSUE-004, ISSUE-005, ISSUE-006, ISSUE-007,
-  ISSUE-008, ISSUE-009, ISSUE-055, ISSUE-103, ISSUE-053, ISSUE-063, ISSUE-139, and
-  ISSUE-170 have focused fixes committed. ISSUE-003 is fixed by `cfc8e57`;
+  ISSUE-008, ISSUE-009, ISSUE-033, ISSUE-055, ISSUE-103, ISSUE-053, ISSUE-063,
+  ISSUE-139, and ISSUE-170 have focused fixes committed. ISSUE-003 is fixed by
+  `cfc8e57`;
   ISSUE-004 is covered by the ISSUE-170 ownership-validation follow-up
   `87cf6ce`; earlier fixes are `648cfd0`, `2cbf096`, `15b788c`, and
   `4997404`.
@@ -253,6 +254,17 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   and `cargo fmt -- --check`. Reviewer `Dewey the 7th` approved. Separate
   accepted discovery failures for local-peer advertisements and configured-seed
   overrides still reproduce and remain outside this fix.
+- ISSUE-033: fixed by checked route metric composition in
+  `RouterTable::apply_sync`. Peer-advertised metrics are combined with the
+  direct-link metric through `PathMetric::checked_add`, and overflowing hop or
+  RTT rows are rejected before they can update route memory or active paths.
+  Verified with
+  `cargo test should_reject_overflowing_route_sync_metric_without_panic -- --nocapture`,
+  `cargo test should_not_overflow_score_during_best_path_selection -- --nocapture`,
+  `cargo test should_reject_over_max_hops_for_forwarding -- --nocapture`,
+  `cargo test apply_correct_direct_sync -- --nocapture`,
+  `cargo test create_correct_direct_sync -- --nocapture`,
+  and `cargo fmt -- --check`. Reviewer accepted.
 - ISSUE-055: fixed by rejecting discovery sync rows whose peer id is already
   configured as a seed, preserving static seed addresses as authoritative.
   Verified with

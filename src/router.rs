@@ -4,7 +4,7 @@
 //! - Direct rtt always has lower rtt
 //! - MAX_HOPS will reject some loop after direct connection disconnected
 
-use std::{collections::BTreeMap, ops::AddAssign, sync::Arc};
+use std::{collections::BTreeMap, sync::Arc};
 
 use lru::LruCache;
 use parking_lot::RwLock;
@@ -90,12 +90,12 @@ impl RouterTable {
             log::debug!("[RouterTable] ignore stale sync from removed connection {conn}");
             return;
         };
-        let mut new_paths = BTreeMap::<PeerId, PathMetric>::from_iter(sync.0.into_iter().filter_map(|(peer, mut metric)| {
+        let mut new_paths = BTreeMap::<PeerId, PathMetric>::from_iter(sync.0.into_iter().filter_map(|(peer, metric)| {
             if self.peer_id.eq(&peer) {
                 return None;
             }
 
-            metric += direct_metric;
+            let metric = metric.checked_add(direct_metric)?;
             (metric.relay_hops <= MAX_HOPS).then_some((peer, metric))
         }));
 
@@ -222,12 +222,12 @@ impl PathMetric {
     fn score(&self) -> u32 {
         self.rtt_ms as u32 + self.relay_hops as u32 * 10
     }
-}
 
-impl AddAssign for PathMetric {
-    fn add_assign(&mut self, rhs: Self) {
-        self.relay_hops += rhs.relay_hops;
-        self.rtt_ms += rhs.rtt_ms;
+    fn checked_add(self, rhs: Self) -> Option<Self> {
+        Some(Self {
+            relay_hops: self.relay_hops.checked_add(rhs.relay_hops)?,
+            rtt_ms: self.rtt_ms.checked_add(rhs.rtt_ms)?,
+        })
     }
 }
 
