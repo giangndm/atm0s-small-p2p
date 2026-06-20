@@ -11,7 +11,7 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 319
+- Current consecutive no-new-issue cycles: 320
 - Stop condition requested by user: continue until 5 consecutive cycles find no
   new accepted issue.
 
@@ -5783,6 +5783,33 @@ the source of truth for evidence and reviewer decisions.
     `src/peer.rs:1092` with `got 2`.
 
 ## No-New-Issue Audit Cycles
+
+### Cycle after ISSUE-204 no-new cycle 320: churn stale-sync duplicate
+
+- Result: no accepted non-duplicate issue.
+- Reviewer: `Maxwell the 7th`, forked subagent review, confirmed
+  duplicate/no-new.
+- Source and test evidence reviewed:
+  - `src/tests/fuzz.rs`
+  - `src/router.rs`
+  - `RUST_LOG=error P2P_FUZZ_SEED=320 P2P_FUZZ_NODES=8 P2P_FUZZ_STEPS=4800 cargo test fuzz_random_node_churn_actions_must_not_panic_connection_tasks -- --nocapture`
+    failed with `seed=320, nodes=8, steps=4800`.
+- Evidence summary:
+  - exit status 101; log had 29 lines; the fuzz assertion at
+    `src/tests/fuzz.rs:372:5` reported background connection/service task
+    failure.
+  - one hard stale-route panic at `src/router.rs:76:66` with
+    `should have direct metric with apply_sync`.
+  - invalid-service, shutdown-send, and PeerStopped capacity-storm signatures
+    were absent.
+  - network churn context included six `connection lost` markers, one
+    `closed by peer` marker, and one `aborted by peer` marker.
+- Duplicate mapping: ISSUE-063 for the stale-sync panic.
+- Root-cause summary impact: no new root cause; reviewer classified the hard
+  failure as the already accepted stale-sync/direct-route race.
+- Smallest fix proposal: no summary fix change; keep ISSUE-063 fix proposal to
+  guard stale route-sync application when the direct metric has already gone
+  missing.
 
 ### Cycle after ISSUE-204 no-new cycle 319: valid action stale-sync storm duplicate
 
