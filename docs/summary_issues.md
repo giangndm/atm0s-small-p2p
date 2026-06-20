@@ -7,9 +7,9 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Accepted issues: 204
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 296
+- Current consecutive no-new-issue cycles: 297
 - Stop condition: continue until 5 consecutive cycles find no new accepted
-  issue; currently 296/5 after ISSUE-204.
+  issue; currently 297/5 after ISSUE-204.
 
 ## Root Cause Summary
 
@@ -2389,6 +2389,15 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Recent No-New Audit
 
+- Cycle after ISSUE-204 no-new cycle 297 ran a valid-action fuzz pass with
+  forked reviewer `Peirce the 7th`. The run failed with exit code 101 and
+  assertion `seed=297, nodes=8, steps=3400`. The hard failure was duplicate
+  ISSUE-063 evidence: one `src/router.rs:76:66` stale-sync panic with `should
+  have direct metric with apply_sync`. The single closed-by-peer marker was
+  reviewed as teardown fallout from the same disconnect/routing race. No
+  stopped-forwarding, capacity storm, invalid service-id, or shutdown-send
+  evidence was present. No accepted issue or summary root-cause change was
+  recorded.
 - Cycle after ISSUE-204 no-new cycle 296 ran a broad invalid-action fuzz pass
   with forked reviewer `Helmholtz the 7th`. The run failed with exit code 101
   and assertion `seed=296, nodes=8, steps=3200`. The hard failure was duplicate

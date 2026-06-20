@@ -11,7 +11,7 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 296
+- Current consecutive no-new-issue cycles: 297
 - Stop condition requested by user: continue until 5 consecutive cycles find no
   new accepted issue.
 
@@ -5783,6 +5783,36 @@ the source of truth for evidence and reviewer decisions.
     `src/peer.rs:1092` with `got 2`.
 
 ## No-New-Issue Audit Cycles
+
+### Cycle after ISSUE-204 no-new cycle 297: isolated valid stale sync panic
+
+- Result: no accepted non-duplicate issue.
+- Reviewer: `Peirce the 7th`, forked subagent review, confirmed
+  duplicate/no-new.
+- Source and test evidence reviewed:
+  - `src/tests/fuzz.rs`
+  - `src/router.rs`
+  - `RUST_LOG=error P2P_FUZZ_SEED=297 P2P_FUZZ_NODES=8 P2P_FUZZ_STEPS=3400 cargo test fuzz_random_valid_node_actions_must_not_panic_connection_tasks -- --nocapture`
+    failed with `seed=297, nodes=8, steps=3400`.
+- Evidence summary:
+  - exit status 101; log had 21 lines; the fuzz assertion at
+    `src/tests/fuzz.rs:183:5` reported background connection/service task
+    failure.
+  - one hard stale-sync panic at `src/router.rs:76:66` with
+    `should have direct metric with apply_sync`.
+  - one closed-by-peer marker was reviewed as teardown fallout from the same
+    disconnect/routing race.
+  - no invalid-service-id, shutdown-send, stopped-forwarding, broadcast-alias,
+    path-not-found, no-capacity, connection-lost, channel-closed, or
+    aborted-by-peer evidence.
+- Duplicate mapping: ISSUE-063.
+- Root-cause summary impact: no new root cause; this strengthens existing
+  stale route-sync race evidence without stopped-forwarding amplification.
+- Smallest fix proposal: in `RouterTable::apply_sync`, replace the
+  direct-metric `expect` with guarded stale-sync handling; if
+  `self.directs.get(&conn)` is missing, drop or ignore that sync update and
+  avoid mutating route state from it, and consider clearing queued sync state
+  when a direct route is removed.
 
 ### Cycle after ISSUE-204 no-new cycle 296: broad invalid service panic
 
