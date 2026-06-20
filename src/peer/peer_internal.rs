@@ -285,11 +285,15 @@ async fn send_local_service_event(remote: SocketAddr, service_id: P2pServiceId, 
 }
 
 async fn open_bi(connection: Connection, source: PeerId, dest: PeerId, service: P2pServiceId, meta: Vec<u8>) -> anyhow::Result<P2pQuicStream> {
-    let (send, recv) = tokio::time::timeout(OPEN_BI_TIMEOUT, connection.open_bi()).await??;
-    let mut stream = P2pQuicStream::new(recv, send);
-    write_object::<_, _, MAX_CONTROL_STREAM_PKT>(&mut stream, &StreamConnectReq { source, dest, service, meta }).await?;
-    let res = wait_object::<_, StreamConnectRes, MAX_CONTROL_STREAM_PKT>(&mut stream).await?;
-    res.map(|_| stream).map_err(|e| anyhow!("{e}"))
+    tokio::time::timeout(OPEN_BI_TIMEOUT, async {
+        let (send, recv) = connection.open_bi().await?;
+        let mut stream = P2pQuicStream::new(recv, send);
+        write_object::<_, _, MAX_CONTROL_STREAM_PKT>(&mut stream, &StreamConnectReq { source, dest, service, meta }).await?;
+        let res = wait_object::<_, StreamConnectRes, MAX_CONTROL_STREAM_PKT>(&mut stream).await?;
+        res.map(|_| stream).map_err(|e| anyhow!("{e}"))
+    })
+    .await
+    .map_err(|_| anyhow!("open_bi stream setup timed out"))?
 }
 
 async fn accept_bi(authenticated_ingress_peer: PeerId, mut stream: P2pQuicStream, ctx: SharedCtx) -> anyhow::Result<()> {

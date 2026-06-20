@@ -4143,6 +4143,10 @@ the source of truth for evidence and reviewer decisions.
 
 ### ISSUE-149: Stream open waits forever if the peer withholds `StreamConnectRes`
 
+- Status: fixed. `open_bi` now applies `OPEN_BI_TIMEOUT` to the whole stream
+  setup sequence: opening the bidirectional QUIC stream, writing
+  `StreamConnectReq`, and waiting for `StreamConnectRes`. A peer that withholds
+  the response now causes `open_stream` to return an error instead of hanging.
 - Category: bad-network stability, stream setup, timeout correctness
 - Score: 74/100
 - Reviewer: `Ptolemy the 2nd`, confirmed.
@@ -4167,11 +4171,10 @@ the source of truth for evidence and reviewer decisions.
   destination service delivery fails.
 - Evidence test:
   - `cargo test open_stream_must_timeout_when_peer_withholds_connect_response -- --nocapture`
-  - Failure summary: a raw authenticated peer accepts the stream-open
+  - Fixed summary: a raw authenticated peer accepts the stream-open
     bidirectional stream and reads `StreamConnectReq`, but withholds
-    `StreamConnectRes`. The caller's `open_stream` task does not return within
-    2.5 seconds, so the test aborts it and fails; expected stream setup to
-    return `Err` within the setup timeout instead of hanging.
+    `StreamConnectRes`; the caller's `open_stream` now returns `Err` within
+    the setup timeout instead of hanging.
 
 ### ISSUE-150: Stale pubsub destroy controls create phantom channel state
 
