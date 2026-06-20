@@ -11,7 +11,7 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 122
+- Current consecutive no-new-issue cycles: 123
 - Stop condition requested by user: continue until 5 consecutive cycles find no
   new accepted issue.
 
@@ -5783,6 +5783,44 @@ the source of truth for evidence and reviewer decisions.
     `src/peer.rs:1092` with `got 2`.
 
 ## No-New-Issue Audit Cycles
+
+### Cycle after ISSUE-204 no-new cycle 123: valid random duplicate stale sync and PeerStopped storm
+
+- Result: no accepted non-duplicate issue.
+- Reviewer: `Lagrange the 5th`, forked subagent review, confirmed
+  `DUPLICATE/NO_NEW`.
+- Source and test evidence reviewed:
+  - `src/tests/fuzz.rs`
+  - `src/router.rs`
+  - `src/peer/peer_internal.rs`
+  - `RUST_LOG=error P2P_FUZZ_SEED=123 P2P_FUZZ_NODES=8 P2P_FUZZ_STEPS=1800 cargo test fuzz_random_valid_node_actions_must_not_panic_connection_tasks -- --nocapture`
+    failed.
+- Evidence summary:
+  - exit status 101; `0 passed; 1 failed`; the fuzz assertion at
+    `src/tests/fuzz.rs:183:5` detected background connection/service task
+    panics.
+  - three `src/router.rs:76:66` panics with
+    `should have direct metric with apply_sync`.
+  - heavy `PeerStopped` backpressure storm: 11,573 `no available capacity`,
+    665 `channel closed`, 12,190 `forward peer stopped over peer alias` logs,
+    and 12,239 ERROR lines.
+  - one `[PeerConnectionInternal] answer open_bi got error internal channel
+    error` line from `src/peer/peer_internal.rs:167`; reviewer classified it
+    as a dropped internal response channel during cancellation/shutdown, not
+    distinct accepted issue evidence.
+  - no `src/ctx.rs:34` index-out-of-bounds evidence.
+  - no `src/peer.rs:89/92/130/133` `should send to main` evidence.
+  - no WARN, `broadcast data over peer alias`, `path not found`, or
+    connect-answer logs.
+- Duplicate mapping:
+  - primary: the `src/router.rs:76` panics map directly to ISSUE-063: stale
+    `PeerData::Sync` reached `RouterTable::apply_sync` after the direct route
+    for that connection had been removed.
+  - secondary: the forwarded `PeerStopped` no-capacity/channel-closed storm maps
+    to ISSUE-170: stop forwarding lacks dedupe/TTL/tombstone suppression in
+    cyclic meshes.
+- Root-cause summary impact: no new root cause; this strengthens existing
+  ISSUE-063 and ISSUE-170 evidence without adding a new issue.
 
 ### Cycle after ISSUE-204 no-new cycle 122: broad random duplicate invalid service panic
 

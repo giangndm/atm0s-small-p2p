@@ -7,9 +7,9 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Accepted issues: 204
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 122
+- Current consecutive no-new-issue cycles: 123
 - Stop condition: continue until 5 consecutive cycles find no new accepted
-  issue; currently 122/5 after ISSUE-204.
+  issue; currently 123/5 after ISSUE-204.
 
 ## Root Cause Summary
 
@@ -256,6 +256,21 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Recent Fuzz Evidence
 
+- Valid-action fuzz review:
+  `RUST_LOG=error P2P_FUZZ_SEED=123 P2P_FUZZ_NODES=8 P2P_FUZZ_STEPS=1800 cargo test fuzz_random_valid_node_actions_must_not_panic_connection_tasks -- --nocapture`
+  failed with duplicate evidence for ISSUE-063 and ISSUE-170. Reviewer
+  `Lagrange the 5th` confirmed the three `src/router.rs:76` direct-metric
+  panics are the existing stale `PeerData::Sync` after direct-route removal
+  root cause, while the 11,573 no-capacity, 665 channel-closed, and 12,190
+  forwarded-stop logs are the existing stop-forwarding amplification root
+  cause. The one `src/peer/peer_internal.rs:167` dropped `open_bi` response
+  channel line was classified as lifecycle noise, not distinct accepted issue
+  evidence. No ISSUE-053 or ISSUE-139 evidence was present. The smallest fix
+  proposals remain unchanged: discard stale sync for missing direct metrics,
+  bound `PeerStopped` propagation with dedupe/tombstones or TTL so a stopped-peer
+  notification is forwarded at most once per live connection, and optionally
+  downgrade dropped `open_bi` response sends during cancellation/shutdown to
+  debug-level lifecycle handling. No new issue was created.
 - Broad random fuzz review:
   `RUST_LOG=error P2P_FUZZ_SEED=122 P2P_FUZZ_NODES=8 P2P_FUZZ_STEPS=1800 cargo test fuzz_random_node_actions_must_not_panic_connection_tasks -- --nocapture`
   failed with duplicate evidence for ISSUE-053 only. Reviewer
