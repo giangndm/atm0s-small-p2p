@@ -11,7 +11,7 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 331
+- Current consecutive no-new-issue cycles: 332
 - Stop condition requested by user: continue until 5 consecutive cycles find no
   new accepted issue.
 
@@ -5783,6 +5783,39 @@ the source of truth for evidence and reviewer decisions.
     `src/peer.rs:1092` with `got 2`.
 
 ## No-New-Issue Audit Cycles
+
+### Cycle after ISSUE-204 no-new cycle 332: broad random stale-sync and stop-storm duplicate
+
+- Result: no accepted non-duplicate issue.
+- Reviewer: `Faraday the 7th`, forked subagent review, confirmed
+  duplicate/no-new.
+- Source and test evidence reviewed:
+  - `src/tests/fuzz.rs`
+  - `src/router.rs`
+  - `src/peer/peer_internal.rs`
+  - `RUST_LOG=error P2P_FUZZ_SEED=332 P2P_FUZZ_NODES=8 P2P_FUZZ_STEPS=5200 cargo test fuzz_random_node_actions_must_not_panic_connection_tasks -- --nocapture`
+    failed with `seed=332, nodes=8, steps=5200`.
+- Evidence summary:
+  - exit status 101; log had 4,117 lines; the fuzz assertion at
+    `src/tests/fuzz.rs:183:5` reported background connection/service task
+    failure.
+  - two stale-sync panics at `src/router.rs:76:66` with
+    `should have direct metric with apply_sync`.
+  - 4,090 forwarded-stop alias error logs, including 3,072
+    `no available capacity` markers and 1,022 `channel closed` markers.
+  - invalid-service, shutdown-send, broadcast-failure,
+    endpoint-driver-dropped, and internal-channel-error signatures were
+    absent.
+  - one closed-by-peer marker was reviewed as churn context.
+- Duplicate mapping: ISSUE-063 for stale sync after direct-route removal;
+  ISSUE-170 for PeerStopped forwarding storm/backpressure failure.
+- Root-cause summary impact: no new root cause; reviewer classified the router
+  panic and forwarded-stop storm as already accepted issues.
+- Smallest fix proposal: no summary fix change; keep ISSUE-063 fix proposal to
+  guard/drop stale sync when the direct metric is gone and clear queued sync
+  state when direct routes are removed; keep ISSUE-170 fix proposal to
+  dedupe/coalesce `PeerStopped` forwarding with bounded retry/backpressure and
+  TTL/tombstone suppression.
 
 ### Cycle after ISSUE-204 no-new cycle 331: sanitized churn incoming shutdown-send duplicate
 
