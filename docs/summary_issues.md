@@ -7,9 +7,9 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Accepted issues: 204
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 173
+- Current consecutive no-new-issue cycles: 174
 - Stop condition: continue until 5 consecutive cycles find no new accepted
-  issue; currently 173/5 after ISSUE-204.
+  issue; currently 174/5 after ISSUE-204.
 
 ## Root Cause Summary
 
@@ -256,6 +256,19 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Recent Fuzz Evidence
 
+- Valid-action fuzz review:
+  `RUST_LOG=error P2P_FUZZ_SEED=174 P2P_FUZZ_NODES=8 P2P_FUZZ_STEPS=1800 cargo test fuzz_random_valid_node_actions_must_not_panic_connection_tasks -- --nocapture`
+  failed with duplicate evidence for ISSUE-063 and ISSUE-139. Reviewer
+  `Lorentz the 5th` confirmed the two `src/router.rs:76` direct-metric panic
+  markers are the existing stale `PeerData::Sync` root cause, and the
+  `src/peer.rs:92` `should send to main: SendError` panic is the existing
+  peer-connect-error reporting after main-loop shutdown root cause. No
+  ISSUE-053 or ISSUE-170 evidence was present, and there were no backpressure
+  storm, lifecycle, open_bi, connect-answer, WARN, or path-not-found logs.
+  Smallest fixes remain unchanged: replace the direct-route `expect` with a
+  guarded lookup/drop for stale sync, and replace peer connect-error reporting
+  `expect` calls with normal teardown handling when the main receiver is
+  closed. No new issue was created.
 - Broad random fuzz review:
   `RUST_LOG=error P2P_FUZZ_SEED=173 P2P_FUZZ_NODES=8 P2P_FUZZ_STEPS=1800 cargo test fuzz_random_node_actions_must_not_panic_connection_tasks -- --nocapture`
   failed with duplicate evidence for ISSUE-053 only. Reviewer
