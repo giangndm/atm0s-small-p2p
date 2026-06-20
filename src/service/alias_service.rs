@@ -342,25 +342,38 @@ impl AliasServiceInternal {
                 }
             }
             AliasMessage::NotFound(alias_id) => {
-                if let Some(slot) = self.cache.get_mut(&alias_id) {
-                    slot.remove(&from);
-                    if slot.is_empty() {
-                        counter!(P2P_ALIAS_CACHE_POP).increment(1);
-                        self.cache.pop(&alias_id);
-                    }
-                }
-
-                if let Some(req) = self.find_reqs.get_mut(&alias_id) {
+                let mut should_scan = false;
+                let accepted = if let Some(req) = self.find_reqs.get_mut(&alias_id) {
                     match req.state {
                         FindRequestState::CheckHint(_, ref mut hint_peers) => {
-                            hint_peers.remove(&from);
-                            if hint_peers.is_empty() {
-                                //not found => should switch to scan
-                                req.state = FindRequestState::Scan(now);
-                                self.outs.push_back(InternalOutput::Broadcast(AliasMessage::Scan(alias_id)));
+                            if hint_peers.remove(&from) {
+                                if hint_peers.is_empty() {
+                                    //not found => should switch to scan
+                                    req.state = FindRequestState::Scan(now);
+                                    should_scan = true;
+                                }
+                                true
+                            } else {
+                                false
                             }
                         }
-                        FindRequestState::Scan(_) => {}
+                        FindRequestState::Scan(_) => false,
+                    }
+                } else {
+                    false
+                };
+
+                if accepted {
+                    if let Some(slot) = self.cache.get_mut(&alias_id) {
+                        slot.remove(&from);
+                        if slot.is_empty() {
+                            counter!(P2P_ALIAS_CACHE_POP).increment(1);
+                            self.cache.pop(&alias_id);
+                        }
+                    }
+
+                    if should_scan {
+                        self.outs.push_back(InternalOutput::Broadcast(AliasMessage::Scan(alias_id)));
                     }
                 }
             }

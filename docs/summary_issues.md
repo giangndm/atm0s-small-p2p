@@ -15,6 +15,7 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   ISSUE-124, ISSUE-125, ISSUE-126, ISSUE-127, ISSUE-128, ISSUE-129, ISSUE-130,
   ISSUE-131, ISSUE-132, ISSUE-133, ISSUE-134, ISSUE-135, ISSUE-136, ISSUE-137,
   ISSUE-140, ISSUE-143, ISSUE-145, ISSUE-147, ISSUE-148, ISSUE-150, ISSUE-151,
+  ISSUE-152,
   ISSUE-053, ISSUE-063, ISSUE-139, ISSUE-146, ISSUE-168, ISSUE-170,
   ISSUE-149, ISSUE-169, ISSUE-174, ISSUE-176, ISSUE-181, ISSUE-189, ISSUE-190, ISSUE-191, ISSUE-192, ISSUE-193,
   ISSUE-194, ISSUE-195, ISSUE-196, ISSUE-197, ISSUE-198, ISSUE-199,
@@ -48,7 +49,7 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Representative issues: ISSUE-034, ISSUE-037, ISSUE-038, ISSUE-047,
   ISSUE-059, ISSUE-071, ISSUE-081 through ISSUE-089, ISSUE-095, ISSUE-099,
-  ISSUE-110, ISSUE-111, ISSUE-143, ISSUE-152,
+  ISSUE-110, ISSUE-111, ISSUE-143,
   ISSUE-154, ISSUE-155, ISSUE-158, ISSUE-166, ISSUE-171, ISSUE-175,
   ISSUE-186.
 - Pattern: replicated-KV, alias, metrics, visualization, and pubsub flows accept
@@ -208,6 +209,14 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   direct connection ids in the router, so a still-running connection ticker
   cannot recreate the stopped peer's direct route. Verification:
   `cargo test peer_stopped_route_must_not_be_resurrected_by_connection_ticker -- --nocapture`.
+- ISSUE-152: fixed by correlating `AliasMessage::NotFound` with an active
+  cached-hint lookup before mutating alias cache. Only pending
+  `FindRequestState::CheckHint` peers can evict their own hint and trigger scan
+  failover; unsolicited or `Scan`-state `NotFound` messages are ignored.
+  Verification:
+  `cargo test stale_not_found_must_not_evict_alias_cache_without_pending_check -- --nocapture`,
+  `cargo test test_find_cached_alias_not_found -- --nocapture`, and
+  `cargo test shutdown_from_cached_hint_must_unblock_pending_find -- --nocapture`.
 - ISSUE-145: fixed by validating `MainEvent::PeerData(conn, peer, ...)`
   against the router's live direct `(ConnectionId, PeerId)` binding before
   applying route sync or discovery advertisements. Stale or mismatched peer-data

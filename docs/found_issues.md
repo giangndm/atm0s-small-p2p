@@ -4471,6 +4471,15 @@ the source of truth for evidence and reviewer decisions.
     `find_reqs` entry exists, a `NotFound(AliasId(7))` from `PeerId(2)` removes
     the cache entry; expected stale `NotFound` without a matching pending
     `CheckHint` request to leave the valid cached hint intact.
+- Fix status: fixed. `AliasMessage::NotFound` now first correlates the response
+  to an active `FindRequestState::CheckHint` request and only accepts it when
+  the sender was one of the pending hint peers. Accepted `NotFound` responses
+  remove that peer from cache, pop the alias cache entry if empty, and
+  transition to scan when no hint peers remain. Unsolicited responses and
+  `Scan`-state `NotFound` messages are ignored. Verification:
+  - `cargo test stale_not_found_must_not_evict_alias_cache_without_pending_check -- --nocapture`
+  - `cargo test test_find_cached_alias_not_found -- --nocapture`
+  - `cargo test shutdown_from_cached_hint_must_unblock_pending_find -- --nocapture`
 
 ### ISSUE-153: Discovery ticks enqueue duplicate connect commands without coalescing
 
