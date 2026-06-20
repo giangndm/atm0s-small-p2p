@@ -11,7 +11,7 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 314
+- Current consecutive no-new-issue cycles: 315
 - Stop condition requested by user: continue until 5 consecutive cycles find no
   new accepted issue.
 
@@ -5783,6 +5783,34 @@ the source of truth for evidence and reviewer decisions.
     `src/peer.rs:1092` with `got 2`.
 
 ## No-New-Issue Audit Cycles
+
+### Cycle after ISSUE-204 no-new cycle 315: sanitized churn shutdown-send duplicate
+
+- Result: no accepted non-duplicate issue.
+- Reviewer: `Kant the 7th`, forked subagent review, confirmed
+  duplicate/no-new.
+- Source and test evidence reviewed:
+  - `src/tests/fuzz.rs`
+  - `src/peer.rs`
+  - `RUST_LOG=error P2P_FUZZ_SEED=315 P2P_FUZZ_NODES=8 P2P_FUZZ_STEPS=3600 cargo test fuzz_random_sanitized_node_churn_actions_must_not_panic_connection_tasks -- --nocapture`
+    failed with `seed=315, nodes=8, steps=3600`.
+- Evidence summary:
+  - exit status 101; log had 66 lines; the fuzz assertion at
+    `src/tests/fuzz.rs:372:5` reported background connection/service task
+    failure.
+  - eight hard shutdown-send panics at `src/peer.rs:133:113` with
+    `should send to main: SendError { .. }`.
+  - invalid-service, stale-route, and PeerStopped capacity-storm signatures
+    were absent.
+  - network churn context included ten `closed by peer`, ten `aborted by peer`,
+    and one `connection lost` marker.
+- Duplicate mapping: ISSUE-139 for the shutdown/closed-main reporting panic.
+- Root-cause summary impact: no new root cause; reviewer classified the hard
+  failure as the already accepted closed-main shutdown path.
+- Smallest fix proposal: no summary fix change; keep ISSUE-139 fix proposal to
+  replace shutdown-path `expect("should send to main")` calls at
+  `src/peer.rs:89/92/130/133` with graceful closed-channel handling and
+  terminal task exit.
 
 ### Cycle after ISSUE-204 no-new cycle 314: churn stale-sync storm duplicate
 
