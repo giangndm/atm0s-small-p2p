@@ -220,7 +220,7 @@ async fn stream_source_must_be_bound_to_authenticated_connection_peer() {
     let _service1 = node1.create_service(0.into());
     tokio::spawn(async move { while node1.recv().await.is_ok() {} });
 
-    let (mut node2, addr2) = create_node(false, 2, vec![addr1]).await;
+    let (mut node2, addr2) = create_node(false, 2, vec![addr1.clone()]).await;
     let mut service2 = node2.create_service(0.into());
     tokio::spawn(async move { while node2.recv().await.is_ok() {} });
 
@@ -249,10 +249,71 @@ async fn stream_source_must_be_bound_to_authenticated_connection_peer() {
 
     match event {
         P2pServiceEvent::Stream(source, received_meta, _stream) => {
-            assert_ne!(
+            assert_eq!(
                 (source, received_meta),
-                (forged_source, meta),
-                "service must not observe a stream sender id that was forged inside the stream request"
+                (addr1.peer_id(), meta),
+                "service must observe the authenticated connection peer, not the stream request's forged source"
+            );
+        }
+        other => panic!("expected a stream event, got {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn relayed_stream_source_must_be_bound_to_previous_hop_peer() {
+    let (mut node1, addr1) = create_node(true, 1, vec![]).await;
+    let node1_ctx = node1.ctx.clone();
+    let service1 = node1.create_service(0.into());
+    tokio::spawn(async move { while node1.recv().await.is_ok() {} });
+
+    let (mut node2, addr2) = create_node(false, 2, vec![addr1]).await;
+    let _service2 = node2.create_service(0.into());
+    tokio::spawn(async move { while node2.recv().await.is_ok() {} });
+
+    let (mut node3, addr3) = create_node(false, 3, vec![addr2.clone()]).await;
+    let mut service3 = node3.create_service(0.into());
+    tokio::spawn(async move { while node3.recv().await.is_ok() {} });
+
+    tokio::time::timeout(Duration::from_secs(3), async {
+        loop {
+            if matches!(service1.router().action(&addr3.peer_id()), Some(RouteAction::Next(_))) {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .expect("node1 should learn a relay route to node3 through node2");
+
+    let conn = tokio::time::timeout(Duration::from_secs(3), async {
+        loop {
+            if let Some(conn) = node1_ctx.conns().into_iter().next() {
+                return conn;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .expect("node1 should have a connection to relay node2");
+
+    let forged_source = PeerId::from(99);
+    let meta = b"forged-relay-stream-source".to_vec();
+    let _opened_stream = conn
+        .open_stream(0.into(), forged_source, addr3.peer_id(), meta.clone())
+        .await
+        .expect("forged relayed stream setup should complete");
+
+    let event = tokio::time::timeout(Duration::from_secs(1), service3.recv())
+        .await
+        .expect("destination service should receive the relayed stream")
+        .expect("destination service channel should stay open");
+
+    match event {
+        P2pServiceEvent::Stream(source, received_meta, _stream) => {
+            assert_eq!(
+                (source, received_meta),
+                (addr2.peer_id(), meta),
+                "final destination must observe the authenticated previous-hop relay peer, not a forged stream source"
             );
         }
         other => panic!("expected a stream event, got {other:?}"),
@@ -560,15 +621,13 @@ async fn relay_must_not_deliver_downstream_stream_after_upstream_setup_closes() 
     )
     .await
     .expect("raw node1 should send stream connect request");
-    send.finish()
-        .expect("raw node1 should finish the upstream send side after setup request");
-    recv.stop(VarInt::from_u32(0))
-        .expect("raw node1 should stop the upstream receive side before setup ack");
+    send.finish().expect("raw node1 should finish the upstream send side after setup request");
+    recv.stop(VarInt::from_u32(0)).expect("raw node1 should stop the upstream receive side before setup ack");
 
     let delivered = tokio::time::timeout(Duration::from_millis(500), service3.recv()).await;
 
     assert!(
-        !matches!(delivered, Ok(Some(P2pServiceEvent::Stream(source, received_meta, _))) if source == raw_node1_id && received_meta == meta),
+        !matches!(delivered, Ok(Some(P2pServiceEvent::Stream(_, received_meta, _))) if received_meta == meta),
         "relay must not deliver a downstream stream after the upstream stream was closed before setup ack"
     );
 }

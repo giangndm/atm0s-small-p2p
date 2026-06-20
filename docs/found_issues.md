@@ -588,6 +588,12 @@ the source of truth for evidence and reviewer decisions.
 
 ### ISSUE-018: Stream sender identity is not bound to the authenticated connection
 
+- Status: fixed. Inbound stream setup now treats the accepted bidirectional
+  stream's authenticated ingress peer as authoritative, normalizes decoded
+  `StreamConnectReq.source` to that peer, and uses the normalized source for
+  local `P2pServiceEvent::Stream` delivery and relayed `open_stream(...)`
+  requests. This intentionally preserves the existing wire/API shape and does
+  not address ISSUE-156 relay setup cancellation.
 - Category: security, correctness, pipe reliability
 - Score: 93/100
 - Reviewer: `Rawls`, confirmed.
@@ -602,9 +608,11 @@ the source of truth for evidence and reviewer decisions.
   tricked into trusting the wrong remote identity.
 - Evidence test:
   - `cargo test stream_source_must_be_bound_to_authenticated_connection_peer -- --nocapture`
-  - Failure summary: node2 receives
-    `P2pServiceEvent::Stream(PeerId(99), ...)` from a stream opened over
-    node1's authenticated connection.
+  - `cargo test relayed_stream_source_must_be_bound_to_previous_hop_peer -- --nocapture`
+  - Fixed summary: direct forged stream setup now delivers
+    `P2pServiceEvent::Stream(PeerId(1), ...)` over node1's authenticated
+    connection, and relayed forged stream setup delivers the previous-hop relay
+    peer id at the final destination.
 
 ### ISSUE-019: Alias local registration refcount overflows after 255 guards
 

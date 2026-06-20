@@ -292,56 +292,63 @@ async fn open_bi(connection: Connection, source: PeerId, dest: PeerId, service: 
     res.map(|_| stream).map_err(|e| anyhow!("{e}"))
 }
 
-async fn accept_bi(to_peer: PeerId, mut stream: P2pQuicStream, ctx: SharedCtx) -> anyhow::Result<()> {
+async fn accept_bi(authenticated_ingress_peer: PeerId, mut stream: P2pQuicStream, ctx: SharedCtx) -> anyhow::Result<()> {
     let req = wait_object::<_, StreamConnectReq, MAX_CONTROL_STREAM_PKT>(&mut stream).await?;
     let StreamConnectReq { dest, source, service, meta } = req;
+    let effective_source = authenticated_ingress_peer;
+    if source != effective_source {
+        log::warn!("[PeerConnectionInternal {authenticated_ingress_peer}] normalize forged stream source {source} from authenticated peer {effective_source}");
+    }
+
     match ctx.router().action(&dest) {
         Some(RouteAction::Local) => {
             if let Some(service_tx) = ctx.get_service(&service) {
-                log::info!("[PeerConnectionInternal {to_peer}] stream service {service} source {source} to dest {dest} => process local");
+                log::info!("[PeerConnectionInternal {authenticated_ingress_peer}] stream service {service} source {effective_source} to dest {dest} => process local");
                 write_object::<_, _, MAX_CONTROL_STREAM_PKT>(&mut stream, &Ok::<_, String>(())).await?;
                 service_tx
-                    .send(P2pServiceEvent::Stream(source, meta, stream))
+                    .send(P2pServiceEvent::Stream(effective_source, meta, stream))
                     .await
                     .print_on_err("[PeerConnectionInternal] send accepted stream to service");
                 Ok(())
             } else {
-                log::warn!("[PeerConnectionInternal {to_peer}] stream service {service} source {source} to dest {dest} => service not found");
+                log::warn!("[PeerConnectionInternal {authenticated_ingress_peer}] stream service {service} source {effective_source} to dest {dest} => service not found");
                 write_object::<_, _, MAX_CONTROL_STREAM_PKT>(&mut stream, &Err::<(), _>("service not found".to_string())).await?;
                 Err(anyhow!("service not found"))
             }
         }
         Some(RouteAction::Next(next)) => {
             if let Some(alias) = ctx.conn(&next) {
-                log::info!("[PeerConnectionInternal {to_peer}] stream service {service} source {source} to dest {dest} => forward to {next}");
-                match alias.open_stream(service, source, dest, meta).await {
+                log::info!("[PeerConnectionInternal {authenticated_ingress_peer}] stream service {service} source {effective_source} to dest {dest} => forward to {next}");
+                match alias.open_stream(service, effective_source, dest, meta).await {
                     Ok(mut next_stream) => {
                         write_object::<_, _, MAX_CONTROL_STREAM_PKT>(&mut stream, &Ok::<_, String>(())).await?;
-                        log::info!("[PeerConnectionInternal {to_peer}] stream service {service} source {source} to dest {dest} => start copy_bidirectional");
+                        log::info!("[PeerConnectionInternal {authenticated_ingress_peer}] stream service {service} source {effective_source} to dest {dest} => start copy_bidirectional");
                         match copy_bidirectional(&mut next_stream, &mut stream).await {
                             Ok(stats) => {
-                                log::info!("[PeerConnectionInternal {to_peer}] stream service {service} source {source} to dest {dest} done {stats:?}");
+                                log::info!("[PeerConnectionInternal {authenticated_ingress_peer}] stream service {service} source {effective_source} to dest {dest} done {stats:?}");
                             }
                             Err(err) => {
-                                log::error!("[PeerConnectionInternal {to_peer}] stream service {service} source {source} to dest {dest} err {err}");
+                                log::error!("[PeerConnectionInternal {authenticated_ingress_peer}] stream service {service} source {effective_source} to dest {dest} err {err}");
                             }
                         }
                         Ok(())
                     }
                     Err(err) => {
-                        log::error!("[PeerConnectionInternal {to_peer}] stream service {service} source {source} to dest {dest} => open bi error {err}");
+                        log::error!("[PeerConnectionInternal {authenticated_ingress_peer}] stream service {service} source {effective_source} to dest {dest} => open bi error {err}");
                         write_object::<_, _, MAX_CONTROL_STREAM_PKT>(&mut stream, &Err::<(), _>(err.to_string())).await?;
                         Err(err)
                     }
                 }
             } else {
-                log::warn!("[PeerConnectionInternal {to_peer}] new stream with service {service} source {source} to dest {dest} => but connection for next {next} not found");
+                log::warn!(
+                    "[PeerConnectionInternal {authenticated_ingress_peer}] new stream with service {service} source {effective_source} to dest {dest} => but connection for next {next} not found"
+                );
                 write_object::<_, _, MAX_CONTROL_STREAM_PKT>(&mut stream, &Err::<(), _>("route not found".to_string())).await?;
                 Err(anyhow!("route not found"))
             }
         }
         None => {
-            log::warn!("[PeerConnectionInternal {to_peer}] new stream with service {service} source {source} to dest {dest} => but route path not found");
+            log::warn!("[PeerConnectionInternal {authenticated_ingress_peer}] new stream with service {service} source {effective_source} to dest {dest} => but route path not found");
             write_object::<_, _, MAX_CONTROL_STREAM_PKT>(&mut stream, &Err::<(), _>("route not found".to_string())).await?;
             Err(anyhow!("route not found"))
         }

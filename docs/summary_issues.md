@@ -15,7 +15,7 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   ISSUE-053, ISSUE-063, ISSUE-139, ISSUE-146, ISSUE-168, ISSUE-170,
   ISSUE-176, ISSUE-189, ISSUE-190, ISSUE-191, ISSUE-192, ISSUE-193,
   ISSUE-194, ISSUE-195, ISSUE-196, ISSUE-197, ISSUE-198, ISSUE-199,
-  ISSUE-200, ISSUE-201, ISSUE-202, ISSUE-203, and ISSUE-204 have focused
+  ISSUE-200, ISSUE-201, ISSUE-202, ISSUE-203, ISSUE-204, and ISSUE-018 have focused
   fixes committed.
   ISSUE-003 is fixed by `cfc8e57`;
   ISSUE-004 is covered by the ISSUE-170 ownership-validation follow-up
@@ -182,6 +182,15 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Recently Fixed Issues
 
+- ISSUE-018: fixed by treating the accepted bidirectional stream's
+  authenticated ingress peer as the authoritative stream source. Decoded
+  `StreamConnectReq.source` is normalized to that peer before local
+  `P2pServiceEvent::Stream` delivery or relay `open_stream(...)`, preserving
+  the existing wire/API shape. Verified with
+  `cargo test stream_source_must_be_bound_to_authenticated_connection_peer -- --nocapture`,
+  `cargo test relayed_stream_source_must_be_bound_to_previous_hop_peer -- --nocapture`,
+  and `cargo fmt -- --check`. ISSUE-156 remains separate for relay setup
+  cancellation.
 - ISSUE-014: fixed by binding inbound unicast sender identity to the
   authenticated immediate peer before delivery or forwarding. Message-body
   `source` can no longer spoof service-visible unicast sender ids; relayed
