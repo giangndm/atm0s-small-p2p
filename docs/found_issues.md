@@ -422,6 +422,11 @@ the source of truth for evidence and reviewer decisions.
 
 ### ISSUE-010: Route sync payloads are unbounded at application level
 
+- Status: fixed. Route and discovery sync payloads now have a 1,024-entry
+  application-level cap. Oversized inbound route/discovery syncs are rejected
+  before per-entry allocation or iteration, outbound route/discovery syncs are
+  truncated with `take(1024)`, and discovery debug logging records only the
+  entry count instead of the full peer-supplied payload.
 - Category: high-load stability, resource exhaustion
 - Score: 84/100
 - Reviewer: `Bernoulli`, confirmed.
@@ -435,8 +440,12 @@ the source of truth for evidence and reviewer decisions.
   messages.
 - Evidence test:
   - `cargo test should_reject_excessive_route_sync_entries -- --nocapture`
-  - Failure summary: a 1,100-entry route sync is accepted and advertised,
-    exceeding the test cap of 1,024.
+  - `cargo test discovery_sync_must_reject_excessive_entries -- --nocapture`
+  - `cargo test create_sync_must_cap_outbound_route_entries -- --nocapture`
+  - `cargo test create_sync_for_must_cap_outbound_discovery_entries -- --nocapture`
+  - Fixed summary: 1,100-entry inbound route/discovery syncs are rejected
+    without populating route or discovery state, and outbound sync creation is
+    capped at 1,024 entries.
 
 ### ISSUE-011: `open_stream` succeeds after destination service receiver is closed
 

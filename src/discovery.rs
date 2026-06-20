@@ -7,6 +7,7 @@ use crate::{NetworkAddress, PeerAddress};
 use super::PeerId;
 
 const TIMEOUT_AFTER: u64 = 30_000;
+const MAX_SYNC_ENTRIES: usize = 1024;
 
 fn timestamp_is_live(timestamp: u64, now_ms: u64) -> bool {
     timestamp <= now_ms && timestamp.checked_add(TIMEOUT_AFTER).is_some_and(|expires_at| expires_at > now_ms)
@@ -75,12 +76,18 @@ impl PeerDiscovery {
                 .filter(|(k, _)| !dest.eq(k))
                 .map(|(k, (v1, v2))| (*k, *v1, v2.clone()))
                 .chain(iter)
+                .take(MAX_SYNC_ENTRIES)
                 .collect::<Vec<_>>(),
         )
     }
 
     pub fn apply_sync(&mut self, now_ms: u64, sync: PeerDiscoverySync) {
-        log::debug!("[PeerDiscovery] apply sync with addrs: {:?}", sync.0);
+        log::debug!("[PeerDiscovery] apply sync with {} addrs", sync.0.len());
+        if sync.0.len() > MAX_SYNC_ENTRIES {
+            log::debug!("[PeerDiscovery] ignore oversized sync: {} addrs exceeds cap {MAX_SYNC_ENTRIES}", sync.0.len());
+            return;
+        }
+
         for (peer, last_updated, address) in sync.0.into_iter() {
             if !timestamp_is_live(last_updated, now_ms) {
                 continue;
@@ -124,7 +131,7 @@ impl PeerDiscovery {
 mod test {
     use crate::{discovery::PeerDiscoverySync, PeerAddress, PeerId};
 
-    use super::{PeerDiscovery, TIMEOUT_AFTER};
+    use super::{PeerDiscovery, MAX_SYNC_ENTRIES, TIMEOUT_AFTER};
 
     fn peer_addr(addr: &str) -> PeerAddress {
         addr.parse().expect("should parse peer address")
@@ -229,6 +236,35 @@ mod test {
             vec![fresh_addr],
             "duplicate discovery rows for one peer must be rejected or resolved by newest timestamp, not by attacker-controlled row order"
         );
+    }
+
+    #[test_log::test]
+    fn discovery_sync_must_reject_excessive_entries() {
+        let mut discovery = PeerDiscovery::default();
+        let huge_sync = (10_000..11_100)
+            .map(|id| {
+                let peer = peer_addr(&format!("{id}@127.0.0.1:{}", 9000 + id - 10_000));
+                (peer.peer_id(), 100, peer.network_address().clone())
+            })
+            .collect::<Vec<_>>();
+
+        discovery.apply_sync(100, PeerDiscoverySync(huge_sync));
+
+        assert_eq!(discovery.remotes().next(), None, "oversized discovery syncs must be rejected without creating remote peers");
+    }
+
+    #[test_log::test]
+    fn create_sync_for_must_cap_outbound_discovery_entries() {
+        let mut discovery = PeerDiscovery::default();
+
+        for id in 1..=1_100 {
+            let peer = peer_addr(&format!("{id}@127.0.0.1:{}", 9000 + id));
+            discovery.apply_sync(100, PeerDiscoverySync(vec![(peer.peer_id(), 100, peer.network_address().clone())]));
+        }
+
+        let sync = discovery.create_sync_for(100, &PeerId(2_000));
+
+        assert_eq!(sync.0.len(), MAX_SYNC_ENTRIES, "outbound discovery syncs must cap the number of advertised entries");
     }
 
     #[test_log::test]

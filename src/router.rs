@@ -20,6 +20,7 @@ use super::PeerId;
 const MAX_HOPS: u8 = 6;
 const PATH_SWITCH_SCORE_MARGIN: u32 = 2;
 const REMOVED_DIRECT_CACHE_SIZE: usize = 8192;
+const MAX_SYNC_ENTRIES: usize = 1024;
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Clone, Copy)]
 pub struct PathMetric {
@@ -76,6 +77,7 @@ impl RouterTable {
                 .iter()
                 .map(|(addr, history)| (*addr, history.best_metric().expect("should have best")))
                 .filter(|(addr, metric)| !dest.eq(addr) && !self.peer_id.eq(addr) && metric.relay_hops <= MAX_HOPS && !self.route_uses_peer_as_next_hop(addr, dest))
+                .take(MAX_SYNC_ENTRIES)
                 .collect::<Vec<_>>(),
         )
     }
@@ -93,6 +95,12 @@ impl RouterTable {
             log::debug!("[RouterTable] ignore stale sync from removed connection {conn}");
             return;
         };
+
+        if sync.0.len() > MAX_SYNC_ENTRIES {
+            log::debug!("[RouterTable] ignore oversized sync from {from_peer}: {} routes exceeds cap {MAX_SYNC_ENTRIES}", sync.0.len());
+            return;
+        }
+
         let mut seen_peers = BTreeSet::new();
         let mut new_paths = BTreeMap::<PeerId, PathMetric>::new();
         for (peer, metric) in sync.0 {
@@ -357,7 +365,7 @@ impl SharedRouterTable {
 mod tests {
     use crate::{router::RouterTableSync, ConnectionId, PeerId};
 
-    use super::{RouteAction, RouterTable, MAX_HOPS};
+    use super::{RouteAction, RouterTable, MAX_HOPS, MAX_SYNC_ENTRIES};
 
     #[test_log::test]
     fn route_local() {
@@ -635,7 +643,6 @@ mod tests {
 
     #[test_log::test]
     fn should_reject_excessive_route_sync_entries() {
-        const MAX_ALLOWED_SYNC_ROUTES: usize = 1024;
         let mut table = RouterTable::new(PeerId(0));
         let conn1 = ConnectionId(1);
 
@@ -643,10 +650,21 @@ mod tests {
         let huge_sync = (10_000..11_100).map(|id| (PeerId(id), (0, 1).into())).collect::<Vec<_>>();
         table.apply_sync(conn1, RouterTableSync(huge_sync));
 
-        assert!(
-            table.create_sync(&PeerId(1)).0.len() <= MAX_ALLOWED_SYNC_ROUTES,
-            "untrusted route sync payloads should be capped or rejected"
-        );
+        assert_eq!(table.next_remote(&PeerId(10_000)), None, "oversized route syncs must be rejected without creating route state");
+        assert_eq!(table.create_sync(&PeerId(1)), RouterTableSync(vec![]), "oversized route syncs must not be re-advertised");
+    }
+
+    #[test_log::test]
+    fn create_sync_must_cap_outbound_route_entries() {
+        let mut table = RouterTable::new(PeerId(0));
+
+        for id in 1..=1_100 {
+            table.set_direct(ConnectionId(id), PeerId(id), 10);
+        }
+
+        let sync = table.create_sync(&PeerId(2_000));
+
+        assert_eq!(sync.0.len(), MAX_SYNC_ENTRIES, "outbound route syncs must cap the number of advertised entries");
     }
 
     #[test_log::test]

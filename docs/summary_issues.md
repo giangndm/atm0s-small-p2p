@@ -11,7 +11,7 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 - Stop condition: continue until 5 consecutive cycles find no new accepted
   issue; currently 341/5 after ISSUE-204.
 - Fix phase status: ISSUE-001, ISSUE-003, ISSUE-004, ISSUE-005, ISSUE-006, ISSUE-007,
-  ISSUE-002, ISSUE-008, ISSUE-009, ISSUE-011, ISSUE-012, ISSUE-013, ISSUE-014, ISSUE-015, ISSUE-021, ISSUE-024, ISSUE-033, ISSUE-055, ISSUE-103,
+  ISSUE-002, ISSUE-008, ISSUE-009, ISSUE-010, ISSUE-011, ISSUE-012, ISSUE-013, ISSUE-014, ISSUE-015, ISSUE-021, ISSUE-024, ISSUE-033, ISSUE-055, ISSUE-103,
   ISSUE-053, ISSUE-063, ISSUE-139, ISSUE-146, ISSUE-168, ISSUE-170,
   ISSUE-149, ISSUE-169, ISSUE-174, ISSUE-176, ISSUE-189, ISSUE-190, ISSUE-191, ISSUE-192, ISSUE-193,
   ISSUE-194, ISSUE-195, ISSUE-196, ISSUE-197, ISSUE-198, ISSUE-199,
@@ -182,6 +182,14 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Recently Fixed Issues
 
+- ISSUE-010: fixed by adding a 1,024-entry application-level cap to route and
+  discovery syncs. Oversized inbound syncs are rejected before per-entry work,
+  outbound sync creation is capped, and discovery logs only the sync count
+  instead of the full payload. Verified with
+  `cargo test should_reject_excessive_route_sync_entries -- --nocapture`,
+  `cargo test discovery_sync_must_reject_excessive_entries -- --nocapture`,
+  `cargo test create_sync_must_cap_outbound_route_entries -- --nocapture`, and
+  `cargo test create_sync_for_must_cap_outbound_discovery_entries -- --nocapture`.
 - ISSUE-024: fixed by using a 60 KB max-frame `BincodeCodec` for peer
   main-stream messages. Oversized `PeerMessage` frames are rejected before
   framing or inbound allocation. Verified with
