@@ -3653,26 +3653,27 @@ the source of truth for evidence and reviewer decisions.
 - Category: correctness, shutdown stability, API stability
 - Score: 58/100
 - Reviewer: `Ampere the 2nd`, confirmed.
+- Status: fixed by `e78c190` (`fix: return errors when alias channels close`).
 - Affected code:
   - `src/service/alias_service.rs`: `AliasService::run_loop` returns
     `anyhow::Result<()>`.
   - `src/service/alias_service.rs`: the `event = self.service.recv()` branch
-    calls `event.expect("service channel should work")` when the underlying
-    `P2pService` receiver returns `None`.
+    now returns `Err` with `alias base service channel closed` when the
+    underlying `P2pService` receiver returns `None`.
 - Impact: if the base service channel closes during teardown, the alias service
-  task unwinds instead of returning `Err` from its result-returning run loop.
-  This turns a normal shutdown condition into a task panic and can make graceful
-  service shutdown noisy or unstable. This is distinct from ISSUE-127, which
-  covers alias control backlog, and from stale requester send panics, which
-  involve closed control senders. It is a close sibling of ISSUE-128/129 but
-  affects the alias service's run-loop lifecycle rather than metrics or
-  visualization `recv()` APIs.
+  task now returns `Err` from its result-returning run loop instead of
+  unwinding. This keeps a normal shutdown condition from becoming a task panic
+  and makes graceful service shutdown less noisy. This is distinct from
+  ISSUE-127, which covers alias control backlog, and from stale requester send
+  panics, which involve closed control senders. It is a close sibling of
+  ISSUE-128/129 but affects the alias service's run-loop lifecycle rather than
+  metrics or visualization `recv()` APIs.
 - Evidence test:
   - `cargo test alias_run_loop_after_base_service_close_must_not_panic -- --nocapture`
-  - Failure summary: after dropping the underlying `P2pService` sender,
-    `AliasService::run_loop()` panics at `src/service/alias_service.rs` with
-    `service channel should work`; expected `Ok(Err(_))` from the public
-    `Result` API.
+  - Current result: passes. After dropping the underlying `P2pService` sender,
+    `AliasService::run_loop()` returns `Ok(Err(_))` from the public `Result`
+    API instead of panicking; the returned error is
+    `alias base service channel closed`.
 
 ### ISSUE-131: Replicated KV full-sync snapshot pages are unbounded
 
