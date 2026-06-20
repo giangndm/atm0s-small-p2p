@@ -7,9 +7,9 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Accepted issues: 204
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 278
+- Current consecutive no-new-issue cycles: 279
 - Stop condition: continue until 5 consecutive cycles find no new accepted
-  issue; currently 278/5 after ISSUE-204.
+  issue; currently 279/5 after ISSUE-204.
 
 ## Root Cause Summary
 
@@ -2389,6 +2389,13 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Recent No-New Audit
 
+- Cycle after ISSUE-204 no-new cycle 279 ran a steady valid-action fuzz pass
+  with forked reviewer `Carson the 6th`. The command set
+  `P2P_FUZZ_NODES=12` and `P2P_FUZZ_STEPS=3600`; the run passed with exit code
+  0 and `1 passed; 0 failed`. All tracked known-failure signatures were
+  absent, including stale route-sync, invalid service-id, shutdown-send, and
+  stopped-peer storm/backpressure markers. No accepted issue or summary
+  root-cause change was recorded.
 - Cycle after ISSUE-204 no-new cycle 278 ran a valid-action fuzz pass with
   forked reviewer `Meitner the 6th`. The command set `P2P_FUZZ_NODES=9`,
   while the failing assertion reported `seed=278, nodes=8, steps=2400`. The
