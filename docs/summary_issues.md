@@ -16,7 +16,7 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   ISSUE-131, ISSUE-132, ISSUE-133, ISSUE-134, ISSUE-135, ISSUE-136, ISSUE-137,
   ISSUE-140, ISSUE-143, ISSUE-145, ISSUE-147, ISSUE-148, ISSUE-150, ISSUE-151,
   ISSUE-152, ISSUE-153, ISSUE-154, ISSUE-155, ISSUE-156, ISSUE-157, ISSUE-158,
-  ISSUE-159, ISSUE-053, ISSUE-063, ISSUE-139, ISSUE-146, ISSUE-168, ISSUE-170,
+  ISSUE-159, ISSUE-160, ISSUE-053, ISSUE-063, ISSUE-139, ISSUE-146, ISSUE-168, ISSUE-170,
   ISSUE-149, ISSUE-169, ISSUE-174, ISSUE-176, ISSUE-181, ISSUE-189, ISSUE-190, ISSUE-191, ISSUE-192, ISSUE-193,
   ISSUE-194, ISSUE-195, ISSUE-196, ISSUE-197, ISSUE-198, ISSUE-199,
   ISSUE-200, ISSUE-201, ISSUE-202, ISSUE-203, ISSUE-204, ISSUE-097, ISSUE-098, and ISSUE-018 have focused
@@ -153,7 +153,7 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Representative issues: ISSUE-003, ISSUE-005, ISSUE-006, ISSUE-007,
   ISSUE-008, ISSUE-033, ISSUE-044, ISSUE-055, ISSUE-092, ISSUE-103,
-  ISSUE-112 through ISSUE-114, ISSUE-160, ISSUE-161, ISSUE-164, ISSUE-167,
+  ISSUE-112 through ISSUE-114, ISSUE-161, ISSUE-164, ISSUE-167,
   ISSUE-177, ISSUE-180, ISSUE-181, ISSUE-190, ISSUE-192, ISSUE-197.
 - Pattern: route/discovery inputs can include local ids, self seeds, stale
   addresses, overflowed metrics, over-hop routes, duplicate connection races,
@@ -666,6 +666,14 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   `cargo test should_remove_relay_path_after_disconnect -- --nocapture`, and
   `cargo test should_remove_stopped_peer_path -- --nocapture`. Reviewer
   `Chandrasekhar the 7th` approved the revised patch.
+- ISSUE-160: fixed by `cfc8e57` as part of the ISSUE-003 route-stability work.
+  Root cause was that `PeerMemory::select_best` treated authenticated direct
+  paths as ordinary scored candidates, so a lower-cost relayed advertisement
+  could replace the direct route. The smallest shipped fix gives direct paths
+  (`relay_hops == 0`) priority over relayed candidates whenever a direct path
+  exists, using directness by path metric rather than a separate ownership
+  lookup. Verified with
+  `cargo test direct_peer_route_must_not_be_replaced_by_relayed_path -- --nocapture`.
 - ISSUE-004: fixed by the ISSUE-170 ownership-validation follow-up `87cf6ce`.
   `MainEvent::PeerStopped(conn, peer)` is ignored unless `conn` is the direct
   authenticated connection for `peer`, so a third-party stop cannot delete a

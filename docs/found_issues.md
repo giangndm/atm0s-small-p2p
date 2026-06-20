@@ -4983,6 +4983,14 @@ the source of truth for evidence and reviewer decisions.
 
 - Category: correctness, route stability, bad-network path selection
 - Score: 68/100
+- Status: fixed by `cfc8e577d97298f97177c11f294c07f0af7f2ddf`
+  (`cfc8e57`). The ISSUE-003 route-stability patch updated
+  `PeerMemory::select_best` so direct paths (`relay_hops == 0`) outrank
+  relayed candidates whenever a direct path exists for the destination.
+  Verification:
+  `cargo test direct_peer_route_must_not_be_replaced_by_relayed_path -- --nocapture`.
+  Caveat: the fix landed as part of ISSUE-003 route-stability work and uses
+  directness by path metric, not a separate direct-ownership lookup.
 - Reviewer: `Wegener the 2nd`, confirmed after `Kierkegaard the 2nd`
   discovery.
 - Affected code:
