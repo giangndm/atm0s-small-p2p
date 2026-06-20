@@ -240,10 +240,10 @@ async fn run_connection<SECURE: HandshakeProtocol>(
     if let Err(e) = internal.run_loop().await {
         log::error!("[PeerConnection {conn_id}] {remote} error {e}");
     }
-    let _ = main_tx.send(MainEvent::PeerDisconnected(conn_id, to_id)).await;
     log::info!("[PeerConnection {conn_id}] end loop for {remote}");
     ctx.unregister_conn(&conn_id);
     emit_connection_teardown_metrics(local_id, to_id);
+    let _ = main_tx.send(MainEvent::PeerDisconnected(conn_id, to_id)).await;
     Ok(())
 }
 

@@ -3849,9 +3849,13 @@ the source of truth for evidence and reviewer decisions.
   loop; and from ISSUE-128/129/130/132, which cover service shutdown panics.
 - Evidence test:
   - `cargo test peer_disconnected_must_not_block_alias_cleanup_on_full_main_queue -- --nocapture`
-  - Failure summary: after node2 connects to node1, the test fills node2's
-    bounded main event queue and closes node1; `node2.ctx.conn(live_conn)`
-    remains present after disconnect cleanup should have unregistered the alias.
+- Fix status: fixed by moving `ctx.unregister_conn(&conn_id)` and teardown
+  metric cleanup before the awaited
+  `main_tx.send(MainEvent::PeerDisconnected(conn_id, to_id))` lifecycle
+  report.
+- Fixed result: passes. After node2 connects to node1, the test fills node2's
+  bounded main event queue and closes node1; `node2.ctx.conn(live_conn)` is
+  removed even while the disconnect lifecycle report is backpressured.
 
 ### ISSUE-137: Pending alias finds can resolve remote after the alias becomes local
 

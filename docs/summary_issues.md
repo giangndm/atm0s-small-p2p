@@ -13,7 +13,7 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 - Fix phase status: ISSUE-001, ISSUE-003, ISSUE-004, ISSUE-005, ISSUE-006, ISSUE-007,
   ISSUE-002, ISSUE-008, ISSUE-009, ISSUE-010, ISSUE-011, ISSUE-012, ISSUE-013, ISSUE-014, ISSUE-015, ISSUE-021, ISSUE-024, ISSUE-033, ISSUE-055, ISSUE-103, ISSUE-122, ISSUE-123,
   ISSUE-124, ISSUE-125, ISSUE-126, ISSUE-127, ISSUE-128, ISSUE-129, ISSUE-130,
-  ISSUE-131, ISSUE-132, ISSUE-133, ISSUE-134, ISSUE-135,
+  ISSUE-131, ISSUE-132, ISSUE-133, ISSUE-134, ISSUE-135, ISSUE-136,
   ISSUE-053, ISSUE-063, ISSUE-139, ISSUE-146, ISSUE-168, ISSUE-170,
   ISSUE-149, ISSUE-169, ISSUE-174, ISSUE-176, ISSUE-181, ISSUE-189, ISSUE-190, ISSUE-191, ISSUE-192, ISSUE-193,
   ISSUE-194, ISSUE-195, ISSUE-196, ISSUE-197, ISSUE-198, ISSUE-199,
@@ -184,6 +184,12 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Recently Fixed Issues
 
+- ISSUE-136: fixed by moving `ctx.unregister_conn(&conn_id)` and teardown
+  metric cleanup before the awaited
+  `main_tx.send(MainEvent::PeerDisconnected(...))` lifecycle report in
+  `run_connection`, so a full bounded main event queue cannot delay alias or
+  metric cleanup. Verified with
+  `cargo test peer_disconnected_must_not_block_alias_cleanup_on_full_main_queue -- --nocapture`.
 - ISSUE-135: fixed by ignoring stale `PeerConnectError` events for connection
   ids that are already authenticated and connected in `NetworkNeighbours`.
   Pending or unknown connect errors still remove/no-op as before. Verified with
