@@ -13,8 +13,8 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 - Fix phase status: ISSUE-003, ISSUE-004, ISSUE-005, ISSUE-006, ISSUE-007,
   ISSUE-002, ISSUE-008, ISSUE-009, ISSUE-021, ISSUE-033, ISSUE-055, ISSUE-103,
   ISSUE-053, ISSUE-063, ISSUE-139, ISSUE-146, ISSUE-170, ISSUE-176,
-  ISSUE-189, ISSUE-190, ISSUE-191, ISSUE-192, ISSUE-193, ISSUE-195, and
-  ISSUE-196 have focused fixes committed.
+  ISSUE-189, ISSUE-190, ISSUE-191, ISSUE-192, ISSUE-193, ISSUE-195,
+  ISSUE-196, and ISSUE-197 have focused fixes committed.
   ISSUE-003 is fixed by `cfc8e57`;
   ISSUE-004 is covered by the ISSUE-170 ownership-validation follow-up
   `87cf6ce`; earlier fixes are `648cfd0`, `2cbf096`, `15b788c`, and
@@ -180,6 +180,13 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Recently Fixed Issues
 
+- ISSUE-197: fixed by routing ordinary unicast relay decisions through
+  `DropIngressLoop` when the selected next hop is the ingress connection. The
+  relay path now logs and drops instead of forwarding back to the sender.
+  Verified with
+  `cargo test unicast_relay_must_not_forward_back_to_ingress_peer -- --nocapture`
+  and `cargo test send_relay -- --nocapture`. Stream relay loop handling
+  remains separate under ISSUE-180.
 - ISSUE-196: fixed by bounding `ReplicatedKvStore::outs` at `1024` pending
   outbound events with drop-oldest admission. This preserves the public
   `set`/`del` API and contains overload at the outer service queue, retaining

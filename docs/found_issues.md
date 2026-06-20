@@ -5769,6 +5769,14 @@ the source of truth for evidence and reviewer decisions.
     `ctx.router().action(&PeerId(99))` return
     `Some(RouteAction::Next(ingress_conn))`, proving that the current unicast
     forwarding branch would send the packet back over the ingress connection.
+- Fix status: fixed by routing inbound unicast relay choices through
+  `unicast_route_decision(ctx.router().action(&dest), self.conn_id)`. When the
+  selected next hop equals the ingress connection, the helper returns
+  `UnicastRouteDecision::DropIngressLoop`, so the relay path logs and drops
+  instead of forwarding back to the sender. Verified with
+  `cargo test unicast_relay_must_not_forward_back_to_ingress_peer -- --nocapture`
+  and `cargo test send_relay -- --nocapture`. Stream relay loops remain
+  separate under ISSUE-180.
 
 ### ISSUE-198: `try_send_broadcast` silently loses all copies under peer queue pressure
 
