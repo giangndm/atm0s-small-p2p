@@ -7,9 +7,9 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Accepted issues: 204
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 54
+- Current consecutive no-new-issue cycles: 55
 - Stop condition: continue until 5 consecutive cycles find no new accepted
-  issue; currently 54/5 after ISSUE-204.
+  issue; currently 55/5 after ISSUE-204.
 
 ## Root Cause Summary
 
@@ -256,6 +256,11 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Recent Fuzz Evidence
 
+- Focused pubsub stale-destroy lifecycle review:
+  `cargo test stale_pubsub_destroy_must_not_create_phantom_channel -- --nocapture`
+  failed with duplicate evidence for ISSUE-150. Reviewer `Maxwell the 4th`
+  confirmed unknown local-handle destroy controls still create phantom channel
+  bookkeeping instead of being no-ops. No root-cause summary change was needed.
 - Focused pubsub empty-channel lifecycle review:
   `cargo test empty_pubsub_channels_must_be_removed_after_last_local_handle_drops -- --nocapture`
   failed with duplicate evidence for ISSUE-108. Reviewer `Arendt the 4th`

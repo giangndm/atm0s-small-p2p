@@ -11,7 +11,7 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 54
+- Current consecutive no-new-issue cycles: 55
 - Stop condition requested by user: continue until 5 consecutive cycles find no
   new accepted issue.
 
@@ -5783,6 +5783,25 @@ the source of truth for evidence and reviewer decisions.
     `src/peer.rs:1092` with `got 2`.
 
 ## No-New-Issue Audit Cycles
+
+### Cycle after ISSUE-204 no-new cycle 55: pubsub stale destroy duplicate
+
+- Result: no accepted non-duplicate issue.
+- Reviewer: `Maxwell the 4th`, forked subagent review, confirmed
+  duplicate-only no-new classification.
+- Source and test evidence reviewed:
+  - `src/service/pubsub_service.rs`
+  - `cargo test stale_pubsub_destroy_must_not_create_phantom_channel -- --nocapture`
+    failed at `src/service/pubsub_service.rs:1077:9`.
+- Duplicate or too-close symptoms rejected:
+  - a stale `PublisherDestroyed` control for an unknown publisher handle
+    materializes `PubsubChannelId(77)` in `PubsubService::channels`.
+  - destroy handling creates or retains channel bookkeeping instead of treating
+    unknown local handles as no-ops.
+  - this maps directly to ISSUE-150: stale pubsub destroy controls create
+    phantom channel state. Existing score: 58/100.
+- Root-cause summary impact: no new root cause; this source/test cycle
+  strengthens existing ISSUE-150 evidence without adding ISSUE-205.
 
 ### Cycle after ISSUE-204 no-new cycle 54: pubsub empty channel duplicate
 
