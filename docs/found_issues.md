@@ -11,7 +11,7 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 260
+- Current consecutive no-new-issue cycles: 261
 - Stop condition requested by user: continue until 5 consecutive cycles find no
   new accepted issue.
 
@@ -5783,6 +5783,42 @@ the source of truth for evidence and reviewer decisions.
     `src/peer.rs:1092` with `got 2`.
 
 ## No-New-Issue Audit Cycles
+
+### Cycle after ISSUE-204 no-new cycle 261: broad invalid, shutdown, and stopped storm
+
+- Result: no accepted non-duplicate issue.
+- Reviewer: `Gauss the 6th`, forked subagent review, confirmed
+  duplicate/no-new.
+- Source and test evidence reviewed:
+  - `src/tests/fuzz.rs`
+  - `src/ctx.rs`
+  - `src/peer.rs`
+  - `src/peer/peer_alias.rs`
+  - `RUST_LOG=error P2P_FUZZ_SEED=261 P2P_FUZZ_NODES=10 P2P_FUZZ_STEPS=2600 cargo test fuzz_random_node_actions_must_not_panic_connection_tasks -- --nocapture`
+    failed; the test assertion reported `seed=261, nodes=8, steps=2600`.
+- Evidence summary:
+  - exit status 101; log had 4,757 lines; the fuzz assertion at
+    `src/tests/fuzz.rs:183:5` reported background connection/service task
+    failure with `seed=261, nodes=8, steps=2600`.
+  - one `src/ctx.rs:34` panic marker with
+    `index out of bounds: the len is 256 but the index is 256`.
+  - one shutdown-send panic marker at `src/peer.rs:133:113` with
+    `should send to main: SendError { .. }`.
+  - 4,704 `forward peer stopped over peer alias` markers, including 3,791
+    `no available capacity` markers and 941 `channel closed` markers.
+  - 17 `broadcast data over peer alias` markers and one closed-by-peer marker
+    were reviewed as fallout inside the same invalid-service/shutdown/stopped
+    context.
+  - no stale-sync, open_bi, connect-answer, path-not-found, connection-lost, or
+    aborted-by-peer evidence.
+- Duplicate mapping: ISSUE-053, ISSUE-139, and ISSUE-170.
+- Root-cause summary impact: no new root cause; this strengthens existing
+  invalid-service validation, graceful shutdown reporting, and stopped-peer
+  storm evidence without adding a new issue.
+- Smallest fix proposal: validate service ids before indexing, replace
+  shutdown-path `expect("should send to main")` calls with graceful closed-main
+  handling, and suppress duplicate `PeerStopped` forwarding with per-peer
+  tombstones, TTL, or coalescing before retrying onto bounded peer-alias queues.
 
 ### Cycle after ISSUE-204 no-new cycle 260: long steady valid fuzz pass
 
