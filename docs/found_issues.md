@@ -11,7 +11,7 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 50
+- Current consecutive no-new-issue cycles: 51
 - Stop condition requested by user: continue until 5 consecutive cycles find no
   new accepted issue.
 
@@ -5783,6 +5783,27 @@ the source of truth for evidence and reviewer decisions.
     `src/peer.rs:1092` with `got 2`.
 
 ## No-New-Issue Audit Cycles
+
+### Cycle after ISSUE-204 no-new cycle 51: pubsub existing remote member duplicate
+
+- Result: no accepted non-duplicate issue.
+- Reviewer: `Leibniz the 4th`, forked subagent review, confirmed
+  duplicate-only no-new classification.
+- Source and test evidence reviewed:
+  - `src/service/pubsub_service.rs`
+  - `cargo test new_local_pubsub_handles_must_observe_existing_remote_members -- --nocapture`
+    failed at `src/service/pubsub_service.rs:958:9`.
+- Duplicate or too-close symptoms rejected:
+  - the test seeds `remote_publishers` and `remote_subscribers`, then creates
+    new local publisher/subscriber handles.
+  - the new publisher observes only `[PeerJoined(Local)]` and misses the
+    already-known remote subscriber.
+  - this maps directly to ISSUE-142: `InternalMsg::PublisherCreated` and
+    `InternalMsg::SubscriberCreated` replay only local peer presence to the new
+    handle and never replay `state.remote_subscribers` or
+    `state.remote_publishers`.
+- Root-cause summary impact: no new root cause; this source/test cycle
+  strengthens existing ISSUE-142 evidence without adding ISSUE-205.
 
 ### Cycle after ISSUE-204 no-new cycle 50: steady-valid fuzz pass
 
