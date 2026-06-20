@@ -11,7 +11,7 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 253
+- Current consecutive no-new-issue cycles: 254
 - Stop condition requested by user: continue until 5 consecutive cycles find no
   new accepted issue.
 
@@ -5783,6 +5783,36 @@ the source of truth for evidence and reviewer decisions.
     `src/peer.rs:1092` with `got 2`.
 
 ## No-New-Issue Audit Cycles
+
+### Cycle after ISSUE-204 no-new cycle 254: valid stale sync and stopped storm
+
+- Result: no accepted non-duplicate issue.
+- Reviewer: `Faraday the 6th`, forked subagent review, confirmed
+  duplicate/no-new.
+- Source and test evidence reviewed:
+  - `src/tests/fuzz.rs`
+  - `src/router.rs`
+  - `src/peer/peer_alias.rs`
+  - `RUST_LOG=error P2P_FUZZ_SEED=254 P2P_FUZZ_NODES=8 P2P_FUZZ_STEPS=1800 cargo test fuzz_random_valid_node_actions_must_not_panic_connection_tasks -- --nocapture`
+    failed.
+- Evidence summary:
+  - exit status 101; log had 13,735 lines; the fuzz assertion at
+    `src/tests/fuzz.rs:183:5` reported background connection/service task
+    failure with `seed=254, nodes=8, steps=1800`.
+  - two router panic markers at `src/router.rs:76:66` with
+    `should have direct metric with apply_sync`.
+  - 13,654 `forward peer stopped over peer alias` markers, including 11,854
+    `no available capacity` markers and 1,857 `channel closed` markers.
+  - no invalid-service-id, shutdown-send, open_bi, connect-answer,
+    broadcast-alias, or path-not-found evidence.
+- Duplicate mapping: ISSUE-063 and ISSUE-170.
+- Root-cause summary impact: no new root cause; this strengthens existing
+  stale route-sync invalidation and stopped-peer storm evidence without adding
+  a new issue.
+- Smallest fix proposal: guard stale route-sync application when the direct
+  metric has already been removed, and suppress duplicate `PeerStopped`
+  forwarding with per-peer tombstones, TTL, or coalescing before retrying onto
+  bounded peer-alias queues.
 
 ### Cycle after ISSUE-204 no-new cycle 253: valid stale sync and stopped storm
 

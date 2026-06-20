@@ -7,9 +7,9 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Accepted issues: 204
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 253
+- Current consecutive no-new-issue cycles: 254
 - Stop condition: continue until 5 consecutive cycles find no new accepted
-  issue; currently 253/5 after ISSUE-204.
+  issue; currently 254/5 after ISSUE-204.
 
 ## Root Cause Summary
 
@@ -2389,6 +2389,14 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Recent No-New Audit
 
+- Cycle after ISSUE-204 no-new cycle 254 ran an eight-node valid-action fuzz
+  pass with forked reviewer `Faraday the 6th`. The run failed with exit code
+  101, but both hard invariant failures were duplicate ISSUE-063 evidence:
+  `src/router.rs:76:66` panicked twice with `should have direct metric with
+  apply_sync`. The 13,654 stopped-peer forwarding errors, including 11,854
+  no-capacity markers and 1,857 channel-closed markers, were duplicate
+  ISSUE-170 storm evidence. No accepted issue or summary root-cause change was
+  recorded.
 - Cycle after ISSUE-204 no-new cycle 253 ran an eight-node valid-action fuzz
   pass with forked reviewer `Fermat the 6th`. The run failed with exit code
   101, but the only hard invariant was duplicate ISSUE-063 evidence:
