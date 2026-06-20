@@ -7,9 +7,9 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Accepted issues: 204
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 141
+- Current consecutive no-new-issue cycles: 142
 - Stop condition: continue until 5 consecutive cycles find no new accepted
-  issue; currently 141/5 after ISSUE-204.
+  issue; currently 142/5 after ISSUE-204.
 
 ## Root Cause Summary
 
@@ -256,6 +256,20 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Recent Fuzz Evidence
 
+- Valid-action fuzz review:
+  `RUST_LOG=error P2P_FUZZ_SEED=142 P2P_FUZZ_NODES=8 P2P_FUZZ_STEPS=1800 cargo test fuzz_random_valid_node_actions_must_not_panic_connection_tasks -- --nocapture`
+  failed with duplicate evidence for ISSUE-063 and ISSUE-170. Reviewer
+  `Schrodinger the 5th` confirmed the four `src/router.rs:76` direct-metric
+  panic markers are the existing stale `PeerData::Sync` after direct-route
+  removal root cause, while the 8,080 forwarded-stop, 7,110 no-capacity, and
+  1,011 channel-closed logs are the existing stop-forwarding amplification
+  root cause. The 23 broadcast-data lines were classified as ISSUE-170 storm
+  fallout. No ISSUE-053 or ISSUE-139 evidence was present. The smallest fix
+  proposals remain unchanged: discard or invalidate stale sync route entries
+  when the direct metric is missing instead of asserting, and bound
+  `PeerStopped` propagation with dedupe/tombstones or TTL while suppressing
+  repeated forwarding after capacity/channel-closed failures. No new issue was
+  created.
 - Valid-action fuzz review:
   `RUST_LOG=error P2P_FUZZ_SEED=141 P2P_FUZZ_NODES=8 P2P_FUZZ_STEPS=1800 cargo test fuzz_random_valid_node_actions_must_not_panic_connection_tasks -- --nocapture`
   failed with duplicate evidence for ISSUE-063 only. Reviewer
