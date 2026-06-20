@@ -11,7 +11,7 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 47
+- Current consecutive no-new-issue cycles: 48
 - Stop condition requested by user: continue until 5 consecutive cycles find no
   new accepted issue.
 
@@ -5783,6 +5783,33 @@ the source of truth for evidence and reviewer decisions.
     `src/peer.rs:1092` with `got 2`.
 
 ## No-New-Issue Audit Cycles
+
+### Cycle after ISSUE-204 no-new cycle 48: valid-action fuzz duplicate stale sync
+
+- Result: no accepted non-duplicate issue.
+- Reviewer: `Pauli the 4th`, forked subagent review, confirmed
+  duplicate-only no-new classification.
+- Source and test evidence reviewed:
+  - `src/tests/fuzz.rs`
+  - `src/router.rs`
+  - `src/peer/peer_internal.rs`
+  - `RUST_LOG=error P2P_FUZZ_SEED=48 P2P_FUZZ_NODES=8 P2P_FUZZ_STEPS=1800 cargo test fuzz_random_valid_node_actions_must_not_panic_connection_tasks -- --nocapture`
+    failed at `src/tests/fuzz.rs:183:5`.
+- Duplicate or too-close symptoms rejected:
+  - the primary background panic was `src/router.rs:76:66` with
+    `should have direct metric with apply_sync`.
+  - this maps directly to ISSUE-063: stale `PeerData::Sync` can reach
+    `P2pNetwork::process_internal` after the direct route for that connection
+    has been removed; `RouterTable::apply_sync` still expects the direct
+    metric to exist and panics.
+  - the same run produced 8,753
+    `forward peer stopped over peer alias got error no available capacity` logs
+    and 161 `... channel closed` logs; reviewer mapped that secondary noise to
+    ISSUE-170's missing dedupe/TTL/tombstone suppression for stop forwarding in
+    cyclic meshes.
+- Root-cause summary impact: no new root cause; this valid-action fuzz run
+  strengthens existing ISSUE-063 and ISSUE-170 evidence without adding
+  ISSUE-205.
 
 ### Cycle after ISSUE-204 no-new cycle 47: steady-valid fuzz pass
 

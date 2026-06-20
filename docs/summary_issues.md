@@ -7,9 +7,9 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Accepted issues: 204
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 47
+- Current consecutive no-new-issue cycles: 48
 - Stop condition: continue until 5 consecutive cycles find no new accepted
-  issue; currently 47/5 after ISSUE-204.
+  issue; currently 48/5 after ISSUE-204.
 
 ## Root Cause Summary
 
@@ -256,6 +256,13 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Recent Fuzz Evidence
 
+- Valid-action fuzz review:
+  `RUST_LOG=error P2P_FUZZ_SEED=48 P2P_FUZZ_NODES=8 P2P_FUZZ_STEPS=1800 cargo test fuzz_random_valid_node_actions_must_not_panic_connection_tasks -- --nocapture`
+  failed with duplicate evidence for ISSUE-063. Reviewer `Pauli the 4th`
+  confirmed the `src/router.rs:76` panic is the existing stale
+  `PeerData::Sync` after route removal; 8,753 no-capacity and 161
+  channel-closed forwarded-stop logs were secondary ISSUE-170 amplification
+  evidence rather than a new root cause.
 - Steady-valid fuzz pass:
   `RUST_LOG=error P2P_FUZZ_SEED=47 P2P_FUZZ_NODES=8 P2P_FUZZ_STEPS=1800 cargo test fuzz_random_steady_valid_node_actions_must_not_panic_connection_tasks -- --nocapture`
   passed with no failing assertion. Reviewer `Volta the 4th` classified it as
