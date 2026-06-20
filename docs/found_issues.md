@@ -11,7 +11,7 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 186
+- Current consecutive no-new-issue cycles: 187
 - Stop condition requested by user: continue until 5 consecutive cycles find no
   new accepted issue.
 
@@ -5783,6 +5783,34 @@ the source of truth for evidence and reviewer decisions.
     `src/peer.rs:1092` with `got 2`.
 
 ## No-New-Issue Audit Cycles
+
+### Cycle after ISSUE-204 no-new cycle 187: broad random duplicate invalid service and PeerStopped storm
+
+- Result: no accepted non-duplicate issue.
+- Reviewer: `Beauvoir the 6th`, forked subagent review, confirmed
+  `DUPLICATE/NO_NEW`.
+- Source and test evidence reviewed:
+  - `src/tests/fuzz.rs`
+  - `src/ctx.rs`
+  - `RUST_LOG=error P2P_FUZZ_SEED=187 P2P_FUZZ_NODES=8 P2P_FUZZ_STEPS=1800 cargo test fuzz_random_node_actions_must_not_panic_connection_tasks -- --nocapture`
+    failed.
+- Evidence summary:
+  - exit status 101; `0 passed; 1 failed`; the fuzz assertion at
+    `src/tests/fuzz.rs:183:5` detected background connection/service task
+    panics.
+  - one `src/ctx.rs:34` panic marker with
+    `index out of bounds: the len is 256 but the index is 256`.
+  - 14,822 forwarded-stop peer-alias errors were present, including 12,972
+    `no available capacity` logs and 2,007 `channel closed` logs.
+  - 55 `broadcast data over peer alias got error no available capacity` logs
+    were reviewed as storm-context fallout under ISSUE-170.
+  - no `src/router.rs:76` stale-sync evidence.
+  - no `src/peer.rs:89/92/130/133` `should send to main` evidence.
+  - no open_bi, connect-answer, connection-lost, path-not-found, or WARN logs.
+- Duplicate mapping: ISSUE-053 and ISSUE-170.
+- Root-cause summary impact: no new root cause; this strengthens existing
+  ISSUE-053 invalid-service-id and ISSUE-170 forwarded-stop storm evidence
+  without adding a new issue.
 
 ### Cycle after ISSUE-204 no-new cycle 186: valid random duplicate stale sync and large PeerStopped storm
 

@@ -7,9 +7,9 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Accepted issues: 204
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 186
+- Current consecutive no-new-issue cycles: 187
 - Stop condition: continue until 5 consecutive cycles find no new accepted
-  issue; currently 186/5 after ISSUE-204.
+  issue; currently 187/5 after ISSUE-204.
 
 ## Root Cause Summary
 
@@ -256,6 +256,21 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Recent Fuzz Evidence
 
+- Broad random fuzz review:
+  `RUST_LOG=error P2P_FUZZ_SEED=187 P2P_FUZZ_NODES=8 P2P_FUZZ_STEPS=1800 cargo test fuzz_random_node_actions_must_not_panic_connection_tasks -- --nocapture`
+  failed with duplicate evidence for ISSUE-053 and ISSUE-170. Reviewer
+  `Beauvoir the 6th` confirmed the `src/ctx.rs:34` panic with index `256`
+  into len `256` is the existing unchecked inbound service-id root cause, and
+  the 14,822 forwarded-stop logs with 12,972 no-capacity and 2,007
+  channel-closed logs are the existing peer-alias stop-forwarding/backpressure
+  storm. The 55 `broadcast data over peer alias got error no available
+  capacity` logs were reviewed as storm-context fallout under ISSUE-170. No
+  ISSUE-063 or ISSUE-139 evidence was present, and no new invariant appeared
+  beyond invalid service-id panic plus forwarded-stop storm. Smallest fixes
+  remain unchanged: validate decoded `P2pServiceId` before indexing the fixed
+  service table, reject/drop out-of-bounds remote ids, and add
+  dedupe/TTL/tombstone suppression plus rate-limited repeated `try_send`
+  errors for forwarded `PeerStopped`. No new issue was created.
 - Valid-action fuzz review:
   `RUST_LOG=error P2P_FUZZ_SEED=186 P2P_FUZZ_NODES=8 P2P_FUZZ_STEPS=1800 cargo test fuzz_random_valid_node_actions_must_not_panic_connection_tasks -- --nocapture`
   failed with duplicate evidence for ISSUE-063 and ISSUE-170. Reviewer
