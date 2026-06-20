@@ -7,9 +7,9 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Accepted issues: 204
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 273
+- Current consecutive no-new-issue cycles: 274
 - Stop condition: continue until 5 consecutive cycles find no new accepted
-  issue; currently 273/5 after ISSUE-204.
+  issue; currently 274/5 after ISSUE-204.
 
 ## Root Cause Summary
 
@@ -2389,6 +2389,15 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Recent No-New Audit
 
+- Cycle after ISSUE-204 no-new cycle 274 ran a broad invalid-action fuzz pass
+  with forked reviewer `Parfit the 6th`. The command set
+  `P2P_FUZZ_NODES=10`, while the failing assertion reported `seed=274,
+  nodes=8, steps=2600`. The run failed with exit code 101, but the hard
+  failures were duplicate ISSUE-053 evidence, three `src/ctx.rs:34:9`
+  invalid-service panics, and duplicate ISSUE-139 evidence, one
+  `src/peer.rs:92:104` shutdown-send panic. The channel-closed and
+  closed-by-peer markers were reviewed as teardown fallout. No accepted issue
+  or summary root-cause change was recorded.
 - Cycle after ISSUE-204 no-new cycle 273 ran a valid-action fuzz pass with
   forked reviewer `Kant the 6th`. The command set `P2P_FUZZ_NODES=9`, while
   the failing assertion reported `seed=273, nodes=8, steps=2400`. The run
