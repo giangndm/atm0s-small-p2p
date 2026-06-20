@@ -25,6 +25,7 @@ use tokio::{
         mpsc::{channel, Receiver, Sender},
         oneshot,
     },
+    task::JoinHandle,
     time::Interval,
 };
 
@@ -189,6 +190,7 @@ pub struct P2pNetwork<SECURE> {
     ticker: Interval,
     router: SharedRouterTable,
     discovery: PeerDiscovery,
+    pending_sync_tasks: HashMap<ConnectionId, JoinHandle<()>>,
     ctx: SharedCtx,
     secure: Arc<SECURE>,
     inbound_peer_bindings: Arc<InboundPeerBindings>,
@@ -219,6 +221,7 @@ impl<SECURE: HandshakeProtocol> P2pNetwork<SECURE> {
             ctx: SharedCtx::new(cfg.peer_id, router.clone()),
             router,
             discovery,
+            pending_sync_tasks: HashMap::new(),
             secure: Arc::new(cfg.secure),
             inbound_peer_bindings: Arc::new(cfg.inbound_peer_bindings),
         })
@@ -271,6 +274,7 @@ impl<SECURE: HandshakeProtocol> P2pNetwork<SECURE> {
 
     fn process_tick(&mut self, now_ms: u64) -> anyhow::Result<P2pNetworkEvent> {
         self.discovery.clear_timeout(now_ms);
+        self.pending_sync_tasks.retain(|_, task| !task.is_finished());
         for conn in self.neighbours.connected_conns() {
             let peer_id = conn.peer_id().expect("connected neighbours should have peer_id");
             let conn_id = conn.conn_id();
@@ -279,7 +283,24 @@ impl<SECURE: HandshakeProtocol> P2pNetwork<SECURE> {
             if let Some(alias) = self.ctx.conn(&conn_id) {
                 if let Err(e) = alias.try_send(PeerMessage::Sync { route, advertise }) {
                     log::error!("[P2pNetwork] try send message to peer {peer_id} over conn {conn_id} error {e}");
+                    if let Some(task) = self.pending_sync_tasks.remove(&conn_id) {
+                        task.abort();
+                    }
+                    let route = self.router.create_sync(&peer_id);
+                    let advertise = self.discovery.create_sync_for(now_ms, &peer_id);
+                    self.pending_sync_tasks.insert(
+                        conn_id,
+                        tokio::spawn(async move {
+                            if let Err(err) = alias.send(PeerMessage::Sync { route, advertise }).await {
+                                log::debug!("[P2pNetwork] retry send sync to peer {peer_id} over conn {conn_id} failed: {err}");
+                            }
+                        }),
+                    );
+                } else if let Some(task) = self.pending_sync_tasks.remove(&conn_id) {
+                    task.abort();
                 }
+            } else if let Some(task) = self.pending_sync_tasks.remove(&conn_id) {
+                task.abort();
             }
         }
         let remotes: Vec<_> = self.discovery.remotes().collect();
@@ -334,6 +355,9 @@ impl<SECURE: HandshakeProtocol> P2pNetwork<SECURE> {
                     return Ok(P2pNetworkEvent::Continue);
                 }
 
+                if let Some(task) = self.pending_sync_tasks.remove(&conn) {
+                    task.abort();
+                }
                 self.discovery.remove_remote(now_ms, &peer);
                 self.router.del_peer(&peer);
                 self.neighbours.remove(&conn);
@@ -347,6 +371,9 @@ impl<SECURE: HandshakeProtocol> P2pNetwork<SECURE> {
                     return Ok(P2pNetworkEvent::Continue);
                 }
 
+                if let Some(task) = self.pending_sync_tasks.remove(&conn) {
+                    task.abort();
+                }
                 self.neighbours.remove(&conn);
                 Ok(P2pNetworkEvent::Continue)
             }
@@ -357,6 +384,9 @@ impl<SECURE: HandshakeProtocol> P2pNetwork<SECURE> {
                     return Ok(P2pNetworkEvent::Continue);
                 }
 
+                if let Some(task) = self.pending_sync_tasks.remove(&conn) {
+                    task.abort();
+                }
                 self.router.del_direct(&conn);
                 self.neighbours.remove(&conn);
                 self.ctx.try_send_peer_disconnected_to_services(peer);

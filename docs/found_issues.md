@@ -62,7 +62,7 @@ the source of truth for evidence and reviewer decisions.
 - Representative issues: ISSUE-049, ISSUE-050, ISSUE-056, ISSUE-118,
   ISSUE-119, ISSUE-120, ISSUE-123, ISSUE-124, ISSUE-125, ISSUE-126,
   ISSUE-127, ISSUE-136, ISSUE-147, ISSUE-153, ISSUE-157,
-  ISSUE-164, ISSUE-178, ISSUE-182, ISSUE-184, ISSUE-198, ISSUE-199.
+  ISSUE-178, ISSUE-182, ISSUE-184, ISSUE-198, ISSUE-199.
 - Pattern: some paths use bounded channels and drop on `try_send`, some await
   bounded sends from critical tasks, and others use unbounded queues or produce
   duplicate internal control work. Under load this causes silent data loss,
@@ -5352,6 +5352,10 @@ the source of truth for evidence and reviewer decisions.
 - Category: stability, routing/discovery freshness, high-load backpressure
 - Score: 57/100
 - Reviewer: `Archimedes the 2nd`, confirmed after `Turing the 2nd` discovery.
+- Status: fixed. `P2pNetwork` now keeps one guarded async retry task per
+  `ConnectionId`; immediate tick delivery still uses `try_send`, but a
+  full peer-control queue replaces any older pending retry with the latest
+  route/discovery sync and awaits delivery in the background.
 - Affected code:
   - `src/lib.rs`: `process_tick` builds a `PeerMessage::Sync` containing
     route and discovery state for each connected neighbour.
@@ -5361,7 +5365,7 @@ the source of truth for evidence and reviewer decisions.
     bounded `control_tx.try_send`, so full queues reject immediately.
   - `src/peer.rs`: inbound sync is what updates the remote main loop's route
     and discovery state.
-- Impact: route/discovery maintenance sync is fire-and-forget. If a connected
+- Impact: route/discovery maintenance sync was fire-and-forget. If a connected
   peer's control queue is briefly full during a tick, the latest route and
   discovery snapshot is silently lost with no pending-sync slot, coalescing, or
   retry marker. A later tick may repair the state, but sustained load or a slow
@@ -5370,16 +5374,23 @@ the source of truth for evidence and reviewer decisions.
   distinct from caller API blocking on congested peer queues, graceful shutdown
   delay, inbound sync dropped on the main queue, and pubsub RPC timeout after
   failed sends.
-- Minimal fix proposal: keep one bounded pending sync slot per peer/connection.
-  When `try_send` fails because the queue is full, store the latest
-  `(route, advertise)` and retry it on the next tick before creating a fresh
-  sync, replacing older pending state with newer state.
+- Root cause: `P2pNetwork::process_tick` used only bounded `try_send` for
+  route/discovery maintenance sync and logged queue pressure without preserving
+  delivery intent.
+- Smallest fix: on immediate send failure, abort any unfinished retry for that
+  connection and spawn exactly one bounded task that awaits
+  `alias.send(PeerMessage::Sync { route, advertise })`. Later ticks replace an
+  older pending retry with the latest sync, so stale pending maintenance state
+  cannot accumulate. `PeerStopped`, `PeerDisconnected`, `PeerConnectError`, and
+  missing aliases abort/remove stale retry tasks.
+- Caveat: this intentionally keeps at most one retry task per connection; a
+  newer tick sync replaces an older pending retry while persistent closed or
+  disconnected connections rely on lifecycle cleanup to abort stale retry work.
 - Evidence test:
   - `cargo test tick_sync_must_not_be_dropped_when_peer_control_queue_is_full -- --nocapture`
-  - Failure summary: the test fills a connected peer's control queue, runs
-    `process_tick`, then drains the queue. No `PeerMessage::Sync` is delivered
-    afterward; expected route/discovery sync to be queued, coalesced, or retried
-    instead of dropped during transient queue pressure.
+  - Fix verification: passes. The test fills a connected peer's control queue,
+    runs `process_tick`, drains the dummy message, and observes the retry task
+    deliver `PeerMessage::Sync` after capacity returns.
 
 ### ISSUE-165: Visualization keeps gracefully stopped peer until timeout
 
