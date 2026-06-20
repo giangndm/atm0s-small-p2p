@@ -26,12 +26,17 @@ struct SharedCtxInternal {
 
 impl SharedCtxInternal {
     fn set_service(&mut self, service_id: P2pServiceId, tx: Sender<P2pServiceEvent>) {
-        assert!(self.services[*service_id as usize].is_none(), "Service ID already used");
-        self.services[*service_id as usize] = Some(tx);
+        let index = service_id.as_service_index().expect("Service ID out of range");
+        assert!(self.services[index].is_none(), "Service ID already used");
+        self.services[index] = Some(tx);
     }
 
     fn get_service(&self, service_id: &P2pServiceId) -> Option<Sender<P2pServiceEvent>> {
-        self.services[**service_id as usize].clone()
+        let Some(index) = service_id.as_service_index() else {
+            log::warn!("[SharedCtx] reject out-of-range service id {service_id}");
+            return None;
+        };
+        self.services[index].clone()
     }
 
     fn register_conn(&mut self, conn: ConnectionId, alias: PeerConnectionAlias) {
@@ -74,6 +79,30 @@ impl SharedCtxInternal {
         } else {
             false
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use tokio::sync::mpsc::channel;
+
+    use super::*;
+
+    #[test]
+    fn get_service_must_reject_out_of_range_id_without_panicking() {
+        let ctx = SharedCtx::new(PeerId::from(1), SharedRouterTable::new(PeerId::from(1)));
+
+        assert!(ctx.get_service(&P2pServiceId::from(256u16)).is_none());
+    }
+
+    #[test]
+    fn set_service_must_keep_valid_highest_id() {
+        let mut ctx = SharedCtx::new(PeerId::from(1), SharedRouterTable::new(PeerId::from(1)));
+        let (tx, _rx) = channel(1);
+
+        ctx.set_service(P2pServiceId::from(255u16), tx);
+
+        assert!(ctx.get_service(&P2pServiceId::from(255u16)).is_some());
     }
 }
 

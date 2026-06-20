@@ -9,6 +9,13 @@ pub struct BroadcastMsgId(u64);
 #[derive(Debug, Display, PartialEq, Deref, Eq, Hash, Serialize, Deserialize, From, Clone, Copy)]
 pub struct P2pServiceId(u16);
 
+impl P2pServiceId {
+    pub(crate) fn as_service_index(self) -> Option<usize> {
+        let index = *self as usize;
+        (index < 256).then_some(index)
+    }
+}
+
 impl BroadcastMsgId {
     pub fn rand() -> Self {
         Self(rand::random())
