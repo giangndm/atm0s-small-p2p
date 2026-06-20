@@ -47,7 +47,7 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Representative issues: ISSUE-034, ISSUE-037, ISSUE-038, ISSUE-047,
   ISSUE-059, ISSUE-071, ISSUE-081 through ISSUE-089, ISSUE-095, ISSUE-099,
-  ISSUE-110, ISSUE-111, ISSUE-138, ISSUE-141, ISSUE-143, ISSUE-152,
+  ISSUE-110, ISSUE-111, ISSUE-141, ISSUE-143, ISSUE-152,
   ISSUE-154, ISSUE-155, ISSUE-158, ISSUE-166, ISSUE-171, ISSUE-175,
   ISSUE-186.
 - Pattern: replicated-KV, alias, metrics, visualization, and pubsub flows accept
@@ -189,6 +189,11 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   `AliasFoundLocation::Local`, the live-find gauge is decremented, and the
   existing `NotifySet` broadcast is preserved. Verification:
   `cargo test pending_find_must_prefer_late_local_registration_over_remote_found -- --nocapture`.
+- ISSUE-138: fixed by using one effective snapshot version for bounded
+  `FetchSnapshot` requests: the producer now caps requested future versions at
+  the live version, filters the page with that value, and declares the same
+  value in `RpcRes::FetchSnapshot`. Verification:
+  `cargo test continuation_snapshot_response_must_preserve_requested_max_version -- --nocapture`.
 - ISSUE-136: fixed by moving `ctx.unregister_conn(&conn_id)` and teardown
   metric cleanup before the awaited
   `main_tx.send(MainEvent::PeerDisconnected(...))` lifecycle report in

@@ -75,7 +75,8 @@ where
                 self.outs.push_back(Event::NetEvent(NetEvent::Unicast(from_node, RpcEvent::RpcRes(res))));
             }
             RpcReq::FetchSnapshot { from, to, max_version } => {
-                let res = RpcRes::FetchSnapshot(self.snapshot(from, to, max_version), self.version);
+                let snapshot_version = max_version.unwrap_or(self.version).min(self.version);
+                let res = RpcRes::FetchSnapshot(self.snapshot(from, to, Some(snapshot_version)), snapshot_version);
                 self.outs.push_back(Event::NetEvent(NetEvent::Unicast(from_node, RpcEvent::RpcRes(res))));
             }
         }

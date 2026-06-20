@@ -42,7 +42,7 @@ the source of truth for evidence and reviewer decisions.
 
 - Representative issues: ISSUE-034, ISSUE-037, ISSUE-038, ISSUE-047,
   ISSUE-059, ISSUE-071, ISSUE-081 through ISSUE-089, ISSUE-095, ISSUE-099,
-  ISSUE-110, ISSUE-111, ISSUE-138, ISSUE-141, ISSUE-143, ISSUE-152,
+  ISSUE-110, ISSUE-111, ISSUE-141, ISSUE-143, ISSUE-152,
   ISSUE-154, ISSUE-155, ISSUE-158, ISSUE-166, ISSUE-171, ISSUE-175,
   ISSUE-186.
 - Pattern: replicated-KV full sync, changed repair, alias lookup, metrics,
@@ -3918,6 +3918,12 @@ the source of truth for evidence and reviewer decisions.
     `max_version = Version(2)` returns snapshot data for key `2` at
     `Version(2)` but declares the response version as `Version(3)`; expected
     the declared version to remain `Version(2)`.
+- Fix status: fixed. `LocalStore::on_rpc_req` now computes an effective
+  snapshot version as `max_version.unwrap_or(self.version).min(self.version)`,
+  filters the snapshot with that same version, and declares that version in
+  `RpcRes::FetchSnapshot`.
+- Verification intent:
+  - `cargo test continuation_snapshot_response_must_preserve_requested_max_version -- --nocapture`
 
 ### ISSUE-139: Early PeerConnectError reporting can panic after main loop shutdown
 
