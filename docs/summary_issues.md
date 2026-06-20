@@ -7,9 +7,9 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Accepted issues: 204
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 73
+- Current consecutive no-new-issue cycles: 74
 - Stop condition: continue until 5 consecutive cycles find no new accepted
-  issue; currently 73/5 after ISSUE-204.
+  issue; currently 74/5 after ISSUE-204.
 
 ## Root Cause Summary
 
@@ -256,6 +256,13 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Recent Fuzz Evidence
 
+- Sanitized churn fuzz review:
+  `RUST_LOG=error P2P_FUZZ_SEED=74 P2P_FUZZ_NODES=8 P2P_FUZZ_STEPS=1800 cargo test fuzz_random_sanitized_node_churn_actions_must_not_panic_connection_tasks -- --nocapture`
+  failed with duplicate evidence for ISSUE-139. Reviewer `McClintock the 4th`
+  confirmed the `src/peer.rs:92` `should send to main` panic is the existing
+  early `PeerConnectError` reporting panic after main-loop shutdown; sanitized
+  churn excludes invalid service ids and forged `PeerStopped`, so the closed
+  and refused connection logs stay within the same lifecycle root cause.
 - Valid churn fuzz review:
   `RUST_LOG=error P2P_FUZZ_SEED=73 P2P_FUZZ_NODES=8 P2P_FUZZ_STEPS=1800 cargo test fuzz_random_valid_node_churn_actions_must_not_panic_connection_tasks -- --nocapture`
   failed with duplicate evidence for ISSUE-139. Reviewer `James the 4th`
