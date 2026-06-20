@@ -4413,6 +4413,12 @@ the source of truth for evidence and reviewer decisions.
 - Category: correctness, graceful-shutdown stability, route lifecycle
 - Score: 68/100
 - Reviewer: `Lagrange the 2nd`, confirmed.
+- Fix status: fixed by `87cf6ce` (`fix: validate peer stopped ownership`).
+  Accepted `PeerStopped` events now remove the neighbour and `RouterTable`
+  records removed direct connection ids in `removed_directs`; later RTT ticker
+  calls to `set_direct` from those removed connections are ignored instead of
+  recreating stopped-peer direct routes. Verification:
+  `cargo test peer_stopped_route_must_not_be_resurrected_by_connection_ticker -- --nocapture`.
 - Affected code:
   - `src/lib.rs`: `P2pNetwork::process_internal` handles
     `MainEvent::PeerStopped` by removing discovery state and calling

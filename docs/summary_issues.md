@@ -14,7 +14,7 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   ISSUE-002, ISSUE-008, ISSUE-009, ISSUE-010, ISSUE-011, ISSUE-012, ISSUE-013, ISSUE-014, ISSUE-015, ISSUE-021, ISSUE-024, ISSUE-033, ISSUE-055, ISSUE-103, ISSUE-122, ISSUE-123,
   ISSUE-124, ISSUE-125, ISSUE-126, ISSUE-127, ISSUE-128, ISSUE-129, ISSUE-130,
   ISSUE-131, ISSUE-132, ISSUE-133, ISSUE-134, ISSUE-135, ISSUE-136, ISSUE-137,
-  ISSUE-140, ISSUE-143, ISSUE-145, ISSUE-147, ISSUE-148, ISSUE-150,
+  ISSUE-140, ISSUE-143, ISSUE-145, ISSUE-147, ISSUE-148, ISSUE-150, ISSUE-151,
   ISSUE-053, ISSUE-063, ISSUE-139, ISSUE-146, ISSUE-168, ISSUE-170,
   ISSUE-149, ISSUE-169, ISSUE-174, ISSUE-176, ISSUE-181, ISSUE-189, ISSUE-190, ISSUE-191, ISSUE-192, ISSUE-193,
   ISSUE-194, ISSUE-195, ISSUE-196, ISSUE-197, ISSUE-198, ISSUE-199,
@@ -203,6 +203,11 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   removal misses, so stale publisher/subscriber destroy controls do not create
   phantom channel state or broadcast false leave events. Verification:
   `cargo test stale_pubsub_destroy_must_not_create_phantom_channel -- --nocapture`.
+- ISSUE-151: fixed by `87cf6ce` (`fix: validate peer stopped ownership`).
+  Accepted `PeerStopped` events now remove the neighbour and tombstone removed
+  direct connection ids in the router, so a still-running connection ticker
+  cannot recreate the stopped peer's direct route. Verification:
+  `cargo test peer_stopped_route_must_not_be_resurrected_by_connection_ticker -- --nocapture`.
 - ISSUE-145: fixed by validating `MainEvent::PeerData(conn, peer, ...)`
   against the router's live direct `(ConnectionId, PeerId)` binding before
   applying route sync or discovery advertisements. Stale or mismatched peer-data
