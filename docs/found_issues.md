@@ -2549,6 +2549,10 @@ the source of truth for evidence and reviewer decisions.
 
 ### ISSUE-098: QUIC object writer truncates lengths above `u16::MAX`
 
+- Status: fixed by the `write_object` concrete-buffer validation in `9b331cd`
+  (`fix: return stream serialization errors`). `write_object` now rejects
+  actual serialized payloads larger than the two-byte length prefix can
+  represent before writing any frame bytes.
 - Category: correctness, API stability
 - Score: 50/100
 - Reviewer: `Nash the 2nd`, confirmed.
@@ -2567,9 +2571,8 @@ the source of truth for evidence and reviewer decisions.
   cap and ISSUE-097's serialization-error panic.
 - Evidence test:
   - `cargo test write_object_must_reject_payloads_larger_than_u16_length_prefix -- --nocapture`
-  - Failure summary: `write_object::<_, _, 100_000>` returns `Ok(())` for a
-    70 KB payload even though the two-byte length prefix cannot represent it;
-    expected a recoverable error.
+  - Fixed summary: `write_object::<_, _, 100_000>` returns `Err(_)` for a
+    70 KB payload because the two-byte length prefix cannot represent it.
 
 ### ISSUE-174: QUIC object writer can bypass `MAX_SIZE` with non-deterministic serialization
 
