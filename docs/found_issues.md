@@ -634,6 +634,15 @@ the source of truth for evidence and reviewer decisions.
   - `cargo test rejects_overflowing_request_timestamp_without_panic -- --nocapture`
   - Failure summary: verification panics at the timeout addition with
     `attempt to add with overflow` instead of returning `Err`.
+- Fix status: fixed by checked handshake expiry arithmetic in
+  `SharedKeyHandshake::validate_handshake`. The peer-controlled timestamp is
+  combined with `HANDSHAKE_TIMEOUT` through `checked_add`, and overflowing
+  timestamps return `Err` before timeout comparison, avoiding debug panics and
+  release wrapping. Verified with the evidence test plus
+  `cargo test test_handshake_timeout -- --nocapture`,
+  `cargo test test_handshake_flow -- --nocapture`, and
+  `cargo fmt -- --check`. Reviewer `Singer the 8th` accepted. ISSUE-002
+  remains separate for future-dated tokens.
 
 ### ISSUE-022: Alias shutdown from one peer clears all cached aliases
 

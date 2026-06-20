@@ -11,9 +11,9 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 - Stop condition: continue until 5 consecutive cycles find no new accepted
   issue; currently 341/5 after ISSUE-204.
 - Fix phase status: ISSUE-003, ISSUE-004, ISSUE-005, ISSUE-006, ISSUE-007,
-  ISSUE-008, ISSUE-009, ISSUE-033, ISSUE-055, ISSUE-103, ISSUE-053, ISSUE-063,
-  ISSUE-139, ISSUE-170, ISSUE-190, and ISSUE-192 have focused fixes committed.
-  ISSUE-003 is fixed by `cfc8e57`;
+  ISSUE-008, ISSUE-009, ISSUE-021, ISSUE-033, ISSUE-055, ISSUE-103,
+  ISSUE-053, ISSUE-063, ISSUE-139, ISSUE-170, ISSUE-190, and ISSUE-192 have
+  focused fixes committed. ISSUE-003 is fixed by `cfc8e57`;
   ISSUE-004 is covered by the ISSUE-170 ownership-validation follow-up
   `87cf6ce`; earlier fixes are `648cfd0`, `2cbf096`, `15b788c`, and
   `4997404`.
@@ -254,6 +254,15 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   and `cargo fmt -- --check`. Reviewer `Dewey the 7th` approved. Separate
   accepted discovery failures for local-peer advertisements and configured-seed
   overrides still reproduce and remain outside this fix.
+- ISSUE-021: fixed by checked handshake expiry arithmetic in
+  `SharedKeyHandshake::validate_handshake`. Peer-controlled timestamps now use
+  `checked_add(HANDSHAKE_TIMEOUT)` and overflow returns `Err` before timeout
+  comparison, avoiding debug panics and release wrapping. Verified with
+  `cargo test rejects_overflowing_request_timestamp_without_panic -- --nocapture`,
+  `cargo test test_handshake_timeout -- --nocapture`,
+  `cargo test test_handshake_flow -- --nocapture`, and
+  `cargo fmt -- --check`. Reviewer `Singer the 8th` accepted. ISSUE-002
+  remains separate for future-dated tokens.
 - ISSUE-033: fixed by checked route metric composition in
   `RouterTable::apply_sync`. Peer-advertised metrics are combined with the
   direct-link metric through `PathMetric::checked_add`, and overflowing hop or

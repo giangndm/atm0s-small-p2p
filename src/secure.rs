@@ -64,8 +64,12 @@ impl SharedKeyHandshake {
 
         let handshake_data: HandshakeData = bincode::deserialize(&handshake.payload).map_err(|_| "Invalid handshake data format".to_string())?;
 
+        let Some(expires_at) = handshake_data.timestamp.checked_add(HANDSHAKE_TIMEOUT) else {
+            return Err(format!("Handshake timestamp overflow {}", handshake_data.timestamp));
+        };
+
         // Verify timestamp
-        if current_ts > handshake_data.timestamp + HANDSHAKE_TIMEOUT {
+        if current_ts > expires_at {
             return Err(format!("Handshake timeout {} vs {}", current_ts, handshake_data.timestamp));
         }
 
