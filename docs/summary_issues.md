@@ -7,9 +7,9 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Accepted issues: 204
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 90
+- Current consecutive no-new-issue cycles: 91
 - Stop condition: continue until 5 consecutive cycles find no new accepted
-  issue; currently 90/5 after ISSUE-204.
+  issue; currently 91/5 after ISSUE-204.
 
 ## Root Cause Summary
 
@@ -256,6 +256,14 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Recent Fuzz Evidence
 
+- Broad random fuzz review:
+  `RUST_LOG=error P2P_FUZZ_SEED=91 P2P_FUZZ_NODES=8 P2P_FUZZ_STEPS=1800 cargo test fuzz_random_node_actions_must_not_panic_connection_tasks -- --nocapture`
+  failed with duplicate evidence for ISSUE-063. Reviewer `Euler the 5th`
+  confirmed the single `src/router.rs:76` direct-metric panic is the existing
+  stale `PeerData::Sync` after direct-route removal root cause. The smallest
+  fix proposal is unchanged: make `apply_sync` tolerate missing direct metrics
+  by discarding stale sync entries instead of panicking. No ISSUE-205 was
+  created.
 - Sanitized churn fuzz review:
   `RUST_LOG=error P2P_FUZZ_SEED=90 P2P_FUZZ_NODES=8 P2P_FUZZ_STEPS=1800 cargo test fuzz_random_sanitized_node_churn_actions_must_not_panic_connection_tasks -- --nocapture`
   failed with duplicate evidence for ISSUE-139. Reviewer `Kierkegaard the 5th`

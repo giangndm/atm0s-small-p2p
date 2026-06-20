@@ -11,7 +11,7 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 90
+- Current consecutive no-new-issue cycles: 91
 - Stop condition requested by user: continue until 5 consecutive cycles find no
   new accepted issue.
 
@@ -5783,6 +5783,32 @@ the source of truth for evidence and reviewer decisions.
     `src/peer.rs:1092` with `got 2`.
 
 ## No-New-Issue Audit Cycles
+
+### Cycle after ISSUE-204 no-new cycle 91: broad random duplicate stale sync panic
+
+- Result: no accepted non-duplicate issue.
+- Reviewer: `Euler the 5th`, forked subagent review, confirmed
+  `DUPLICATE/NO_NEW`.
+- Source and test evidence reviewed:
+  - `src/tests/fuzz.rs`
+  - `src/router.rs`
+  - `RUST_LOG=error P2P_FUZZ_SEED=91 P2P_FUZZ_NODES=8 P2P_FUZZ_STEPS=1800 cargo test fuzz_random_node_actions_must_not_panic_connection_tasks -- --nocapture`
+    failed.
+- Evidence summary:
+  - exit status 101; `0 passed; 1 failed`; the fuzz assertion at
+    `src/tests/fuzz.rs:183` detected background task panics.
+  - one `src/router.rs:76:66` panic with
+    `should have direct metric with apply_sync`.
+  - two closed-by-peer `ERROR` logs appeared, but reviewer found no
+    invalid-service `src/ctx.rs` panic, no `src/peer.rs` send-to-main panic,
+    and no forwarded `PeerStopped` no-capacity/channel-closed storm in this
+    log.
+- Duplicate mapping:
+  - the `src/router.rs:76` panic maps directly to ISSUE-063: stale
+    `PeerData::Sync` reaches `RouterTable::apply_sync` after direct route
+    state is gone.
+- Root-cause summary impact: no new root cause; this strengthens existing
+  ISSUE-063 evidence without adding ISSUE-205.
 
 ### Cycle after ISSUE-204 no-new cycle 90: sanitized churn duplicate outgoing send-to-main panic
 
