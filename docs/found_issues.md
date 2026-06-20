@@ -11,7 +11,7 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 132
+- Current consecutive no-new-issue cycles: 133
 - Stop condition requested by user: continue until 5 consecutive cycles find no
   new accepted issue.
 
@@ -5783,6 +5783,41 @@ the source of truth for evidence and reviewer decisions.
     `src/peer.rs:1092` with `got 2`.
 
 ## No-New-Issue Audit Cycles
+
+### Cycle after ISSUE-204 no-new cycle 133: valid random duplicate stale sync and PeerStopped storm
+
+- Result: no accepted non-duplicate issue.
+- Reviewer: `Hypatia the 5th`, forked subagent review, confirmed
+  `DUPLICATE/NO_NEW`.
+- Source and test evidence reviewed:
+  - `src/tests/fuzz.rs`
+  - `src/router.rs`
+  - `src/peer/peer_internal.rs`
+  - `RUST_LOG=error P2P_FUZZ_SEED=133 P2P_FUZZ_NODES=8 P2P_FUZZ_STEPS=1800 cargo test fuzz_random_valid_node_actions_must_not_panic_connection_tasks -- --nocapture`
+    failed.
+- Evidence summary:
+  - exit status 101; `0 passed; 1 failed`; the fuzz assertion at
+    `src/tests/fuzz.rs:183:5` detected a background connection/task panic.
+  - four `src/router.rs:76` / `should have direct metric with apply_sync`
+    markers from two direct panic sites plus the fuzz assertion.
+  - 8,057 `no available capacity`, 799 `channel closed`, and 8,836
+    `forward peer stopped over peer alias` logs show the same forwarded-stop
+    storm shape.
+  - seven `broadcast data over peer alias` backpressure lines were reviewed as
+    duplicate storm fallout, not a standalone new issue, because there is no
+    separate failed invariant, panic site, data-loss assertion, or distinct
+    root cause in this evidence.
+  - no `src/ctx.rs:34` out-of-range service-id panic evidence.
+  - no `src/peer.rs:89/92/130/133` `should send to main` evidence.
+- Duplicate mapping:
+  - primary: the `src/router.rs:76` panic maps directly to ISSUE-063: stale
+    `PeerData::Sync` can survive after a direct route is removed, then
+    `apply_sync` asserts that the missing direct metric exists.
+  - secondary: the stop-forwarding capacity/channel-closed storm maps to
+    ISSUE-170: forwarded `PeerStopped` events lack dedupe, TTL, or tombstone
+    suppression and can amplify under churn.
+- Root-cause summary impact: no new root cause; this strengthens existing
+  ISSUE-063 and ISSUE-170 evidence without adding a new issue.
 
 ### Cycle after ISSUE-204 no-new cycle 132: broad random duplicate invalid service panic
 
