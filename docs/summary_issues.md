@@ -7,9 +7,9 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Accepted issues: 204
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 280
+- Current consecutive no-new-issue cycles: 281
 - Stop condition: continue until 5 consecutive cycles find no new accepted
-  issue; currently 280/5 after ISSUE-204.
+  issue; currently 281/5 after ISSUE-204.
 
 ## Root Cause Summary
 
@@ -2389,6 +2389,17 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Recent No-New Audit
 
+- Cycle after ISSUE-204 no-new cycle 281 ran a valid-action fuzz pass with
+  forked reviewer `Nash the 6th`. The command set `P2P_FUZZ_NODES=9`, while
+  the failing assertion reported `seed=281, nodes=8, steps=2400`. The run
+  failed with exit code 101, but the hard failures were duplicate ISSUE-063
+  evidence, two `src/router.rs:76:66` stale-sync panics, and duplicate
+  ISSUE-139 evidence, two `src/peer.rs:92:104` shutdown-send panics. The
+  1,379 stopped-peer forwarding markers, including 1,022 no-capacity markers
+  and 361 channel-closed markers, were reviewed as duplicate ISSUE-170
+  evidence. Connection-lost and closed-by-peer markers were reviewed as
+  teardown fallout. No accepted issue or summary root-cause change was
+  recorded.
 - Cycle after ISSUE-204 no-new cycle 280 ran a broad invalid-action fuzz pass
   with forked reviewer `Bacon the 6th`. The command set `P2P_FUZZ_NODES=10`,
   while the failing assertion reported `seed=280, nodes=8, steps=2600`. The
