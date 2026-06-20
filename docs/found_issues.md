@@ -4124,6 +4124,11 @@ the source of truth for evidence and reviewer decisions.
     key `1` sets `ctx.next_state` to `Working(Version(3))`; expected full sync
     to reject or ignore the stale terminal page and keep the continuation
     outstanding.
+- Fixed verification:
+  - `cargo test full_sync_must_reject_stale_terminal_snapshot_after_continuation_request -- --nocapture`
+  - `cargo test full_sync_must_reject_continuation -- --nocapture`
+  - `cargo test full_sync_must_reject_none_continuation_after_partial_snapshot -- --nocapture`
+  - `cargo test full_sync_must_reject_snapshot -- --nocapture`
 
 ### ISSUE-144: Peer alias leaks if main loop closes before PeerConnected delivery
 

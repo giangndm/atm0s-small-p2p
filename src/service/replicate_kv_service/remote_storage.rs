@@ -211,9 +211,20 @@ where
                 false
             }
             RpcRes::FetchSnapshot(Some(snapshot), version) => {
-                if self.sending_req.is_none() {
+                let Some((
+                    _,
+                    NetEvent::Unicast(
+                        _,
+                        RpcEvent::RpcReq(RpcReq::FetchSnapshot {
+                            from,
+                            to,
+                            max_version,
+                        }),
+                    ),
+                )) = self.sending_req.as_ref()
+                else {
                     return false;
-                }
+                };
                 // TODO check snapshot is not empty
                 log::info!(
                     "[RemoteStore {:?}] got snapshot {} slots and biggest_key {:?}, current version {version:?}, next {:?}",
@@ -229,6 +240,109 @@ where
                         snapshot.slots.len()
                     );
                     return false;
+                }
+                if max_version.is_some() && max_version != &Some(version) {
+                    log::warn!(
+                        "[RemoteStore {:?}] reject snapshot page version {version:?} not matching pending max_version {max_version:?}",
+                        ctx.remote
+                    );
+                    return false;
+                }
+                if to.is_some() && to.as_ref() != Some(&snapshot.biggest_key) {
+                    log::warn!(
+                        "[RemoteStore {:?}] reject snapshot page biggest_key {:?} not matching pending upper bound {:?}",
+                        ctx.remote,
+                        snapshot.biggest_key,
+                        to
+                    );
+                    return false;
+                }
+                if let Some(next_key) = snapshot.next_key.as_ref() {
+                    if next_key > &snapshot.biggest_key {
+                        log::warn!(
+                            "[RemoteStore {:?}] reject snapshot page next_key {:?} past biggest_key {:?}",
+                            ctx.remote,
+                            next_key,
+                            snapshot.biggest_key
+                        );
+                        return false;
+                    }
+                    if let Some(to) = to.as_ref() {
+                        if next_key > to {
+                            log::warn!(
+                                "[RemoteStore {:?}] reject snapshot page next_key {:?} past pending upper bound {:?}",
+                                ctx.remote,
+                                next_key,
+                                to
+                            );
+                            return false;
+                        }
+                    }
+                }
+                if snapshot.slots.is_empty() {
+                    if snapshot.next_key.is_some() {
+                        log::warn!("[RemoteStore {:?}] reject empty snapshot page with continuation", ctx.remote);
+                        return false;
+                    }
+                    if from.is_none() && to.is_none() && max_version.is_none() && version > Version(0) {
+                        log::warn!("[RemoteStore {:?}] reject nonzero empty initial snapshot page", ctx.remote);
+                        return false;
+                    }
+                }
+                let mut prev_key: Option<&K> = None;
+                for (k, slot) in snapshot.slots.iter() {
+                    if slot.version > version {
+                        log::warn!(
+                            "[RemoteStore {:?}] reject snapshot slot {:?} version {:?} newer than page version {version:?}",
+                            ctx.remote,
+                            k,
+                            slot.version
+                        );
+                        return false;
+                    }
+                    if let Some(prev_key) = prev_key {
+                        if k <= prev_key {
+                            log::warn!(
+                                "[RemoteStore {:?}] reject unordered or duplicate snapshot key {:?} after {:?}",
+                                ctx.remote,
+                                k,
+                                prev_key
+                            );
+                            return false;
+                        }
+                    }
+                    if k > &snapshot.biggest_key {
+                        log::warn!(
+                            "[RemoteStore {:?}] reject snapshot key {:?} past biggest_key {:?}",
+                            ctx.remote,
+                            k,
+                            snapshot.biggest_key
+                        );
+                        return false;
+                    }
+                    if let Some(from) = from.as_ref() {
+                        if k < from {
+                            log::warn!(
+                                "[RemoteStore {:?}] reject snapshot key {:?} before pending lower bound {:?}",
+                                ctx.remote,
+                                k,
+                                from
+                            );
+                            return false;
+                        }
+                    }
+                    if let Some(to) = to.as_ref() {
+                        if k > to {
+                            log::warn!(
+                                "[RemoteStore {:?}] reject snapshot key {:?} past pending upper bound {:?}",
+                                ctx.remote,
+                                k,
+                                to
+                            );
+                            return false;
+                        }
+                    }
+                    prev_key = Some(k);
                 }
                 for (k, slot) in snapshot.slots.into_iter() {
                     ctx.outs.push_back(Event::KvEvent(KvEvent::Set(Some(ctx.remote.clone()), k.clone(), slot.value.clone())));
@@ -265,7 +379,28 @@ where
                 true
             }
             RpcRes::FetchSnapshot(None, version) => {
-                if self.sending_req.is_none() {
+                let Some((
+                    _,
+                    NetEvent::Unicast(
+                        _,
+                        RpcEvent::RpcReq(RpcReq::FetchSnapshot {
+                            from,
+                            to,
+                            max_version,
+                        }),
+                    ),
+                )) = self.sending_req.as_ref()
+                else {
+                    return false;
+                };
+                if from.is_some() || to.is_some() || max_version.is_some() {
+                    log::warn!(
+                        "[RemoteStore {:?}] reject terminal empty snapshot for pending continuation from {:?} to {:?} max_version {:?}",
+                        ctx.remote,
+                        from,
+                        to,
+                        max_version
+                    );
                     return false;
                 }
                 log::info!("[RemoteStore {:?}] switch to working with 0 slots and version {version:?}", ctx.remote);
