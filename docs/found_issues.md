@@ -11,7 +11,7 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 237
+- Current consecutive no-new-issue cycles: 238
 - Stop condition requested by user: continue until 5 consecutive cycles find no
   new accepted issue.
 
@@ -5783,6 +5783,41 @@ the source of truth for evidence and reviewer decisions.
     `src/peer.rs:1092` with `got 2`.
 
 ## No-New-Issue Audit Cycles
+
+### Cycle after ISSUE-204 no-new cycle 238: broad invalid service and shutdown send panics
+
+- Result: no accepted non-duplicate issue.
+- Reviewer: `Gibbs the 6th`, forked subagent review, confirmed
+  `DUPLICATE/NO_NEW`.
+- Source and test evidence reviewed:
+  - `src/tests/fuzz.rs`
+  - `src/ctx.rs`
+  - `src/peer.rs`
+  - `RUST_LOG=error P2P_FUZZ_SEED=238 P2P_FUZZ_NODES=8 P2P_FUZZ_STEPS=1800 cargo test fuzz_random_node_actions_must_not_panic_connection_tasks -- --nocapture`
+    failed.
+- Evidence summary:
+  - exit status 101; log had 50 lines; the fuzz assertion at
+    `src/tests/fuzz.rs:183:5` reported a background connection/service task
+    panic with `seed=238, nodes=8, steps=1800`.
+  - seven `src/ctx.rs:34` panic markers with
+    `index out of bounds: the len is 256 but the index is 256`.
+  - one `src/peer.rs:133` panic marker with
+    `should send to main: SendError { .. }`.
+  - eight `channel closed` send errors and seven connection-loss/closed-peer
+    lines were reviewed as teardown fallout after the panics.
+  - no `src/router.rs:76` stale-sync evidence.
+  - no no-capacity, forwarded-stop, broadcast-data, open_bi, connect-answer,
+    path-not-found, or PeerStopped storm evidence.
+- Duplicate mapping: ISSUE-053 and ISSUE-139.
+- Root-cause summary impact: no new root cause; this strengthens existing
+  invalid-service-id and shutdown-reporting evidence without adding a new
+  issue.
+- Smallest fix proposal:
+  - for ISSUE-053, validate service ids before indexing, preferably at decode
+    or inbound dispatch, then reject, drop, or log out-of-range ids.
+  - for ISSUE-139, replace `expect("should send to main")` in shutdown and
+    error-report paths with shutdown-aware non-panicking handling, such as
+    log-and-return or ignoring send failure after the main receiver closes.
 
 ### Cycle after ISSUE-204 no-new cycle 237: valid stale sync and PeerStopped storm
 
