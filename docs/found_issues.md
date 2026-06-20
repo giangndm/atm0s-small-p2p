@@ -11,7 +11,7 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 208
+- Current consecutive no-new-issue cycles: 209
 - Stop condition requested by user: continue until 5 consecutive cycles find no
   new accepted issue.
 
@@ -5783,6 +5783,37 @@ the source of truth for evidence and reviewer decisions.
     `src/peer.rs:1092` with `got 2`.
 
 ## No-New-Issue Audit Cycles
+
+### Cycle after ISSUE-204 no-new cycle 209: valid stale sync and alias storm fallout
+
+- Result: no accepted non-duplicate issue.
+- Reviewer: `Volta the 6th`, forked subagent review, confirmed
+  `DUPLICATE/NO_NEW`.
+- Source and test evidence reviewed:
+  - `src/tests/fuzz.rs`
+  - `src/router.rs`
+  - `RUST_LOG=error P2P_FUZZ_SEED=209 P2P_FUZZ_NODES=8 P2P_FUZZ_STEPS=1800 cargo test fuzz_random_valid_node_actions_must_not_panic_connection_tasks -- --nocapture`
+    failed.
+- Evidence summary:
+  - exit status 101; `0 passed; 1 failed`; the fuzz assertion at
+    `src/tests/fuzz.rs:183:5` reported a background connection/service task
+    panic.
+  - one `src/router.rs:76` panic marker with
+    `should have direct metric with apply_sync`.
+  - 9,175 `forward peer stopped over peer alias` send failures: 8,523
+    `no available capacity` and 826 `channel closed`.
+  - 38 `broadcast data over peer alias` no-capacity logs and one
+    `answer open_bi got error internal channel error` log were reviewed as
+    storm/lifecycle fallout from the same ISSUE-170 pattern.
+  - three connection lost/internal endpoint logs were reviewed as teardown
+    noise.
+  - no `src/ctx.rs:34` invalid-service-id evidence.
+  - no `src/peer.rs:89/92/130/133` `should send to main` evidence.
+  - no connect-answer, path-not-found, or WARN logs.
+- Duplicate mapping: ISSUE-063 and ISSUE-170.
+- Root-cause summary impact: no new root cause; this strengthens existing
+  stale-sync invalidation and PeerStopped storm evidence without adding a new
+  issue.
 
 ### Cycle after ISSUE-204 no-new cycle 208: broad duplicate invalid service panic
 
