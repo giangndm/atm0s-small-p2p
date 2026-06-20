@@ -11,7 +11,7 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 271
+- Current consecutive no-new-issue cycles: 272
 - Stop condition requested by user: continue until 5 consecutive cycles find no
   new accepted issue.
 
@@ -5783,6 +5783,37 @@ the source of truth for evidence and reviewer decisions.
     `src/peer.rs:1092` with `got 2`.
 
 ## No-New-Issue Audit Cycles
+
+### Cycle after ISSUE-204 no-new cycle 272: broad invalid service and shutdown send panics
+
+- Result: no accepted non-duplicate issue.
+- Reviewer: `Ampere the 6th`, forked subagent review, confirmed
+  duplicate/no-new.
+- Source and test evidence reviewed:
+  - `src/tests/fuzz.rs`
+  - `src/ctx.rs`
+  - `src/peer.rs`
+  - `RUST_LOG=error P2P_FUZZ_SEED=272 P2P_FUZZ_NODES=10 P2P_FUZZ_STEPS=2600 cargo test fuzz_random_node_actions_must_not_panic_connection_tasks -- --nocapture`
+    failed; the test assertion reported `seed=272, nodes=8, steps=2600`.
+- Evidence summary:
+  - exit status 101; log had 49 lines; the fuzz assertion at
+    `src/tests/fuzz.rs:183:5` reported background connection/service task
+    failure with `seed=272, nodes=8, steps=2600`.
+  - six `src/ctx.rs:34` panic markers with
+    `index out of bounds: the len is 256 but the index is 256`.
+  - one shutdown-send panic marker at `src/peer.rs:92:104` with
+    `should send to main: SendError { .. }`.
+  - six `channel closed`, four connection-lost, four closed-by-peer, and one
+    endpoint-internal-error marker were reviewed as teardown fallout.
+  - no stale-sync, open_bi, connect-answer, no-capacity, forwarded-stop,
+    broadcast-data, path-not-found, or aborted-by-peer evidence.
+- Duplicate mapping: ISSUE-053 and ISSUE-139.
+- Root-cause summary impact: no new root cause; this strengthens existing
+  invalid-service-id validation and shutdown-send teardown evidence without
+  adding a new issue.
+- Smallest fix proposal: validate service ids before indexing, and replace
+  shutdown-path `expect("should send to main")` calls with graceful
+  closed-main handling when reporting peer lifecycle events.
 
 ### Cycle after ISSUE-204 no-new cycle 271: valid stale sync and stopped storm
 
