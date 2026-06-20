@@ -11,7 +11,7 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 252
+- Current consecutive no-new-issue cycles: 253
 - Stop condition requested by user: continue until 5 consecutive cycles find no
   new accepted issue.
 
@@ -5783,6 +5783,38 @@ the source of truth for evidence and reviewer decisions.
     `src/peer.rs:1092` with `got 2`.
 
 ## No-New-Issue Audit Cycles
+
+### Cycle after ISSUE-204 no-new cycle 253: valid stale sync and stopped storm
+
+- Result: no accepted non-duplicate issue.
+- Reviewer: `Fermat the 6th`, forked subagent review, confirmed
+  duplicate/no-new.
+- Source and test evidence reviewed:
+  - `src/tests/fuzz.rs`
+  - `src/router.rs`
+  - `src/peer/peer_alias.rs`
+  - `RUST_LOG=error P2P_FUZZ_SEED=253 P2P_FUZZ_NODES=8 P2P_FUZZ_STEPS=1800 cargo test fuzz_random_valid_node_actions_must_not_panic_connection_tasks -- --nocapture`
+    failed.
+- Evidence summary:
+  - exit status 101; log had 48,458 lines; the fuzz assertion at
+    `src/tests/fuzz.rs:183:5` reported background connection/service task
+    failure with `seed=253, nodes=8, steps=1800`.
+  - one router panic marker at `src/router.rs:76:66` with
+    `should have direct metric with apply_sync`.
+  - 47,925 `forward peer stopped over peer alias` markers, including 47,896
+    `no available capacity` markers and 542 `channel closed` markers.
+  - 42 `broadcast data over peer alias` markers were reviewed as low-count
+    fallout inside the same stopped-peer storm.
+  - no invalid-service-id, shutdown-send, open_bi, connect-answer, or
+    path-not-found evidence.
+- Duplicate mapping: ISSUE-063 and ISSUE-170.
+- Root-cause summary impact: no new root cause; this strengthens existing
+  stale route-sync invalidation and stopped-peer storm evidence without adding
+  a new issue.
+- Smallest fix proposal: guard stale route-sync application when the direct
+  metric has already been removed, and suppress duplicate `PeerStopped`
+  forwarding with per-peer tombstones, TTL, or coalescing before retrying onto
+  bounded peer-alias queues.
 
 ### Cycle after ISSUE-204 no-new cycle 252: broad repeated invalid service id panics
 
