@@ -7,9 +7,9 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Accepted issues: 204
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 117
+- Current consecutive no-new-issue cycles: 118
 - Stop condition: continue until 5 consecutive cycles find no new accepted
-  issue; currently 117/5 after ISSUE-204.
+  issue; currently 118/5 after ISSUE-204.
 
 ## Root Cause Summary
 
@@ -256,6 +256,16 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Recent Fuzz Evidence
 
+- Broad random fuzz review:
+  `RUST_LOG=error P2P_FUZZ_SEED=118 P2P_FUZZ_NODES=8 P2P_FUZZ_STEPS=1800 cargo test fuzz_random_node_actions_must_not_panic_connection_tasks -- --nocapture`
+  failed with duplicate evidence for ISSUE-053 only. Reviewer
+  `Faraday the 5th` confirmed the three `src/ctx.rs:34` out-of-range
+  `P2pServiceId(256)` panics are the existing unchecked inbound service-id
+  indexing root cause. No ISSUE-063, ISSUE-139, or ISSUE-170 evidence was
+  present; the three channel-closed and connection lost/closed logs were
+  teardown fallout. The smallest fix proposal remains unchanged: reject or
+  ignore out-of-range service ids before indexing by using a bounds-checked
+  lookup and dropping unknown-service traffic. No new issue was created.
 - Valid-action fuzz review:
   `RUST_LOG=error P2P_FUZZ_SEED=117 P2P_FUZZ_NODES=8 P2P_FUZZ_STEPS=1800 cargo test fuzz_random_valid_node_actions_must_not_panic_connection_tasks -- --nocapture`
   failed with duplicate evidence for ISSUE-063 and ISSUE-170. Reviewer
