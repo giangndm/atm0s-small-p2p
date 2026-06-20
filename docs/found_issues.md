@@ -11,7 +11,7 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 56
+- Current consecutive no-new-issue cycles: 57
 - Stop condition requested by user: continue until 5 consecutive cycles find no
   new accepted issue.
 
@@ -5783,6 +5783,31 @@ the source of truth for evidence and reviewer decisions.
     `src/peer.rs:1092` with `got 2`.
 
 ## No-New-Issue Audit Cycles
+
+### Cycle after ISSUE-204 no-new cycle 57: sanitized churn duplicate open_bi connect-error panic
+
+- Result: no accepted non-duplicate issue.
+- Reviewer: `Parfit the 4th`, forked subagent review, confirmed
+  duplicate-only no-new classification.
+- Source and test evidence reviewed:
+  - `src/peer.rs`
+  - `src/tests/fuzz.rs`
+  - `RUST_LOG=error P2P_FUZZ_SEED=57 P2P_FUZZ_NODES=8 P2P_FUZZ_STEPS=1800 cargo test fuzz_random_sanitized_node_churn_actions_must_not_panic_connection_tasks -- --nocapture`
+    failed.
+- Duplicate or too-close symptoms rejected:
+  - sanitized churn closed the main loop while an outgoing connection task was
+    reporting an early `PeerConnectError`.
+  - the primary background panic was `src/peer.rs:130:121` with
+    `should send to main: SendError { .. }`, followed by the fuzz harness
+    assertion at `src/tests/fuzz.rs:372:5`.
+  - this is the `connection.open_bi().await` error branch in
+    `PeerConnection::new_connecting`; it shares the same unchecked
+    `main_tx.send(...).await.expect("should send to main")` root cause as the
+    previously observed `src/peer.rs:133` branch.
+  - this maps directly to ISSUE-139: early `PeerConnectError` reporting can
+    panic after main loop shutdown. Existing score: 53/100.
+- Root-cause summary impact: no new root cause; this sanitized-churn fuzz run
+  strengthens existing ISSUE-139 evidence without adding ISSUE-205.
 
 ### Cycle after ISSUE-204 no-new cycle 56: pubsub stale leave duplicate
 

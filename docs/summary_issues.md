@@ -7,9 +7,9 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Accepted issues: 204
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 56
+- Current consecutive no-new-issue cycles: 57
 - Stop condition: continue until 5 consecutive cycles find no new accepted
-  issue; currently 56/5 after ISSUE-204.
+  issue; currently 57/5 after ISSUE-204.
 
 ## Root Cause Summary
 
@@ -256,6 +256,12 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Recent Fuzz Evidence
 
+- Sanitized churn fuzz review:
+  `RUST_LOG=error P2P_FUZZ_SEED=57 P2P_FUZZ_NODES=8 P2P_FUZZ_STEPS=1800 cargo test fuzz_random_sanitized_node_churn_actions_must_not_panic_connection_tasks -- --nocapture`
+  failed with duplicate evidence for ISSUE-139. Reviewer `Parfit the 4th`
+  confirmed the `src/peer.rs:130` `connection.open_bi().await` error branch is
+  the same unchecked early `PeerConnectError` send-to-main root cause as the
+  earlier `src/peer.rs:133` churn failures.
 - Focused pubsub stale-leave ordering review:
   `cargo test stale_pubsub_leave_must_not_remove_membership_after_newer_heartbeat -- --nocapture`
   failed with duplicate evidence for ISSUE-155. Reviewer `Averroes the 4th`
