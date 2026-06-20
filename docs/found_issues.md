@@ -3625,12 +3625,15 @@ the source of truth for evidence and reviewer decisions.
 - Category: correctness, shutdown stability, API stability
 - Score: 56/100
 - Reviewer: `McClintock the 2nd`, confirmed.
+- Fix status: fixed by `c83321c`. `VisualizationService::recv` now returns
+  `Err("visualization base service channel closed")` when the underlying
+  `P2pService` receiver closes instead of panicking.
 - Affected code:
   - `src/service/visualization_service.rs`: `VisualizationService::recv`
     returns `anyhow::Result<VisualizationServiceEvent>`.
   - `src/service/visualization_service.rs`: the
-    `event = self.service.recv()` branch calls `event.expect("should work")`
-    when the underlying `P2pService` receiver returns `None`.
+    `event = self.service.recv()` branch now maps a closed underlying
+    `P2pService` receiver to `anyhow::bail!` instead of calling `expect`.
 - Impact: if the base service channel closes during shutdown or teardown,
   `VisualizationService::recv()` unwinds instead of returning `Err`. This
   breaks the public result-returning API and can turn an orderly visualization
@@ -3641,10 +3644,9 @@ the source of truth for evidence and reviewer decisions.
   panics.
 - Evidence test:
   - `cargo test visualization_recv_after_base_service_close_must_not_panic -- --nocapture`
-  - Failure summary: after dropping the underlying `P2pService` sender,
-    `VisualizationService::recv()` panics at
-    `src/service/visualization_service.rs` with `should work`; expected
-    `Ok(Err(_))` from the public `Result` API.
+  - Current result: passes. After dropping the underlying `P2pService` sender,
+    `VisualizationService::recv()` returns `Err(_)` from the public `Result`
+    API instead of unwinding.
 
 ### ISSUE-130: Alias run loop panics when the base service channel closes
 
