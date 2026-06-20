@@ -59,8 +59,8 @@ the source of truth for evidence and reviewer decisions.
 
 ### RC-3: Backpressure is inconsistent across async boundaries
 
-- Representative issues: ISSUE-049, ISSUE-050, ISSUE-056, ISSUE-119,
-  ISSUE-120, ISSUE-123, ISSUE-124, ISSUE-125, ISSUE-126,
+- Representative issues: ISSUE-049, ISSUE-050, ISSUE-056, ISSUE-120,
+  ISSUE-123, ISSUE-124, ISSUE-125, ISSUE-126,
   ISSUE-127, ISSUE-136, ISSUE-147, ISSUE-153, ISSUE-157,
   ISSUE-178, ISSUE-182, ISSUE-184, ISSUE-198, ISSUE-199.
 - Pattern: some paths use bounded channels and drop on `try_send`, some await
@@ -3259,7 +3259,8 @@ the source of truth for evidence and reviewer decisions.
     `service.try_send(P2pServiceEvent::Unicast(source, data)).print_on_err(...)`
     and does not retry, backpressure, close the stream, or signal delivery
     failure to the sender.
-- Impact: when the destination local service is not draining quickly enough,
+- Impact: fixed. Previously, when the destination local service was not
+  draining quickly enough,
   the 11th ordinary inbound unicast is dropped after only a log message. The
   sender has already observed `send_unicast` success, so this creates silent
   data loss under local service backpressure. This is distinct from
@@ -3270,29 +3271,38 @@ the source of truth for evidence and reviewer decisions.
   identity binding issues. `PeerMessage::Broadcast` uses the same
   `try_send(...).print_on_err(...)` local-delivery pattern, but this issue's
   evidence is limited to ordinary unicast.
+- Root cause: ordinary inbound local unicast delivery did not provide a
+  sender-visible delivery result. After the first partial fix changed local
+  delivery to bounded `service.send(...)`, direct-route `send_unicast` still
+  reported success after enqueueing to the peer alias, even if the destination
+  peer later found the local service receiver closed.
+- Fix status: fixed. Direct-route `send_unicast` now uses a bounded service
+  admission ack path: `PeerMessage::UnicastWithAck` carries a `UnicastAckId`,
+  the sender connection tracks one pending oneshot per ack id and completes it
+  when `PeerMessage::UnicastAck` arrives, and stale pending acks expire. The
+  receiver sends the ack only after `send_local_service_event(...)` returns, so
+  missing, closed, full, or timed-out local service delivery becomes a
+  sender-visible error.
+- Smallest fix: use the ack path only when the selected next hop is the direct
+  connection to `dest`; keep relayed routes on existing enqueue-to-next-hop
+  semantics and keep `try_send_unicast` fire-and-forget. Ordinary injected
+  `PeerMessage::Unicast` and relay delivery keep existing best-effort behavior.
+- Caveat: direct routes now backpressure until the destination service accepts
+  the event or delivery fails. Relayed routes still cannot report final
+  destination service admission and keep enqueue-to-next-hop semantics.
 - Evidence test:
   - `cargo test inbound_unicast_must_not_drop_when_service_queue_is_full -- --nocapture`
-  - Failure summary: after two connected nodes send 11 unicast messages to an
-    unconsumed destination service, the receiver logs
-    `send service msg got error no available capacity` and only 10 messages can
-    be drained from the service queue; expected all 11 to be preserved or
-    backpressured instead of silently dropped.
+  - Fix verification: passes. After two connected nodes fill the destination
+    service queue with 10 direct unicast messages, the 11th direct send remains
+    pending until one queued event is drained, then completes and all 11
+    messages can be received.
   - Additional reviewer `Turing the 2nd` accepted
     `cargo test unicast_must_not_report_success_when_destination_service_receiver_is_closed -- --nocapture`
     as closed-receiver evidence for the same ignored local-delivery failure
     pattern.
-  - Additional failure summary: when the destination service receiver is closed,
-    inbound local unicast delivery still only logs `try_send` failure, while
-    the sender has already observed `send_unicast` success.
-- Current audit status:
-  - No-new cycle 22 reran
-    `cargo test inbound_unicast_must_not_drop_when_service_queue_is_full -- --nocapture`;
-    it now passes because the current local delivery path awaits bounded
-    `service.send(...)` with a timeout instead of immediate `try_send`.
-  - The additional closed-receiver evidence
-    `cargo test unicast_must_not_report_success_when_destination_service_receiver_is_closed -- --nocapture`
-    still fails at `src/tests/cross_nodes.rs:203:5`, so ISSUE-119 remains open
-    for sender success reporting when local delivery cannot be completed.
+  - Additional fix verification: passes. When the destination service receiver
+    is closed, direct-route `send_unicast` now returns an error instead of
+    reporting success after peer-alias enqueue.
 
 ### ISSUE-120: Inbound broadcast is silently dropped when the local service queue is full
 

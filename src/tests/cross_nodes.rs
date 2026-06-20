@@ -153,27 +153,38 @@ async fn inbound_unicast_must_not_drop_when_service_queue_is_full() {
     .await
     .expect("route to node2 should become available");
 
-    let expected = 11usize;
-    for idx in 0..expected {
-        service1
-            .send_unicast(addr2.peer_id(), vec![idx as u8])
-            .await
-            .expect("sender should report queued unicast");
+    for idx in 0..10 {
+        service1.send_unicast(addr2.peer_id(), vec![idx as u8]).await.expect("sender should report queued unicast");
     }
 
-    tokio::time::sleep(Duration::from_millis(300)).await;
+    let eleventh = tokio::spawn(async move {
+        service1.send_unicast(addr2.peer_id(), vec![10]).await.expect("sender should complete after destination service drains");
+    });
+
+    tokio::time::sleep(Duration::from_millis(100)).await;
+    assert!(!eleventh.is_finished(), "direct send_unicast should backpressure while the destination service queue is full");
 
     let mut received = Vec::new();
-    for _ in 0..expected {
+    match tokio::time::timeout(Duration::from_millis(100), service2.recv()).await {
+        Ok(Some(P2pServiceEvent::Unicast(_, data))) => received.push(data),
+        other => panic!("expected first queued unicast before unblocking sender, got {other:?}"),
+    }
+
+    tokio::time::timeout(Duration::from_secs(2), eleventh)
+        .await
+        .expect("11th direct unicast should complete after queue capacity returns")
+        .expect("11th direct unicast task should not panic");
+
+    for _ in received.len()..11 {
         match tokio::time::timeout(Duration::from_millis(100), service2.recv()).await {
             Ok(Some(P2pServiceEvent::Unicast(_, data))) => received.push(data),
-            _ => break,
+            other => panic!("expected preserved unicast after backpressure, got {other:?}"),
         }
     }
 
     assert_eq!(
         received.len(),
-        expected,
+        11,
         "inbound unicast delivery must apply backpressure or otherwise preserve messages instead of silently dropping when the local service queue is full"
     );
 }

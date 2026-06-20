@@ -6,6 +6,9 @@ use super::{discovery::PeerDiscoverySync, router::RouterTableSync, PeerId};
 #[derive(Debug, Display, PartialEq, Eq, Hash, Serialize, Deserialize, Clone, Copy)]
 pub struct BroadcastMsgId(u64);
 
+#[derive(Debug, Display, PartialEq, Eq, Hash, Serialize, Deserialize, Clone, Copy, From)]
+pub struct UnicastAckId(u64);
+
 #[derive(Debug, Display, PartialEq, Deref, Eq, Hash, Serialize, Deserialize, From, Clone, Copy)]
 pub struct P2pServiceId(u16);
 
@@ -22,12 +25,20 @@ impl BroadcastMsgId {
     }
 }
 
+impl UnicastAckId {
+    pub fn rand() -> Self {
+        Self(rand::random())
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 pub enum PeerMessage {
     Sync { route: RouterTableSync, advertise: PeerDiscoverySync },
     PeerStopped(PeerId),
     Broadcast(PeerId, P2pServiceId, BroadcastMsgId, Vec<u8>),
     Unicast(PeerId, PeerId, P2pServiceId, Vec<u8>),
+    UnicastWithAck(UnicastAckId, PeerId, PeerId, P2pServiceId, Vec<u8>),
+    UnicastAck(UnicastAckId, Result<(), String>),
 }
 
 #[derive(Debug, Serialize, Deserialize)]

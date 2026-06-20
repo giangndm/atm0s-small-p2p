@@ -6,6 +6,7 @@
 //! - For other communication should use try_send for avoiding blocking
 
 use std::{
+    collections::HashMap,
     net::SocketAddr,
     time::{Duration, Instant},
 };
@@ -25,7 +26,7 @@ use tokio_util::codec::Framed;
 
 use crate::{
     ctx::SharedCtx,
-    msg::{P2pServiceId, PeerMessage, StreamConnectReq, StreamConnectRes},
+    msg::{P2pServiceId, PeerMessage, StreamConnectReq, StreamConnectRes, UnicastAckId},
     router::RouteAction,
     stream::{wait_object, write_object, BincodeCodec, P2pQuicStream},
     utils::ErrorExt,
@@ -37,6 +38,7 @@ use super::PeerConnectionControl;
 
 const OPEN_BI_TIMEOUT: Duration = Duration::from_secs(2);
 const LOCAL_SERVICE_DELIVERY_TIMEOUT: Duration = Duration::from_secs(1);
+const UNICAST_ACK_TIMEOUT: Duration = Duration::from_secs(1);
 const MAX_CONTROL_STREAM_PKT: usize = 60000;
 const MAX_PEER_MESSAGE_FRAME: usize = 60000;
 
@@ -61,6 +63,7 @@ pub struct PeerConnectionInternal {
     framed: Framed<P2pQuicStream, BincodeCodec<PeerMessage>>,
     main_tx: Sender<MainEvent>,
     control_rx: Receiver<PeerConnectionControl>,
+    pending_unicast_acks: HashMap<UnicastAckId, (tokio::sync::oneshot::Sender<anyhow::Result<()>>, Instant)>,
     ticker: Interval,
     started: Instant,
 }
@@ -88,6 +91,7 @@ impl PeerConnectionInternal {
             framed: Framed::new(stream, peer_message_codec()),
             main_tx,
             control_rx,
+            pending_unicast_acks: HashMap::new(),
             ticker: tokio::time::interval(Duration::from_secs(1)),
             started: Instant::now(),
         }
@@ -97,6 +101,7 @@ impl PeerConnectionInternal {
         loop {
             select! {
                 _ = self.ticker.tick() => {
+                    self.expire_pending_unicast_acks();
                     let rtt_ms = self.connection.rtt().as_millis().min(u16::MAX as u128) as u16;
                     let connection_stats = self.connection.stats();
                     self.ctx.router().set_direct(self.conn_id, self.to_id, rtt_ms);
@@ -152,6 +157,19 @@ impl PeerConnectionInternal {
                     Ok(())
                 } else {
                     res
+                }
+            }
+            PeerConnectionControl::SendUnicastWithAck(ack_id, source, dest, service, data, tx) => {
+                let res = self.framed.send(PeerMessage::UnicastWithAck(ack_id, source, dest, service, data)).await.map_err(Into::into);
+                match res {
+                    Ok(()) => {
+                        self.pending_unicast_acks.insert(ack_id, (tx, Instant::now() + UNICAST_ACK_TIMEOUT));
+                        Ok(())
+                    }
+                    Err(err) => {
+                        let _ = tx.send(Err(err));
+                        Ok(())
+                    }
                 }
             }
             PeerConnectionControl::OpenStream(service, source, dest, meta, tx) => {
@@ -217,7 +235,7 @@ impl PeerConnectionInternal {
 
                     if let Some(service) = self.ctx.get_service(&service_id) {
                         log::debug!("[PeerConnectionInternal {}] broadcast msg {msg_id} to service {service_id}", self.remote);
-                        send_local_service_event(self.remote, service_id, &service, P2pServiceEvent::Broadcast(effective_source, data)).await;
+                        let _ = send_local_service_event(self.remote, service_id, &service, P2pServiceEvent::Broadcast(effective_source, data)).await;
                     } else {
                         log::warn!("[PeerConnectionInternal {}] broadcast msg to unknown service {service_id}", self.remote);
                     }
@@ -238,7 +256,7 @@ impl PeerConnectionInternal {
                 match unicast_route_decision(self.ctx.router().action(&dest), self.conn_id) {
                     UnicastRouteDecision::Local => {
                         if let Some(service) = self.ctx.get_service(&service_id) {
-                            send_local_service_event(self.remote, service_id, &service, P2pServiceEvent::Unicast(effective_source, data)).await;
+                            let _ = send_local_service_event(self.remote, service_id, &service, P2pServiceEvent::Unicast(effective_source, data)).await;
                         } else {
                             log::warn!("[PeerConnectionInternal {}] service {service_id} not found", self.remote);
                         }
@@ -259,8 +277,60 @@ impl PeerConnectionInternal {
                     }
                 }
             }
+            PeerMessage::UnicastWithAck(ack_id, source, dest, service_id, data) => {
+                let effective_source = self.to_id;
+                if source != effective_source {
+                    log::warn!(
+                        "[PeerConnectionInternal {}] normalize forged acked unicast source {source} from authenticated peer {}",
+                        self.remote,
+                        self.to_id
+                    );
+                }
+
+                let res = match unicast_route_decision(self.ctx.router().action(&dest), self.conn_id) {
+                    UnicastRouteDecision::Local => {
+                        if let Some(service) = self.ctx.get_service(&service_id) {
+                            send_local_service_event(self.remote, service_id, &service, P2pServiceEvent::Unicast(effective_source, data)).await
+                        } else {
+                            log::warn!("[PeerConnectionInternal {}] service {service_id} not found", self.remote);
+                            Err(anyhow!("service not found"))
+                        }
+                    }
+                    UnicastRouteDecision::Forward(next) => {
+                        log::warn!("[PeerConnectionInternal {}] reject acked unicast relay to {dest}: next hop {next} is not local", self.remote);
+                        Err(anyhow!("acked unicast relay is unsupported"))
+                    }
+                    UnicastRouteDecision::DropIngressLoop(next) => {
+                        log::warn!("[PeerConnectionInternal {}] drop acked unicast relay to {dest}: next hop {next} is ingress connection", self.remote);
+                        Err(anyhow!("acked unicast ingress loop"))
+                    }
+                    UnicastRouteDecision::NoRoute => {
+                        log::warn!("[PeerConnectionInternal {}] path to {dest} not found", self.remote);
+                        Err(anyhow!("route not found"))
+                    }
+                };
+                let ack = res.map_err(|err| err.to_string());
+                self.framed.send(PeerMessage::UnicastAck(ack_id, ack)).await?;
+            }
+            PeerMessage::UnicastAck(ack_id, result) => {
+                if let Some((tx, _)) = self.pending_unicast_acks.remove(&ack_id) {
+                    let _ = tx.send(result.map_err(|err| anyhow!(err)));
+                } else {
+                    log::debug!("[PeerConnectionInternal {}] ignore unknown unicast ack {ack_id}", self.remote);
+                }
+            }
         }
         Ok(())
+    }
+
+    fn expire_pending_unicast_acks(&mut self) {
+        let now = Instant::now();
+        let expired: Vec<_> = self.pending_unicast_acks.iter().filter_map(|(ack_id, (_, deadline))| (*deadline <= now).then_some(*ack_id)).collect();
+        for ack_id in expired {
+            if let Some((tx, _)) = self.pending_unicast_acks.remove(&ack_id) {
+                let _ = tx.send(Err(anyhow!("unicast ack timed out")));
+            }
+        }
     }
 }
 
@@ -285,11 +355,17 @@ pub(super) fn unicast_route_decision(action: Option<RouteAction>, ingress: Conne
     }
 }
 
-async fn send_local_service_event(remote: SocketAddr, service_id: P2pServiceId, service: &Sender<P2pServiceEvent>, event: P2pServiceEvent) {
+async fn send_local_service_event(remote: SocketAddr, service_id: P2pServiceId, service: &Sender<P2pServiceEvent>, event: P2pServiceEvent) -> anyhow::Result<()> {
     match tokio::time::timeout(LOCAL_SERVICE_DELIVERY_TIMEOUT, service.send(event)).await {
-        Ok(Ok(())) => {}
-        Ok(Err(err)) => log::warn!("[PeerConnectionInternal {remote}] send local service {service_id} msg failed: {err}"),
-        Err(_) => log::warn!("[PeerConnectionInternal {remote}] send local service {service_id} msg timed out"),
+        Ok(Ok(())) => Ok(()),
+        Ok(Err(err)) => {
+            log::warn!("[PeerConnectionInternal {remote}] send local service {service_id} msg failed: {err}");
+            Err(anyhow!("service closed"))
+        }
+        Err(_) => {
+            log::warn!("[PeerConnectionInternal {remote}] send local service {service_id} msg timed out");
+            Err(anyhow!("service queue full"))
+        }
     }
 }
 

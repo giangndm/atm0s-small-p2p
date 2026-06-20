@@ -23,7 +23,10 @@ use crate::{
 #[cfg(test)]
 use crate::{P2P_CONNECTION_CONGESTION_EVENTS, P2P_CONNECTION_LOST_BYTES, P2P_CONNECTION_LOST_PKT, P2P_CONNECTION_RECV_BYTES, P2P_CONNECTION_SENT_BYTES, P2P_CONNECTION_UPTIME};
 
-use super::{msg::PeerMessage, MainEvent};
+use super::{
+    msg::{PeerMessage, UnicastAckId},
+    MainEvent,
+};
 
 mod peer_alias;
 mod peer_internal;
@@ -36,6 +39,7 @@ const PEER_SETUP_TIMEOUT: Duration = Duration::from_secs(1);
 
 enum PeerConnectionControl {
     Send(PeerMessage, Option<oneshot::Sender<anyhow::Result<()>>>),
+    SendUnicastWithAck(UnicastAckId, PeerId, PeerId, P2pServiceId, Vec<u8>, oneshot::Sender<anyhow::Result<()>>),
     OpenStream(P2pServiceId, PeerId, PeerId, Vec<u8>, oneshot::Sender<anyhow::Result<P2pQuicStream>>),
 }
 
