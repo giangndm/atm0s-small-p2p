@@ -5784,33 +5784,34 @@ the source of truth for evidence and reviewer decisions.
 - Score: 54/100
 - Reviewer: `Dewey the 3rd`, confirmed after `Goodall the 3rd` discovery.
 - Affected code:
-  - `src/ctx.rs`: `SharedCtx::try_send_broadcast` creates and marks a broadcast
-    id as seen, iterates peer aliases, calls `conn_alias.try_send(...)`, and
-    logs each failure without returning any delivery result.
+  - `src/ctx.rs`: `SharedCtx::try_send_broadcast` creates a broadcast id,
+    iterates peer aliases, calls `conn_alias.try_send(...)`, counts accepted
+    peer-control queue admissions, and returns `Err` when no connected peer
+    accepts the broadcast.
   - `src/service.rs`: `P2pService::try_send_broadcast` and
-    `P2pServiceRequester::try_send_broadcast` expose this as a public
-    success-shaped `()` API.
+    `P2pServiceRequester::try_send_broadcast` expose the same
+    `anyhow::Result<usize>` delivery admission result.
   - `src/peer/peer_alias.rs`: `PeerConnectionAlias::try_send` delegates to a
     bounded peer-control `try_send`, so a full peer queue rejects immediately.
 - Impact: under high load or a stalled peer task, every connected peer queue
-  can reject an outbound broadcast while the caller receives no error and no
-  copy is preserved for retry. This is distinct from ISSUE-049, which covers
+  could reject an outbound broadcast while the caller received no error and no
+  copy was preserved for retry. This is distinct from ISSUE-049, which covers
   awaited `send_broadcast` blocking on one congested peer queue; ISSUE-119/120,
   which cover inbound local service queue drops; ISSUE-164, which covers
   maintenance route/discovery sync drops; ISSUE-163/178, which cover pubsub RPC
   destination accounting; and ISSUE-196, which covers replicated-KV outbound
   queue growth.
-- Minimal fix proposal: change `SharedCtx::try_send_broadcast` and public
-  wrappers to return a delivery result such as `anyhow::Result<usize>` or a
-  small enum. Count successful peer-queue admissions; if zero peers accept the
-  broadcast, return an error. Keep per-peer logging as secondary diagnostics.
+- Fix status: fixed by changing `SharedCtx::try_send_broadcast` and public
+  wrappers to return `anyhow::Result<usize>`. The implementation counts
+  successful peer-queue admissions; if no connected peer accepts the broadcast,
+  it returns an error and does not mark the broadcast id as locally seen.
+  Per-peer logging remains secondary diagnostics. ISSUE-049 and ISSUE-199
+  remain separate.
 - Evidence test:
   - `cargo test try_send_broadcast_must_report_when_all_peer_queues_reject -- --nocapture`
-  - Failure summary: two registered peer-control queues are prefilled, so
-    `ctx.try_send_broadcast(...)` enqueues zero `PeerMessage::Broadcast` copies
-    while returning no error. The test fails at `src/peer.rs:870` because no
-    queue preserves the broadcast and the API cannot report the total fanout
-    failure.
+  - Current result: passes. The test pre-fills two registered peer-control
+    queues and verifies that `ctx.try_send_broadcast(...)` returns an error
+    when zero `PeerMessage::Broadcast` copies are admitted.
 
 ### ISSUE-199: `send_broadcast` silently succeeds when every peer send fails
 
