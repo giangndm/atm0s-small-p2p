@@ -11,7 +11,7 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 82
+- Current consecutive no-new-issue cycles: 83
 - Stop condition requested by user: continue until 5 consecutive cycles find no
   new accepted issue.
 
@@ -5783,6 +5783,37 @@ the source of truth for evidence and reviewer decisions.
     `src/peer.rs:1092` with `got 2`.
 
 ## No-New-Issue Audit Cycles
+
+### Cycle after ISSUE-204 no-new cycle 83: broad random duplicate invalid service, stale sync, and stop storm
+
+- Result: no accepted non-duplicate issue.
+- Reviewer: `Huygens the 5th`, forked subagent review, confirmed
+  `DUPLICATE/NO_NEW`.
+- Source and test evidence reviewed:
+  - `src/tests/fuzz.rs`
+  - `src/ctx.rs`
+  - `src/router.rs`
+  - `RUST_LOG=error P2P_FUZZ_SEED=83 P2P_FUZZ_NODES=8 P2P_FUZZ_STEPS=1800 cargo test fuzz_random_node_actions_must_not_panic_connection_tasks -- --nocapture`
+    failed.
+- Evidence summary:
+  - exit status 101; `0 passed; 1 failed`; the fuzz assertion at
+    `src/tests/fuzz.rs:183` detected background task panics.
+  - one `src/ctx.rs:34:9` panic with
+    `index out of bounds: the len is 256 but the index is 256`.
+  - three `src/router.rs:76:66` panics with
+    `should have direct metric with apply_sync`.
+  - the log also contains 7,029 forwarded `PeerStopped` `no available
+    capacity` errors and 744 forwarded `PeerStopped` `channel closed` errors.
+- Duplicate mapping:
+  - the `src/ctx.rs:34` panic maps directly to ISSUE-053: inbound
+    out-of-range `P2pServiceId(256)` indexes the fixed service table.
+  - the `src/router.rs:76` panics map directly to ISSUE-063: stale
+    `PeerData::Sync` reaches `RouterTable::apply_sync` after direct route
+    state is gone.
+  - the forwarded `PeerStopped` storm maps to ISSUE-170's missing
+    dedupe/TTL/tombstone suppression for stop forwarding in cyclic meshes.
+- Root-cause summary impact: no new root cause; this strengthens existing
+  ISSUE-053, ISSUE-063, and ISSUE-170 evidence without adding ISSUE-205.
 
 ### Cycle after ISSUE-204 no-new cycle 82: sanitized churn duplicate outgoing peer-connect panic
 
