@@ -7,9 +7,9 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Accepted issues: 204
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 334
+- Current consecutive no-new-issue cycles: 335
 - Stop condition: continue until 5 consecutive cycles find no new accepted
-  issue; currently 334/5 after ISSUE-204.
+  issue; currently 335/5 after ISSUE-204.
 
 ## Root Cause Summary
 
@@ -2389,6 +2389,16 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Recent No-New Audit
 
+- Cycle after ISSUE-204 no-new cycle 335 ran a sanitized node-churn fuzz pass
+  with forked reviewer `Ptolemy the 7th`. The run failed with exit code 101
+  and assertion `seed=335, nodes=8, steps=5200`. The hard failure was
+  duplicate ISSUE-139 evidence: one `src/peer.rs:133:113` outgoing
+  shutdown-send panic with `should send to main: SendError { .. }`.
+  Invalid-service, stale-route, PeerStopped storm, no-capacity, channel-closed,
+  endpoint-driver-dropped, and internal-channel-error signatures were absent.
+  Twelve `connection lost`, 21 closed-by-peer shutdown, and five
+  `aborted by peer` markers were reviewed as lifecycle context. No accepted
+  issue or summary root-cause change was recorded.
 - Cycle after ISSUE-204 no-new cycle 334 ran a steady valid-node fuzz pass
   with forked reviewer `Newton the 7th`. The run passed with exit code 0:
   `1 passed`, `0 failed`, `289 filtered out`, finished in 36.20s. No panic,
