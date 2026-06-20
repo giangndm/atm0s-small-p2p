@@ -11,7 +11,7 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 239
+- Current consecutive no-new-issue cycles: 240
 - Stop condition requested by user: continue until 5 consecutive cycles find no
   new accepted issue.
 
@@ -5783,6 +5783,51 @@ the source of truth for evidence and reviewer decisions.
     `src/peer.rs:1092` with `got 2`.
 
 ## No-New-Issue Audit Cycles
+
+### Cycle after ISSUE-204 no-new cycle 240: broad mixed invalid, stale sync, shutdown, and storm
+
+- Result: no accepted non-duplicate issue.
+- Reviewer: `Rawls the 6th`, forked subagent review, confirmed
+  `DUPLICATE/NO_NEW`.
+- Source and test evidence reviewed:
+  - `src/tests/fuzz.rs`
+  - `src/ctx.rs`
+  - `src/router.rs`
+  - `src/peer.rs`
+  - `src/peer/peer_alias.rs`
+  - `RUST_LOG=error P2P_FUZZ_SEED=240 P2P_FUZZ_NODES=8 P2P_FUZZ_STEPS=1800 cargo test fuzz_random_node_actions_must_not_panic_connection_tasks -- --nocapture`
+    failed.
+- Evidence summary:
+  - exit status 101; log had 1599 lines; the fuzz assertion at
+    `src/tests/fuzz.rs:183:5` reported a background connection/service task
+    panic with `seed=240, nodes=8, steps=1800`.
+  - seven `src/ctx.rs:34` panic markers with
+    `index out of bounds: the len is 256 but the index is 256`.
+  - one `src/router.rs:76` panic marker with
+    `should have direct metric with apply_sync`.
+  - one `src/peer.rs:92` panic marker with
+    `should send to main: SendError { .. }`.
+  - 1545 `forward peer stopped over peer alias` errors, with 1086
+    `no available capacity` markers and 469 `channel closed` markers in the
+    log.
+  - three `broadcast data over peer alias` errors and connection closed/lost
+    lines were reviewed as fallout in the same panic/storm context.
+  - no open_bi, connect-answer, or path-not-found evidence.
+- Duplicate mapping: ISSUE-053, ISSUE-063, ISSUE-139, and ISSUE-170.
+- Root-cause summary impact: no new root cause; this strengthens existing
+  invalid-service-id, stale-route-sync, shutdown-reporting, and PeerStopped
+  storm evidence without adding a new issue.
+- Smallest fix proposal:
+  - for ISSUE-053, validate service ids before indexing, preferably at decode
+    or inbound dispatch, and reject, drop, or log out-of-range ids.
+  - for ISSUE-063, guard the direct-route lookup, ignore stale sync for unknown
+    direct connections, and clear queued sync when direct connection state is
+    removed.
+  - for ISSUE-139, replace `expect("should send to main")` with
+    shutdown-aware non-panicking handling.
+  - for ISSUE-170, add per-event dedupe or tombstones, bound forwarded stop
+    propagation with TTL, and suppress or rate-limit repeated send failures
+    during shutdown.
 
 ### Cycle after ISSUE-204 no-new cycle 239: isolated valid stale sync panic
 
