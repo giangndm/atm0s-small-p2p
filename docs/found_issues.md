@@ -11,7 +11,7 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 328
+- Current consecutive no-new-issue cycles: 329
 - Stop condition requested by user: continue until 5 consecutive cycles find no
   new accepted issue.
 
@@ -5783,6 +5783,38 @@ the source of truth for evidence and reviewer decisions.
     `src/peer.rs:1092` with `got 2`.
 
 ## No-New-Issue Audit Cycles
+
+### Cycle after ISSUE-204 no-new cycle 329: valid churn stale-sync and stop-storm duplicate
+
+- Result: no accepted non-duplicate issue.
+- Reviewer: `Galileo the 7th`, forked subagent review, confirmed
+  duplicate/no-new.
+- Source and test evidence reviewed:
+  - `src/tests/fuzz.rs`
+  - `src/router.rs`
+  - `src/peer/peer_internal.rs`
+  - `RUST_LOG=error P2P_FUZZ_SEED=329 P2P_FUZZ_NODES=8 P2P_FUZZ_STEPS=5200 cargo test fuzz_random_valid_node_churn_actions_must_not_panic_connection_tasks -- --nocapture`
+    failed with `seed=329, nodes=8, steps=5200`.
+- Evidence summary:
+  - exit status 101; log had 28,531 lines; the fuzz assertion at
+    `src/tests/fuzz.rs:372:5` reported background connection/service task
+    failure.
+  - two stale-sync panics at `src/router.rs:76:66` with
+    `should have direct metric with apply_sync`.
+  - 28,465 forwarded-stop alias error logs, including 27,353
+    `no available capacity` markers and 1,156 `channel closed` markers.
+  - invalid-service, shutdown-send, broadcast-failure,
+    endpoint-driver-dropped, and internal-channel-error signatures were
+    absent.
+- Duplicate mapping: ISSUE-063 for stale sync after direct-route removal;
+  ISSUE-170 for PeerStopped forwarding storm/backpressure failure.
+- Root-cause summary impact: no new root cause; reviewer classified the hard
+  panic and stop-forwarding storm as already accepted churn issues.
+- Smallest fix proposal: no summary fix change; keep ISSUE-063 fix proposal to
+  guard/drop stale sync when the direct metric is gone and invalidate queued
+  sync state on direct-route removal; keep ISSUE-170 fix proposal to
+  coalesce/dedupe `PeerStopped` forwarding with bounded retry/backpressure and
+  TTL/tombstone suppression.
 
 ### Cycle after ISSUE-204 no-new cycle 328: broad random invalid-service and shutdown-send duplicate
 
