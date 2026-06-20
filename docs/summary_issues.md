@@ -7,9 +7,9 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Accepted issues: 204
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 318
+- Current consecutive no-new-issue cycles: 319
 - Stop condition: continue until 5 consecutive cycles find no new accepted
-  issue; currently 318/5 after ISSUE-204.
+  issue; currently 319/5 after ISSUE-204.
 
 ## Root Cause Summary
 
@@ -2389,6 +2389,17 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Recent No-New Audit
 
+- Cycle after ISSUE-204 no-new cycle 319 ran a valid-action fuzz pass with
+  forked reviewer `Kuhn the 7th`. The run failed with exit code 101 and
+  assertion `seed=319, nodes=8, steps=4800`. The hard failure was duplicate
+  ISSUE-063 evidence: one `src/router.rs:76:66` stale-sync panic with
+  `should have direct metric with apply_sync`. The run also showed duplicate
+  ISSUE-170 storm context: 8,077 `forward peer stopped over peer alias`
+  reports, including 7,158 `no available capacity`, 937 `channel closed`, and
+  2 `broadcast data over peer alias` reports. Invalid-service,
+  shutdown-send, connection-lost, closed-by-peer, and aborted-by-peer
+  signatures were absent. No accepted issue or summary root-cause change was
+  recorded.
 - Cycle after ISSUE-204 no-new cycle 318 ran a steady valid-node fuzz pass with
   forked reviewer `Franklin the 7th`. The run passed with exit code 0:
   `1 passed`, `0 failed`, `289 filtered out`, finished in 31.08s. No panic,
