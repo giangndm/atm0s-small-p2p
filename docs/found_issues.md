@@ -2527,6 +2527,9 @@ the source of truth for evidence and reviewer decisions.
 
 ### ISSUE-097: QUIC object writer panics on serialization failure
 
+- Status: fixed. `write_object` now serializes once with `bincode::serialize`
+  and propagates serialization failures as `Err` before writing any frame
+  bytes, instead of using `expect(...)`.
 - Category: correctness, API stability
 - Score: 58/100
 - Reviewer: `Poincare`, confirmed.
@@ -2541,9 +2544,8 @@ the source of truth for evidence and reviewer decisions.
   pubsub and replicated-KV serialization surfaces.
 - Evidence test:
   - `cargo test write_object_must_return_error_on_serialize_failure -- --nocapture`
-  - Failure summary: `write_object::<_, _, 1024>` panics at
-    `src/stream.rs:109` when serialization returns a custom error; expected
-    `Ok(Err(_))`.
+  - Fixed summary: `write_object::<_, _, 1024>` returns `Err(_)` when
+    serialization returns a custom error; the call does not unwind.
 
 ### ISSUE-098: QUIC object writer truncates lengths above `u16::MAX`
 

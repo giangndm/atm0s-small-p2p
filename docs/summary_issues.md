@@ -15,7 +15,7 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   ISSUE-053, ISSUE-063, ISSUE-139, ISSUE-146, ISSUE-168, ISSUE-170,
   ISSUE-149, ISSUE-169, ISSUE-176, ISSUE-189, ISSUE-190, ISSUE-191, ISSUE-192, ISSUE-193,
   ISSUE-194, ISSUE-195, ISSUE-196, ISSUE-197, ISSUE-198, ISSUE-199,
-  ISSUE-200, ISSUE-201, ISSUE-202, ISSUE-203, ISSUE-204, and ISSUE-018 have focused
+  ISSUE-200, ISSUE-201, ISSUE-202, ISSUE-203, ISSUE-204, ISSUE-097, and ISSUE-018 have focused
   fixes committed.
   ISSUE-003 is fixed by `cfc8e57`;
   ISSUE-001 and ISSUE-004 are covered by the ISSUE-170 ownership-validation follow-up
@@ -182,6 +182,9 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Recently Fixed Issues
 
+- ISSUE-097: fixed by making `write_object` serialize once and return
+  serialization failures as `Err` before writing any frame bytes. Verified with
+  `cargo test write_object_must_return_error_on_serialize_failure -- --nocapture`.
 - ISSUE-169: fixed by the full stream setup timeout in `0a48ec7`, which also
   bounds `StreamConnectReq` writes. A peer that stops reading after accepting
   the stream-open bidirectional stream now makes `open_stream` return `Err(_)`
