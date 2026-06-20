@@ -138,6 +138,7 @@ impl InboundPeerBindings {
 
 pub const CERT_DOMAIN_NAME: &str = "cluster";
 pub(crate) const NETWORK_CONTROL_QUEUE_SIZE: usize = 1024;
+pub(crate) const MAX_PENDING_UNAUTHENTICATED_INBOUND_CONNECTIONS: usize = 16;
 
 #[derive(Debug)]
 enum PeerMainData {
@@ -291,6 +292,12 @@ impl<SECURE: HandshakeProtocol> P2pNetwork<SECURE> {
 
     fn process_incoming(&mut self, incoming: Incoming) -> anyhow::Result<P2pNetworkEvent> {
         let remote = incoming.remote_address();
+        if self.neighbours.pending_unauthenticated_inbound_count() >= MAX_PENDING_UNAUTHENTICATED_INBOUND_CONNECTIONS {
+            log::warn!("[P2pNetwork] incoming connect from {remote} => refuse, pending unauthenticated inbound limit reached");
+            incoming.refuse();
+            return Ok(P2pNetworkEvent::Continue);
+        }
+
         log::info!("[P2pNetwork] incoming connect from {remote} => accept");
         let conn = PeerConnection::new_incoming(self.secure.clone(), self.local_id, incoming, self.inbound_peer_bindings.clone(), self.main_tx.clone(), self.ctx.clone());
         self.neighbours.insert(conn.conn_id(), conn);

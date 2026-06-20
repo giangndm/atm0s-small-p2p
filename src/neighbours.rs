@@ -30,6 +30,10 @@ impl NetworkNeighbours {
         self.conns.values().filter(|c| c.is_connected())
     }
 
+    pub fn pending_unauthenticated_inbound_count(&self) -> usize {
+        self.conns.values().filter(|c| !c.is_connected() && c.peer_id().is_none()).count()
+    }
+
     #[cfg(test)]
     pub fn len(&self) -> usize {
         self.conns.len()

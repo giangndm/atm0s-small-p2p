@@ -88,7 +88,7 @@ the source of truth for evidence and reviewer decisions.
 ### RC-4: Timeouts are partial, coarse, or overflow-prone
 
 - Representative issues: ISSUE-002, ISSUE-009, ISSUE-021, ISSUE-036,
-  ISSUE-042, ISSUE-093, ISSUE-117, ISSUE-121, ISSUE-134, ISSUE-149,
+  ISSUE-042, ISSUE-093, ISSUE-117, ISSUE-121, ISSUE-149,
   ISSUE-156, ISSUE-159, ISSUE-169, ISSUE-172, ISSUE-173, ISSUE-176.
 - Pattern: timeout checks often wrap only one await point, rely on unchecked
   timestamp arithmetic, use coarse global sweeps instead of per-operation
@@ -3766,26 +3766,40 @@ the source of truth for evidence and reviewer decisions.
 - Category: security, high-load stability, resource exhaustion
 - Score: 72/100
 - Reviewer: `Rawls the 2nd`, confirmed.
+- Status: fixed by pending unauthenticated inbound admission control.
+  `P2pNetwork::process_incoming` now refuses new QUIC `Incoming` attempts when
+  16 unauthenticated inbound neighbours are already pending, and peer setup has
+  a bounded pre-authentication timeout so stale pending entries are reported to
+  the main loop for cleanup.
 - Affected code:
-  - `src/lib.rs`: `P2pNetwork::process_incoming` accepts every inbound
-    `Incoming`, creates `PeerConnection::new_incoming`, and inserts it into
-    `neighbours` before the P2P handshake authenticates the peer.
-  - `src/peer.rs`: `PeerConnection::new_incoming` awaits `incoming.await` and
-    then `connection.accept_bi().await` without a node-level cap for pending
-    unauthenticated connections or a P2P control-stream handshake timeout.
+  - `src/lib.rs`: `P2pNetwork::process_incoming` checks the pending
+    unauthenticated inbound count before accepting, and calls
+    `incoming.refuse()` when the admission cap is full.
+  - `src/neighbours.rs`: `NetworkNeighbours` counts pending unauthenticated
+    inbound entries as neighbours that are not connected and do not yet have a
+    peer id.
+  - `src/peer.rs`: pre-authentication peer setup is bounded by
+    `PEER_SETUP_TIMEOUT` before the authenticated connection run loop starts.
   - `src/quic.rs`: transport limits allow many concurrent connections/streams
-    and rely only on QUIC idle timeout rather than P2P admission control.
-- Impact: raw QUIC clients can connect to a node, never open or send the P2P
-  main control stream, and remain as pending unauthenticated connection tasks.
-  Under load or hostile traffic this can consume connection/task resources
-  before authentication and before normal peer-level controls apply. This is
-  distinct from ISSUE-117, which covers idle bidirectional stream-connect
-  handshakes after an authenticated peer connection already exists.
+    but no longer serve as the only protection for unauthenticated pending
+    peers.
+- Impact: fixed. Raw QUIC clients can no longer accumulate more than the
+  unauthenticated inbound admission budget before opening the P2P main control
+  stream and authenticating. Excess attempts are refused before spawning or
+  inserting another pending peer connection. This is distinct from ISSUE-117,
+  which covers idle bidirectional stream-connect handshakes after an
+  authenticated peer connection already exists.
 - Evidence test:
   - `cargo test unauthenticated_inbound_connections_must_be_admission_bounded -- --nocapture`
-  - Failure summary: 17 raw QUIC clients connect to a node and never open the
-    P2P main control stream; all are accepted, exceeding the test's admission
-    threshold of 16 pending unauthenticated connections.
+  - Current result: passes. The 17th raw QUIC client is rejected or times out
+    once 16 unauthenticated inbound connections are already pending.
+  - Additional verification:
+    `cargo test inbound_peer_setup_must_timeout_when_connect_response_write_stalls -- --nocapture`
+    and
+    `cargo test outbound_peer_setup_must_timeout_when_main_control_stream_cannot_open -- --nocapture`
+    and
+    `cargo test outbound_peer_setup_must_timeout_when_connect_request_write_stalls -- --nocapture`
+    pass, covering setup timeout behavior around the admission boundary.
 
 ### ISSUE-135: Stale PeerConnectError removes a live neighbour
 

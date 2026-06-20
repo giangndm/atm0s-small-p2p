@@ -32,6 +32,7 @@ pub use peer_alias::PeerConnectionAlias;
 pub use peer_internal::PeerConnectionMetric;
 
 const MAX_CONTROL_PEER_PKT: usize = 60000;
+const PEER_SETUP_TIMEOUT: Duration = Duration::from_secs(1);
 
 enum PeerConnectionControl {
     Send(PeerMessage, Option<oneshot::Sender<anyhow::Result<()>>>),
@@ -82,33 +83,36 @@ impl PeerConnection {
 
         tokio::spawn(async move {
             log::info!("[PeerConnection {conn_id}] wait incoming from {remote}");
-            match incoming.await {
-                Ok(connection) => {
-                    log::info!("[PeerConnection {conn_id}] got connection from {remote}");
-                    match connection.accept_bi().await {
-                        Ok((send, recv)) => {
-                            if let Err(e) = run_connection(
-                                secure,
-                                ctx,
-                                remote,
-                                conn_id,
-                                local_id,
-                                PeerConnectionDirection::Incoming(inbound_peer_bindings),
-                                &connection,
-                                send,
-                                recv,
-                                main_tx.clone(),
-                            )
-                            .await
-                            {
-                                log::error!("[PeerConnection {conn_id}] connection from {remote} error {e}");
-                                let _ = main_tx.send(MainEvent::PeerConnectError(conn_id, None, e)).await;
-                                let _ = tokio::time::timeout(Duration::from_secs(2), connection.closed()).await;
-                            }
-                        }
-                        Err(err) => report_peer_connect_error(&main_tx, conn_id, None, err.into()).await,
+            let setup = tokio::time::timeout(PEER_SETUP_TIMEOUT, async {
+                let connection = incoming.await?;
+                log::info!("[PeerConnection {conn_id}] got connection from {remote}");
+                let (send, recv) = connection.accept_bi().await?;
+                Ok::<_, anyhow::Error>((connection, send, recv))
+            })
+            .await;
+
+            match setup {
+                Ok(Ok((connection, send, recv))) => {
+                    if let Err(e) = run_connection(
+                        secure,
+                        ctx,
+                        remote,
+                        conn_id,
+                        local_id,
+                        PeerConnectionDirection::Incoming(inbound_peer_bindings),
+                        &connection,
+                        send,
+                        recv,
+                        main_tx.clone(),
+                    )
+                    .await
+                    {
+                        log::error!("[PeerConnection {conn_id}] connection from {remote} error {e}");
+                        let _ = main_tx.send(MainEvent::PeerConnectError(conn_id, None, e)).await;
+                        let _ = tokio::time::timeout(Duration::from_secs(2), connection.closed()).await;
                     }
                 }
+                Ok(Err(err)) => report_peer_connect_error(&main_tx, conn_id, None, err).await,
                 Err(err) => report_peer_connect_error(&main_tx, conn_id, None, err.into()).await,
             }
         });
@@ -124,32 +128,35 @@ impl PeerConnection {
         let conn_id = ConnectionId::rand();
 
         tokio::spawn(async move {
-            match connecting.await {
-                Ok(connection) => {
-                    log::info!("[PeerConnection {conn_id}] connected to {remote}");
-                    match connection.open_bi().await {
-                        Ok((send, recv)) => {
-                            if let Err(e) = run_connection(
-                                secure,
-                                ctx,
-                                remote,
-                                conn_id,
-                                local_id,
-                                PeerConnectionDirection::Outgoing(to_peer),
-                                &connection,
-                                send,
-                                recv,
-                                main_tx.clone(),
-                            )
-                            .await
-                            {
-                                log::error!("[PeerConnection {conn_id}] connection to {remote} error {e}");
-                                let _ = main_tx.send(MainEvent::PeerConnectError(conn_id, Some(to_peer), e)).await;
-                            }
-                        }
-                        Err(err) => report_peer_connect_error(&main_tx, conn_id, Some(to_peer), err.into()).await,
+            let setup = tokio::time::timeout(PEER_SETUP_TIMEOUT, async {
+                let connection = connecting.await?;
+                log::info!("[PeerConnection {conn_id}] connected to {remote}");
+                let (send, recv) = connection.open_bi().await?;
+                Ok::<_, anyhow::Error>((connection, send, recv))
+            })
+            .await;
+
+            match setup {
+                Ok(Ok((connection, send, recv))) => {
+                    if let Err(e) = run_connection(
+                        secure,
+                        ctx,
+                        remote,
+                        conn_id,
+                        local_id,
+                        PeerConnectionDirection::Outgoing(to_peer),
+                        &connection,
+                        send,
+                        recv,
+                        main_tx.clone(),
+                    )
+                    .await
+                    {
+                        log::error!("[PeerConnection {conn_id}] connection to {remote} error {e}");
+                        let _ = main_tx.send(MainEvent::PeerConnectError(conn_id, Some(to_peer), e)).await;
                     }
                 }
+                Ok(Err(err)) => report_peer_connect_error(&main_tx, conn_id, Some(to_peer), err).await,
                 Err(err) => report_peer_connect_error(&main_tx, conn_id, Some(to_peer), err.into()).await,
             }
         });
@@ -216,63 +223,7 @@ async fn run_connection<SECURE: HandshakeProtocol>(
     mut recv: RecvStream,
     main_tx: Sender<MainEvent>,
 ) -> anyhow::Result<()> {
-    let to_id = match direction {
-        PeerConnectionDirection::Outgoing(dest) => {
-            let auth = secure.create_request(local_id, dest, now_ms());
-            write_object::<_, _, MAX_CONTROL_PEER_PKT>(&mut send, &ConnectReq { from: local_id, to: dest, auth }).await?;
-            let res: ConnectRes = wait_object::<_, _, MAX_CONTROL_PEER_PKT>(&mut recv).await?;
-            log::info!("{res:?}");
-            match res.result {
-                Ok(auth) => {
-                    if let Err(e) = secure.verify_response(auth, dest, local_id, now_ms()) {
-                        return Err(anyhow!("destination auth failure: {e}"));
-                    }
-                    dest
-                }
-                Err(err) => {
-                    return Err(anyhow!("destination rejected: {err}"));
-                }
-            }
-        }
-        PeerConnectionDirection::Incoming(inbound_peer_bindings) => {
-            let req: ConnectReq = wait_object::<_, _, MAX_CONTROL_PEER_PKT>(&mut recv).await?;
-            if let Err(e) = secure.verify_request(req.auth, req.from, req.to, now_ms()) {
-                write_object::<_, _, MAX_CONTROL_PEER_PKT>(&mut send, &ConnectRes { result: Err(e.clone()) }).await?;
-                return Err(anyhow!("destination auth failure: {e}"));
-            } else if req.to != local_id {
-                write_object::<_, _, MAX_CONTROL_PEER_PKT>(
-                    &mut send,
-                    &ConnectRes {
-                        result: Err("destination not match".to_owned()),
-                    },
-                )
-                .await?;
-                return Err(anyhow!("destination wrong"));
-            } else if req.from == local_id {
-                write_object::<_, _, MAX_CONTROL_PEER_PKT>(
-                    &mut send,
-                    &ConnectRes {
-                        result: Err("source must not match destination".to_owned()),
-                    },
-                )
-                .await?;
-                return Err(anyhow!("source wrong"));
-            } else if !inbound_peer_bindings.is_authorized(req.from, remote) {
-                write_object::<_, _, MAX_CONTROL_PEER_PKT>(
-                    &mut send,
-                    &ConnectRes {
-                        result: Err("source not authorized for remote address".to_owned()),
-                    },
-                )
-                .await?;
-                return Err(anyhow!("source not authorized for remote address"));
-            } else {
-                let auth = secure.create_response(req.to, req.from, now_ms());
-                write_object::<_, _, MAX_CONTROL_PEER_PKT>(&mut send, &ConnectRes { result: Ok(auth) }).await?;
-                req.from
-            }
-        }
-    };
+    let to_id = tokio::time::timeout(PEER_SETUP_TIMEOUT, authenticate_peer(secure, remote, local_id, direction, &mut send, &mut recv)).await??;
 
     let rtt_ms = connection.rtt().as_millis().min(u16::MAX as u128) as u16;
     let (control_tx, control_rx) = channel(10);
@@ -294,6 +245,71 @@ async fn run_connection<SECURE: HandshakeProtocol>(
     ctx.unregister_conn(&conn_id);
     emit_connection_teardown_metrics(local_id, to_id);
     Ok(())
+}
+
+async fn authenticate_peer<SECURE: HandshakeProtocol>(
+    secure: Arc<SECURE>,
+    remote: SocketAddr,
+    local_id: PeerId,
+    direction: PeerConnectionDirection,
+    send: &mut SendStream,
+    recv: &mut RecvStream,
+) -> anyhow::Result<PeerId> {
+    match direction {
+        PeerConnectionDirection::Outgoing(dest) => {
+            let auth = secure.create_request(local_id, dest, now_ms());
+            write_object::<_, _, MAX_CONTROL_PEER_PKT>(send, &ConnectReq { from: local_id, to: dest, auth }).await?;
+            let res: ConnectRes = wait_object::<_, _, MAX_CONTROL_PEER_PKT>(recv).await?;
+            log::info!("{res:?}");
+            match res.result {
+                Ok(auth) => {
+                    if let Err(e) = secure.verify_response(auth, dest, local_id, now_ms()) {
+                        return Err(anyhow!("destination auth failure: {e}"));
+                    }
+                    Ok(dest)
+                }
+                Err(err) => Err(anyhow!("destination rejected: {err}")),
+            }
+        }
+        PeerConnectionDirection::Incoming(inbound_peer_bindings) => {
+            let req: ConnectReq = wait_object::<_, _, MAX_CONTROL_PEER_PKT>(recv).await?;
+            if let Err(e) = secure.verify_request(req.auth, req.from, req.to, now_ms()) {
+                write_object::<_, _, MAX_CONTROL_PEER_PKT>(send, &ConnectRes { result: Err(e.clone()) }).await?;
+                Err(anyhow!("destination auth failure: {e}"))
+            } else if req.to != local_id {
+                write_object::<_, _, MAX_CONTROL_PEER_PKT>(
+                    send,
+                    &ConnectRes {
+                        result: Err("destination not match".to_owned()),
+                    },
+                )
+                .await?;
+                Err(anyhow!("destination wrong"))
+            } else if req.from == local_id {
+                write_object::<_, _, MAX_CONTROL_PEER_PKT>(
+                    send,
+                    &ConnectRes {
+                        result: Err("source must not match destination".to_owned()),
+                    },
+                )
+                .await?;
+                Err(anyhow!("source wrong"))
+            } else if !inbound_peer_bindings.is_authorized(req.from, remote) {
+                write_object::<_, _, MAX_CONTROL_PEER_PKT>(
+                    send,
+                    &ConnectRes {
+                        result: Err("source not authorized for remote address".to_owned()),
+                    },
+                )
+                .await?;
+                Err(anyhow!("source not authorized for remote address"))
+            } else {
+                let auth = secure.create_response(req.to, req.from, now_ms());
+                write_object::<_, _, MAX_CONTROL_PEER_PKT>(send, &ConnectRes { result: Ok(auth) }).await?;
+                Ok(req.from)
+            }
+        }
+    }
 }
 
 fn emit_connection_teardown_metrics(local_id: PeerId, to_id: PeerId) {

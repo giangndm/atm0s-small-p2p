@@ -13,7 +13,7 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 - Fix phase status: ISSUE-001, ISSUE-003, ISSUE-004, ISSUE-005, ISSUE-006, ISSUE-007,
   ISSUE-002, ISSUE-008, ISSUE-009, ISSUE-010, ISSUE-011, ISSUE-012, ISSUE-013, ISSUE-014, ISSUE-015, ISSUE-021, ISSUE-024, ISSUE-033, ISSUE-055, ISSUE-103, ISSUE-122, ISSUE-123,
   ISSUE-124, ISSUE-125, ISSUE-126, ISSUE-127, ISSUE-128, ISSUE-129, ISSUE-130,
-  ISSUE-131, ISSUE-132, ISSUE-133,
+  ISSUE-131, ISSUE-132, ISSUE-133, ISSUE-134,
   ISSUE-053, ISSUE-063, ISSUE-139, ISSUE-146, ISSUE-168, ISSUE-170,
   ISSUE-149, ISSUE-169, ISSUE-174, ISSUE-176, ISSUE-181, ISSUE-189, ISSUE-190, ISSUE-191, ISSUE-192, ISSUE-193,
   ISSUE-194, ISSUE-195, ISSUE-196, ISSUE-197, ISSUE-198, ISSUE-199,
@@ -95,7 +95,7 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 ### RC-4: Timeouts and setup cancellation are incomplete
 
 - Representative issues: ISSUE-002, ISSUE-009, ISSUE-021, ISSUE-036,
-  ISSUE-042, ISSUE-093, ISSUE-117, ISSUE-121, ISSUE-134, ISSUE-149,
+  ISSUE-042, ISSUE-093, ISSUE-117, ISSUE-121, ISSUE-149,
   ISSUE-156, ISSUE-159, ISSUE-169, ISSUE-172, ISSUE-173, ISSUE-176.
 - Pattern: timeouts wrap only one await point, rely on unchecked timestamp
   arithmetic, use coarse global sweeps, or complete one side of setup before
@@ -184,6 +184,15 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Recently Fixed Issues
 
+- ISSUE-134: fixed by refusing inbound QUIC `Incoming` attempts once 16
+  unauthenticated inbound neighbours are already pending, and by bounding
+  pre-authentication peer setup with `PEER_SETUP_TIMEOUT`. Excess raw clients
+  are rejected before another pending peer task is inserted. Verified with
+  `cargo test unauthenticated_inbound_connections_must_be_admission_bounded -- --nocapture`,
+  `cargo test inbound_peer_setup_must_timeout_when_connect_response_write_stalls -- --nocapture`,
+  `cargo test outbound_peer_setup_must_timeout_when_main_control_stream_cannot_open -- --nocapture`,
+  and
+  `cargo test outbound_peer_setup_must_timeout_when_connect_request_write_stalls -- --nocapture`.
 - ISSUE-133: fixed by `4997404` (`fix: deduplicate peer stopped forwarding`).
   `PeerConnectionInternal::on_msg` now uses
   `self.main_tx.try_send(MainEvent::PeerStopped(self.conn_id, peer_id))` for
