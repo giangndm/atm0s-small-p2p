@@ -7,9 +7,9 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Accepted issues: 204
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 281
+- Current consecutive no-new-issue cycles: 282
 - Stop condition: continue until 5 consecutive cycles find no new accepted
-  issue; currently 281/5 after ISSUE-204.
+  issue; currently 282/5 after ISSUE-204.
 
 ## Root Cause Summary
 
@@ -2389,6 +2389,14 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Recent No-New Audit
 
+- Cycle after ISSUE-204 no-new cycle 282 ran a broad invalid-action fuzz pass
+  with forked reviewer `Pauli the 6th`. The command set `P2P_FUZZ_NODES=10`,
+  while the failing assertion reported `seed=282, nodes=8, steps=2600`. The
+  run failed with exit code 101, but the only hard failure was duplicate
+  ISSUE-053 evidence: one `src/ctx.rs:34:9` invalid-service panic with
+  `index out of bounds: the len is 256 but the index is 256`. The
+  channel-closed and closed-by-peer markers were reviewed as teardown fallout.
+  No accepted issue or summary root-cause change was recorded.
 - Cycle after ISSUE-204 no-new cycle 281 ran a valid-action fuzz pass with
   forked reviewer `Nash the 6th`. The command set `P2P_FUZZ_NODES=9`, while
   the failing assertion reported `seed=281, nodes=8, steps=2400`. The run
