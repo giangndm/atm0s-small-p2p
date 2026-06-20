@@ -11,7 +11,7 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 335
+- Current consecutive no-new-issue cycles: 336
 - Stop condition requested by user: continue until 5 consecutive cycles find no
   new accepted issue.
 
@@ -5783,6 +5783,41 @@ the source of truth for evidence and reviewer decisions.
     `src/peer.rs:1092` with `got 2`.
 
 ## No-New-Issue Audit Cycles
+
+### Cycle after ISSUE-204 no-new cycle 336: broad random invalid-service and shutdown-send duplicate
+
+- Result: no accepted non-duplicate issue.
+- Reviewer: `Bernoulli the 7th`, forked subagent review, confirmed
+  duplicate/no-new.
+- Source and test evidence reviewed:
+  - `src/tests/fuzz.rs`
+  - `src/ctx.rs`
+  - `src/peer.rs`
+  - `RUST_LOG=error P2P_FUZZ_SEED=336 P2P_FUZZ_NODES=8 P2P_FUZZ_STEPS=5200 cargo test fuzz_random_node_actions_must_not_panic_connection_tasks -- --nocapture`
+    failed with `seed=336, nodes=8, steps=5200`.
+- Evidence summary:
+  - exit status 101; log had 48 lines; the fuzz assertion at
+    `src/tests/fuzz.rs:183:5` reported background connection/service task
+    failure.
+  - six invalid-service panics at `src/ctx.rs:34:9` with
+    `index out of bounds: the len is 256 but the index is 256`.
+  - one outgoing shutdown-send panic at `src/peer.rs:133:113` with
+    `should send to main: SendError { .. }`.
+  - stale-route, PeerStopped storm, no-capacity, broadcast-failure,
+    endpoint-driver-dropped, and internal-channel-error signatures were
+    absent.
+  - lifecycle context included one `connection lost`, five `closed by peer`,
+    six try-send `channel closed`, and three `aborted by peer` markers.
+- Duplicate mapping: ISSUE-053 for unchecked inbound service-id table
+  indexing; ISSUE-139 for the shutdown/closed-main reporting panic.
+- Root-cause summary impact: no new root cause; reviewer classified all hard
+  failure signatures as already accepted invalid-service and shutdown-send
+  failures.
+- Smallest fix proposal: no summary fix change; keep ISSUE-053 fix proposal to
+  validate decoded `P2pServiceId` before indexing the fixed service table and
+  reject/drop out-of-bounds remote ids; keep ISSUE-139 fix proposal to replace
+  shutdown-path `expect("should send to main")` calls with graceful
+  closed-channel handling.
 
 ### Cycle after ISSUE-204 no-new cycle 335: sanitized churn outgoing shutdown-send duplicate
 
