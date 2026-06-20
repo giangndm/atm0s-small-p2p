@@ -11,7 +11,7 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 104
+- Current consecutive no-new-issue cycles: 105
 - Stop condition requested by user: continue until 5 consecutive cycles find no
   new accepted issue.
 
@@ -5783,6 +5783,28 @@ the source of truth for evidence and reviewer decisions.
     `src/peer.rs:1092` with `got 2`.
 
 ## No-New-Issue Audit Cycles
+
+### Cycle after ISSUE-204 no-new cycle 105: steady-valid clean pass
+
+- Result: pass/no-new; no accepted issue evidence.
+- Reviewer: `Ampere the 5th`, forked subagent review, confirmed
+  `PASS_NO_NEW`.
+- Source and test evidence reviewed:
+  - `src/tests/fuzz.rs`
+  - `RUST_LOG=error P2P_FUZZ_SEED=105 P2P_FUZZ_NODES=8 P2P_FUZZ_STEPS=2400 cargo test fuzz_random_steady_valid_node_actions_must_not_panic_connection_tasks -- --nocapture`
+    passed.
+- Evidence summary:
+  - exit status 0; `1 passed; 0 failed`; the steady-valid fuzz run completed
+    in 16.20s.
+  - no `panicked at` lines, no failed test result, no `ERROR` or `WARN`
+    markers, and no known noisy failure markers: invalid service-id panic,
+    stale-sync panic, send-to-main panic, no-capacity/channel-closed
+    forwarded-stop storm, or path-not-found marker.
+- Duplicate mapping:
+  - none; no accepted issue evidence and no ISSUE-205.
+- Root-cause summary impact: no new root cause and no fix proposal change; this
+  is additional clean steady-valid coverage for 8 nodes and 2400 valid random
+  actions.
 
 ### Cycle after ISSUE-204 no-new cycle 104: valid churn duplicate incoming send-to-main panic
 

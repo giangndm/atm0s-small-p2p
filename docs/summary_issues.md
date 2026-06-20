@@ -7,9 +7,9 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Accepted issues: 204
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 104
+- Current consecutive no-new-issue cycles: 105
 - Stop condition: continue until 5 consecutive cycles find no new accepted
-  issue; currently 104/5 after ISSUE-204.
+  issue; currently 105/5 after ISSUE-204.
 
 ## Root Cause Summary
 
@@ -256,6 +256,13 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Recent Fuzz Evidence
 
+- Steady-valid fuzz pass:
+  `RUST_LOG=error P2P_FUZZ_SEED=105 P2P_FUZZ_NODES=8 P2P_FUZZ_STEPS=2400 cargo test fuzz_random_steady_valid_node_actions_must_not_panic_connection_tasks -- --nocapture`
+  passed with exit status 0, `1 passed; 0 failed`, no panic lines, no failed
+  assertion, no `ERROR` or `WARN` logs, and no invalid-service, stale-sync,
+  send-to-main, no-capacity/channel-closed, or path-not-found markers.
+  Reviewer `Ampere the 5th` classified it as `PASS_NO_NEW`; no new root cause
+  or fix proposal change was identified, and no ISSUE-205 was created.
 - Valid node churn fuzz review:
   `RUST_LOG=error P2P_FUZZ_SEED=104 P2P_FUZZ_NODES=8 P2P_FUZZ_STEPS=1800 cargo test fuzz_random_valid_node_churn_actions_must_not_panic_connection_tasks -- --nocapture`
   failed with duplicate evidence for ISSUE-139. Reviewer `Mencius the 5th`
