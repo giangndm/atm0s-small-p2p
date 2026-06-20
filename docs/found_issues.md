@@ -6019,10 +6019,11 @@ the source of truth for evidence and reviewer decisions.
 - Reviewer: `Anscombe the 4th`, confirmed.
 - Affected code:
   - `src/service/metrics_service.rs`: when a `Message::Scan` arrives, the
-    service gathers metrics and spawns a detached task for every response.
+    service gathers metrics and spawns a detached task for the response.
   - `src/service/metrics_service.rs`: the response task awaits
-    `requester.send_unicast(...)` with a timeout, but no per-requester
-    in-flight state suppresses duplicate pending replies.
+    `requester.send_unicast(...)` with a timeout, and
+    `pending_scan_responses` suppresses duplicate pending replies per
+    requester.
   - `src/ctx.rs`: `SharedCtx::send_unicast` awaits the selected next-hop
     peer alias.
   - `src/peer/peer_alias.rs`: `PeerConnectionAlias::send` awaits the bounded
@@ -6039,13 +6040,18 @@ the source of truth for evidence and reviewer decisions.
   replies, preferably keyed by requester peer. While a response to that peer is
   pending, skip or coalesce additional `Scan` replies; clear the marker when
   the send task completes or times out.
+- Fix status: fixed by `MetricsService::pending_scan_responses` plus bounded
+  `requester.send_unicast(...)` response tasks. This coalesces duplicate
+  metrics scan responses per requester while one response is pending behind
+  peer-control backpressure, without claiming guaranteed delivery under
+  persistent backpressure.
 - Evidence test:
   - `cargo test metrics_scan_responses_must_not_accumulate_behind_full_peer_control_queue -- --nocapture`
-  - Failure summary: the test injects eight metrics `Scan` messages while the
-    selected next-hop peer-control queue is full, yields while response tasks
-    are blocked, then drains the filler item. More than one queued
-    `PeerMessage::Unicast` response appears, and the test fails at
-    `src/peer.rs:1092` with `got 2`.
+  - Current result: passes. The test injects eight metrics `Scan` messages
+    while the selected next-hop peer-control queue is full, yields while the
+    bounded response task remains pending, then drains the filler item and
+    verifies that only one queued `PeerMessage::Unicast` metrics response is
+    admitted for that requester.
 
 ## No-New-Issue Audit Cycles
 
