@@ -7,9 +7,9 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Accepted issues: 204
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 55
+- Current consecutive no-new-issue cycles: 56
 - Stop condition: continue until 5 consecutive cycles find no new accepted
-  issue; currently 55/5 after ISSUE-204.
+  issue; currently 56/5 after ISSUE-204.
 
 ## Root Cause Summary
 
@@ -256,6 +256,12 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Recent Fuzz Evidence
 
+- Focused pubsub stale-leave ordering review:
+  `cargo test stale_pubsub_leave_must_not_remove_membership_after_newer_heartbeat -- --nocapture`
+  failed with duplicate evidence for ISSUE-155. Reviewer `Averroes the 4th`
+  confirmed pubsub membership controls still lack freshness/version comparison,
+  so a delayed stale `PublisherLeaved` can remove membership confirmed by a
+  newer heartbeat. No root-cause summary change was needed.
 - Focused pubsub stale-destroy lifecycle review:
   `cargo test stale_pubsub_destroy_must_not_create_phantom_channel -- --nocapture`
   failed with duplicate evidence for ISSUE-150. Reviewer `Maxwell the 4th`

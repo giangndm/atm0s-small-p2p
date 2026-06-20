@@ -11,7 +11,7 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 55
+- Current consecutive no-new-issue cycles: 56
 - Stop condition requested by user: continue until 5 consecutive cycles find no
   new accepted issue.
 
@@ -5783,6 +5783,26 @@ the source of truth for evidence and reviewer decisions.
     `src/peer.rs:1092` with `got 2`.
 
 ## No-New-Issue Audit Cycles
+
+### Cycle after ISSUE-204 no-new cycle 56: pubsub stale leave duplicate
+
+- Result: no accepted non-duplicate issue.
+- Reviewer: `Averroes the 4th`, forked subagent review, confirmed
+  duplicate-only no-new classification.
+- Source and test evidence reviewed:
+  - `src/service/pubsub_service.rs`
+  - `cargo test stale_pubsub_leave_must_not_remove_membership_after_newer_heartbeat -- --nocapture`
+    failed at `src/service/pubsub_service.rs:1167:9`.
+- Duplicate or too-close symptoms rejected:
+  - a newer heartbeat confirms `PeerId(2)` as a live remote publisher for the
+    channel.
+  - a later-delivered stale `PublisherLeaved(channel)` from the same peer
+    removes that heartbeat-confirmed membership because pubsub membership
+    messages have no freshness, generation, or epoch comparison.
+  - this maps directly to ISSUE-155: stale pubsub leave removes membership
+    confirmed by newer heartbeat. Existing score: 64/100.
+- Root-cause summary impact: no new root cause; this source/test cycle
+  strengthens existing ISSUE-155 evidence without adding ISSUE-205.
 
 ### Cycle after ISSUE-204 no-new cycle 55: pubsub stale destroy duplicate
 
