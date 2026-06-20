@@ -440,6 +440,10 @@ the source of truth for evidence and reviewer decisions.
 
 ### ISSUE-011: `open_stream` succeeds after destination service receiver is closed
 
+- Status: fixed. Local stream delivery now reserves destination service queue
+  capacity before sending a successful `StreamConnectRes`. If the destination
+  service receiver is closed, the opener receives an error response instead of
+  an apparently usable pipe.
 - Category: correctness, pipe reliability
 - Score: 76/100
 - Reviewer: `Linnaeus`, confirmed.
@@ -452,8 +456,8 @@ the source of truth for evidence and reviewer decisions.
   destination service can ever accept the pipe.
 - Evidence test:
   - `cargo test open_stream_fails_when_destination_service_receiver_is_closed -- --nocapture`
-  - Failure summary: `open_stream` returns `Ok(_)` after the destination
-    service receiver has been dropped.
+  - Fixed summary: `open_stream` returns `Err(_)` after the destination service
+    receiver has been dropped.
 
 ### ISSUE-012: `open_stream` succeeds when destination service queue is full
 

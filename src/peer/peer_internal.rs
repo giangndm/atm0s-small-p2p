@@ -304,11 +304,21 @@ async fn accept_bi(authenticated_ingress_peer: PeerId, mut stream: P2pQuicStream
         Some(RouteAction::Local) => {
             if let Some(service_tx) = ctx.get_service(&service) {
                 log::info!("[PeerConnectionInternal {authenticated_ingress_peer}] stream service {service} source {effective_source} to dest {dest} => process local");
+                let permit = match tokio::time::timeout(LOCAL_SERVICE_DELIVERY_TIMEOUT, service_tx.reserve()).await {
+                    Ok(Ok(permit)) => permit,
+                    Ok(Err(_)) => {
+                        log::warn!("[PeerConnectionInternal {authenticated_ingress_peer}] stream service {service} source {effective_source} to dest {dest} => service closed");
+                        write_object::<_, _, MAX_CONTROL_STREAM_PKT>(&mut stream, &Err::<(), _>("service closed".to_string())).await?;
+                        return Err(anyhow!("service closed"));
+                    }
+                    Err(_) => {
+                        log::warn!("[PeerConnectionInternal {authenticated_ingress_peer}] stream service {service} source {effective_source} to dest {dest} => service queue full");
+                        write_object::<_, _, MAX_CONTROL_STREAM_PKT>(&mut stream, &Err::<(), _>("service queue full".to_string())).await?;
+                        return Err(anyhow!("service queue full"));
+                    }
+                };
                 write_object::<_, _, MAX_CONTROL_STREAM_PKT>(&mut stream, &Ok::<_, String>(())).await?;
-                service_tx
-                    .send(P2pServiceEvent::Stream(effective_source, meta, stream))
-                    .await
-                    .print_on_err("[PeerConnectionInternal] send accepted stream to service");
+                permit.send(P2pServiceEvent::Stream(effective_source, meta, stream));
                 Ok(())
             } else {
                 log::warn!("[PeerConnectionInternal {authenticated_ingress_peer}] stream service {service} source {effective_source} to dest {dest} => service not found");
