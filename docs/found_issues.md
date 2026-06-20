@@ -5508,6 +5508,11 @@ the source of truth for evidence and reviewer decisions.
     `7@127.0.0.1:9000` at timestamp 100. Current discovery remotes become
     `[7@127.0.0.1:9000]`; expected rejection or newest-timestamp resolution
     leaving `[7@127.0.0.1:9001]`.
+- Fix status: fixed by the discovery freshness handling added with ISSUE-009.
+  `PeerDiscovery::apply_sync` now ignores rows whose timestamp is not newer
+  than existing remote discovery state, so duplicate rows in one sync resolve
+  to the newest timestamp instead of the attacker-controlled last row. Verified
+  with `cargo test discovery_sync_must_reject_duplicate_peer_entries -- --nocapture`.
 
 ### ISSUE-193: Connection teardown emits RTT as both gauge and counter
 

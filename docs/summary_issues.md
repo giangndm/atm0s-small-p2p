@@ -12,8 +12,8 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   issue; currently 341/5 after ISSUE-204.
 - Fix phase status: ISSUE-003, ISSUE-004, ISSUE-005, ISSUE-006, ISSUE-007,
   ISSUE-008, ISSUE-009, ISSUE-033, ISSUE-055, ISSUE-103, ISSUE-053, ISSUE-063,
-  ISSUE-139, ISSUE-170, and ISSUE-190 have focused fixes committed. ISSUE-003
-  is fixed by `cfc8e57`;
+  ISSUE-139, ISSUE-170, ISSUE-190, and ISSUE-192 have focused fixes committed.
+  ISSUE-003 is fixed by `cfc8e57`;
   ISSUE-004 is covered by the ISSUE-170 ownership-validation follow-up
   `87cf6ce`; earlier fixes are `648cfd0`, `2cbf096`, `15b788c`, and
   `4997404`.
@@ -296,6 +296,11 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   `cargo test should_reject_over_max_hops_for_forwarding -- --nocapture`,
   `cargo test should_not_store_or_advertise_route_to_local_peer -- --nocapture`,
   and `cargo fmt -- --check`. Reviewer accepted.
+- ISSUE-192: fixed by the ISSUE-009 discovery freshness handling.
+  `PeerDiscovery::apply_sync` ignores rows whose timestamp is not newer than
+  existing remote discovery state, so duplicate discovery rows in one sync
+  resolve to the newest timestamp instead of the last row. Verified with
+  `cargo test discovery_sync_must_reject_duplicate_peer_entries -- --nocapture`.
 - ISSUE-053: fixed by `648cfd0` with range-checked service table indexing.
   Verified with `cargo test ctx::tests -- --nocapture` and seed-340
   invalid-service fuzz passing without `src/ctx.rs` panics.
