@@ -4937,6 +4937,13 @@ the source of truth for evidence and reviewer decisions.
 
 ### ISSUE-159: Outbound peer setup hangs before main control stream opens
 
+- Status: fixed by `f62d6a6a`. `PeerConnection::new_connecting` now wraps the
+  outbound `connecting.await` and initial `connection.open_bi().await` in
+  `PEER_SETUP_TIMEOUT`, reporting `MainEvent::PeerConnectError(conn_id,
+  Some(to_peer), err)` on timeout so pending outbound neighbour state is
+  cleaned up. This closes pre-main-control-stream outbound setup hangs; later
+  authenticated stream setup and per-service `open_bi` stalls remain separate
+  issues. Verified with the evidence tests below.
 - Category: bad-network stability, connection lifecycle, setup timeout
 - Score: 67/100
 - Reviewer: `Pascal the 2nd`, confirmed after `Singer the 2nd` discovery.
@@ -4966,6 +4973,7 @@ the source of truth for evidence and reviewer decisions.
   stream open, `ConnectReq` write, and `ConnectRes` read.
 - Evidence test:
   - `cargo test outbound_peer_setup_must_timeout_when_main_control_stream_cannot_open -- --nocapture`
+  - `cargo test outbound_peer_setup_must_timeout_when_connect_request_write_stalls -- --nocapture`
   - Failure summary: a raw QUIC server accepts the transport connection while
     advertising `max_concurrent_bidi_streams(0)`. After the normal node queues
     a connect and the test drives `recv()` for the cleanup window, the pending

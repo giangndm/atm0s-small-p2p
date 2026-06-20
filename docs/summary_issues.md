@@ -16,7 +16,7 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   ISSUE-131, ISSUE-132, ISSUE-133, ISSUE-134, ISSUE-135, ISSUE-136, ISSUE-137,
   ISSUE-140, ISSUE-143, ISSUE-145, ISSUE-147, ISSUE-148, ISSUE-150, ISSUE-151,
   ISSUE-152, ISSUE-153, ISSUE-154, ISSUE-155, ISSUE-156, ISSUE-157, ISSUE-158,
-  ISSUE-053, ISSUE-063, ISSUE-139, ISSUE-146, ISSUE-168, ISSUE-170,
+  ISSUE-159, ISSUE-053, ISSUE-063, ISSUE-139, ISSUE-146, ISSUE-168, ISSUE-170,
   ISSUE-149, ISSUE-169, ISSUE-174, ISSUE-176, ISSUE-181, ISSUE-189, ISSUE-190, ISSUE-191, ISSUE-192, ISSUE-193,
   ISSUE-194, ISSUE-195, ISSUE-196, ISSUE-197, ISSUE-198, ISSUE-199,
   ISSUE-200, ISSUE-201, ISSUE-202, ISSUE-203, ISSUE-204, ISSUE-097, ISSUE-098, and ISSUE-018 have focused
@@ -98,7 +98,7 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Representative issues: ISSUE-002, ISSUE-009, ISSUE-021, ISSUE-036,
   ISSUE-042, ISSUE-093, ISSUE-117, ISSUE-121, ISSUE-149,
-  ISSUE-159, ISSUE-169, ISSUE-172, ISSUE-173, ISSUE-176.
+  ISSUE-169, ISSUE-172, ISSUE-173, ISSUE-176.
 - Pattern: timeouts wrap only one await point, rely on unchecked timestamp
   arithmetic, use coarse global sweeps, or complete one side of setup before
   proving the end-to-end setup is still alive. Handshake tokens also lack
@@ -285,6 +285,18 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   `cargo test newer_notify_set_must_restore_alias_after_notify_del -- --nocapture`,
   `cargo test stale_not_found_must_not_evict_alias_cache_without_pending_check -- --nocapture`, and
   `cargo test shutdown_from_cached_hint_must_unblock_pending_find -- --nocapture`.
+- ISSUE-159: fixed by `f62d6a6a`. Root cause was outbound peer setup inserting
+  pending neighbour state before the main control stream existed, while
+  `PeerConnection::new_connecting` could await QUIC connect or the initial
+  `connection.open_bi()` indefinitely without emitting cleanup. The smallest
+  fix wraps those setup awaits in `PEER_SETUP_TIMEOUT` and reports
+  `MainEvent::PeerConnectError(conn_id, Some(to_peer), err)` on timeout. This
+  closes pre-main-control-stream outbound setup hangs; later authenticated
+  stream setup and per-service `open_bi` stalls remain separate issues.
+  Verification:
+  `cargo test outbound_peer_setup_must_timeout_when_main_control_stream_cannot_open -- --nocapture`
+  and
+  `cargo test outbound_peer_setup_must_timeout_when_connect_request_write_stalls -- --nocapture`.
 - ISSUE-145: fixed by validating `MainEvent::PeerData(conn, peer, ...)`
   against the router's live direct `(ConnectionId, PeerId)` binding before
   applying route sync or discovery advertisements. Stale or mismatched peer-data
