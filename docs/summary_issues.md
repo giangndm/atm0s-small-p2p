@@ -13,8 +13,8 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 - Fix phase status: ISSUE-003, ISSUE-004, ISSUE-005, ISSUE-006, ISSUE-007,
   ISSUE-002, ISSUE-008, ISSUE-009, ISSUE-021, ISSUE-033, ISSUE-055, ISSUE-103,
   ISSUE-053, ISSUE-063, ISSUE-139, ISSUE-146, ISSUE-170, ISSUE-176,
-  ISSUE-190, ISSUE-191, and ISSUE-192 have focused fixes committed. ISSUE-003 is fixed by
-  `cfc8e57`;
+  ISSUE-189, ISSUE-190, ISSUE-191, and ISSUE-192 have focused fixes committed.
+  ISSUE-003 is fixed by `cfc8e57`;
   ISSUE-004 is covered by the ISSUE-170 ownership-validation follow-up
   `87cf6ce`; earlier fixes are `648cfd0`, `2cbf096`, `15b788c`, and
   `4997404`.
@@ -179,6 +179,13 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Recently Fixed Issues
 
+- ISSUE-189: fixed by the existing inbound `run_connection` self-identity
+  guard, which rejects `ConnectReq` messages with `req.from == local_id` before
+  emitting a successful handshake response or installing alias/neighbour state.
+  Verified with
+  `cargo test inbound_handshake_must_reject_peer_claiming_local_id -- --nocapture`
+  and `cargo fmt -- --check`. ISSUE-194 remains open for arbitrary third-party
+  peer-id claims.
 - ISSUE-191: fixed by updating the README getting-started snippet and its
   compile-mirror example to use a numeric `PeerId`, propagate
   `P2pNetwork::new(...).await?`, bind a mutable network, and create the service

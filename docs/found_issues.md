@@ -5444,6 +5444,14 @@ the source of truth for evidence and reviewer decisions.
     `from == to == PeerId(1)` to a node whose local id is `PeerId(1)`;
     current code returns `ConnectRes { result: Ok(_) }`, so the test fails
     because the inbound handshake was accepted instead of rejected.
+- Fix status: fixed by the existing inbound `run_connection` guard that rejects
+  `ConnectReq` messages where `req.from == local_id` before a successful
+  `ConnectRes`, alias registration, or `PeerConnected` event can be emitted.
+  Verified with
+  `cargo test inbound_handshake_must_reject_peer_claiming_local_id -- --nocapture`
+  and `cargo fmt -- --check`. ISSUE-194 remains separate because this guard
+  does not prevent a shared-key peer from claiming an arbitrary third-party
+  peer id.
 
 ### ISSUE-190: Duplicate route-sync destinations silently keep the last metric
 
