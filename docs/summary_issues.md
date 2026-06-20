@@ -7,9 +7,9 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Accepted issues: 204
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 311
+- Current consecutive no-new-issue cycles: 312
 - Stop condition: continue until 5 consecutive cycles find no new accepted
-  issue; currently 311/5 after ISSUE-204.
+  issue; currently 312/5 after ISSUE-204.
 
 ## Root Cause Summary
 
@@ -2389,6 +2389,15 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Recent No-New Audit
 
+- Cycle after ISSUE-204 no-new cycle 312 ran a broad invalid-action fuzz pass
+  with forked reviewer `Popper the 7th`. The run failed with exit code 101 and
+  assertion `seed=312, nodes=8, steps=3600`. The hard failures were duplicate
+  ISSUE-053 evidence: one `src/ctx.rs:34:9` service-table panic with
+  `index out of bounds: the len is 256 but the index is 256`, and duplicate
+  ISSUE-139 evidence: one `src/peer.rs:133:113` shutdown-send panic with
+  `should send to main: SendError { .. }`. Stale-route and stopped-forwarding
+  capacity-storm counts were zero. No accepted issue or summary root-cause
+  change was recorded.
 - Cycle after ISSUE-204 no-new cycle 311 ran a valid churn fuzz pass with
   forked reviewer `Curie the 7th`. The run failed with exit code 101 and
   assertion `seed=311, nodes=8, steps=3600`. The hard failure was duplicate
