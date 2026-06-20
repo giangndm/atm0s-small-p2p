@@ -11,7 +11,7 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 308
+- Current consecutive no-new-issue cycles: 309
 - Stop condition requested by user: continue until 5 consecutive cycles find no
   new accepted issue.
 
@@ -5783,6 +5783,42 @@ the source of truth for evidence and reviewer decisions.
     `src/peer.rs:1092` with `got 2`.
 
 ## No-New-Issue Audit Cycles
+
+### Cycle after ISSUE-204 no-new cycle 309: broad stale sync shutdown duplicates
+
+- Result: no accepted non-duplicate issue.
+- Reviewer: `Cicero the 7th`, forked subagent review, confirmed
+  duplicate/no-new.
+- Source and test evidence reviewed:
+  - `src/tests/fuzz.rs`
+  - `src/router.rs`
+  - `src/peer.rs`
+  - `RUST_LOG=error P2P_FUZZ_SEED=309 P2P_FUZZ_NODES=8 P2P_FUZZ_STEPS=3600 cargo test fuzz_random_node_actions_must_not_panic_connection_tasks -- --nocapture`
+    failed with `seed=309, nodes=8, steps=3600`.
+- Evidence summary:
+  - exit status 101; log had 4156 lines; the fuzz assertion at
+    `src/tests/fuzz.rs:183:5` reported background connection/service task
+    failure.
+  - one hard stale-sync route panic at `src/router.rs:76:66` with
+    `should have direct metric with apply_sync`.
+  - two hard shutdown-send panics at `src/peer.rs:92:104` with
+    `should send to main: SendError { .. }`.
+  - invalid-service-id count was zero.
+  - the same run also showed duplicate ISSUE-170 pressure markers:
+    `forward peer stopped over peer alias` 4114 times, `no available capacity`
+    3655 times, `channel closed` 472 times, and `broadcast data over peer
+    alias` 4 times.
+  - two `connection lost` and one `endpoint driver future was dropped` markers
+    were reviewed as lifecycle fallout around the same failing run.
+- Duplicate mapping: ISSUE-063 for the stale-sync route panic; ISSUE-139 for
+  the shutdown-send panics; ISSUE-170 for secondary stopped-forwarding/capacity
+  storm noise.
+- Root-cause summary impact: no new root cause; reviewer classified all hard
+  failure signatures and secondary pressure as already accepted issues.
+- Smallest fix proposal: no summary fix change; keep ISSUE-063 fix proposal to
+  drop stale route sync when the direct metric is gone, ISSUE-139 fix proposal
+  to gracefully handle closed peer-to-main reporting channels, and ISSUE-170
+  fix proposal to dedupe/coalesce stopped-peer forwarding.
 
 ### Cycle after ISSUE-204 no-new cycle 308: valid stale sync duplicate
 
