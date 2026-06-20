@@ -90,6 +90,10 @@ impl PeerDiscovery {
                 continue;
             }
 
+            if self.seeds.iter().any(|seed| seed.peer_id() == peer) {
+                continue;
+            }
+
             if let Some(stopped_at) = self.stopped.get(&peer).copied() {
                 if timestamp_is_live(stopped_at, now_ms) && last_updated <= stopped_at {
                     continue;

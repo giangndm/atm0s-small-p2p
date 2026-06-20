@@ -1383,6 +1383,16 @@ the source of truth for evidence and reviewer decisions.
   - Failure summary: after applying an advertisement for seed peer `1` at
     `127.0.0.1:9001`, `remotes()` returns both `1@127.0.0.1:9001` and the
     configured `1@127.0.0.1:9000`; expected only the configured seed address.
+- Fix status: fixed by rejecting discovery sync rows whose peer id is already
+  configured as a seed, preserving static seed addresses as authoritative.
+  Verified with the evidence test plus
+  `cargo test apply_sync_rejects_local_peer_advertisement -- --nocapture`,
+  `cargo test apply_sync_rejects_overflowing_future_timestamp -- --nocapture`,
+  `cargo test graceful_stop_tombstone_ignores_stale_non_seed_advertise -- --nocapture`,
+  `cargo test graceful_stop_tombstone_must_allow_fresh_restart_advertise -- --nocapture`,
+  `cargo test non_seed_discovered_peer_ages_out_but_seed_remains_retryable -- --nocapture`,
+  and `cargo fmt -- --check`. Reviewer `Singer the 7th` approved. The
+  configured-seed-with-local-peer-id dial-candidate failure remains separate.
 
 ### ISSUE-056: Stream open can block on congested peer control queue
 
