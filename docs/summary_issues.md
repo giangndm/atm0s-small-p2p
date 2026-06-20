@@ -7,9 +7,9 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Accepted issues: 204
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 210
+- Current consecutive no-new-issue cycles: 211
 - Stop condition: continue until 5 consecutive cycles find no new accepted
-  issue; currently 210/5 after ISSUE-204.
+  issue; currently 211/5 after ISSUE-204.
 
 ## Root Cause Summary
 
@@ -256,6 +256,21 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Recent Fuzz Evidence
 
+- Valid-action fuzz review:
+  `RUST_LOG=error P2P_FUZZ_SEED=211 P2P_FUZZ_NODES=8 P2P_FUZZ_STEPS=1800 cargo test fuzz_random_valid_node_actions_must_not_panic_connection_tasks -- --nocapture`
+  failed with duplicate evidence for ISSUE-063 and ISSUE-170. Reviewer
+  `Chandrasekhar the 6th` confirmed the single `src/router.rs:76` panic with
+  `should have direct metric with apply_sync` is the existing stale-sync root
+  cause, and the 10,725 forwarded-stop alias errors with 9,411 no-capacity and
+  1,421 channel-closed logs are the existing PeerStopped forwarding storm. The
+  32 `broadcast data over peer alias` logs were reviewed as storm fallout, and
+  the endpoint internal-error logs were teardown fallout after the
+  panic/assertion. No ISSUE-053 or ISSUE-139 evidence was present, and no new
+  invariant appeared. The smallest fix proposals remain unchanged: guard/drop
+  stale sync when the direct metric is gone and invalidate queued sync state on
+  direct-route removal; add dedupe/TTL/tombstone suppression for forwarded
+  `PeerStopped` and rate-limit repeated `try_send` failures. No new issue was
+  created.
 - Broad random fuzz review:
   `RUST_LOG=error P2P_FUZZ_SEED=210 P2P_FUZZ_NODES=8 P2P_FUZZ_STEPS=1800 cargo test fuzz_random_node_actions_must_not_panic_connection_tasks -- --nocapture`
   failed with duplicate evidence for ISSUE-053 only. Reviewer
