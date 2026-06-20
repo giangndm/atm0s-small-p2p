@@ -7,9 +7,9 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Accepted issues: 204
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 52
+- Current consecutive no-new-issue cycles: 53
 - Stop condition: continue until 5 consecutive cycles find no new accepted
-  issue; currently 52/5 after ISSUE-204.
+  issue; currently 53/5 after ISSUE-204.
 
 ## Root Cause Summary
 
@@ -256,6 +256,13 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Recent Fuzz Evidence
 
+- Focused pubsub heartbeat resource-bound review:
+  `cargo test pubsub_heartbeat_channel_batches_must_be_bounded -- --nocapture`
+  failed with duplicate evidence for ISSUE-106. Reviewer `Darwin the 4th`
+  confirmed `PubsubMessage::Heartbeat` still accepts and processes every
+  `ChannelHeartbeat` row without a semantic channel-count cap, so one frame
+  updated 1,025 channel states for one remote peer. No root-cause summary
+  change was needed.
 - Focused pubsub early-join review:
   `cargo test early_remote_publisher_join_must_survive_late_local_subscriber_creation -- --nocapture`
   failed with duplicate evidence for ISSUE-188. Reviewer `Gauss the 4th`

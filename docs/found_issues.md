@@ -11,7 +11,7 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 52
+- Current consecutive no-new-issue cycles: 53
 - Stop condition requested by user: continue until 5 consecutive cycles find no
   new accepted issue.
 
@@ -5783,6 +5783,28 @@ the source of truth for evidence and reviewer decisions.
     `src/peer.rs:1092` with `got 2`.
 
 ## No-New-Issue Audit Cycles
+
+### Cycle after ISSUE-204 no-new cycle 53: pubsub heartbeat batch duplicate
+
+- Result: no accepted non-duplicate issue.
+- Reviewer: `Darwin the 4th`, forked subagent review, confirmed duplicate-only
+  no-new classification.
+- Source and test evidence reviewed:
+  - `src/service/pubsub_service.rs`
+  - `cargo test pubsub_heartbeat_channel_batches_must_be_bounded -- --nocapture`
+    failed at `src/service/pubsub_service.rs:1027:9`.
+- Duplicate or too-close symptoms rejected:
+  - a single inbound `PubsubMessage::Heartbeat` can carry 1,025
+    `ChannelHeartbeat` rows.
+  - `PubsubService::on_service` deserializes the frame and processes every
+    heartbeat entry without a semantic channel-count cap, rejection path, or
+    truncation.
+  - the run updated 1,025 channel states for one remote peer, exceeding the
+    bounded-resource assertion.
+  - this maps directly to ISSUE-106: pubsub heartbeat channel batches have no
+    service-level row cap. Existing score: 68/100.
+- Root-cause summary impact: no new root cause; this source/test cycle
+  strengthens existing ISSUE-106 evidence without adding ISSUE-205.
 
 ### Cycle after ISSUE-204 no-new cycle 52: pubsub early remote join duplicate
 
