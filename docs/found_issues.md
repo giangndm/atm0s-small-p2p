@@ -11,7 +11,7 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 315
+- Current consecutive no-new-issue cycles: 316
 - Stop condition requested by user: continue until 5 consecutive cycles find no
   new accepted issue.
 
@@ -5783,6 +5783,34 @@ the source of truth for evidence and reviewer decisions.
     `src/peer.rs:1092` with `got 2`.
 
 ## No-New-Issue Audit Cycles
+
+### Cycle after ISSUE-204 no-new cycle 316: invalid service-id duplicate
+
+- Result: no accepted non-duplicate issue.
+- Reviewer: `Godel the 7th`, forked subagent review, confirmed
+  duplicate/no-new.
+- Source and test evidence reviewed:
+  - `src/tests/fuzz.rs`
+  - `src/ctx.rs`
+  - `RUST_LOG=error P2P_FUZZ_SEED=316 P2P_FUZZ_NODES=8 P2P_FUZZ_STEPS=3600 cargo test fuzz_random_node_actions_must_not_panic_connection_tasks -- --nocapture`
+    failed with `seed=316, nodes=8, steps=3600`.
+- Evidence summary:
+  - exit status 101; log had 23 lines; the fuzz assertion at
+    `src/tests/fuzz.rs:183:5` reported background connection/service task
+    failure.
+  - one hard invalid-service panic at `src/ctx.rs:34:9` with
+    `index out of bounds: the len is 256 but the index is 256`.
+  - stale-route, shutdown-send, and PeerStopped capacity-storm signatures were
+    absent.
+  - minor network context included two `channel closed` markers and one
+    `closed by peer` marker.
+- Duplicate mapping: ISSUE-053 for the invalid/out-of-range service-id table
+  indexing panic.
+- Root-cause summary impact: no new root cause; reviewer classified the hard
+  failure as the already accepted invalid service-id dispatch path.
+- Smallest fix proposal: no summary fix change; keep ISSUE-053 fix proposal to
+  validate service IDs before indexing the context/service table and reject or
+  drop values outside `0..256`.
 
 ### Cycle after ISSUE-204 no-new cycle 315: sanitized churn shutdown-send duplicate
 
