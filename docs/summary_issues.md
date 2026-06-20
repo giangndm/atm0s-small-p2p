@@ -11,7 +11,7 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 - Stop condition: continue until 5 consecutive cycles find no new accepted
   issue; currently 341/5 after ISSUE-204.
 - Fix phase status: ISSUE-003, ISSUE-004, ISSUE-005, ISSUE-006, ISSUE-007,
-  ISSUE-008, ISSUE-009, ISSUE-021, ISSUE-033, ISSUE-055, ISSUE-103,
+  ISSUE-002, ISSUE-008, ISSUE-009, ISSUE-021, ISSUE-033, ISSUE-055, ISSUE-103,
   ISSUE-053, ISSUE-063, ISSUE-139, ISSUE-170, ISSUE-190, and ISSUE-192 have
   focused fixes committed. ISSUE-003 is fixed by `cfc8e57`;
   ISSUE-004 is covered by the ISSUE-170 ownership-validation follow-up
@@ -178,6 +178,16 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Recently Fixed Issues
 
+- ISSUE-002: fixed by bounded future-skew validation in
+  `SharedKeyHandshake::validate_handshake`. Handshake timestamps more than
+  1 second ahead of verifier time are rejected with checked
+  `current_ts + HANDSHAKE_MAX_FUTURE_SKEW` arithmetic, while the existing small
+  clock-skew compatibility case remains valid. Verified with
+  `cargo test rejects_arbitrarily_future_request_timestamp -- --nocapture`,
+  `cargo test test_handshake_timeout -- --nocapture`,
+  `cargo test rejects_overflowing_request_timestamp_without_panic -- --nocapture`,
+  `cargo test test_handshake_flow -- --nocapture`, and
+  `cargo fmt -- --check`. Reviewer `Pauli the 8th` accepted.
 - ISSUE-003: fixed with stable route selection hysteresis in
   `PeerMemory::select_best`, direct-path priority over relayed candidates, and
   widened route score math. Verified with
@@ -261,8 +271,7 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   `cargo test rejects_overflowing_request_timestamp_without_panic -- --nocapture`,
   `cargo test test_handshake_timeout -- --nocapture`,
   `cargo test test_handshake_flow -- --nocapture`, and
-  `cargo fmt -- --check`. Reviewer `Singer the 8th` accepted. ISSUE-002
-  remains separate for future-dated tokens.
+  `cargo fmt -- --check`. Reviewer `Singer the 8th` accepted.
 - ISSUE-033: fixed by checked route metric composition in
   `RouterTable::apply_sync`. Peer-advertised metrics are combined with the
   direct-link metric through `PathMetric::checked_add`, and overflowing hop or

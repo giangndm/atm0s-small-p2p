@@ -10,6 +10,7 @@ pub trait HandshakeProtocol: Send + Sync + 'static {
 
 const HASH_SEED: &str = "atm0s-small-p2p";
 const HANDSHAKE_TIMEOUT: u64 = 30_000;
+const HANDSHAKE_MAX_FUTURE_SKEW: u64 = 1_000;
 
 #[derive(Debug, Serialize, Deserialize)]
 struct HandshakeMessage {
@@ -63,6 +64,13 @@ impl SharedKeyHandshake {
         let handshake: HandshakeMessage = bincode::deserialize(&data).map_err(|_| "Invalid handshake format".to_string())?;
 
         let handshake_data: HandshakeData = bincode::deserialize(&handshake.payload).map_err(|_| "Invalid handshake data format".to_string())?;
+
+        let Some(max_allowed_timestamp) = current_ts.checked_add(HANDSHAKE_MAX_FUTURE_SKEW) else {
+            return Err(format!("Handshake verifier timestamp overflow {current_ts}"));
+        };
+        if handshake_data.timestamp > max_allowed_timestamp {
+            return Err(format!("Handshake timestamp too far in future {} vs {}", current_ts, handshake_data.timestamp));
+        }
 
         let Some(expires_at) = handshake_data.timestamp.checked_add(HANDSHAKE_TIMEOUT) else {
             return Err(format!("Handshake timestamp overflow {}", handshake_data.timestamp));

@@ -222,6 +222,15 @@ the source of truth for evidence and reviewer decisions.
   - `cargo test rejects_arbitrarily_future_request_timestamp -- --nocapture`
   - Failure summary: verification succeeds for a request timestamped
     `1_000_000_000` while verifier time is `1_000`.
+- Fix status: fixed by bounding accepted future clock skew in
+  `SharedKeyHandshake::validate_handshake`. The verifier now rejects handshake
+  timestamps more than 1 second ahead of `current_ts`, using checked arithmetic
+  for `current_ts + HANDSHAKE_MAX_FUTURE_SKEW`, while preserving the existing
+  small-skew compatibility case. Verified with the evidence test plus
+  `cargo test test_handshake_timeout -- --nocapture`,
+  `cargo test rejects_overflowing_request_timestamp_without_panic -- --nocapture`,
+  `cargo test test_handshake_flow -- --nocapture`, and
+  `cargo fmt -- --check`. Reviewer `Pauli the 8th` accepted.
 
 ### ISSUE-003: Active route flaps on tiny RTT jitter or equal-cost updates
 
