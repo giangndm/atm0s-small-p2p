@@ -11,7 +11,7 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 98
+- Current consecutive no-new-issue cycles: 99
 - Stop condition requested by user: continue until 5 consecutive cycles find no
   new accepted issue.
 
@@ -5783,6 +5783,32 @@ the source of truth for evidence and reviewer decisions.
     `src/peer.rs:1092` with `got 2`.
 
 ## No-New-Issue Audit Cycles
+
+### Cycle after ISSUE-204 no-new cycle 99: broad random duplicate invalid service-id panic
+
+- Result: no accepted non-duplicate issue.
+- Reviewer: `Parfit the 5th`, forked subagent review, confirmed
+  `DUPLICATE/NO_NEW`.
+- Source and test evidence reviewed:
+  - `src/tests/fuzz.rs`
+  - `src/ctx.rs`
+  - `RUST_LOG=error P2P_FUZZ_SEED=99 P2P_FUZZ_NODES=8 P2P_FUZZ_STEPS=1800 cargo test fuzz_random_node_actions_must_not_panic_connection_tasks -- --nocapture`
+    failed.
+- Evidence summary:
+  - exit status 101; `0 passed; 1 failed`; the fuzz assertion at
+    `src/tests/fuzz.rs:183:5` detected background connection/service task
+    panics.
+  - one `src/ctx.rs:34:9` panic with
+    `index out of bounds: the len is 256 but the index is 256`.
+  - reviewer found no `src/router.rs:76` stale-sync panic, no `src/peer.rs`
+    send-to-main panic, and no forwarded `PeerStopped`
+    no-capacity/channel-closed storm in this log.
+- Duplicate mapping:
+  - the `src/ctx.rs:34` panic maps directly to ISSUE-053: inbound
+    `P2pServiceId(256)` is not rejected before indexing the fixed-size service
+    context array.
+- Root-cause summary impact: no new root cause; this strengthens existing
+  ISSUE-053 evidence without adding ISSUE-205.
 
 ### Cycle after ISSUE-204 no-new cycle 98: sanitized churn duplicate outgoing send-to-main panic
 
