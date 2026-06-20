@@ -4201,6 +4201,13 @@ the source of truth for evidence and reviewer decisions.
     with a route advertisement for `PeerId(4)` installs
     `PeerId(4) -> ConnectionId(10)`; expected mismatched `PeerData` to be
     ignored and leave no route to `PeerId(4)`.
+- Fix status: fixed. `P2pNetwork::process_internal` now validates that
+  `MainEvent::PeerData(conn, peer, ...)` matches the router's live direct
+  `(ConnectionId, PeerId)` binding before applying route sync or discovery
+  advertisements. Stale or mismatched peer-data events are ignored.
+- Fixed verification:
+  - `cargo test peer_data_must_validate_peer_matches_connection -- --nocapture`
+  - `cargo test stale_peer_data_event_must_not_panic_without_direct_route -- --nocapture`
 
 ### ISSUE-146: Shared-key handshake request tokens are replayable
 

@@ -314,6 +314,11 @@ impl<SECURE: HandshakeProtocol> P2pNetwork<SECURE> {
             }
             MainEvent::PeerData(conn, peer, data) => {
                 log::debug!("[P2pNetwork] connection {conn} on data {data:?} from {peer}");
+                if !self.router.is_direct_peer(&conn, &peer) {
+                    log::warn!("[P2pNetwork] ignore peer data for {peer} from non-direct connection {conn}");
+                    return Ok(P2pNetworkEvent::Continue);
+                }
+
                 match data {
                     PeerMainData::Sync { route, advertise } => {
                         self.router.apply_sync(conn, route);
