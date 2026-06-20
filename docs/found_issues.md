@@ -11,7 +11,7 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 313
+- Current consecutive no-new-issue cycles: 314
 - Stop condition requested by user: continue until 5 consecutive cycles find no
   new accepted issue.
 
@@ -5783,6 +5783,37 @@ the source of truth for evidence and reviewer decisions.
     `src/peer.rs:1092` with `got 2`.
 
 ## No-New-Issue Audit Cycles
+
+### Cycle after ISSUE-204 no-new cycle 314: churn stale-sync storm duplicate
+
+- Result: no accepted non-duplicate issue.
+- Reviewer: `Plato the 7th`, forked subagent review, confirmed
+  duplicate/no-new.
+- Source and test evidence reviewed:
+  - `src/tests/fuzz.rs`
+  - `src/router.rs`
+  - `RUST_LOG=error P2P_FUZZ_SEED=314 P2P_FUZZ_NODES=8 P2P_FUZZ_STEPS=3600 cargo test fuzz_random_valid_node_churn_actions_must_not_panic_connection_tasks -- --nocapture`
+    failed with `seed=314, nodes=8, steps=3600`.
+- Evidence summary:
+  - exit status 101; log had 30,787 lines; the fuzz assertion at
+    `src/tests/fuzz.rs:372:5` reported background connection/service task
+    failure.
+  - five hard stale-route panics at `src/router.rs:76:66` with
+    `should have direct metric with apply_sync`.
+  - `forward peer stopped over peer alias` appeared 30,733 times, including
+    25,450 `no available capacity` reports and 5,295 `channel closed` reports.
+  - invalid-service and shutdown-send panic signatures were absent; connection
+    lifecycle noise included four `connection lost` markers and six
+    `closed by peer` markers.
+- Duplicate mapping: ISSUE-063 for the stale-sync panic; ISSUE-170 for the
+  PeerStopped forwarding/capacity storm context.
+- Root-cause summary impact: no new root cause; reviewer classified the hard
+  panic as the already accepted stale-sync/direct-route race, with the storm
+  logs matching accepted stopped-forwarding pressure symptoms.
+- Smallest fix proposal: no summary fix change; keep ISSUE-063 fix proposal to
+  guard stale route-sync application when the direct metric has already gone
+  missing, and keep ISSUE-170 fix proposal to dedupe/coalesce stopped
+  forwarding with bounded retry/backpressure and TTL/tombstones.
 
 ### Cycle after ISSUE-204 no-new cycle 313: valid churn stale-sync storm duplicate
 
