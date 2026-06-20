@@ -11,7 +11,7 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 46
+- Current consecutive no-new-issue cycles: 47
 - Stop condition requested by user: continue until 5 consecutive cycles find no
   new accepted issue.
 
@@ -5783,6 +5783,30 @@ the source of truth for evidence and reviewer decisions.
     `src/peer.rs:1092` with `got 2`.
 
 ## No-New-Issue Audit Cycles
+
+### Cycle after ISSUE-204 no-new cycle 47: steady-valid fuzz pass
+
+- Result: no accepted issue and no failing assertion.
+- Reviewer: `Volta the 4th`, forked subagent review, confirmed
+  pass/no-new classification.
+- Source and test evidence reviewed:
+  - `src/tests/fuzz.rs`
+  - `src/peer/peer_internal.rs`
+  - `RUST_LOG=error P2P_FUZZ_SEED=47 P2P_FUZZ_NODES=8 P2P_FUZZ_STEPS=1800 cargo test fuzz_random_steady_valid_node_actions_must_not_panic_connection_tasks -- --nocapture`
+    passed with `1 passed; 0 failed`.
+- Duplicate or too-close symptoms rejected:
+  - no panic or failing assertion was observed under this steady-valid seed.
+  - the non-fatal log
+    `[PeerConnectionInternal] answer open_bi got error internal channel error`
+    maps to a timed-out/dropped requester receiver while the spawned
+    `open_bi` task tries to send its result at `src/peer/peer_internal.rs:167`.
+  - this is adjacent to existing stream setup/backpressure issues such as
+    ISSUE-056, ISSUE-149, and ISSUE-169, but this run has no failing evidence
+    for a new accepted issue.
+- Root-cause summary impact: no new root cause; this steady-valid fuzz run is
+  pass/no-new evidence only. It does not prove stream-open correctness, latency
+  bounds, clean cancellation, absence of noisy logs, or invalid-wire/churn
+  coverage.
 
 ### Cycle after ISSUE-204 no-new cycle 46: invalid-service fuzz duplicate
 

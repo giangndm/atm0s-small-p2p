@@ -7,9 +7,9 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Accepted issues: 204
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 46
+- Current consecutive no-new-issue cycles: 47
 - Stop condition: continue until 5 consecutive cycles find no new accepted
-  issue; currently 46/5 after ISSUE-204.
+  issue; currently 47/5 after ISSUE-204.
 
 ## Root Cause Summary
 
@@ -256,6 +256,13 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Recent Fuzz Evidence
 
+- Steady-valid fuzz pass:
+  `RUST_LOG=error P2P_FUZZ_SEED=47 P2P_FUZZ_NODES=8 P2P_FUZZ_STEPS=1800 cargo test fuzz_random_steady_valid_node_actions_must_not_panic_connection_tasks -- --nocapture`
+  passed with no failing assertion. Reviewer `Volta the 4th` classified it as
+  `PASS_NO_NEW`; the single `answer open_bi got error internal channel error`
+  log maps to a dropped requester receiver around `src/peer/peer_internal.rs:167`
+  and is adjacent to existing stream setup/backpressure issues, not new failing
+  evidence.
 - Invalid-service fuzz review:
   `RUST_LOG=error P2P_FUZZ_SEED=6 P2P_FUZZ_NODES=7 P2P_FUZZ_STEPS=900 cargo test fuzz_random_node_actions_must_not_panic_connection_tasks -- --nocapture`
   failed with duplicate evidence for ISSUE-053. Reviewer `Cicero the 4th`
