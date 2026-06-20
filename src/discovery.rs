@@ -8,6 +8,10 @@ use super::PeerId;
 
 const TIMEOUT_AFTER: u64 = 30_000;
 
+fn timestamp_is_live(timestamp: u64, now_ms: u64) -> bool {
+    timestamp <= now_ms && timestamp.checked_add(TIMEOUT_AFTER).is_some_and(|expires_at| expires_at > now_ms)
+}
+
 #[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PeerDiscoverySync(Vec<(PeerId, u64, NetworkAddress)>);
 
@@ -36,7 +40,7 @@ impl PeerDiscovery {
 
     pub fn clear_timeout(&mut self, now_ms: u64) {
         self.remotes.retain(|peer, (last_updated, _addr)| {
-            if *last_updated + TIMEOUT_AFTER > now_ms {
+            if timestamp_is_live(*last_updated, now_ms) {
                 true
             } else {
                 log::info!("[PeerDiscovery] remove timeout {peer}");
@@ -44,7 +48,7 @@ impl PeerDiscovery {
             }
         });
         self.stopped.retain(|peer, stopped_at| {
-            if *stopped_at + TIMEOUT_AFTER > now_ms {
+            if timestamp_is_live(*stopped_at, now_ms) {
                 true
             } else {
                 log::info!("[PeerDiscovery] clear stopped tombstone {peer}");
@@ -78,13 +82,23 @@ impl PeerDiscovery {
     pub fn apply_sync(&mut self, now_ms: u64, sync: PeerDiscoverySync) {
         log::debug!("[PeerDiscovery] apply sync with addrs: {:?}", sync.0);
         for (peer, last_updated, address) in sync.0.into_iter() {
-            if self.stopped.get(&peer).is_some_and(|stopped_at| *stopped_at + TIMEOUT_AFTER > now_ms) {
+            if !timestamp_is_live(last_updated, now_ms) {
                 continue;
             }
-            if last_updated + TIMEOUT_AFTER > now_ms {
-                #[allow(clippy::collapsible_else_if)]
-                if self.remotes.insert(peer, (last_updated, address)).is_none() {
-                    log::info!("[PeerDiscovery] added new peer {peer}");
+
+            if let Some(stopped_at) = self.stopped.get(&peer).copied() {
+                if timestamp_is_live(stopped_at, now_ms) && last_updated <= stopped_at {
+                    continue;
+                }
+                self.stopped.remove(&peer);
+            }
+
+            match self.remotes.get(&peer) {
+                Some((existing_updated, _)) if *existing_updated >= last_updated => {}
+                _ => {
+                    if self.remotes.insert(peer, (last_updated, address)).is_none() {
+                        log::info!("[PeerDiscovery] added new peer {peer}");
+                    }
                 }
             }
         }

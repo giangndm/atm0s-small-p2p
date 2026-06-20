@@ -11,10 +11,10 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 - Stop condition: continue until 5 consecutive cycles find no new accepted
   issue; currently 341/5 after ISSUE-204.
 - Fix phase status: ISSUE-003, ISSUE-004, ISSUE-006, ISSUE-007, ISSUE-008,
-  ISSUE-053, ISSUE-063, ISSUE-139, and ISSUE-170 have focused fixes committed.
-  ISSUE-003 is fixed by `cfc8e57`; ISSUE-004 is covered by the ISSUE-170
-  ownership-validation follow-up `87cf6ce`; earlier fixes are `648cfd0`,
-  `2cbf096`, `15b788c`, and `4997404`.
+  ISSUE-009, ISSUE-053, ISSUE-063, ISSUE-139, and ISSUE-170 have focused fixes
+  committed. ISSUE-003 is fixed by `cfc8e57`; ISSUE-004 is covered by the
+  ISSUE-170 ownership-validation follow-up `87cf6ce`; earlier fixes are
+  `648cfd0`, `2cbf096`, `15b788c`, and `4997404`.
 
 ## Root Cause Summary
 
@@ -228,6 +228,20 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   `cargo test active_path_should_not_jump_for_tiny_rtt_jitter -- --nocapture`,
   `cargo test direct_peer_route_must_not_be_replaced_by_relayed_path -- --nocapture`,
   and `cargo fmt -- --check`. Reviewer `Harvey the 7th` approved.
+- ISSUE-009: fixed by checked discovery timestamp liveness. Discovery timeout
+  cleanup and sync ingestion now use `checked_add(TIMEOUT_AFTER)` plus
+  `timestamp <= now_ms`, reject stale/future/overflowing advertisements, and
+  allow fresh restart advertisements newer than live stopped tombstones.
+  Verified with
+  `cargo test apply_sync_rejects_overflowing_future_timestamp -- --nocapture`,
+  `cargo test apply_sync_timeout -- --nocapture`,
+  `cargo test clear_timeout -- --nocapture`,
+  `cargo test graceful_stop_tombstone_ignores_stale_non_seed_advertise -- --nocapture`,
+  `cargo test graceful_stop_tombstone_must_allow_fresh_restart_advertise -- --nocapture`,
+  `cargo test non_seed_discovered_peer_ages_out_but_seed_remains_retryable -- --nocapture`,
+  and `cargo fmt -- --check`. Reviewer `Dewey the 7th` approved. Separate
+  accepted discovery failures for local-peer advertisements and configured-seed
+  overrides still reproduce and remain outside this fix.
 - ISSUE-053: fixed by `648cfd0` with range-checked service table indexing.
   Verified with `cargo test ctx::tests -- --nocapture` and seed-340
   invalid-service fuzz passing without `src/ctx.rs` panics.

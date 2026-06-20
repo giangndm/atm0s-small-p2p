@@ -382,6 +382,18 @@ the source of truth for evidence and reviewer decisions.
 - Evidence test:
   - `cargo test apply_sync_rejects_overflowing_future_timestamp -- --nocapture`
   - Failure summary: test catches an overflow panic at timestamp validation.
+- Fix status: fixed by checked discovery timestamp liveness. Discovery timeout
+  cleanup and sync ingestion now use `checked_add(TIMEOUT_AFTER)` plus
+  `timestamp <= now_ms`, reject stale/future/overflowing advertisements, and
+  allow fresh restart advertisements newer than live stopped tombstones. Verified
+  with the evidence test plus `cargo test apply_sync_timeout -- --nocapture`,
+  `cargo test clear_timeout -- --nocapture`,
+  `cargo test graceful_stop_tombstone_ignores_stale_non_seed_advertise -- --nocapture`,
+  `cargo test graceful_stop_tombstone_must_allow_fresh_restart_advertise -- --nocapture`,
+  `cargo test non_seed_discovered_peer_ages_out_but_seed_remains_retryable -- --nocapture`,
+  and `cargo fmt -- --check`. Reviewer `Dewey the 7th` approved. Separate
+  accepted discovery failures for local-peer advertisements and configured-seed
+  overrides still reproduce and remain outside this fix.
 
 ### ISSUE-010: Route sync payloads are unbounded at application level
 
