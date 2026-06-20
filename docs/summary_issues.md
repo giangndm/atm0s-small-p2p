@@ -13,6 +13,7 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 - Fix phase status: ISSUE-001, ISSUE-003, ISSUE-004, ISSUE-005, ISSUE-006, ISSUE-007,
   ISSUE-002, ISSUE-008, ISSUE-009, ISSUE-010, ISSUE-011, ISSUE-012, ISSUE-013, ISSUE-014, ISSUE-015, ISSUE-021, ISSUE-024, ISSUE-033, ISSUE-055, ISSUE-103, ISSUE-122, ISSUE-123,
   ISSUE-124, ISSUE-125, ISSUE-126, ISSUE-127, ISSUE-128, ISSUE-129, ISSUE-130,
+  ISSUE-131,
   ISSUE-053, ISSUE-063, ISSUE-139, ISSUE-146, ISSUE-168, ISSUE-170,
   ISSUE-149, ISSUE-169, ISSUE-174, ISSUE-176, ISSUE-181, ISSUE-189, ISSUE-190, ISSUE-191, ISSUE-192, ISSUE-193,
   ISSUE-194, ISSUE-195, ISSUE-196, ISSUE-197, ISSUE-198, ISSUE-199,
@@ -183,6 +184,12 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Recently Fixed Issues
 
+- ISSUE-131: fixed by capping full-sync snapshot pages at
+  `MAX_SNAPSHOT_SLOTS_PER_PAGE` (`1024`) before applying slots in
+  `SyncFullState::on_rpc_res`. Oversized pages are rejected without mutating
+  local replicated state or emitting per-slot events. Fix commit: `d2dfbf7`
+  (`fix: cap full sync snapshot pages`). Verified with
+  `cargo test full_sync_snapshot_pages_must_be_bounded -- --nocapture`.
 - ISSUE-122: fixed by bounding `PeerDiscovery::stopped` at 1,024 entries and
   evicting the oldest stopped tombstone after non-seed insertion, with peer-id
   tie-breaking for deterministic timestamp ties. Configured seeds still skip

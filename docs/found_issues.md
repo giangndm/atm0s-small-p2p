@@ -3677,6 +3677,11 @@ the source of truth for evidence and reviewer decisions.
 
 ### ISSUE-131: Replicated KV full-sync snapshot pages are unbounded
 
+- Status: fixed by capping full-sync snapshot pages at
+  `MAX_SNAPSHOT_SLOTS_PER_PAGE` (`1024`) in
+  `SyncFullState::on_rpc_res`. Oversized snapshot pages are rejected before any
+  slots are applied to local state or emitted as local events. Fix commit:
+  `d2dfbf7` (`fix: cap full sync snapshot pages`).
 - Category: high-load stability, bad-network stability, resource exhaustion
 - Score: 62/100
 - Reviewer: `Erdos the 2nd`, confirmed.
@@ -3697,9 +3702,9 @@ the source of truth for evidence and reviewer decisions.
   snapshot contents such as empty, out-of-range, unsorted, or duplicate pages.
 - Evidence test:
   - `cargo test full_sync_snapshot_pages_must_be_bounded -- --nocapture`
-  - Failure summary: one `FetchSnapshot` response containing 1,025 slots is
-    accepted into `ctx.slots`; expected full-sync snapshot pages to be capped at
-    or below 1,024 slots.
+  - Current result: passes. A `FetchSnapshot` response containing 1,025 slots is
+    rejected, leaving `ctx.slots` unchanged; full-sync snapshot pages are capped
+    at 1,024 slots.
 
 ### ISSUE-132: Alias run loop panics when the internal control channel closes
 
