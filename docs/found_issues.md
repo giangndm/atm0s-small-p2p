@@ -4326,6 +4326,13 @@ the source of truth for evidence and reviewer decisions.
     `AliasMessage::Shutdown`. The service emits no output, but expected it to
     immediately broadcast `Scan(AliasId(1))` or otherwise unblock the pending
     lookup instead of waiting for hint timeout.
+- Fix status: fixed. Remote `AliasMessage::Shutdown` still evicts cached alias
+  hints, and now also removes the stopped peer from pending
+  `FindRequestState::CheckHint` sets. If that was the last cached hint peer,
+  the request transitions to `FindRequestState::Scan(now)` and broadcasts
+  `Scan(alias_id)` without completing waiters. Local `AliasControl::Shutdown`
+  behavior remains unchanged. Verification:
+  `cargo test service::alias_service::test::shutdown_from_cached_hint_must_unblock_pending_find -- --nocapture`.
 
 ### ISSUE-149: Stream open waits forever if the peer withholds `StreamConnectRes`
 

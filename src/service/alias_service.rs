@@ -374,6 +374,19 @@ impl AliasServiceInternal {
                         counter!(P2P_ALIAS_CACHE_POP).increment(1);
                     }
                 }
+
+                for (alias_id, req) in self.find_reqs.iter_mut() {
+                    match req.state {
+                        FindRequestState::CheckHint(_, ref mut hint_peers) => {
+                            hint_peers.remove(&from);
+                            if hint_peers.is_empty() {
+                                req.state = FindRequestState::Scan(now);
+                                self.outs.push_back(InternalOutput::Broadcast(AliasMessage::Scan(*alias_id)));
+                            }
+                        }
+                        FindRequestState::Scan(_) => {}
+                    }
+                }
             }
         }
     }

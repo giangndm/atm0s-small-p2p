@@ -14,7 +14,7 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   ISSUE-002, ISSUE-008, ISSUE-009, ISSUE-010, ISSUE-011, ISSUE-012, ISSUE-013, ISSUE-014, ISSUE-015, ISSUE-021, ISSUE-024, ISSUE-033, ISSUE-055, ISSUE-103, ISSUE-122, ISSUE-123,
   ISSUE-124, ISSUE-125, ISSUE-126, ISSUE-127, ISSUE-128, ISSUE-129, ISSUE-130,
   ISSUE-131, ISSUE-132, ISSUE-133, ISSUE-134, ISSUE-135, ISSUE-136, ISSUE-137,
-  ISSUE-140, ISSUE-143, ISSUE-145, ISSUE-147,
+  ISSUE-140, ISSUE-143, ISSUE-145, ISSUE-147, ISSUE-148,
   ISSUE-053, ISSUE-063, ISSUE-139, ISSUE-146, ISSUE-168, ISSUE-170,
   ISSUE-149, ISSUE-169, ISSUE-174, ISSUE-176, ISSUE-181, ISSUE-189, ISSUE-190, ISSUE-191, ISSUE-192, ISSUE-193,
   ISSUE-194, ISSUE-195, ISSUE-196, ISSUE-197, ISSUE-198, ISSUE-199,
@@ -192,6 +192,12 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   lifecycle, outbound alias sync, and peer-stopped paths remain unchanged.
   Verification:
   `cargo test valid_sync_must_survive_full_main_event_queue -- --nocapture`.
+- ISSUE-148: fixed by making remote `AliasMessage::Shutdown` remove the sender
+  from pending cached-hint lookup state after cache eviction. When that was the
+  last hint peer, the request now transitions to scan state and broadcasts
+  `Scan(alias_id)` while keeping waiters pending; local `AliasControl::Shutdown`
+  behavior remains unchanged. Verification:
+  `cargo test service::alias_service::test::shutdown_from_cached_hint_must_unblock_pending_find -- --nocapture`.
 - ISSUE-145: fixed by validating `MainEvent::PeerData(conn, peer, ...)`
   against the router's live direct `(ConnectionId, PeerId)` binding before
   applying route sync or discovery advertisements. Stale or mismatched peer-data
