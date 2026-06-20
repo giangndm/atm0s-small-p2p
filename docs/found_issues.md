@@ -5028,13 +5028,17 @@ the source of truth for evidence and reviewer decisions.
 - Category: correctness, graceful-shutdown stability, mesh control traffic
 - Score: 62/100
 - Fix status: fixed in `4997404`
-  (`fix: deduplicate peer stopped forwarding`). Verification:
-  `cargo test ctx::tests -- --nocapture`,
-  `cargo test peer_stopped_forwarding_must_be_deduplicated_in_mesh --
-  --nocapture`, and
-  `cargo test peer_stopped_must_not_block_connection_task_on_full_main_queue
-  -- --nocapture` passed; seed-341 churn fuzz passed with zero
-  forwarded-stop/capacity/channel-closed storm markers.
+  (`fix: deduplicate peer stopped forwarding`) plus corrective follow-up
+  `87cf6ce` (`fix: validate peer stopped ownership`). `4997404` added
+  per-context stopped-peer dedupe and nonblocking main-loop reporting;
+  `87cf6ce` rejects forged `PeerStopped` before dedupe/forwarding, validates
+  `MainEvent::PeerStopped` against direct route ownership, removes legitimate
+  stopped neighbours, emits public `PeerDisconnected`, and bounds
+  removed-connection tombstones with an LRU cache. Verification:
+  `cargo test peer_stopped -- --nocapture` passed 9/9; seed-341 churn fuzz
+  passed with zero forwarded-stop/capacity/channel-closed storm markers and no
+  ctx/router/peer-send panic signatures; seed-340 broad fuzz passed cleanly
+  without service-id, stale-sync, or shutdown-send panic signatures.
 - Reviewer: `Banach the 3rd`, confirmed after `Lorentz the 3rd` discovery.
 - Affected code:
   - `src/peer/peer_internal.rs`: `PeerMessage::PeerStopped(peer_id)` is

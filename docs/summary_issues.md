@@ -11,7 +11,8 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 - Stop condition: continue until 5 consecutive cycles find no new accepted
   issue; currently 341/5 after ISSUE-204.
 - Fix phase status: ISSUE-053, ISSUE-063, ISSUE-139, and ISSUE-170 have
-  focused fixes committed as `648cfd0`, `2cbf096`, `15b788c`, and `4997404`.
+  focused fixes committed as `648cfd0`, `2cbf096`, `15b788c`, `4997404`, and
+  corrective ISSUE-170 follow-up `87cf6ce`.
 
 ## Root Cause Summary
 
@@ -184,10 +185,15 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 - ISSUE-139: fixed by `15b788c` with closed-main tolerant connect-error
   reporting. Verified with focused peer tests and seed-341 churn fuzz no
   longer reporting `should send to main`.
-- ISSUE-170: fixed by `4997404` with per-context stopped-peer dedupe and
-  nonblocking main-loop reporting. Verified with ctx tests, PeerStopped mesh
-  tests, and seed-341 churn fuzz showing zero forwarded-stop/capacity/channel
-  closed storm markers.
+- ISSUE-170: fixed by `4997404` plus corrective follow-up `87cf6ce`.
+  `4997404` added per-context stopped-peer dedupe and nonblocking main-loop
+  reporting; `87cf6ce` validates stopped-peer ownership against the direct
+  authenticated route, rejects forged stops before dedupe/forwarding, emits
+  public disconnects for legitimate graceful stops, removes stopped neighbours,
+  and bounds removed-connection tombstones. Verified with
+  `cargo test peer_stopped -- --nocapture`, seed-341 churn fuzz showing zero
+  forwarded-stop/capacity/channel-closed storm markers, and seed-340 broad fuzz
+  passing without service-id, stale-sync, or shutdown-send panic signatures.
 
 ## Recent Accepted Issues
 
