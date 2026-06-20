@@ -86,10 +86,10 @@ impl PeerConnection {
                                 let _ = tokio::time::timeout(Duration::from_secs(2), connection.closed()).await;
                             }
                         }
-                        Err(err) => main_tx.send(MainEvent::PeerConnectError(conn_id, None, err.into())).await.expect("should send to main"),
+                        Err(err) => report_peer_connect_error(&main_tx, conn_id, None, err.into()).await,
                     }
                 }
-                Err(err) => main_tx.send(MainEvent::PeerConnectError(conn_id, None, err.into())).await.expect("should send to main"),
+                Err(err) => report_peer_connect_error(&main_tx, conn_id, None, err.into()).await,
             }
         });
         Self {
@@ -127,10 +127,10 @@ impl PeerConnection {
                                 let _ = main_tx.send(MainEvent::PeerConnectError(conn_id, Some(to_peer), e)).await;
                             }
                         }
-                        Err(err) => main_tx.send(MainEvent::PeerConnectError(conn_id, Some(to_peer), err.into())).await.expect("should send to main"),
+                        Err(err) => report_peer_connect_error(&main_tx, conn_id, Some(to_peer), err.into()).await,
                     }
                 }
-                Err(err) => main_tx.send(MainEvent::PeerConnectError(conn_id, Some(to_peer), err.into())).await.expect("should send to main"),
+                Err(err) => report_peer_connect_error(&main_tx, conn_id, Some(to_peer), err.into()).await,
             }
         });
         Self {
@@ -157,6 +157,12 @@ impl PeerConnection {
 
     pub fn is_connected(&self) -> bool {
         self.is_connected
+    }
+}
+
+async fn report_peer_connect_error(main_tx: &Sender<MainEvent>, conn_id: ConnectionId, peer: Option<PeerId>, err: anyhow::Error) {
+    if main_tx.send(MainEvent::PeerConnectError(conn_id, peer, err)).await.is_err() {
+        log::warn!("[PeerConnection {conn_id}] main loop closed before connect error event");
     }
 }
 
@@ -566,6 +572,14 @@ mod tests {
             !panicked.load(Ordering::SeqCst),
             "incoming connection error reporting must not panic when the main event receiver has already closed"
         );
+    }
+
+    #[tokio::test]
+    async fn connect_error_report_after_main_drop_must_not_panic() {
+        let (main_tx, main_rx) = channel(1);
+        drop(main_rx);
+
+        report_peer_connect_error(&main_tx, ConnectionId::from(1), Some(PeerId::from(2)), anyhow!("connect failed")).await;
     }
 
     #[tokio::test]
