@@ -305,6 +305,15 @@ the source of truth for evidence and reviewer decisions.
 - Evidence test:
   - `cargo test should_not_store_or_advertise_route_to_local_peer -- --nocapture`
   - Failure summary: `next_remote(local)` returns a route learned from a peer.
+- Fix status: fixed by filtering local-peer routes in `src/router.rs`.
+  `RouterTable::apply_sync` drops incoming rows for `self.peer_id` before
+  creating route memory, and `create_sync` defensively excludes any stored
+  local-peer route from advertisements. Verified with the evidence test plus
+  `cargo test create_correct_direct_sync -- --nocapture`,
+  `cargo test apply_correct_direct_sync -- --nocapture`,
+  `cargo test active_path_should_not_jump_for_tiny_rtt_jitter -- --nocapture`,
+  `cargo test direct_peer_route_must_not_be_replaced_by_relayed_path -- --nocapture`,
+  and `cargo fmt -- --check`. Reviewer `Arendt the 7th` approved.
 
 ### ISSUE-007: Over-`MAX_HOPS` routes are still usable for forwarding
 

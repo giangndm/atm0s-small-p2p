@@ -10,10 +10,10 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 - Current consecutive no-new-issue cycles: 341
 - Stop condition: continue until 5 consecutive cycles find no new accepted
   issue; currently 341/5 after ISSUE-204.
-- Fix phase status: ISSUE-003, ISSUE-004, ISSUE-053, ISSUE-063, ISSUE-139,
-  and ISSUE-170 have focused fixes committed. ISSUE-003 is fixed by `cfc8e57`;
-  ISSUE-004 is covered by the ISSUE-170 ownership-validation follow-up
-  `87cf6ce`; earlier fixes are `648cfd0`, `2cbf096`, `15b788c`, and
+- Fix phase status: ISSUE-003, ISSUE-004, ISSUE-006, ISSUE-053, ISSUE-063,
+  ISSUE-139, and ISSUE-170 have focused fixes committed. ISSUE-003 is fixed by
+  `cfc8e57`; ISSUE-004 is covered by the ISSUE-170 ownership-validation
+  follow-up `87cf6ce`; earlier fixes are `648cfd0`, `2cbf096`, `15b788c`, and
   `4997404`.
 
 ## Root Cause Summary
@@ -194,6 +194,16 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   `cargo test forged_peer_stopped_must_not_remove_third_party_route -- --nocapture`,
   `cargo test peer_stopped_must_remove_stopped_neighbour_immediately -- --nocapture`,
   and `cargo test peer_stopped -- --nocapture`.
+- ISSUE-006: fixed by filtering local-peer routes at router sync ingress and
+  egress. `RouterTable::apply_sync` now drops incoming rows for `self.peer_id`
+  before creating route memory, and `create_sync` defensively excludes any
+  stored local-peer route from advertisements. Verified with
+  `cargo test should_not_store_or_advertise_route_to_local_peer -- --nocapture`,
+  `cargo test create_correct_direct_sync -- --nocapture`,
+  `cargo test apply_correct_direct_sync -- --nocapture`,
+  `cargo test active_path_should_not_jump_for_tiny_rtt_jitter -- --nocapture`,
+  `cargo test direct_peer_route_must_not_be_replaced_by_relayed_path -- --nocapture`,
+  and `cargo fmt -- --check`. Reviewer `Arendt the 7th` approved.
 - ISSUE-053: fixed by `648cfd0` with range-checked service table indexing.
   Verified with `cargo test ctx::tests -- --nocapture` and seed-340
   invalid-service fuzz passing without `src/ctx.rs` panics.

@@ -72,7 +72,7 @@ impl RouterTable {
             self.peers
                 .iter()
                 .map(|(addr, history)| (*addr, history.best_metric().expect("should have best")))
-                .filter(|(addr, metric)| !dest.eq(addr) && metric.relay_hops <= MAX_HOPS)
+                .filter(|(addr, metric)| !dest.eq(addr) && !self.peer_id.eq(addr) && metric.relay_hops <= MAX_HOPS)
                 .collect::<Vec<_>>(),
         )
     }
@@ -82,12 +82,13 @@ impl RouterTable {
             log::debug!("[RouterTable] ignore stale sync from removed connection {conn}");
             return;
         };
+        let mut new_paths = BTreeMap::<PeerId, PathMetric>::from_iter(sync.0.into_iter().filter(|(peer, _)| !self.peer_id.eq(peer)));
+
         // ensure we have memory for each sync paths
-        for (peer, _) in sync.0.iter() {
+        for peer in new_paths.keys() {
             self.peers.entry(*peer).or_default();
         }
 
-        let mut new_paths = BTreeMap::<PeerId, PathMetric>::from_iter(sync.0);
         // only loop over peer which don't equal source, because it is direct connection
         for (peer, memory) in self.peers.iter_mut().filter(|(p, _)| !from_peer.eq(p)) {
             let previous = memory.paths.contains_key(&conn);
