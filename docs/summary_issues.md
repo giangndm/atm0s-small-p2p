@@ -7,9 +7,9 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Accepted issues: 204
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 339
+- Current consecutive no-new-issue cycles: 340
 - Stop condition: continue until 5 consecutive cycles find no new accepted
-  issue; currently 339/5 after ISSUE-204.
+  issue; currently 340/5 after ISSUE-204.
 
 ## Root Cause Summary
 
@@ -2389,6 +2389,16 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Recent No-New Audit
 
+- Cycle after ISSUE-204 no-new cycle 340 ran a broad random node-action fuzz
+  pass with forked reviewer `Nietzsche the 7th`. The run failed with exit code
+  101 and assertion `seed=340, nodes=8, steps=5200`. The hard failure was
+  duplicate ISSUE-053 evidence: two `src/ctx.rs:34:9` panics with
+  `index out of bounds: the len is 256 but the index is 256`. Shutdown-send,
+  stale-route, PeerStopped storm, no-capacity, broadcast-failure,
+  endpoint-driver-dropped, and internal-channel-error signatures were absent.
+  One `closed by peer`, one `connection lost`, and two try-send
+  `channel closed` markers were reviewed as lifecycle context. No accepted
+  issue or summary root-cause change was recorded.
 - Cycle after ISSUE-204 no-new cycle 339 ran a sanitized node-churn fuzz pass
   with forked reviewer `Bohr the 7th`. The run failed with exit code 101 and
   assertion `seed=339, nodes=8, steps=5200`. The hard failure was duplicate
