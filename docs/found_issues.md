@@ -5916,13 +5916,18 @@ the source of truth for evidence and reviewer decisions.
   scan broadcast is pending. The smallest local fix is a pending `JoinHandle`
   or boolean flag cleared when the send task completes; longer term, use an
   observable bounded broadcast API.
+- Fix status: fixed by `VisualizationService::pending_scan_broadcast`, which
+  tracks the active scan-broadcast `JoinHandle`, clears it only after
+  completion, and spawns a new scan broadcast only when no previous broadcast
+  task remains pending. ISSUE-203 remains separate for visualization
+  scan-response backpressure, and unauthorized visualization scan/disclosure
+  issues remain separate from this periodic collector duplication issue.
 - Evidence test:
   - `cargo test visualization_collector_must_not_spawn_duplicate_scans_when_previous_broadcast_is_backpressured -- --nocapture`
-  - Failure summary: the test keeps a synthetic peer-control queue full across
-    eight 1 ms visualization collection ticks, drains the filler item, and
-    observes more than one queued `PeerMessage::Broadcast` scan. It fails at
-    `src/peer.rs:930` with `got 2`, proving visualization scans accumulate
-    while a prior broadcast remains backpressured.
+  - Current result: passes. The test keeps a synthetic peer-control queue full
+    across eight 1 ms visualization collection ticks, drains the filler item,
+    and verifies that only one queued `PeerMessage::Broadcast` scan is admitted
+    while the prior scan broadcast remains backpressured.
 
 ### ISSUE-202: metrics scan responses are dropped under peer-control backpressure
 

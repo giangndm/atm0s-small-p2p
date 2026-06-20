@@ -14,8 +14,8 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   ISSUE-002, ISSUE-008, ISSUE-009, ISSUE-021, ISSUE-033, ISSUE-055, ISSUE-103,
   ISSUE-053, ISSUE-063, ISSUE-139, ISSUE-146, ISSUE-170, ISSUE-176,
   ISSUE-189, ISSUE-190, ISSUE-191, ISSUE-192, ISSUE-193, ISSUE-195,
-  ISSUE-196, ISSUE-197, ISSUE-198, ISSUE-199, and ISSUE-200 have focused fixes
-  committed.
+  ISSUE-196, ISSUE-197, ISSUE-198, ISSUE-199, ISSUE-200, and ISSUE-201 have
+  focused fixes committed.
   ISSUE-003 is fixed by `cfc8e57`;
   ISSUE-004 is covered by the ISSUE-170 ownership-validation follow-up
   `87cf6ce`; earlier fixes are `648cfd0`, `2cbf096`, `15b788c`, and
@@ -181,6 +181,13 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Recently Fixed Issues
 
+- ISSUE-201: fixed by `VisualizationService::pending_scan_broadcast`, which
+  keeps one active scan-broadcast task and skips/coalesces visualization
+  collection ticks until that task completes. Verified with
+  `cargo test visualization_collector_must_not_spawn_duplicate_scans_when_previous_broadcast_is_backpressured -- --nocapture`
+  and `cargo fmt -- --check`. ISSUE-203 remains separate for visualization
+  scan-response backpressure, and unauthorized visualization scan/disclosure
+  issues remain separate.
 - ISSUE-200: fixed by `MetricsService::pending_scan_broadcast`, which keeps one
   active scan-broadcast task and skips/coalesces collector ticks until that task
   completes. Verified with
