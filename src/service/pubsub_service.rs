@@ -19,7 +19,7 @@ use thiserror::Error;
 use tokio::{
     select,
     sync::{
-        mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender},
+        mpsc::{error::TrySendError, unbounded_channel, Sender, UnboundedReceiver, UnboundedSender},
         oneshot,
     },
     time::Interval,
@@ -137,7 +137,7 @@ pub(crate) fn encode_empty_heartbeat_for_test() -> Vec<u8> {
 enum InternalMsg {
     PublisherCreated(PublisherHandleId, PubsubChannelId, UnboundedSender<PublisherEvent>),
     PublisherDestroyed(PublisherHandleId, PubsubChannelId),
-    SubscriberCreated(SubscriberHandleId, PubsubChannelId, UnboundedSender<SubscriberEvent>),
+    SubscriberCreated(SubscriberHandleId, PubsubChannelId, Sender<SubscriberEvent>),
     SubscriberDestroyed(SubscriberHandleId, PubsubChannelId),
     GuestPublish(PubsubChannelId, Vec<u8>),
     GuestPublishRpc(PubsubChannelId, Vec<u8>, String, oneshot::Sender<Result<Vec<u8>, PubsubRpcError>>, Duration),
@@ -164,7 +164,7 @@ struct PubsubChannelState {
     remote_publishers: HashSet<PeerId>,
     remote_subscribers: HashSet<PeerId>,
     local_publishers: HashMap<PublisherHandleId, UnboundedSender<PublisherEvent>>,
-    local_subscribers: HashMap<SubscriberHandleId, UnboundedSender<SubscriberEvent>>,
+    local_subscribers: HashMap<SubscriberHandleId, Sender<SubscriberEvent>>,
 }
 
 pub struct PubsubService {
@@ -260,8 +260,8 @@ impl PubsubService {
                                 if state.remote_publishers.insert(from_peer) {
                                     log::info!("[PubsubService] remote peer {from_peer} joined to {channel} as publisher");
                                     // we have new remote publisher then we fire event to local
-                                    for (_, sub_tx) in state.local_subscribers.iter() {
-                                        let _ = sub_tx.send(SubscriberEvent::PeerJoined(PeerSrc::Remote(from_peer)));
+                                    for sub_tx in state.local_subscribers.values() {
+                                        Self::try_send_subscriber_event(sub_tx, SubscriberEvent::PeerJoined(PeerSrc::Remote(from_peer)));
                                     }
                                     // we also send subscribe state it remote, as publisher it only care about wherever this node is a subscriber
                                     if !state.local_subscribers.is_empty() {
@@ -275,8 +275,8 @@ impl PubsubService {
                                 if state.remote_publishers.remove(&from_peer) {
                                     log::info!("[PubsubService] remote peer {from_peer} leaved from {channel} as publisher");
                                     // we have remove remote publisher then we fire event to local
-                                    for (_, sub_tx) in state.local_subscribers.iter() {
-                                        let _ = sub_tx.send(SubscriberEvent::PeerLeaved(PeerSrc::Remote(from_peer)));
+                                    for sub_tx in state.local_subscribers.values() {
+                                        Self::try_send_subscriber_event(sub_tx, SubscriberEvent::PeerLeaved(PeerSrc::Remote(from_peer)));
                                     }
                                 }
                             }
@@ -313,8 +313,8 @@ impl PubsubService {
                                     if heartbeat.publish && !state.remote_publishers.contains(&from_peer) {
                                         // it we out-of-sync from peer then add it to list then fire event
                                         state.remote_publishers.insert(from_peer);
-                                        for (_, sub_tx) in state.local_subscribers.iter() {
-                                            let _ = sub_tx.send(SubscriberEvent::PeerJoined(PeerSrc::Remote(from_peer)));
+                                        for sub_tx in state.local_subscribers.values() {
+                                            Self::try_send_subscriber_event(sub_tx, SubscriberEvent::PeerJoined(PeerSrc::Remote(from_peer)));
                                         }
                                     }
 
@@ -330,29 +330,29 @@ impl PubsubService {
                         }
                         PubsubMessage::GuestPublish(channel, data) => {
                             if let Some(state) = self.channels.get(&channel) {
-                                for (_, sub_tx) in state.local_subscribers.iter() {
-                                    let _ = sub_tx.send(SubscriberEvent::GuestPublish(data.clone()));
+                                for sub_tx in state.local_subscribers.values() {
+                                    Self::try_send_subscriber_event(sub_tx, SubscriberEvent::GuestPublish(data.clone()));
                                 }
                             }
                         }
                         PubsubMessage::GuestPublishRpc(channel, data, rpc_id, method) => {
                             if let Some(state) = self.channels.get(&channel) {
-                                for (_, sub_tx) in state.local_subscribers.iter() {
-                                    let _ = sub_tx.send(SubscriberEvent::GuestPublishRpc(data.clone(), rpc_id, method.clone(), PeerSrc::Remote(from_peer)));
+                                for sub_tx in state.local_subscribers.values() {
+                                    Self::try_send_subscriber_event(sub_tx, SubscriberEvent::GuestPublishRpc(data.clone(), rpc_id, method.clone(), PeerSrc::Remote(from_peer)));
                                 }
                             }
                         }
                         PubsubMessage::Publish(channel, vec) => {
                             if let Some(state) = self.channels.get(&channel) {
-                                for (_, sub_tx) in state.local_subscribers.iter() {
-                                    let _ = sub_tx.send(SubscriberEvent::Publish(vec.clone()));
+                                for sub_tx in state.local_subscribers.values() {
+                                    Self::try_send_subscriber_event(sub_tx, SubscriberEvent::Publish(vec.clone()));
                                 }
                             }
                         }
                         PubsubMessage::PublishRpc(channel, vec, rpc_id, method) => {
                             if let Some(state) = self.channels.get(&channel) {
-                                for (_, sub_tx) in state.local_subscribers.iter() {
-                                    let _ = sub_tx.send(SubscriberEvent::PublishRpc(vec.clone(), rpc_id, method.clone(), PeerSrc::Remote(from_peer)));
+                                for sub_tx in state.local_subscribers.values() {
+                                    Self::try_send_subscriber_event(sub_tx, SubscriberEvent::PublishRpc(vec.clone(), rpc_id, method.clone(), PeerSrc::Remote(from_peer)));
                                 }
                             }
                         }
@@ -418,8 +418,8 @@ impl PubsubService {
                 }
                 if state.local_publishers.is_empty() {
                     // if this is first local_publisher => notify to all local_subscribers
-                    for (_, sub_tx) in state.local_subscribers.iter() {
-                        let _ = sub_tx.send(SubscriberEvent::PeerJoined(PeerSrc::Local));
+                    for sub_tx in state.local_subscribers.values() {
+                        Self::try_send_subscriber_event(sub_tx, SubscriberEvent::PeerJoined(PeerSrc::Local));
                     }
                     state.local_publishers.insert(handle_id, tx);
                     self.broadcast(&PubsubMessage::PublisherJoined(channel)).await;
@@ -438,8 +438,8 @@ impl PubsubService {
                 }
                 if state.local_publishers.is_empty() {
                     // if this is last local_publisher => notify all subscribers
-                    for (_, sub_tx) in state.local_subscribers.iter() {
-                        let _ = sub_tx.send(SubscriberEvent::PeerLeaved(PeerSrc::Local));
+                    for sub_tx in state.local_subscribers.values() {
+                        Self::try_send_subscriber_event(sub_tx, SubscriberEvent::PeerLeaved(PeerSrc::Local));
                     }
                     self.broadcast(&PubsubMessage::PublisherLeaved(channel)).await;
                 }
@@ -449,7 +449,7 @@ impl PubsubService {
                 let state = self.channels.entry(channel).or_default();
                 if !state.local_publishers.is_empty() {
                     // notify that we already have local publishers
-                    let _ = tx.send(SubscriberEvent::PeerJoined(PeerSrc::Local));
+                    Self::try_send_subscriber_event(&tx, SubscriberEvent::PeerJoined(PeerSrc::Local));
                 }
                 if state.local_subscribers.is_empty() {
                     // if this is first local_subsrciber => notify to all local_publishers
@@ -480,8 +480,8 @@ impl PubsubService {
             }
             InternalMsg::GuestPublish(channel, vec) => {
                 if let Some(state) = self.channels.get(&channel) {
-                    for (_, sub_tx) in state.local_subscribers.iter() {
-                        let _ = sub_tx.send(SubscriberEvent::GuestPublish(vec.clone()));
+                    for sub_tx in state.local_subscribers.values() {
+                        Self::try_send_subscriber_event(sub_tx, SubscriberEvent::GuestPublish(vec.clone()));
                     }
                     for sub_peer in state.remote_subscribers.iter() {
                         let _ = self.send_to(*sub_peer, &PubsubMessage::GuestPublish(channel, vec.clone())).await;
@@ -494,20 +494,29 @@ impl PubsubService {
                     if state.local_subscribers.is_empty() && state.remote_subscribers.is_empty() {
                         let _ = tx.send(Err(PubsubRpcError::NoDestination));
                     } else {
-                        for (_, pub_tx) in state.local_subscribers.iter() {
-                            let _ = pub_tx.send(SubscriberEvent::GuestPublishRpc(data.clone(), req_id, method.clone(), PeerSrc::Local));
+                        let mut delivered = 0;
+                        for sub_tx in state.local_subscribers.values() {
+                            if Self::try_send_subscriber_event(sub_tx, SubscriberEvent::GuestPublishRpc(data.clone(), req_id, method.clone(), PeerSrc::Local)) {
+                                delivered += 1;
+                            }
                         }
                         for pub_peer in state.remote_subscribers.iter() {
-                            let _ = self.send_to(*pub_peer, &PubsubMessage::GuestPublishRpc(channel, data.clone(), req_id, method.clone())).await;
+                            if self.send_to(*pub_peer, &PubsubMessage::GuestPublishRpc(channel, data.clone(), req_id, method.clone())).await {
+                                delivered += 1;
+                            }
                         }
-                        self.publish_rpc_reqs.insert(
-                            req_id,
-                            PublishRpcReq {
-                                started_at: Instant::now(),
-                                timeout,
-                                tx: Some(tx),
-                            },
-                        );
+                        if delivered == 0 {
+                            let _ = tx.send(Err(PubsubRpcError::NoDestination));
+                        } else {
+                            self.publish_rpc_reqs.insert(
+                                req_id,
+                                PublishRpcReq {
+                                    started_at: Instant::now(),
+                                    timeout,
+                                    tx: Some(tx),
+                                },
+                            );
+                        }
                     }
                 } else {
                     let _ = tx.send(Err(PubsubRpcError::NoDestination));
@@ -518,8 +527,8 @@ impl PubsubService {
                     if !state.local_publishers.contains_key(&handle_id) {
                         return Ok(());
                     }
-                    for (_, sub_tx) in state.local_subscribers.iter() {
-                        let _ = sub_tx.send(SubscriberEvent::Publish(vec.clone()));
+                    for sub_tx in state.local_subscribers.values() {
+                        Self::try_send_subscriber_event(sub_tx, SubscriberEvent::Publish(vec.clone()));
                     }
                     for sub_peer in state.remote_subscribers.iter() {
                         let _ = self.send_to(*sub_peer, &PubsubMessage::Publish(channel, vec.clone())).await;
@@ -536,20 +545,29 @@ impl PubsubService {
                     if state.local_subscribers.is_empty() && state.remote_subscribers.is_empty() {
                         let _ = tx.send(Err(PubsubRpcError::NoDestination));
                     } else {
-                        for (_, pub_tx) in state.local_subscribers.iter() {
-                            let _ = pub_tx.send(SubscriberEvent::PublishRpc(data.clone(), req_id, method.clone(), PeerSrc::Local));
+                        let mut delivered = 0;
+                        for sub_tx in state.local_subscribers.values() {
+                            if Self::try_send_subscriber_event(sub_tx, SubscriberEvent::PublishRpc(data.clone(), req_id, method.clone(), PeerSrc::Local)) {
+                                delivered += 1;
+                            }
                         }
                         for pub_peer in state.remote_subscribers.iter() {
-                            let _ = self.send_to(*pub_peer, &PubsubMessage::PublishRpc(channel, data.clone(), req_id, method.clone())).await;
+                            if self.send_to(*pub_peer, &PubsubMessage::PublishRpc(channel, data.clone(), req_id, method.clone())).await {
+                                delivered += 1;
+                            }
                         }
-                        self.publish_rpc_reqs.insert(
-                            req_id,
-                            PublishRpcReq {
-                                started_at: Instant::now(),
-                                timeout,
-                                tx: Some(tx),
-                            },
-                        );
+                        if delivered == 0 {
+                            let _ = tx.send(Err(PubsubRpcError::NoDestination));
+                        } else {
+                            self.publish_rpc_reqs.insert(
+                                req_id,
+                                PublishRpcReq {
+                                    started_at: Instant::now(),
+                                    timeout,
+                                    tx: Some(tx),
+                                },
+                            );
+                        }
                     }
                 } else {
                     let _ = tx.send(Err(PubsubRpcError::NoDestination));
@@ -658,11 +676,24 @@ impl PubsubService {
         Ok(())
     }
 
-    async fn send_to(&self, dest: PeerId, msg: &PubsubMessage) {
-        self.service
-            .send_unicast(dest, bincode::serialize(msg).expect("should convert to binary"))
-            .await
-            .print_on_err("[PubsubService] send data");
+    fn try_send_subscriber_event(tx: &Sender<SubscriberEvent>, event: SubscriberEvent) -> bool {
+        match tx.try_send(event) {
+            Ok(()) => true,
+            Err(TrySendError::Full(_)) => {
+                log::debug!("[PubsubService] local subscriber event queue full");
+                false
+            }
+            Err(TrySendError::Closed(_)) => {
+                log::debug!("[PubsubService] local subscriber event queue closed");
+                false
+            }
+        }
+    }
+
+    async fn send_to(&self, dest: PeerId, msg: &PubsubMessage) -> bool {
+        let result = self.service.send_unicast(dest, bincode::serialize(msg).expect("should convert to binary")).await;
+        result.print_on_err("[PubsubService] send data");
+        result.is_ok()
     }
 
     async fn try_send_to(&self, dest: PeerId, msg: &PubsubMessage) {
@@ -740,7 +771,10 @@ impl PubsubServiceRequester {
 mod test {
     use futures::FutureExt;
     use serde::Serializer;
-    use tokio::sync::{mpsc::unbounded_channel, oneshot};
+    use tokio::sync::{
+        mpsc::{channel, unbounded_channel, Receiver, Sender},
+        oneshot,
+    };
 
     use super::*;
     use crate::{ctx::SharedCtx, msg::P2pServiceId, peer::test_congested_peer_alias, router::SharedRouterTable, ConnectionId};
@@ -770,6 +804,10 @@ mod test {
         SubscriberHandleId::new(local_id)
     }
 
+    fn subscriber_event_channel() -> (Sender<SubscriberEvent>, Receiver<SubscriberEvent>) {
+        channel(subscriber::LOCAL_SUBSCRIBER_EVENT_QUEUE_SIZE)
+    }
+
     #[tokio::test]
     async fn pubsub_internal_control_backlog_must_be_bounded() {
         const MAX_PENDING_CONTROLS: usize = 1024;
@@ -793,7 +831,7 @@ mod test {
         const MAX_PENDING_RPCS: usize = 1024;
         let mut service = test_service();
         let channel = PubsubChannelId(1);
-        let (sub_tx, _sub_rx) = unbounded_channel();
+        let (sub_tx, _sub_rx) = subscriber_event_channel();
 
         service
             .on_internal(InternalMsg::SubscriberCreated(subscriber_handle(SubscriberLocalId::rand()), channel, sub_tx))
@@ -839,7 +877,7 @@ mod test {
     async fn pubsub_rpc_must_return_no_destination_when_all_local_sends_fail() {
         let mut service = test_service();
         let channel = PubsubChannelId(1);
-        let (sub_tx, sub_rx) = unbounded_channel();
+        let (sub_tx, sub_rx) = subscriber_event_channel();
         drop(sub_rx);
 
         service
@@ -860,6 +898,36 @@ mod test {
             "if every local RPC event send fails immediately, RPC must fail as NoDestination instead of waiting for timeout"
         );
         assert!(service.publish_rpc_reqs.is_empty(), "failed local fanout must not leave a pending RPC request");
+    }
+
+    #[tokio::test]
+    async fn pubsub_rpc_must_return_no_destination_when_all_local_subscriber_queues_are_full() {
+        let mut service = test_service();
+        let channel = PubsubChannelId(1);
+        let (sub_tx, _sub_rx) = subscriber_event_channel();
+
+        for _ in 0..subscriber::LOCAL_SUBSCRIBER_EVENT_QUEUE_SIZE {
+            sub_tx.try_send(SubscriberEvent::Publish(Vec::new())).expect("test subscriber queue should accept events until full");
+        }
+
+        service
+            .on_internal(InternalMsg::SubscriberCreated(subscriber_handle(SubscriberLocalId::rand()), channel, sub_tx))
+            .await
+            .expect("full subscriber sender should still be registered");
+
+        let (tx, mut rx) = oneshot::channel();
+
+        service
+            .on_internal(InternalMsg::GuestPublishRpc(channel, b"payload".to_vec(), "method".to_string(), tx, Duration::from_secs(60)))
+            .await
+            .expect("RPC should process");
+
+        assert_eq!(
+            rx.try_recv(),
+            Ok(Err(PubsubRpcError::NoDestination)),
+            "if every local RPC event queue is full, RPC must fail as NoDestination instead of waiting for timeout"
+        );
+        assert!(service.publish_rpc_reqs.is_empty(), "full local fanout must not leave a pending RPC request");
     }
 
     #[tokio::test]
@@ -889,7 +957,7 @@ mod test {
         const MAX_REMOTE_MEMBERS: usize = 1024;
         let mut service = test_service();
         let channel = PubsubChannelId(1);
-        let (sub_tx, _sub_rx) = unbounded_channel();
+        let (sub_tx, _sub_rx) = subscriber_event_channel();
         let joined = bincode::serialize(&PubsubMessage::PublisherJoined(channel)).expect("test message should serialize");
 
         service
@@ -914,7 +982,7 @@ mod test {
         let mut service = test_service();
         let channel = PubsubChannelId(1);
         let from_peer = PeerId::from(2);
-        let (sub_tx, sub_rx) = unbounded_channel();
+        let (sub_tx, sub_rx) = subscriber_event_channel();
 
         service
             .on_internal(InternalMsg::SubscriberCreated(subscriber_handle(SubscriberLocalId::rand()), channel, sub_tx))
@@ -961,7 +1029,7 @@ mod test {
         let remote_publisher = PeerId::from(2);
         let remote_subscriber = PeerId::from(3);
         let (pub_tx, mut pub_rx) = unbounded_channel();
-        let (sub_tx, mut sub_rx) = unbounded_channel();
+        let (sub_tx, mut sub_rx) = subscriber_event_channel();
 
         let state = service.channels.entry(channel).or_default();
         state.remote_publishers.insert(remote_publisher);
@@ -1006,7 +1074,7 @@ mod test {
             .await
             .expect("early remote publisher join should be processed");
 
-        let (sub_tx, mut sub_rx) = unbounded_channel();
+        let (sub_tx, mut sub_rx) = subscriber_event_channel();
         service
             .on_internal(InternalMsg::SubscriberCreated(subscriber_handle(SubscriberLocalId::rand()), channel, sub_tx))
             .await
@@ -1037,7 +1105,7 @@ mod test {
 
         for channel in 0..=MAX_HEARTBEAT_CHANNELS {
             let channel = PubsubChannelId(channel as u64 + 10);
-            let (sub_tx, _sub_rx) = unbounded_channel();
+            let (sub_tx, _sub_rx) = subscriber_event_channel();
             service
                 .on_internal(InternalMsg::SubscriberCreated(subscriber_handle(SubscriberLocalId::rand()), channel, sub_tx))
                 .await
@@ -1069,7 +1137,7 @@ mod test {
             let channel = PubsubChannelId(channel as u64 + 10);
             let local_id = SubscriberLocalId::rand();
             let handle_id = subscriber_handle(local_id);
-            let (sub_tx, _sub_rx) = unbounded_channel();
+            let (sub_tx, _sub_rx) = subscriber_event_channel();
 
             service
                 .on_internal(InternalMsg::SubscriberCreated(handle_id, channel, sub_tx))
@@ -1122,7 +1190,7 @@ mod test {
         let local_id = PublisherLocalId::from_raw_for_test(7);
         let (first_pub_tx, mut first_pub_rx) = unbounded_channel();
         let (second_pub_tx, _second_pub_rx) = unbounded_channel();
-        let (sub_tx, _sub_rx) = unbounded_channel();
+        let (sub_tx, _sub_rx) = subscriber_event_channel();
 
         service
             .on_internal(InternalMsg::PublisherCreated(publisher_handle(local_id), channel, first_pub_tx))
@@ -1149,8 +1217,8 @@ mod test {
         let mut service = test_service();
         let channel = PubsubChannelId(1);
         let local_id = SubscriberLocalId::from_raw_for_test(7);
-        let (first_sub_tx, mut first_sub_rx) = unbounded_channel();
-        let (second_sub_tx, _second_sub_rx) = unbounded_channel();
+        let (first_sub_tx, mut first_sub_rx) = subscriber_event_channel();
+        let (second_sub_tx, _second_sub_rx) = subscriber_event_channel();
         let (pub_tx, _pub_rx) = unbounded_channel();
 
         service
@@ -1178,7 +1246,7 @@ mod test {
         let mut service = test_service();
         let channel = PubsubChannelId(1);
         let remote = PeerId::from(2);
-        let (sub_tx, mut sub_rx) = unbounded_channel();
+        let (sub_tx, mut sub_rx) = subscriber_event_channel();
 
         service
             .on_internal(InternalMsg::SubscriberCreated(subscriber_handle(SubscriberLocalId::rand()), channel, sub_tx))
@@ -1208,7 +1276,7 @@ mod test {
         let mut service = test_service();
         let channel = PubsubChannelId(1);
         let from_peer = PeerId::from(2);
-        let (sub_tx, mut sub_rx) = unbounded_channel();
+        let (sub_tx, mut sub_rx) = subscriber_event_channel();
 
         service
             .on_internal(InternalMsg::SubscriberCreated(subscriber_handle(SubscriberLocalId::rand()), channel, sub_tx))

@@ -3392,6 +3392,11 @@ the source of truth for evidence and reviewer decisions.
 
 ### ISSUE-123: Local pubsub subscriber event queues are unbounded
 
+- Status: fixed. Local subscriber event streams now use bounded
+  `tokio::sync::mpsc` queues sized by
+  `LOCAL_SUBSCRIBER_EVENT_QUEUE_SIZE = 1024`, and subscriber-event fanout uses
+  nonblocking `try_send` so full or closed local queues are treated as failed
+  deliveries instead of accumulating unbounded backlog.
 - Category: high-load stability, resource exhaustion, pubsub reliability
 - Score: 72/100
 - Reviewer: `Heisenberg the 2nd`, confirmed.
@@ -3418,6 +3423,13 @@ the source of truth for evidence and reviewer decisions.
     but undrained local subscriber leaves `sub_rx.len() == 1025`; expected the
     local subscriber event backlog to be bounded, backpressured, or otherwise
     controlled.
+- Fixed summary: local publish RPC fanout now returns `NoDestination` without
+  inserting pending RPC state when every local subscriber delivery fails due to
+  a full or closed subscriber queue. Verified with
+  `cargo test local_subscriber_event_backlog_must_be_bounded -- --nocapture`,
+  `cargo test pubsub_rpc_must_return_no_destination_when_all_local_sends_fail -- --nocapture`,
+  and
+  `cargo test pubsub_rpc_must_return_no_destination_when_all_local_subscriber_queues_are_full -- --nocapture`.
 
 ### ISSUE-124: Local pubsub publisher event queues are unbounded
 

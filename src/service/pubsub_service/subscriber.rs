@@ -9,11 +9,13 @@ use anyhow::anyhow;
 use derive_more::derive::Display;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use tokio::sync::{
-    mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender},
+    mpsc::{channel, Receiver, UnboundedSender},
     oneshot,
 };
 
 use super::{InternalMsg, PeerSrc, PubsubChannelId, PubsubRpcError, RpcId};
+
+pub(crate) const LOCAL_SUBSCRIBER_EVENT_QUEUE_SIZE: usize = 1024;
 
 #[derive(Debug, Display, Hash, PartialEq, Eq, Clone, Copy, Serialize, Deserialize)]
 pub struct SubscriberLocalId(u64);
@@ -50,7 +52,7 @@ impl fmt::Display for SubscriberHandleId {
     }
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SubscriberEvent {
     PeerJoined(PeerSrc),
     PeerLeaved(PeerSrc),
@@ -80,12 +82,12 @@ pub struct Subscriber {
     channel_id: PubsubChannelId,
     control_tx: UnboundedSender<InternalMsg>,
     requester: SubscriberRequester,
-    sub_rx: UnboundedReceiver<SubscriberEvent>,
+    sub_rx: Receiver<SubscriberEvent>,
 }
 
 impl Subscriber {
     pub(super) fn build(channel_id: PubsubChannelId, control_tx: UnboundedSender<InternalMsg>) -> Self {
-        let (sub_tx, sub_rx) = unbounded_channel();
+        let (sub_tx, sub_rx) = channel(LOCAL_SUBSCRIBER_EVENT_QUEUE_SIZE);
         let local_id = SubscriberLocalId::rand();
         let handle_id = SubscriberHandleId::new(local_id);
         log::info!("[Subscriber {channel_id}/{local_id}] created");
