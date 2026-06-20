@@ -7,9 +7,9 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Accepted issues: 204
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 214
+- Current consecutive no-new-issue cycles: 215
 - Stop condition: continue until 5 consecutive cycles find no new accepted
-  issue; currently 214/5 after ISSUE-204.
+  issue; currently 215/5 after ISSUE-204.
 
 ## Root Cause Summary
 
@@ -256,6 +256,16 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Recent Fuzz Evidence
 
+- Valid-action fuzz review:
+  `RUST_LOG=error P2P_FUZZ_SEED=215 P2P_FUZZ_NODES=8 P2P_FUZZ_STEPS=1800 cargo test fuzz_random_valid_node_actions_must_not_panic_connection_tasks -- --nocapture`
+  failed with duplicate evidence for ISSUE-063 only. Reviewer
+  `McClintock the 6th` confirmed the single `src/router.rs:76` panic with
+  `should have direct metric with apply_sync` is the existing stale-sync root
+  cause. The fuzz harness assertion only reported that background-task panic.
+  No ISSUE-053, ISSUE-139, or ISSUE-170 evidence was present, and no new
+  invariant appeared. The smallest fix proposal remains unchanged: guard/drop
+  stale sync when the direct metric is gone and invalidate queued sync state on
+  direct-route removal. No new issue was created.
 - Broad random fuzz review:
   `RUST_LOG=error P2P_FUZZ_SEED=214 P2P_FUZZ_NODES=8 P2P_FUZZ_STEPS=1800 cargo test fuzz_random_node_actions_must_not_panic_connection_tasks -- --nocapture`
   failed with duplicate evidence for ISSUE-063 and ISSUE-170. Reviewer
