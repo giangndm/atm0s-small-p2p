@@ -7,9 +7,9 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Accepted issues: 204
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 76
+- Current consecutive no-new-issue cycles: 77
 - Stop condition: continue until 5 consecutive cycles find no new accepted
-  issue; currently 76/5 after ISSUE-204.
+  issue; currently 77/5 after ISSUE-204.
 
 ## Root Cause Summary
 
@@ -256,6 +256,12 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Recent Fuzz Evidence
 
+- Broad random fuzz review:
+  `RUST_LOG=error P2P_FUZZ_SEED=77 P2P_FUZZ_NODES=8 P2P_FUZZ_STEPS=1800 cargo test fuzz_random_node_actions_must_not_panic_connection_tasks -- --nocapture`
+  failed with duplicate evidence for ISSUE-053. Reviewer `Feynman the 4th`
+  confirmed the `src/ctx.rs:34` panic is the existing out-of-range
+  `P2pServiceId(256)` fixed-table indexing issue; the later channel-closed
+  send error was downstream noise from the killed connection task.
 - Steady-valid fuzz pass:
   `RUST_LOG=error P2P_FUZZ_SEED=76 P2P_FUZZ_NODES=8 P2P_FUZZ_STEPS=2400 cargo test fuzz_random_steady_valid_node_actions_must_not_panic_connection_tasks -- --nocapture`
   passed with exit status 0, no panic lines, no failed assertion, no
