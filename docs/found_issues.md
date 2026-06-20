@@ -5186,6 +5186,11 @@ the source of truth for evidence and reviewer decisions.
 
 - Category: bad-network stability, stream setup, timeout correctness
 - Score: 68/100
+- Fix status: fixed by the full stream setup timeout in `0a48ec7`
+  (`fix: timeout full stream setup`). `open_bi` now applies
+  `OPEN_BI_TIMEOUT` to `connection.open_bi()`, writing `StreamConnectReq`, and
+  reading `StreamConnectRes`, so a stalled request write returns an error
+  instead of waiting indefinitely.
 - Reviewer: independent validation in this audit turn, confirmed after
   subagent `019ede01-2c64-7e11-af87-56677fa09649` discovery.
 - Affected code:
@@ -5212,10 +5217,9 @@ the source of truth for evidence and reviewer decisions.
   to make the broader scope explicit.
 - Evidence test:
   - `cargo test open_stream_must_timeout_when_connect_request_write_stalls -- --nocapture`
-  - Failure summary: a raw authenticated peer accepts the stream-open
+  - Fixed summary: a raw authenticated peer accepts the stream-open
     bidirectional stream with a tiny receive window and then never reads it.
-    The caller's `open_stream` task does not return within 2.5 seconds, so the
-    test aborts it and fails; expected stream setup to return `Err`.
+    The caller's `open_stream` now returns `Err` within the setup timeout.
 
 ### ISSUE-170: PeerStopped forwarding loops indefinitely in cyclic meshes
 

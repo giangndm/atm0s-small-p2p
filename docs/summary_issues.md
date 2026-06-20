@@ -13,7 +13,7 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 - Fix phase status: ISSUE-001, ISSUE-003, ISSUE-004, ISSUE-005, ISSUE-006, ISSUE-007,
   ISSUE-002, ISSUE-008, ISSUE-009, ISSUE-011, ISSUE-012, ISSUE-013, ISSUE-014, ISSUE-015, ISSUE-021, ISSUE-033, ISSUE-055, ISSUE-103,
   ISSUE-053, ISSUE-063, ISSUE-139, ISSUE-146, ISSUE-168, ISSUE-170,
-  ISSUE-149, ISSUE-176, ISSUE-189, ISSUE-190, ISSUE-191, ISSUE-192, ISSUE-193,
+  ISSUE-149, ISSUE-169, ISSUE-176, ISSUE-189, ISSUE-190, ISSUE-191, ISSUE-192, ISSUE-193,
   ISSUE-194, ISSUE-195, ISSUE-196, ISSUE-197, ISSUE-198, ISSUE-199,
   ISSUE-200, ISSUE-201, ISSUE-202, ISSUE-203, ISSUE-204, and ISSUE-018 have focused
   fixes committed.
@@ -182,6 +182,11 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Recently Fixed Issues
 
+- ISSUE-169: fixed by the full stream setup timeout in `0a48ec7`, which also
+  bounds `StreamConnectReq` writes. A peer that stops reading after accepting
+  the stream-open bidirectional stream now makes `open_stream` return `Err(_)`
+  within the setup timeout. Verified with
+  `cargo test open_stream_must_timeout_when_connect_request_write_stalls -- --nocapture`.
 - ISSUE-149: fixed by applying `OPEN_BI_TIMEOUT` to the whole outbound stream
   setup sequence, including `StreamConnectReq` write and `StreamConnectRes`
   read. A peer that withholds the setup response now makes `open_stream`
