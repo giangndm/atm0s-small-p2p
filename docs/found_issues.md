@@ -356,6 +356,17 @@ the source of truth for evidence and reviewer decisions.
 - Evidence test:
   - `cargo test should_not_advertise_route_back_to_next_hop -- --nocapture`
   - Failure summary: route learned from peer1 is advertised back to peer1.
+- Fix status: fixed by split-horizon filtering in `RouterTable::create_sync`.
+  Routes whose current best next-hop connection reaches the sync destination
+  are not advertised back to that destination, while direct routes remain
+  advertised to other peers. Verified with the evidence test plus
+  `cargo test apply_correct_direct_sync -- --nocapture`,
+  `cargo test create_correct_direct_sync -- --nocapture`,
+  `cargo test should_not_store_or_advertise_route_to_local_peer -- --nocapture`,
+  `cargo test should_reject_over_max_hops_for_forwarding -- --nocapture`,
+  `cargo test active_path_should_not_jump_for_tiny_rtt_jitter -- --nocapture`,
+  `cargo test direct_peer_route_must_not_be_replaced_by_relayed_path -- --nocapture`,
+  and `cargo fmt -- --check`. Reviewer `Harvey the 7th` approved.
 
 ### ISSUE-009: Untrusted discovery timestamps can overflow or create immortal peers
 

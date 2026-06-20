@@ -72,9 +72,17 @@ impl RouterTable {
             self.peers
                 .iter()
                 .map(|(addr, history)| (*addr, history.best_metric().expect("should have best")))
-                .filter(|(addr, metric)| !dest.eq(addr) && !self.peer_id.eq(addr) && metric.relay_hops <= MAX_HOPS)
+                .filter(|(addr, metric)| !dest.eq(addr) && !self.peer_id.eq(addr) && metric.relay_hops <= MAX_HOPS && !self.route_uses_peer_as_next_hop(addr, dest))
                 .collect::<Vec<_>>(),
         )
+    }
+
+    fn route_uses_peer_as_next_hop(&self, route: &PeerId, peer: &PeerId) -> bool {
+        self.peers
+            .get(route)
+            .and_then(PeerMemory::best)
+            .and_then(|conn| self.directs.get(&conn))
+            .is_some_and(|(direct_peer, _)| direct_peer == peer)
     }
 
     fn apply_sync(&mut self, conn: ConnectionId, sync: RouterTableSync) {
@@ -384,8 +392,7 @@ mod tests {
         assert_eq!(table.next_remote(&peer2), Some((conn1, (1, 300).into())));
         assert_eq!(table.next_remote(&peer3), None);
 
-        // we seems to have loop with peer2 here but it will not effect to routing because we have direct connection, it will always has lower rtt
-        assert_eq!(table.create_sync(&peer1), RouterTableSync(vec![(peer2, (1, 300).into()), (peer4, (0, 400).into())]));
+        assert_eq!(table.create_sync(&peer1), RouterTableSync(vec![(peer4, (0, 400).into())]));
         assert_eq!(table.create_sync(&peer4), RouterTableSync(vec![(peer1, (0, 100).into()), (peer2, (1, 300).into())]));
     }
 
