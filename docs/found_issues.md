@@ -5689,6 +5689,15 @@ the source of truth for evidence and reviewer decisions.
     congestion counters, then observes teardown `absolute(0)` samples for the
     same counter names. The test fails because those monotonic counters
     decrease.
+- Fix status: fixed by leaving monotonic connection counters untouched during
+  connection teardown. `emit_connection_teardown_metrics` now only decrements
+  `P2P_LIVE_CONNECTION_COUNT` and resets `P2P_CONNECTION_RTT` with
+  `gauge!(...).set(0)`, so uptime, byte, loss, packet, and congestion counters
+  no longer receive teardown `counter!(...).absolute(0)` samples. Verified with
+  `cargo test connection_teardown_must_not_reset_monotonic_counters -- --nocapture`,
+  `cargo test connection_teardown_must_not_emit_rtt_as_counter -- --nocapture`,
+  and `cargo fmt -- --check`. ISSUE-193 remains separate for the RTT
+  gauge/counter metric-kind collision.
 
 ### ISSUE-196: Replicated-KV local mutations build an unbounded outbound event queue
 
