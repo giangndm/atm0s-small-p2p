@@ -15,7 +15,7 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   ISSUE-124, ISSUE-125, ISSUE-126, ISSUE-127, ISSUE-128, ISSUE-129, ISSUE-130,
   ISSUE-131, ISSUE-132, ISSUE-133, ISSUE-134, ISSUE-135, ISSUE-136, ISSUE-137,
   ISSUE-140, ISSUE-143, ISSUE-145, ISSUE-147, ISSUE-148, ISSUE-150, ISSUE-151,
-  ISSUE-152, ISSUE-153, ISSUE-154, ISSUE-155, ISSUE-156, ISSUE-157,
+  ISSUE-152, ISSUE-153, ISSUE-154, ISSUE-155, ISSUE-156, ISSUE-157, ISSUE-158,
   ISSUE-053, ISSUE-063, ISSUE-139, ISSUE-146, ISSUE-168, ISSUE-170,
   ISSUE-149, ISSUE-169, ISSUE-174, ISSUE-176, ISSUE-181, ISSUE-189, ISSUE-190, ISSUE-191, ISSUE-192, ISSUE-193,
   ISSUE-194, ISSUE-195, ISSUE-196, ISSUE-197, ISSUE-198, ISSUE-199,
@@ -50,7 +50,7 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 - Representative issues: ISSUE-034, ISSUE-037, ISSUE-038, ISSUE-047,
   ISSUE-059, ISSUE-071, ISSUE-081 through ISSUE-089, ISSUE-095, ISSUE-099,
   ISSUE-110, ISSUE-111, ISSUE-143,
-  ISSUE-158, ISSUE-166, ISSUE-171, ISSUE-175,
+  ISSUE-166, ISSUE-171, ISSUE-175,
   ISSUE-186.
 - Pattern: replicated-KV, alias, metrics, visualization, and pubsub flows accept
   stale, unsolicited, reordered, or mismatched responses or broadcasts because
@@ -273,6 +273,18 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   `cargo test peer_connected_must_not_block_authenticated_connection_run_loop_on_full_main_queue -- --nocapture`,
   `cargo test authenticated_peer_alias_must_be_cleaned_if_main_loop_closed_before_connected_event -- --nocapture`, and
   `cargo test peer_disconnected_must_not_block_alias_cleanup_on_full_main_queue -- --nocapture`.
+- ISSUE-158: fixed by adding per-alias generations to alias lifecycle
+  `NotifySet` and `NotifyDel` messages, plus bounded remote lifecycle state
+  keyed by `(AliasId, PeerId)`. Stale lower-generation sets/deletes are ignored,
+  accepted deletes leave an inactive tombstone, and higher-generation sets can
+  still restore legitimate re-registrations. Local register/unregister
+  broadcasts now carry the current alias generation. This changes alias
+  control-message wire serialization, and tombstone protection is bounded by
+  the lifecycle cache size. Verification:
+  `cargo test stale_notify_set_must_not_resurrect_alias_after_newer_notify_del -- --nocapture`,
+  `cargo test newer_notify_set_must_restore_alias_after_notify_del -- --nocapture`,
+  `cargo test stale_not_found_must_not_evict_alias_cache_without_pending_check -- --nocapture`, and
+  `cargo test shutdown_from_cached_hint_must_unblock_pending_find -- --nocapture`.
 - ISSUE-145: fixed by validating `MainEvent::PeerData(conn, peer, ...)`
   against the router's live direct `(ConnectionId, PeerId)` binding before
   applying route sync or discovery advertisements. Stale or mismatched peer-data

@@ -27,6 +27,7 @@ use crate::{
 use super::{P2pService, P2pServiceEvent, P2pServiceRequester};
 
 const LRU_CACHE_SIZE: usize = 1_000_000;
+const ALIAS_LIFECYCLE_CACHE_SIZE: usize = 1_000_000;
 pub(crate) const ALIAS_CONTROL_QUEUE_SIZE: usize = 1024;
 const HINT_TIMEOUT_MS: u64 = 500;
 const SCAN_TIMEOUT_MS: u64 = 1000;
@@ -49,8 +50,8 @@ pub enum AliasStreamLocation {
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
 enum AliasMessage {
-    NotifySet(AliasId),
-    NotifyDel(AliasId),
+    NotifySet(AliasId, u64),
+    NotifyDel(AliasId, u64),
     Check(AliasId),
     Scan(AliasId),
     Found(AliasId),
@@ -144,6 +145,12 @@ struct FindRequest {
     waits: Vec<oneshot::Sender<Option<AliasFoundLocation>>>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct RemoteAliasState {
+    generation: u64,
+    active: bool,
+}
+
 #[derive(Debug, PartialEq, Eq)]
 enum InternalOutput {
     Broadcast(AliasMessage),
@@ -152,7 +159,9 @@ enum InternalOutput {
 
 struct AliasServiceInternal {
     local: HashMap<AliasId, u8>,
+    local_generations: HashMap<AliasId, u64>,
     cache: LruCache<AliasId, HashSet<PeerId>>,
+    remote_lifecycle: LruCache<(AliasId, PeerId), RemoteAliasState>,
     find_reqs: HashMap<AliasId, FindRequest>,
     outs: VecDeque<InternalOutput>,
 }
@@ -174,9 +183,11 @@ impl AliasService {
             rx,
             internal: AliasServiceInternal {
                 cache: LruCache::new(LRU_CACHE_SIZE.try_into().expect("")),
+                remote_lifecycle: LruCache::new(ALIAS_LIFECYCLE_CACHE_SIZE.try_into().expect("")),
                 find_reqs: HashMap::new(),
                 outs: VecDeque::new(),
                 local: HashMap::new(),
+                local_generations: HashMap::new(),
             },
             interval: tokio::time::interval(Duration::from_secs(1)),
         }
@@ -288,23 +299,14 @@ impl AliasServiceInternal {
     fn on_msg(&mut self, now: u64, from: PeerId, msg: AliasMessage) {
         log::info!("[AliasServiceInternal] on msg from {from}, {msg:?}");
         match msg {
-            AliasMessage::NotifySet(alias_id) => {
-                let slot = match self.cache.get_mut(&alias_id) {
-                    Some(slot) => slot,
-                    None => {
-                        counter!(P2P_ALIAS_CACHE_UPSERT).increment(1);
-                        self.cache.get_or_insert_mut(alias_id, HashSet::new)
-                    }
-                };
-                slot.insert(from);
+            AliasMessage::NotifySet(alias_id, generation) => {
+                if self.accept_remote_lifecycle(alias_id, from, generation, true) {
+                    self.insert_cache_hint(alias_id, from);
+                }
             }
-            AliasMessage::NotifyDel(alias_id) => {
-                if let Some(slot) = self.cache.get_mut(&alias_id) {
-                    slot.remove(&from);
-                    if slot.is_empty() {
-                        counter!(P2P_ALIAS_CACHE_POP).increment(1);
-                        self.cache.pop(&alias_id);
-                    }
+            AliasMessage::NotifyDel(alias_id, generation) => {
+                if self.accept_remote_lifecycle(alias_id, from, generation, false) {
+                    self.remove_cache_hint(alias_id, from);
                 }
             }
             AliasMessage::Check(alias_id) => {
@@ -364,13 +366,7 @@ impl AliasServiceInternal {
                 };
 
                 if accepted {
-                    if let Some(slot) = self.cache.get_mut(&alias_id) {
-                        slot.remove(&from);
-                        if slot.is_empty() {
-                            counter!(P2P_ALIAS_CACHE_POP).increment(1);
-                            self.cache.pop(&alias_id);
-                        }
-                    }
+                    self.remove_cache_hint(alias_id, from);
 
                     if should_scan {
                         self.outs.push_back(InternalOutput::Broadcast(AliasMessage::Scan(alias_id)));
@@ -407,23 +403,29 @@ impl AliasServiceInternal {
     fn on_control(&mut self, now: u64, control: AliasControl) {
         match control {
             AliasControl::Register(alias_id) => {
+                let was_active = self.local.contains_key(&alias_id);
+                let generation = if was_active {
+                    *self.local_generations.entry(alias_id).or_default()
+                } else {
+                    self.increment_local_generation(alias_id)
+                };
                 let ref_count = self.local.entry(alias_id).or_default();
-                *ref_count += 1;
+                *ref_count = ref_count.saturating_add(1);
                 if let Some(req) = self.find_reqs.remove(&alias_id) {
                     gauge!(P2P_ALIAS_LIVE_FIND_REQUEST).decrement(1);
                     for tx in req.waits {
-                        tx.send(Some(AliasFoundLocation::Local))
-                            .print_on_err2("[AliasServiceInternal] send query response");
+                        tx.send(Some(AliasFoundLocation::Local)).print_on_err2("[AliasServiceInternal] send query response");
                     }
                 }
-                self.outs.push_back(InternalOutput::Broadcast(AliasMessage::NotifySet(alias_id)));
+                self.outs.push_back(InternalOutput::Broadcast(AliasMessage::NotifySet(alias_id, generation)));
             }
             AliasControl::Unregister(alias_id) => {
                 if let Some(ref_count) = self.local.get_mut(&alias_id) {
                     *ref_count -= 1;
                     if *ref_count == 0 {
                         self.local.remove(&alias_id);
-                        self.outs.push_back(InternalOutput::Broadcast(AliasMessage::NotifyDel(alias_id)));
+                        let generation = self.increment_local_generation(alias_id);
+                        self.outs.push_back(InternalOutput::Broadcast(AliasMessage::NotifyDel(alias_id, generation)));
                     }
                 }
             }
@@ -471,6 +473,43 @@ impl AliasServiceInternal {
         self.outs.pop_front()
     }
 
+    fn accept_remote_lifecycle(&mut self, alias_id: AliasId, from: PeerId, generation: u64, active: bool) -> bool {
+        let key = (alias_id, from);
+        if self.remote_lifecycle.get(&key).is_some_and(|state| generation <= state.generation) {
+            return false;
+        }
+
+        self.remote_lifecycle.put(key, RemoteAliasState { generation, active });
+        true
+    }
+
+    fn insert_cache_hint(&mut self, alias_id: AliasId, from: PeerId) {
+        let slot = match self.cache.get_mut(&alias_id) {
+            Some(slot) => slot,
+            None => {
+                counter!(P2P_ALIAS_CACHE_UPSERT).increment(1);
+                self.cache.get_or_insert_mut(alias_id, HashSet::new)
+            }
+        };
+        slot.insert(from);
+    }
+
+    fn remove_cache_hint(&mut self, alias_id: AliasId, from: PeerId) {
+        if let Some(slot) = self.cache.get_mut(&alias_id) {
+            slot.remove(&from);
+            if slot.is_empty() {
+                counter!(P2P_ALIAS_CACHE_POP).increment(1);
+                self.cache.pop(&alias_id);
+            }
+        }
+    }
+
+    fn increment_local_generation(&mut self, alias_id: AliasId) -> u64 {
+        let generation = self.local_generations.entry(alias_id).or_default();
+        *generation = generation.saturating_add(1);
+        *generation
+    }
+
     pub fn collect_stats(&self) {
         let cache_size = self.cache.len();
         gauge!(P2P_ALIAS_CACHE_SIZE).set(cache_size as f64);
@@ -493,7 +532,9 @@ mod test {
             Self {
                 internal: AliasServiceInternal {
                     local: HashMap::new(),
+                    local_generations: HashMap::new(),
                     cache: LruCache::new(LRU_CACHE_SIZE.try_into().expect("should create NoneZeroUsize")),
+                    remote_lifecycle: LruCache::new(ALIAS_LIFECYCLE_CACHE_SIZE.try_into().expect("should create NoneZeroUsize")),
                     find_reqs: HashMap::new(),
                     outs: VecDeque::new(),
                 },
@@ -640,7 +681,10 @@ mod test {
         let outputs = ctx.collect_outputs();
         assert_eq!(outputs.len(), 1);
         match &outputs[0] {
-            InternalOutput::Broadcast(AliasMessage::NotifySet(id)) => assert_eq!(*id, alias_id),
+            InternalOutput::Broadcast(AliasMessage::NotifySet(id, generation)) => {
+                assert_eq!(*id, alias_id);
+                assert_eq!(*generation, 1);
+            }
             _ => panic!("Expected broadcast NotifySet message"),
         }
     }
@@ -664,7 +708,10 @@ mod test {
         let outputs = ctx.collect_outputs();
         assert_eq!(outputs.len(), 1);
         match &outputs[0] {
-            InternalOutput::Broadcast(AliasMessage::NotifyDel(id)) => assert_eq!(*id, alias_id),
+            InternalOutput::Broadcast(AliasMessage::NotifyDel(id, generation)) => {
+                assert_eq!(*id, alias_id);
+                assert_eq!(*generation, 2);
+            }
             _ => panic!("Expected broadcast NotifyDel message"),
         }
     }
@@ -714,7 +761,7 @@ mod test {
         let peer_addr = PeerId(1);
 
         // Add alias to cache
-        ctx.internal.on_msg(ctx.now, peer_addr, AliasMessage::NotifySet(alias_id));
+        ctx.internal.on_msg(ctx.now, peer_addr, AliasMessage::NotifySet(alias_id, 1));
 
         // Create a oneshot channel for the find response
         let (tx, mut rx) = oneshot::channel();
@@ -741,7 +788,7 @@ mod test {
         let hinted_peer = PeerId(1);
         let unchecked_peer = PeerId(2);
 
-        ctx.internal.on_msg(ctx.now, hinted_peer, AliasMessage::NotifySet(alias_id));
+        ctx.internal.on_msg(ctx.now, hinted_peer, AliasMessage::NotifySet(alias_id, 1));
 
         let (tx, mut rx) = oneshot::channel();
         ctx.internal.on_control(ctx.now, AliasControl::Find(alias_id, tx));
@@ -781,15 +828,12 @@ mod test {
         let alias_id = AliasId(7);
         let hinted_peer = PeerId(2);
 
-        ctx.internal.on_msg(ctx.now, hinted_peer, AliasMessage::NotifySet(alias_id));
+        ctx.internal.on_msg(ctx.now, hinted_peer, AliasMessage::NotifySet(alias_id, 1));
         assert!(
             ctx.internal.cache.get(&alias_id).is_some_and(|peers| peers.contains(&hinted_peer)),
             "test setup should cache the hinted peer"
         );
-        assert!(
-            !ctx.internal.find_reqs.contains_key(&alias_id),
-            "test setup should have no active lookup for this alias"
-        );
+        assert!(!ctx.internal.find_reqs.contains_key(&alias_id), "test setup should have no active lookup for this alias");
 
         ctx.internal.on_msg(ctx.now, hinted_peer, AliasMessage::NotFound(alias_id));
 
@@ -805,18 +849,15 @@ mod test {
         let alias_id = AliasId(7);
         let peer = PeerId(2);
 
-        ctx.internal.on_msg(ctx.now, peer, AliasMessage::NotifySet(alias_id));
+        ctx.internal.on_msg(ctx.now, peer, AliasMessage::NotifySet(alias_id, 1));
         assert!(ctx.internal.cache.get(&alias_id).is_some_and(|peers| peers.contains(&peer)));
 
-        ctx.internal.on_msg(ctx.now + 1, peer, AliasMessage::NotifyDel(alias_id));
+        ctx.internal.on_msg(ctx.now + 1, peer, AliasMessage::NotifyDel(alias_id, 2));
         assert!(!ctx.internal.cache.contains(&alias_id));
 
-        ctx.internal.on_msg(ctx.now + 2, peer, AliasMessage::NotifySet(alias_id));
+        ctx.internal.on_msg(ctx.now + 2, peer, AliasMessage::NotifySet(alias_id, 1));
 
-        assert!(
-            !ctx.internal.cache.contains(&alias_id),
-            "stale NotifySet must not resurrect an alias hint removed by a newer NotifyDel"
-        );
+        assert!(!ctx.internal.cache.contains(&alias_id), "stale NotifySet must not resurrect an alias hint removed by a newer NotifyDel");
 
         let (tx, _rx) = oneshot::channel();
         ctx.internal.on_control(ctx.now + 3, AliasControl::Find(alias_id, tx));
@@ -829,13 +870,42 @@ mod test {
     }
 
     #[test]
+    fn newer_notify_set_must_restore_alias_after_notify_del() {
+        let mut ctx = TestContext::new();
+        let alias_id = AliasId(7);
+        let peer = PeerId(2);
+
+        ctx.internal.on_msg(ctx.now, peer, AliasMessage::NotifySet(alias_id, 1));
+        assert!(ctx.internal.cache.get(&alias_id).is_some_and(|peers| peers.contains(&peer)));
+
+        ctx.internal.on_msg(ctx.now + 1, peer, AliasMessage::NotifyDel(alias_id, 2));
+        assert!(!ctx.internal.cache.contains(&alias_id));
+
+        ctx.internal.on_msg(ctx.now + 2, peer, AliasMessage::NotifySet(alias_id, 3));
+
+        assert!(
+            ctx.internal.cache.get(&alias_id).is_some_and(|peers| peers.contains(&peer)),
+            "newer NotifySet generation must restore an alias hint after a prior NotifyDel"
+        );
+
+        let (tx, _rx) = oneshot::channel();
+        ctx.internal.on_control(ctx.now + 3, AliasControl::Find(alias_id, tx));
+
+        assert_eq!(
+            ctx.collect_outputs(),
+            vec![InternalOutput::Unicast(peer, AliasMessage::Check(alias_id))],
+            "find must use the valid newer hint"
+        );
+    }
+
+    #[test]
     fn cached_alias_peer_hints_must_be_bounded() {
         const MAX_PEERS_PER_ALIAS: usize = 1024;
         let mut ctx = TestContext::new();
         let alias_id = AliasId(1);
 
         for peer in 0..=MAX_PEERS_PER_ALIAS {
-            ctx.internal.on_msg(ctx.now, PeerId::from(peer as u64 + 10), AliasMessage::NotifySet(alias_id));
+            ctx.internal.on_msg(ctx.now, PeerId::from(peer as u64 + 10), AliasMessage::NotifySet(alias_id, 1));
         }
 
         let cached_peers = ctx.internal.cache.get(&alias_id).expect("alias should be cached").len();
@@ -850,7 +920,7 @@ mod test {
         let peer_addr = PeerId(1);
 
         // Add alias to cache
-        ctx.internal.on_msg(ctx.now, peer_addr, AliasMessage::NotifySet(alias_id));
+        ctx.internal.on_msg(ctx.now, peer_addr, AliasMessage::NotifySet(alias_id, 1));
 
         // Create a oneshot channel for the find response
         let (tx, _rx) = oneshot::channel();
@@ -876,7 +946,7 @@ mod test {
         let alias_id = AliasId(1);
         let hinted_peer = PeerId(2);
 
-        ctx.internal.on_msg(ctx.now, hinted_peer, AliasMessage::NotifySet(alias_id));
+        ctx.internal.on_msg(ctx.now, hinted_peer, AliasMessage::NotifySet(alias_id, 1));
 
         let (tx, mut rx) = oneshot::channel();
         ctx.internal.on_control(ctx.now, AliasControl::Find(alias_id, tx));
@@ -890,10 +960,7 @@ mod test {
             vec![InternalOutput::Broadcast(AliasMessage::Scan(alias_id))],
             "shutdown from the only cached hint must immediately fail over instead of waiting for hint timeout"
         );
-        assert!(
-            rx.try_recv().is_err(),
-            "lookup should remain pending while it fails over to scan, not complete from a stopped hint"
-        );
+        assert!(rx.try_recv().is_err(), "lookup should remain pending while it fails over to scan, not complete from a stopped hint");
     }
 
     #[test]
@@ -916,10 +983,7 @@ mod test {
             Some(AliasFoundLocation::Local),
             "a pending alias find must resolve to Local once the alias is registered locally, not to a later remote Found"
         );
-        assert!(
-            !ctx.internal.find_reqs.contains_key(&alias_id),
-            "local registration should clear the obsolete pending find request"
-        );
+        assert!(!ctx.internal.find_reqs.contains_key(&alias_id), "local registration should clear the obsolete pending find request");
     }
 
     #[test]
@@ -929,7 +993,7 @@ mod test {
         let peer_addr = PeerId(1);
 
         // Add alias to cache
-        ctx.internal.on_msg(ctx.now, peer_addr, AliasMessage::NotifySet(alias_id));
+        ctx.internal.on_msg(ctx.now, peer_addr, AliasMessage::NotifySet(alias_id, 1));
 
         // Create a oneshot channel for the find response
         let (tx, _rx) = oneshot::channel();
@@ -1033,15 +1097,8 @@ mod test {
 
         ctx.internal.on_control(ctx.now + 1, AliasControl::Shutdown);
 
-        assert_eq!(
-            rx.try_recv(),
-            Ok(None),
-            "local alias shutdown must immediately fail pending find waiters"
-        );
-        assert!(
-            !ctx.internal.find_reqs.contains_key(&alias_id),
-            "local alias shutdown must clear pending find state"
-        );
+        assert_eq!(rx.try_recv(), Ok(None), "local alias shutdown must immediately fail pending find waiters");
+        assert!(!ctx.internal.find_reqs.contains_key(&alias_id), "local alias shutdown must clear pending find state");
         assert_eq!(ctx.collect_outputs(), vec![InternalOutput::Broadcast(AliasMessage::Shutdown)]);
     }
 
@@ -1052,7 +1109,7 @@ mod test {
 
         ctx.internal.on_control(ctx.now, AliasControl::Register(alias_id));
         assert!(ctx.internal.local.contains_key(&alias_id), "test setup should register local alias ownership");
-        assert_eq!(ctx.collect_outputs(), vec![InternalOutput::Broadcast(AliasMessage::NotifySet(alias_id))]);
+        assert_eq!(ctx.collect_outputs(), vec![InternalOutput::Broadcast(AliasMessage::NotifySet(alias_id, 1))]);
 
         ctx.internal.on_control(ctx.now + 1, AliasControl::Shutdown);
         assert_eq!(ctx.collect_outputs(), vec![InternalOutput::Broadcast(AliasMessage::Shutdown)]);
@@ -1060,15 +1117,8 @@ mod test {
         let (tx, mut rx) = oneshot::channel();
         ctx.internal.on_control(ctx.now + 2, AliasControl::Find(alias_id, tx));
 
-        assert_eq!(
-            rx.try_recv(),
-            Ok(None),
-            "after local shutdown, alias service must not keep resolving aliases as local"
-        );
-        assert!(
-            !ctx.internal.local.contains_key(&alias_id),
-            "local alias shutdown must clear local alias ownership"
-        );
+        assert_eq!(rx.try_recv(), Ok(None), "after local shutdown, alias service must not keep resolving aliases as local");
+        assert!(!ctx.internal.local.contains_key(&alias_id), "local alias shutdown must clear local alias ownership");
     }
 
     #[test]
@@ -1104,8 +1154,8 @@ mod test {
         let peer1 = PeerId(1);
         let peer2 = PeerId(2);
 
-        ctx.internal.on_msg(ctx.now, peer1, AliasMessage::NotifySet(alias_from_peer1));
-        ctx.internal.on_msg(ctx.now, peer2, AliasMessage::NotifySet(alias_from_peer2));
+        ctx.internal.on_msg(ctx.now, peer1, AliasMessage::NotifySet(alias_from_peer1, 1));
+        ctx.internal.on_msg(ctx.now, peer2, AliasMessage::NotifySet(alias_from_peer2, 1));
 
         ctx.internal.on_msg(ctx.now, peer1, AliasMessage::Shutdown);
 

@@ -4909,8 +4909,26 @@ the source of truth for evidence and reviewer decisions.
   lifecycle messages older than the stored generation. As a smaller interim
   mitigation, keep a short-lived `(peer, alias)` delete tombstone and ignore
   same-peer `NotifySet` during that grace window.
+- Fix status: fixed by adding per-alias lifecycle generations to
+  `NotifySet` and `NotifyDel` and storing bounded remote lifecycle state keyed
+  by `(AliasId, PeerId)`. Remote lifecycle messages are accepted only when their
+  generation is newer than the stored state; accepted deletes leave an inactive
+  tombstone so delayed older sets cannot resurrect a stale cache hint, while a
+  later higher-generation set can restore a legitimate re-registration. Local
+  register/unregister transitions maintain per-alias generations and include
+  them in broadcasts. The lifecycle cache is bounded, so very old evicted
+  tombstones are not protected indefinitely. This changes alias control-message
+  wire serialization for mixed-version nodes.
 - Evidence test:
   - `cargo test stale_notify_set_must_not_resurrect_alias_after_newer_notify_del -- --nocapture`
+  - Current status: passes with `NotifySet(alias, 1)`,
+    `NotifyDel(alias, 2)`, then delayed stale `NotifySet(alias, 1)`.
+  - Related verification:
+    `cargo test newer_notify_set_must_restore_alias_after_notify_del -- --nocapture`,
+    `cargo test stale_not_found_must_not_evict_alias_cache_without_pending_check -- --nocapture`,
+    `cargo test shutdown_from_cached_hint_must_unblock_pending_find -- --nocapture`,
+    `cargo test test_register_alias -- --nocapture`, and
+    `cargo test test_unregister_alias -- --nocapture`.
   - Failure summary: after `NotifySet(AliasId(7))` from `PeerId(2)` creates a
     cache hint and `NotifyDel(AliasId(7))` removes it, a delayed
     `NotifySet(AliasId(7))` from the same peer re-inserts the cache entry;
