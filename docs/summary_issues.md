@@ -7,9 +7,9 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Accepted issues: 204
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 324
+- Current consecutive no-new-issue cycles: 325
 - Stop condition: continue until 5 consecutive cycles find no new accepted
-  issue; currently 324/5 after ISSUE-204.
+  issue; currently 325/5 after ISSUE-204.
 
 ## Root Cause Summary
 
@@ -2389,6 +2389,13 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Recent No-New Audit
 
+- Cycle after ISSUE-204 no-new cycle 325 ran a steady valid-node fuzz pass with
+  forked reviewer `Volta the 7th`. The run passed with exit code 0:
+  `1 passed`, `0 failed`, `289 filtered out`, finished in 36.44s. No panic,
+  invalid-service, stale-route, shutdown-send, PeerStopped storm,
+  connection-lifecycle, channel-closed, endpoint-driver-dropped, or
+  internal-channel-error signatures were present. No accepted issue or summary
+  root-cause change was recorded.
 - Cycle after ISSUE-204 no-new cycle 324 ran a broad invalid-action fuzz pass
   with forked reviewer `Herschel the 7th`. The run failed with exit code 101
   and assertion `seed=324, nodes=8, steps=4800`. The hard failure was
