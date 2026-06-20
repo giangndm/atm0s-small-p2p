@@ -1,5 +1,5 @@
 use std::{
-    collections::{BTreeMap, VecDeque},
+    collections::{BTreeMap, BTreeSet, VecDeque},
     fmt::Debug,
     hash::Hash,
     marker::PhantomData,
@@ -380,12 +380,23 @@ where
         }
     }
 
-    fn on_rpc_res(&mut self, ctx: &mut StateCtx<N, K, V>, _now: Instant, event: RpcRes<K, V>) -> bool {
+    fn on_rpc_res(&mut self, ctx: &mut StateCtx<N, K, V>, now: Instant, event: RpcRes<K, V>) -> bool {
         match event {
             RpcRes::FetchChanged(Ok(changeds)) => {
-                if self.sending_req.is_none() {
+                let Some((_, NetEvent::Unicast(_, RpcEvent::RpcReq(RpcReq::FetchChanged { from, count })))) = self.sending_req.as_ref() else {
+                    return false;
+                };
+                if *count == 0 {
                     return false;
                 }
+                let requested_to = *from + count.saturating_sub(1);
+                let mut versions = BTreeSet::new();
+                for changed in &changeds {
+                    if changed.version < *from || changed.version > requested_to || !versions.insert(changed.version) {
+                        return false;
+                    }
+                }
+
                 log::info!("[RemoteStore {:?}] fetch changed success with {} changeds => apply", ctx.remote, changeds.len());
                 for changed in changeds {
                     if changed.version > self.version {
@@ -394,6 +405,17 @@ where
                 }
                 self.sending_req = None;
                 self.apply_pendings(ctx);
+                if self.sending_req.is_none() && self.version < requested_to {
+                    let from = self.version + 1;
+                    let count = requested_to - self.version;
+                    log::warn!(
+                        "[RemoteStore {:?}] partial fetch changed response => request remaining changed from {from:?} count {count}",
+                        ctx.remote
+                    );
+                    let req = NetEvent::Unicast(ctx.remote.clone(), RpcEvent::RpcReq(RpcReq::FetchChanged { from, count }));
+                    self.sending_req = Some((now, req.clone()));
+                    ctx.outs.push_back(Event::NetEvent(req));
+                }
                 true
             }
             RpcRes::FetchChanged(Err(err)) => {

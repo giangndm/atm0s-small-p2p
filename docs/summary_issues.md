@@ -48,7 +48,7 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Representative issues: ISSUE-034, ISSUE-037, ISSUE-038, ISSUE-047,
   ISSUE-059, ISSUE-071, ISSUE-081 through ISSUE-089, ISSUE-095, ISSUE-099,
-  ISSUE-110, ISSUE-111, ISSUE-141, ISSUE-143, ISSUE-152,
+  ISSUE-110, ISSUE-111, ISSUE-143, ISSUE-152,
   ISSUE-154, ISSUE-155, ISSUE-158, ISSUE-166, ISSUE-171, ISSUE-175,
   ISSUE-186.
 - Pattern: replicated-KV, alias, metrics, visualization, and pubsub flows accept
@@ -185,6 +185,14 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Recently Fixed Issues
 
+- ISSUE-141: fixed by deriving the remaining requested `FetchChanged` range
+  from the pending repair request and validating the response before mutation.
+  Zero-count requests, duplicate returned versions, and versions outside the
+  requested range are ignored without clearing the pending repair. Successful
+  partial responses now emit a follow-up request for any versions still below
+  the original inclusive target, unless `apply_pendings` already started another
+  repair. Verification:
+  `cargo test working_state_must_continue_repair_after_partial_fetch_changed_success -- --nocapture`.
 - ISSUE-140: fixed by making replicated-KV remote state handlers return whether
   an RPC response or broadcast was accepted. `RemoteStore` now refreshes
   `last_active` only for accepted events, using one timestamp for dispatch,

@@ -42,7 +42,7 @@ the source of truth for evidence and reviewer decisions.
 
 - Representative issues: ISSUE-034, ISSUE-037, ISSUE-038, ISSUE-047,
   ISSUE-059, ISSUE-071, ISSUE-081 through ISSUE-089, ISSUE-095, ISSUE-099,
-  ISSUE-110, ISSUE-111, ISSUE-141, ISSUE-143, ISSUE-152,
+  ISSUE-110, ISSUE-111, ISSUE-143, ISSUE-152,
   ISSUE-154, ISSUE-155, ISSUE-158, ISSUE-166, ISSUE-171, ISSUE-175,
   ISSUE-186.
 - Pattern: replicated-KV full sync, changed repair, alias lookup, metrics,
@@ -4039,6 +4039,15 @@ the source of truth for evidence and reviewer decisions.
     receives a valid partial success containing versions `1` and `2`, the test
     expects a follow-up `FetchChanged { from: Version(3), count: 3 }`; current
     code emits `None`.
+- Fix status: fixed. `WorkingState::on_rpc_res` now accepts successful
+  `FetchChanged` responses only when the current pending request is a
+  `FetchChanged { from, count }`, derives the inclusive requested target from
+  that request, rejects zero-count requests, duplicate returned versions, and
+  versions outside the requested range before mutating state, applies valid
+  returned changes, and emits a follow-up `FetchChanged` for the remaining
+  requested range if `apply_pendings` did not already start another repair.
+- Verification intent:
+  - `cargo test working_state_must_continue_repair_after_partial_fetch_changed_success -- --nocapture`
 
 ### ISSUE-142: New local pubsub handles miss already-known remote members
 
