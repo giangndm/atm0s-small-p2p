@@ -11,7 +11,7 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 251
+- Current consecutive no-new-issue cycles: 252
 - Stop condition requested by user: continue until 5 consecutive cycles find no
   new accepted issue.
 
@@ -5783,6 +5783,32 @@ the source of truth for evidence and reviewer decisions.
     `src/peer.rs:1092` with `got 2`.
 
 ## No-New-Issue Audit Cycles
+
+### Cycle after ISSUE-204 no-new cycle 252: broad repeated invalid service id panics
+
+- Result: no accepted non-duplicate issue.
+- Reviewer: `Epicurus the 6th`, forked subagent review, confirmed
+  duplicate/no-new.
+- Source and test evidence reviewed:
+  - `src/tests/fuzz.rs`
+  - `src/ctx.rs`
+  - `RUST_LOG=error P2P_FUZZ_SEED=252 P2P_FUZZ_NODES=8 P2P_FUZZ_STEPS=1800 cargo test fuzz_random_node_actions_must_not_panic_connection_tasks -- --nocapture`
+    failed.
+- Evidence summary:
+  - exit status 101; log had 38 lines; the fuzz assertion at
+    `src/tests/fuzz.rs:183:5` reported background connection/service task
+    failure with `seed=252, nodes=8, steps=1800`.
+  - five `src/ctx.rs:34` panic markers with
+    `index out of bounds: the len is 256 but the index is 256`.
+  - five connection closed/lost markers and five `channel closed` send markers
+    were reviewed as fallout in the invalid-service-id context.
+  - no stale-sync, shutdown-send, no-capacity, forwarded-stop, broadcast-data,
+    open_bi, connect-answer, or path-not-found evidence.
+- Duplicate mapping: ISSUE-053.
+- Root-cause summary impact: no new root cause; this strengthens existing
+  invalid-service-id validation evidence without adding a new issue.
+- Smallest fix proposal: validate service ids before indexing, preferably at
+  decode or inbound dispatch, and reject, drop, or log out-of-range ids.
 
 ### Cycle after ISSUE-204 no-new cycle 251: valid stale sync and large stopped storm
 
