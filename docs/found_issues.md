@@ -11,7 +11,7 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 303
+- Current consecutive no-new-issue cycles: 304
 - Stop condition requested by user: continue until 5 consecutive cycles find no
   new accepted issue.
 
@@ -5783,6 +5783,35 @@ the source of truth for evidence and reviewer decisions.
     `src/peer.rs:1092` with `got 2`.
 
 ## No-New-Issue Audit Cycles
+
+### Cycle after ISSUE-204 no-new cycle 304: broad invalid service duplicate
+
+- Result: no accepted non-duplicate issue.
+- Reviewer: `Confucius the 7th`, forked subagent review, confirmed
+  duplicate/no-new.
+- Source and test evidence reviewed:
+  - `src/tests/fuzz.rs`
+  - `src/ctx.rs`
+  - `RUST_LOG=error P2P_FUZZ_SEED=304 P2P_FUZZ_NODES=8 P2P_FUZZ_STEPS=3600 cargo test fuzz_random_node_actions_must_not_panic_connection_tasks -- --nocapture`
+    failed with `seed=304, nodes=8, steps=3600`.
+- Evidence summary:
+  - exit status 101; log had 23 lines; the fuzz assertion at
+    `src/tests/fuzz.rs:183:5` reported background connection/service task
+    failure.
+  - one hard invalid-service panic at `src/ctx.rs:34:9` with
+    `index out of bounds: the len is 256 but the index is 256`.
+  - stale-route, shutdown-send, stopped-forwarding, capacity-storm,
+    broadcast-alias, path-not-found, connection-lost, aborted-by-peer, and
+    endpoint-driver-dropped counts were zero.
+  - two `channel closed` and one `closed by peer` markers were reviewed as
+    lifecycle fallout around the same failing run.
+- Duplicate mapping: ISSUE-053.
+- Root-cause summary impact: no new root cause; reviewer classified the crash
+  as the existing unchecked out-of-range `P2pServiceId(256)` service-table
+  index.
+- Smallest fix proposal: no summary fix change; keep ISSUE-053 fix proposal to
+  bounds-check service IDs before table indexing and drop/reject out-of-range
+  messages.
 
 ### Cycle after ISSUE-204 no-new cycle 303: valid stale sync and shutdown duplicates
 
