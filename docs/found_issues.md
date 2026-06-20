@@ -11,7 +11,7 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 48
+- Current consecutive no-new-issue cycles: 49
 - Stop condition requested by user: continue until 5 consecutive cycles find no
   new accepted issue.
 
@@ -5783,6 +5783,34 @@ the source of truth for evidence and reviewer decisions.
     `src/peer.rs:1092` with `got 2`.
 
 ## No-New-Issue Audit Cycles
+
+### Cycle after ISSUE-204 no-new cycle 49: sanitized churn duplicate outbound connect panic
+
+- Result: no accepted non-duplicate issue.
+- Reviewer: `Carver the 4th`, forked subagent review, confirmed
+  duplicate-only no-new classification.
+- Source and test evidence reviewed:
+  - `src/tests/fuzz.rs`
+  - `src/peer.rs`
+  - `src/peer/peer_internal.rs`
+  - `RUST_LOG=error P2P_FUZZ_SEED=49 P2P_FUZZ_NODES=8 P2P_FUZZ_STEPS=1800 cargo test fuzz_random_sanitized_node_churn_actions_must_not_panic_connection_tasks -- --nocapture`
+    failed at `src/tests/fuzz.rs:372:5`.
+- Duplicate or too-close symptoms rejected:
+  - the primary background panic was `src/peer.rs:133:113` with
+    `should send to main: SendError { .. }`.
+  - this maps directly to ISSUE-139: `PeerConnection::new_connecting` still
+    reports early outbound `connecting.await` failure through
+    `main_tx.send(...).await.expect("should send to main")`, so sanitized
+    churn can close the main loop before the spawned connection task reports
+    failure.
+  - the same run produced 8,610
+    `forward peer stopped over peer alias got error no available capacity` logs
+    and 548 `... channel closed` logs; reviewer mapped that secondary noise to
+    ISSUE-170's missing dedupe/TTL/tombstone suppression for stop forwarding in
+    cyclic meshes.
+- Root-cause summary impact: no new root cause; this sanitized-churn fuzz run
+  strengthens existing ISSUE-139 and ISSUE-170 evidence without adding
+  ISSUE-205.
 
 ### Cycle after ISSUE-204 no-new cycle 48: valid-action fuzz duplicate stale sync
 

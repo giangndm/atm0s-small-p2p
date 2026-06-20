@@ -7,9 +7,9 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Accepted issues: 204
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 48
+- Current consecutive no-new-issue cycles: 49
 - Stop condition: continue until 5 consecutive cycles find no new accepted
-  issue; currently 48/5 after ISSUE-204.
+  issue; currently 49/5 after ISSUE-204.
 
 ## Root Cause Summary
 
@@ -256,6 +256,13 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Recent Fuzz Evidence
 
+- Sanitized churn fuzz review:
+  `RUST_LOG=error P2P_FUZZ_SEED=49 P2P_FUZZ_NODES=8 P2P_FUZZ_STEPS=1800 cargo test fuzz_random_sanitized_node_churn_actions_must_not_panic_connection_tasks -- --nocapture`
+  failed with duplicate evidence for ISSUE-139. Reviewer `Carver the 4th`
+  confirmed the `src/peer.rs:133` panic is the existing unchecked outbound
+  `PeerConnectError` send-to-main path after main-loop shutdown; 8,610
+  no-capacity and 548 channel-closed forwarded-stop logs were secondary
+  ISSUE-170 amplification evidence rather than a new root cause.
 - Valid-action fuzz review:
   `RUST_LOG=error P2P_FUZZ_SEED=48 P2P_FUZZ_NODES=8 P2P_FUZZ_STEPS=1800 cargo test fuzz_random_valid_node_actions_must_not_panic_connection_tasks -- --nocapture`
   failed with duplicate evidence for ISSUE-063. Reviewer `Pauli the 4th`
