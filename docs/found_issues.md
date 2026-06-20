@@ -4374,6 +4374,13 @@ the source of truth for evidence and reviewer decisions.
 - Category: correctness, pubsub lifecycle stability, cleanup
 - Score: 58/100
 - Reviewer: `Sagan the 2nd`, confirmed.
+- Fix status: fixed by `73c63ec` (`fix: isolate pubsub local handle
+  ownership`). Pubsub destroy controls now look up the channel with
+  `get_mut`, return on unknown channels, and return when exact publisher or
+  subscriber handle removal does not remove a live handle. Unknown or stale
+  destroys therefore do not create phantom channel state or broadcast false
+  leave events. Verification:
+  `cargo test stale_pubsub_destroy_must_not_create_phantom_channel -- --nocapture`.
 - Affected code:
   - `src/service/pubsub_service.rs`: `InternalMsg::PublisherDestroyed` accepts
     any `(local_id, channel)` pair and calls
