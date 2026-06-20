@@ -11,7 +11,7 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 292
+- Current consecutive no-new-issue cycles: 293
 - Stop condition requested by user: continue until 5 consecutive cycles find no
   new accepted issue.
 
@@ -5783,6 +5783,38 @@ the source of truth for evidence and reviewer decisions.
     `src/peer.rs:1092` with `got 2`.
 
 ## No-New-Issue Audit Cycles
+
+### Cycle after ISSUE-204 no-new cycle 293: valid stale sync and stopped storm
+
+- Result: no accepted non-duplicate issue.
+- Reviewer: `Sagan the 7th`, forked subagent review, confirmed
+  duplicate/no-new.
+- Source and test evidence reviewed:
+  - `src/tests/fuzz.rs`
+  - `src/router.rs`
+  - `RUST_LOG=error P2P_FUZZ_SEED=293 P2P_FUZZ_NODES=8 P2P_FUZZ_STEPS=3200 cargo test fuzz_random_valid_node_actions_must_not_panic_connection_tasks -- --nocapture`
+    failed with `seed=293, nodes=8, steps=3200`.
+- Evidence summary:
+  - exit status 101; log had 10,738 lines; the fuzz assertion at
+    `src/tests/fuzz.rs:183:5` reported background connection/service task
+    failure.
+  - one hard stale-sync panic at `src/router.rs:76:66` with
+    `should have direct metric with apply_sync`.
+  - 10,707 forwarded-stop markers, including 10,577 `no available capacity`
+    markers and 135 `channel closed` markers.
+  - one broadcast-over-peer-alias marker was reviewed as insufficient for an
+    independent root cause.
+  - no invalid-service-id, shutdown-send, path-not-found, connection-lost,
+    closed-by-peer, or aborted-by-peer evidence.
+- Duplicate mapping: primary ISSUE-063; secondary amplification ISSUE-170.
+- Root-cause summary impact: no new root cause; this strengthens existing
+  stale route-sync race evidence and stopped-peer forwarding storm evidence
+  without adding a new issue.
+- Smallest fix proposal: for ISSUE-063, replace the `apply_sync` direct-metric
+  `expect` with guarded stale-sync handling that drops or ignores sync for a
+  missing direct connection; for ISSUE-170, dedupe/coalesce forwarded
+  `PeerStopped` events with bounded retry/backpressure behavior and TTL or
+  tombstone suppression for cyclic topologies.
 
 ### Cycle after ISSUE-204 no-new cycle 292: broad invalid service panic
 
