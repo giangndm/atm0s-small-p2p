@@ -59,8 +59,8 @@ the source of truth for evidence and reviewer decisions.
 
 ### RC-3: Backpressure is inconsistent across async boundaries
 
-- Representative issues: ISSUE-049, ISSUE-050, ISSUE-056, ISSUE-120,
-  ISSUE-123, ISSUE-124, ISSUE-125, ISSUE-126,
+- Representative issues: ISSUE-049, ISSUE-050, ISSUE-056, ISSUE-123,
+  ISSUE-124, ISSUE-125, ISSUE-126,
   ISSUE-127, ISSUE-136, ISSUE-147, ISSUE-153, ISSUE-157,
   ISSUE-178, ISSUE-182, ISSUE-184, ISSUE-198, ISSUE-199.
 - Pattern: some paths use bounded channels and drop on `try_send`, some await
@@ -3317,7 +3317,8 @@ the source of truth for evidence and reviewer decisions.
     `service.try_send(P2pServiceEvent::Broadcast(source, data)).print_on_err(...)`
     after duplicate suppression, and does not retry, backpressure, disconnect,
     or signal local delivery failure.
-- Impact: when the destination local service is not draining quickly enough,
+- Impact: fixed. Previously, when the destination local service was not
+  draining quickly enough,
   the 11th inbound broadcast is dropped after only a log message. The sender has
   already returned from `send_broadcast`, so this creates silent broadcast data
   loss under receiver-side local service backpressure. This is distinct from
@@ -3327,19 +3328,22 @@ the source of truth for evidence and reviewer decisions.
   queue blocking, ISSUE-053/091 out-of-range service id panics, ISSUE-076 stale
   requester lifecycle broadcast, ISSUE-017 duplicate suppression behavior, and
   sender identity binding issues.
+- Root cause: inbound broadcast local delivery used lossy `try_send` into each
+  bounded service queue after duplicate suppression. A full local service queue
+  rejected the event immediately, and the peer task only logged the error.
+- Fix status: fixed. Inbound broadcast delivery now goes through
+  `send_local_service_event(...).await`, which awaits bounded
+  `service.send(...)` under a timeout/backpressure path instead of dropping on
+  immediate queue pressure.
+- Caveat: broadcast senders still do not receive per-recipient local service
+  consumption acknowledgements; the fix preserves receiver-side events under
+  transient local service queue pressure.
 - Evidence test:
   - `cargo test inbound_broadcast_must_not_drop_when_service_queue_is_full -- --nocapture`
-  - Failure summary: after two connected nodes send 11 broadcasts to an
-    unconsumed destination service, the receiver logs
-    `send service msg got error no available capacity` and only 10 broadcast
-    events can be drained; expected all 11 to be preserved or backpressured
-    instead of silently dropped.
-- Current audit status:
-  - No-new cycle 23 reran
-    `cargo test inbound_broadcast_must_not_drop_when_service_queue_is_full -- --nocapture`;
-    it now passes because current local broadcast delivery awaits bounded
-    `service.send(...)` through `send_local_service_event` instead of immediate
-    `try_send`.
+  - Fix verification: passes. After two connected nodes send 11 broadcasts to
+    an unconsumed destination service, all 11 broadcast events can be drained
+    because local delivery now awaits bounded `service.send(...)` through
+    `send_local_service_event`.
 
 ### ISSUE-121: Short pubsub RPC timeouts wait for the global one-second sweep
 
