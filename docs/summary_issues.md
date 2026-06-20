@@ -14,7 +14,7 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   ISSUE-002, ISSUE-008, ISSUE-009, ISSUE-021, ISSUE-033, ISSUE-055, ISSUE-103,
   ISSUE-053, ISSUE-063, ISSUE-139, ISSUE-146, ISSUE-170, ISSUE-176,
   ISSUE-189, ISSUE-190, ISSUE-191, ISSUE-192, ISSUE-193, ISSUE-195,
-  ISSUE-196, ISSUE-197, and ISSUE-198 have focused fixes committed.
+  ISSUE-196, ISSUE-197, ISSUE-198, and ISSUE-199 have focused fixes committed.
   ISSUE-003 is fixed by `cfc8e57`;
   ISSUE-004 is covered by the ISSUE-170 ownership-validation follow-up
   `87cf6ce`; earlier fixes are `648cfd0`, `2cbf096`, `15b788c`, and
@@ -185,6 +185,12 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   admissions as an error. Verified with
   `cargo test try_send_broadcast_must_report_when_all_peer_queues_reject -- --nocapture`
   and `cargo test broadcast_direct -- --nocapture`. ISSUE-049 and ISSUE-199
+  remain separate.
+- ISSUE-199: fixed by changing `send_broadcast` to return
+  `anyhow::Result<usize>` and report zero accepted awaited peer-control
+  admissions as an error. Verified with
+  `cargo test send_broadcast_must_report_when_all_peer_channels_are_closed -- --nocapture`
+  and `cargo test broadcast_relay -- --nocapture`. ISSUE-049 and ISSUE-198
   remain separate.
 - ISSUE-197: fixed by routing ordinary unicast relay decisions through
   `DropIngressLoop` when the selected next hop is the ingress connection. The

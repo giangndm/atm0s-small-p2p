@@ -5820,14 +5820,15 @@ the source of truth for evidence and reviewer decisions.
 - Reviewer: `Maxwell the 3rd`, confirmed after `Chandrasekhar the 3rd`
   discovery.
 - Affected code:
-  - `src/ctx.rs`: `SharedCtx::send_broadcast` awaits each
-    `conn_alias.send(...)` result, but calls `print_on_err(...)` and returns
-    `()` even if every peer send fails.
+  - `src/ctx.rs`: the old `SharedCtx::send_broadcast` awaited each
+    `conn_alias.send(...)` result, called `print_on_err(...)`, and returned
+    `()` even if every peer send failed.
   - `src/service.rs`: `P2pService::send_broadcast` and
-    `P2pServiceRequester::send_broadcast` expose this success-shaped `()` API.
+    `P2pServiceRequester::send_broadcast` exposed this success-shaped `()`
+    API.
   - `src/peer/peer_alias.rs`: `PeerConnectionAlias::send` can return an error
-    when the peer-control receiver is closed, but broadcast fanout discards
-    that error.
+    when the peer-control receiver is closed, and the old broadcast fanout
+    discarded that error.
 - Impact: when all connected peer control channels are already closed or
   otherwise immediately reject awaited sends, an outbound broadcast is delivered
   to no peer while the caller has no failure signal. This is distinct from
@@ -5840,12 +5841,18 @@ the source of truth for evidence and reviewer decisions.
   to return a delivery result such as `anyhow::Result<usize>` or a small enum.
   Count successful peer-control sends; if zero peers accept the broadcast,
   return an error. Keep per-peer logging as diagnostics.
+- Fix status: fixed by changing `SharedCtx::send_broadcast` and public
+  `P2pService` / `P2pServiceRequester` wrappers to return
+  `anyhow::Result<usize>`. The implementation now counts successful awaited
+  peer-control admissions, returns an error when connected peers exist but zero
+  copies are accepted, and records the broadcast id only after at least one peer
+  accepted the message. ISSUE-049 and ISSUE-198 remain separate.
 - Evidence test:
   - `cargo test send_broadcast_must_report_when_all_peer_channels_are_closed -- --nocapture`
-  - Failure summary: two registered peer-control receiver halves are dropped,
-    so every `PeerConnectionAlias::send(...).await` fails immediately. The test
-    fails at `src/peer.rs:858` because `ctx.send_broadcast(...).await` returns
-    unit `()`, leaving callers unable to observe total fanout failure.
+  - Current result: passes. The test drops two registered peer-control receiver
+    halves so every `PeerConnectionAlias::send(...).await` fails immediately,
+    then verifies that `ctx.send_broadcast(...).await` returns an error instead
+    of silent success.
 
 ### ISSUE-200: metrics collector duplicates scan broadcasts behind hidden backpressure
 
