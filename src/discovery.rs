@@ -86,6 +86,10 @@ impl PeerDiscovery {
                 continue;
             }
 
+            if self.local.as_ref().is_some_and(|(local_peer, _)| *local_peer == peer) {
+                continue;
+            }
+
             if let Some(stopped_at) = self.stopped.get(&peer).copied() {
                 if timestamp_is_live(stopped_at, now_ms) && last_updated <= stopped_at {
                     continue;

@@ -290,6 +290,15 @@ the source of truth for evidence and reviewer decisions.
 - Evidence test:
   - `cargo test apply_sync_rejects_local_peer_advertisement -- --nocapture`
   - Failure summary: discovery stores a remote candidate for the local peer id.
+- Fix status: fixed by rejecting advertised rows for the enabled local peer id
+  in `PeerDiscovery::apply_sync`, after timestamp validation and before
+  tombstone handling. Verified with the evidence test plus
+  `cargo test apply_sync_rejects_overflowing_future_timestamp -- --nocapture`,
+  `cargo test graceful_stop_tombstone_ignores_stale_non_seed_advertise -- --nocapture`,
+  `cargo test graceful_stop_tombstone_must_allow_fresh_restart_advertise -- --nocapture`,
+  `cargo test apply_sync_must_not_overwrite_newer_discovery_with_stale_advertisement -- --nocapture`,
+  and `cargo fmt -- --check`. Reviewer `Locke the 7th` approved. The
+  configured-seed local-id dial-candidate failure remains separate.
 
 ### ISSUE-006: Router stores and advertises routes to the local peer
 

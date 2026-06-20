@@ -10,7 +10,7 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 - Current consecutive no-new-issue cycles: 341
 - Stop condition: continue until 5 consecutive cycles find no new accepted
   issue; currently 341/5 after ISSUE-204.
-- Fix phase status: ISSUE-003, ISSUE-004, ISSUE-006, ISSUE-007, ISSUE-008,
+- Fix phase status: ISSUE-003, ISSUE-004, ISSUE-005, ISSUE-006, ISSUE-007, ISSUE-008,
   ISSUE-009, ISSUE-053, ISSUE-063, ISSUE-139, and ISSUE-170 have focused fixes
   committed. ISSUE-003 is fixed by `cfc8e57`; ISSUE-004 is covered by the
   ISSUE-170 ownership-validation follow-up `87cf6ce`; earlier fixes are
@@ -194,6 +194,16 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   `cargo test forged_peer_stopped_must_not_remove_third_party_route -- --nocapture`,
   `cargo test peer_stopped_must_remove_stopped_neighbour_immediately -- --nocapture`,
   and `cargo test peer_stopped -- --nocapture`.
+- ISSUE-005: fixed by rejecting advertised rows for the enabled local peer id
+  in `PeerDiscovery::apply_sync`, after timestamp validation and before
+  tombstone handling. Verified with
+  `cargo test apply_sync_rejects_local_peer_advertisement -- --nocapture`,
+  `cargo test apply_sync_rejects_overflowing_future_timestamp -- --nocapture`,
+  `cargo test graceful_stop_tombstone_ignores_stale_non_seed_advertise -- --nocapture`,
+  `cargo test graceful_stop_tombstone_must_allow_fresh_restart_advertise -- --nocapture`,
+  `cargo test apply_sync_must_not_overwrite_newer_discovery_with_stale_advertisement -- --nocapture`,
+  and `cargo fmt -- --check`. Reviewer `Locke the 7th` approved. The
+  configured-seed local-id dial-candidate failure remains separate.
 - ISSUE-006: fixed by filtering local-peer routes at router sync ingress and
   egress. `RouterTable::apply_sync` now drops incoming rows for `self.peer_id`
   before creating route memory, and `create_sync` defensively excludes any
