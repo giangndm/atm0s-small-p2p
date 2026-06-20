@@ -474,6 +474,10 @@ the source of truth for evidence and reviewer decisions.
 
 ### ISSUE-013: `open_stream` to the local peer panics instead of returning an error
 
+- Status: fixed. `SharedCtx::open_stream` now returns
+  `Err("unsupported open_stream to local node")` for `RouteAction::Local`,
+  matching the existing local-destination behavior of unicast sends instead of
+  unwinding the caller task.
 - Category: correctness, API stability
 - Score: 57/100
 - Reviewer: `Kuhn`, confirmed.
@@ -487,8 +491,7 @@ the source of truth for evidence and reviewer decisions.
   instead of returning a recoverable `Err`.
 - Evidence test:
   - `cargo test open_stream_to_local_returns_error_not_panic -- --nocapture`
-  - Failure summary: the call unwinds at `src/ctx.rs:211`; the test expected
-    `Ok(Err(_))`.
+  - Fixed summary: the call completes as `Ok(Err(_))` under `catch_unwind`.
 
 ### ISSUE-014: Unicast sender identity is not bound to the authenticated connection
 

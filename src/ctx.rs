@@ -286,7 +286,7 @@ impl SharedCtx {
         let next = self.router.action(&dest).ok_or(anyhow!("route not found"))?;
         match next {
             RouteAction::Local => {
-                panic!("unsupported open_stream to local node")
+                anyhow::bail!("unsupported open_stream to local node")
             }
             RouteAction::Next(next) => {
                 let source = self.router.local_id();
