@@ -11,7 +11,7 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 93
+- Current consecutive no-new-issue cycles: 94
 - Stop condition requested by user: continue until 5 consecutive cycles find no
   new accepted issue.
 
@@ -5783,6 +5783,39 @@ the source of truth for evidence and reviewer decisions.
     `src/peer.rs:1092` with `got 2`.
 
 ## No-New-Issue Audit Cycles
+
+### Cycle after ISSUE-204 no-new cycle 94: sanitized churn duplicate peer-connect panic and stop-forwarding storm
+
+- Result: no accepted non-duplicate issue.
+- Reviewer: cycle 94 reviewer task, confirmed `DUPLICATE/NO_NEW`.
+- Source and test evidence reviewed:
+  - `src/tests/fuzz.rs`
+  - `src/peer.rs`
+  - `src/utils.rs`
+  - `RUST_LOG=error P2P_FUZZ_SEED=94 P2P_FUZZ_NODES=8 P2P_FUZZ_STEPS=1800 cargo test fuzz_random_sanitized_node_churn_actions_must_not_panic_connection_tasks -- --nocapture`
+    failed.
+- Evidence summary:
+  - exit status 101; `0 passed; 1 failed`; the fuzz assertion at
+    `src/tests/fuzz.rs:372:5` detected background connection/service task
+    panics.
+  - two `src/peer.rs:133:113` panics with
+    `should send to main: SendError { .. }`.
+  - the same log contains 207 exact
+    `forward peer stopped over peer alias got error no available capacity`
+    entries and 9 exact
+    `forward peer stopped over peer alias got error channel closed` entries.
+  - reviewer found no invalid-service `src/ctx.rs:34` panic, no
+    `src/router.rs:76` stale-sync panic, and no `src/peer.rs:92` or
+    `src/peer.rs:130` send-to-main panic in this log.
+- Duplicate mapping:
+  - primary: the `src/peer.rs:133` panics map directly to ISSUE-139: early
+    outgoing `PeerConnectError` reporting can panic after the main loop
+    receiver is closed.
+  - secondary: the forwarded-stop no-capacity/channel-closed storm maps to
+    ISSUE-170: stop forwarding lacks dedupe/TTL/tombstone suppression in cyclic
+    meshes and can amplify shutdown churn into repeated failed control sends.
+- Root-cause summary impact: no new root cause; this strengthens existing
+  ISSUE-139 and ISSUE-170 sanitized-churn evidence without adding ISSUE-205.
 
 ### Cycle after ISSUE-204 no-new cycle 93: valid-action duplicate stale sync panic
 
