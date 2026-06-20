@@ -11,7 +11,7 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 83
+- Current consecutive no-new-issue cycles: 84
 - Stop condition requested by user: continue until 5 consecutive cycles find no
   new accepted issue.
 
@@ -5783,6 +5783,26 @@ the source of truth for evidence and reviewer decisions.
     `src/peer.rs:1092` with `got 2`.
 
 ## No-New-Issue Audit Cycles
+
+### Cycle after ISSUE-204 no-new cycle 84: steady-valid fuzz pass with endpoint teardown noise
+
+- Result: pass/no-new; no accepted issue evidence.
+- Reviewer: `Hubble the 5th`, forked subagent review, confirmed
+  `PASS_NO_NEW`.
+- Source and test evidence reviewed:
+  - `src/tests/fuzz.rs`
+  - `RUST_LOG=error P2P_FUZZ_SEED=84 P2P_FUZZ_NODES=8 P2P_FUZZ_STEPS=2400 cargo test fuzz_random_steady_valid_node_actions_must_not_panic_connection_tasks -- --nocapture`
+    passed.
+- Evidence summary:
+  - exit status 0; `1 passed`; no `panicked at` lines, no failed assertion,
+    and no no-capacity, channel-closed, or path-not-found markers.
+  - one `ERROR` teardown/lifecycle line reported endpoint internal error
+    because the endpoint driver future was dropped.
+  - reviewer classified this as lifecycle noise because no fuzz invariant
+    failed and prior steady-valid entries have treated similar endpoint teardown
+    logs as pass/no-new evidence.
+- Root-cause summary impact: no new root cause; this steady-valid fuzz run is
+  additional pass coverage without adding ISSUE-205.
 
 ### Cycle after ISSUE-204 no-new cycle 83: broad random duplicate invalid service, stale sync, and stop storm
 
