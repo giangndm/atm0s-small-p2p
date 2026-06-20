@@ -9,11 +9,13 @@ use anyhow::anyhow;
 use derive_more::derive::Display;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use tokio::sync::{
-    mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender},
+    mpsc::{channel, Receiver, UnboundedSender},
     oneshot,
 };
 
 use super::{InternalMsg, PeerSrc, PubsubChannelId, PubsubRpcError, RpcId};
+
+pub(crate) const LOCAL_PUBLISHER_EVENT_QUEUE_SIZE: usize = 1024;
 
 #[derive(Debug, Display, Hash, PartialEq, Eq, Clone, Copy, Serialize, Deserialize)]
 pub struct PublisherLocalId(u64);
@@ -80,12 +82,12 @@ pub struct Publisher {
     channel_id: PubsubChannelId,
     control_tx: UnboundedSender<InternalMsg>,
     requester: PublisherRequester,
-    pub_rx: UnboundedReceiver<PublisherEvent>,
+    pub_rx: Receiver<PublisherEvent>,
 }
 
 impl Publisher {
     pub(super) fn build(channel_id: PubsubChannelId, control_tx: UnboundedSender<InternalMsg>) -> Self {
-        let (pub_tx, pub_rx) = unbounded_channel();
+        let (pub_tx, pub_rx) = channel(LOCAL_PUBLISHER_EVENT_QUEUE_SIZE);
         let local_id = PublisherLocalId::rand();
         let handle_id = PublisherHandleId::new(local_id);
         log::info!("[Publisher {channel_id}/{local_id}] created");

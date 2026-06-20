@@ -12,6 +12,7 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   issue; currently 341/5 after ISSUE-204.
 - Fix phase status: ISSUE-001, ISSUE-003, ISSUE-004, ISSUE-005, ISSUE-006, ISSUE-007,
   ISSUE-002, ISSUE-008, ISSUE-009, ISSUE-010, ISSUE-011, ISSUE-012, ISSUE-013, ISSUE-014, ISSUE-015, ISSUE-021, ISSUE-024, ISSUE-033, ISSUE-055, ISSUE-103, ISSUE-122, ISSUE-123,
+  ISSUE-124,
   ISSUE-053, ISSUE-063, ISSUE-139, ISSUE-146, ISSUE-168, ISSUE-170,
   ISSUE-149, ISSUE-169, ISSUE-174, ISSUE-176, ISSUE-181, ISSUE-189, ISSUE-190, ISSUE-191, ISSUE-192, ISSUE-193,
   ISSUE-194, ISSUE-195, ISSUE-196, ISSUE-197, ISSUE-198, ISSUE-199,
@@ -298,6 +299,16 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   `cargo test pubsub_rpc_must_return_no_destination_when_all_local_sends_fail -- --nocapture`,
   and
   `cargo test pubsub_rpc_must_return_no_destination_when_all_local_subscriber_queues_are_full -- --nocapture`.
+- ISSUE-124: fixed by bounding local publisher event streams with
+  `LOCAL_PUBLISHER_EVENT_QUEUE_SIZE = 1024` and routing publisher fanout
+  through `try_send_publisher_event`. Full or closed local publisher queues no
+  longer accumulate unbounded events, and local feedback RPC fanout returns
+  `NoDestination` without pending RPC state when every local publisher delivery
+  fails. Verified with
+  `cargo test local_publisher_event_backlog_must_be_bounded -- --nocapture`,
+  `cargo test feedback_rpc_must_return_no_destination_when_all_local_publisher_queues_are_full -- --nocapture`,
+  `cargo test guest_feedback_rpc_must_return_no_destination_when_all_local_publisher_queues_are_full -- --nocapture`,
+  and `cargo fmt -- --check`.
 - ISSUE-204: fixed by `MetricsService::pending_scan_responses` plus bounded
   `requester.send_unicast(...)` response tasks, so duplicate metrics scans from
   one requester coalesce while a response is still backpressured. Verified with

@@ -3433,6 +3433,11 @@ the source of truth for evidence and reviewer decisions.
 
 ### ISSUE-124: Local pubsub publisher event queues are unbounded
 
+- Status: fixed. Local publisher event streams now use bounded
+  `tokio::sync::mpsc` queues sized by
+  `LOCAL_PUBLISHER_EVENT_QUEUE_SIZE = 1024`, and publisher-event fanout uses
+  nonblocking `try_send` so full or closed local queues are treated as failed
+  deliveries instead of accumulating unbounded backlog.
 - Category: high-load stability, resource exhaustion, pubsub reliability
 - Score: 72/100
 - Reviewer: `Cicero the 2nd`, confirmed.
@@ -3460,6 +3465,13 @@ the source of truth for evidence and reviewer decisions.
     but undrained local publisher leaves `pub_rx.len() == 1025`; expected the
     local publisher event backlog to be bounded, backpressured, or otherwise
     controlled.
+- Fixed summary: local feedback RPC fanout now returns `NoDestination` without
+  inserting pending RPC state when every local publisher delivery fails due to a
+  full or closed publisher queue. Verified with
+  `cargo test local_publisher_event_backlog_must_be_bounded -- --nocapture`,
+  `cargo test feedback_rpc_must_return_no_destination_when_all_local_publisher_queues_are_full -- --nocapture`,
+  `cargo test guest_feedback_rpc_must_return_no_destination_when_all_local_publisher_queues_are_full -- --nocapture`,
+  and `cargo fmt -- --check`.
 
 ### ISSUE-125: Requester connect commands can accumulate without bound
 
