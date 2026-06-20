@@ -7,9 +7,9 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Accepted issues: 204
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 250
+- Current consecutive no-new-issue cycles: 251
 - Stop condition: continue until 5 consecutive cycles find no new accepted
-  issue; currently 250/5 after ISSUE-204.
+  issue; currently 251/5 after ISSUE-204.
 
 ## Root Cause Summary
 
