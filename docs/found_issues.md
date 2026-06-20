@@ -5433,6 +5433,17 @@ the source of truth for evidence and reviewer decisions.
     last row and installs `Some((ConnectionId(1), PathMetric { relay_hops: 1,
     rtt_ms: 11 }))`; expected duplicate destination rows to be rejected so no
     route to `PeerId(9)` is installed.
+- Fix status: fixed by validating route-sync destinations before route memory
+  or path state is updated. `RouterTable::apply_sync` now tracks non-local
+  destination peer ids seen in the current sync and rejects the whole malformed
+  sync when a destination repeats, removing attacker-controlled last-row-wins
+  behavior. Verified with the evidence test plus
+  `cargo test apply_correct_direct_sync -- --nocapture`,
+  `cargo test create_correct_direct_sync -- --nocapture`,
+  `cargo test should_reject_overflowing_route_sync_metric_without_panic -- --nocapture`,
+  `cargo test should_reject_over_max_hops_for_forwarding -- --nocapture`,
+  `cargo test should_not_store_or_advertise_route_to_local_peer -- --nocapture`,
+  and `cargo fmt -- --check`. Reviewer accepted.
 
 ### ISSUE-191: README getting-started public API example does not compile
 

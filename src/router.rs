@@ -4,7 +4,10 @@
 //! - Direct rtt always has lower rtt
 //! - MAX_HOPS will reject some loop after direct connection disconnected
 
-use std::{collections::BTreeMap, sync::Arc};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    sync::Arc,
+};
 
 use lru::LruCache;
 use parking_lot::RwLock;
@@ -90,14 +93,26 @@ impl RouterTable {
             log::debug!("[RouterTable] ignore stale sync from removed connection {conn}");
             return;
         };
-        let mut new_paths = BTreeMap::<PeerId, PathMetric>::from_iter(sync.0.into_iter().filter_map(|(peer, metric)| {
+        let mut seen_peers = BTreeSet::new();
+        let mut new_paths = BTreeMap::<PeerId, PathMetric>::new();
+        for (peer, metric) in sync.0 {
             if self.peer_id.eq(&peer) {
-                return None;
+                continue;
             }
 
-            let metric = metric.checked_add(direct_metric)?;
-            (metric.relay_hops <= MAX_HOPS).then_some((peer, metric))
-        }));
+            if !seen_peers.insert(peer) {
+                log::debug!("[RouterTable] ignore malformed sync from {from_peer}: duplicate route to {peer:?}");
+                return;
+            }
+
+            let Some(metric) = metric.checked_add(direct_metric) else {
+                continue;
+            };
+
+            if metric.relay_hops <= MAX_HOPS {
+                new_paths.insert(peer, metric);
+            }
+        }
 
         // ensure we have memory for each sync paths
         for peer in new_paths.keys() {

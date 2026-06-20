@@ -12,8 +12,8 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   issue; currently 341/5 after ISSUE-204.
 - Fix phase status: ISSUE-003, ISSUE-004, ISSUE-005, ISSUE-006, ISSUE-007,
   ISSUE-008, ISSUE-009, ISSUE-033, ISSUE-055, ISSUE-103, ISSUE-053, ISSUE-063,
-  ISSUE-139, and ISSUE-170 have focused fixes committed. ISSUE-003 is fixed by
-  `cfc8e57`;
+  ISSUE-139, ISSUE-170, and ISSUE-190 have focused fixes committed. ISSUE-003
+  is fixed by `cfc8e57`;
   ISSUE-004 is covered by the ISSUE-170 ownership-validation follow-up
   `87cf6ce`; earlier fixes are `648cfd0`, `2cbf096`, `15b788c`, and
   `4997404`.
@@ -285,6 +285,17 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   `cargo test apply_sync_rejects_local_peer_advertisement -- --nocapture`,
   `cargo test apply_sync_must_not_duplicate_or_override_configured_seed -- --nocapture`,
   and `cargo fmt -- --check`. Reviewer `Leibniz the 7th` approved.
+- ISSUE-190: fixed by rejecting route syncs with duplicate non-local
+  destination peer ids before route memory or path state is updated. This
+  removes order-dependent last-row-wins behavior for malformed route-sync
+  packets. Verified with
+  `cargo test route_sync_must_reject_duplicate_peer_entries -- --nocapture`,
+  `cargo test apply_correct_direct_sync -- --nocapture`,
+  `cargo test create_correct_direct_sync -- --nocapture`,
+  `cargo test should_reject_overflowing_route_sync_metric_without_panic -- --nocapture`,
+  `cargo test should_reject_over_max_hops_for_forwarding -- --nocapture`,
+  `cargo test should_not_store_or_advertise_route_to_local_peer -- --nocapture`,
+  and `cargo fmt -- --check`. Reviewer accepted.
 - ISSUE-053: fixed by `648cfd0` with range-checked service table indexing.
   Verified with `cargo test ctx::tests -- --nocapture` and seed-340
   invalid-service fuzz passing without `src/ctx.rs` panics.
