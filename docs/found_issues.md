@@ -11,7 +11,7 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 222
+- Current consecutive no-new-issue cycles: 223
 - Stop condition requested by user: continue until 5 consecutive cycles find no
   new accepted issue.
 
@@ -5783,6 +5783,38 @@ the source of truth for evidence and reviewer decisions.
     `src/peer.rs:1092` with `got 2`.
 
 ## No-New-Issue Audit Cycles
+
+### Cycle after ISSUE-204 no-new cycle 223: valid stale sync and shutdown send panics
+
+- Result: no accepted non-duplicate issue.
+- Reviewer: `Anscombe the 6th`, forked subagent review, confirmed
+  `DUPLICATE/NO_NEW`.
+- Source and test evidence reviewed:
+  - `src/tests/fuzz.rs`
+  - `src/router.rs`
+  - `src/peer.rs`
+  - `RUST_LOG=error P2P_FUZZ_SEED=223 P2P_FUZZ_NODES=8 P2P_FUZZ_STEPS=1800 cargo test fuzz_random_valid_node_actions_must_not_panic_connection_tasks -- --nocapture`
+    failed.
+- Evidence summary:
+  - exit status 101; log had 27 lines; the fuzz assertion at
+    `src/tests/fuzz.rs:183:5` reported a background connection/service task
+    panic with `seed=223, nodes=8, steps=1800`.
+  - one `src/router.rs:76` panic marker with
+    `should have direct metric with apply_sync`.
+  - two `src/peer.rs:92` panic markers with
+    `should send to main: SendError { .. }`.
+  - no `src/ctx.rs:34` invalid-service evidence.
+  - no no-capacity, channel-closed, forwarded-stop, broadcast-data, open_bi,
+    connect-answer, path-not-found, or PeerStopped storm evidence.
+- Duplicate mapping: ISSUE-063 and ISSUE-139.
+- Root-cause summary impact: no new root cause; this strengthens existing
+  stale-route-sync and shutdown-reporting evidence without adding a new issue.
+- Smallest fix proposal:
+  - for ISSUE-063, replace the direct-route `expect` with a guarded lookup that
+    drops stale sync for unknown connections and invalidate queued sync when a
+    direct route is removed.
+  - for ISSUE-139, replace peer-task `expect("should send to main")` shutdown
+    reports with non-panicking closed-main handling.
 
 ### Cycle after ISSUE-204 no-new cycle 222: broad isolated invalid service panic
 
