@@ -11,7 +11,7 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 259
+- Current consecutive no-new-issue cycles: 260
 - Stop condition requested by user: continue until 5 consecutive cycles find no
   new accepted issue.
 
@@ -5783,6 +5783,28 @@ the source of truth for evidence and reviewer decisions.
     `src/peer.rs:1092` with `got 2`.
 
 ## No-New-Issue Audit Cycles
+
+### Cycle after ISSUE-204 no-new cycle 260: long steady valid fuzz pass
+
+- Result: no accepted issue.
+- Reviewer: `Newton the 6th`, forked subagent review, confirmed no-new.
+- Source and test evidence reviewed:
+  - `src/tests/fuzz.rs`
+  - `RUST_LOG=error P2P_FUZZ_SEED=260 P2P_FUZZ_NODES=14 P2P_FUZZ_STEPS=3600 cargo test fuzz_random_steady_valid_node_actions_must_not_panic_connection_tasks -- --nocapture`
+    passed.
+- Evidence summary:
+  - exit status 0; log had 8 lines.
+  - `test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 289 filtered out; finished in 24.49s`.
+  - no invalid-service-id, stale-sync, shutdown-send, open_bi,
+    connect-answer, no-capacity, forwarded-stop, broadcast-data,
+    path-not-found, connection-loss, closed-by-peer, aborted-by-peer, or panic
+    markers.
+- Duplicate mapping: none.
+- Root-cause summary impact: no new root cause; this is clean steady-valid
+  churn evidence only.
+- Smallest fix proposal: none for this cycle; keep alternating clean
+  steady-valid sampling with failure-producing broad and valid-action fuzz
+  runs until accepted issues are fixed.
 
 ### Cycle after ISSUE-204 no-new cycle 259: compact valid stale sync panic
 
