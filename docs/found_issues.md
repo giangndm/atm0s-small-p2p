@@ -11,7 +11,7 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 284
+- Current consecutive no-new-issue cycles: 285
 - Stop condition requested by user: continue until 5 consecutive cycles find no
   new accepted issue.
 
@@ -5783,6 +5783,40 @@ the source of truth for evidence and reviewer decisions.
     `src/peer.rs:1092` with `got 2`.
 
 ## No-New-Issue Audit Cycles
+
+### Cycle after ISSUE-204 no-new cycle 285: valid stale sync, shutdown send, and stopped storm
+
+- Result: no accepted non-duplicate issue.
+- Reviewer: `Planck the 7th`, forked subagent review, confirmed
+  duplicate/no-new.
+- Source and test evidence reviewed:
+  - `src/tests/fuzz.rs`
+  - `src/router.rs`
+  - `src/peer.rs`
+  - `RUST_LOG=error P2P_FUZZ_SEED=285 P2P_FUZZ_NODES=9 P2P_FUZZ_STEPS=2400 cargo test fuzz_random_valid_node_actions_must_not_panic_connection_tasks -- --nocapture`
+    failed; the test assertion reported `seed=285, nodes=8, steps=2400`.
+- Evidence summary:
+  - exit status 101; log had 9,906 lines; the fuzz assertion at
+    `src/tests/fuzz.rs:183:5` reported background connection/service task
+    failure with `seed=285, nodes=8, steps=2400`.
+  - one `src/router.rs:76:66` panic marker with
+    `should have direct metric with apply_sync`.
+  - one shutdown-send panic marker at `src/peer.rs:92:104` with
+    `should send to main: SendError { .. }`.
+  - 9,760 forwarded-stopped-peer markers, including 8,770 no-capacity markers
+    and 1,112 channel-closed markers, were reviewed as duplicate
+    stopped-forwarding storm evidence.
+  - 40 broadcast-alias and one connection-lost marker were reviewed as fallout.
+  - no invalid-service, path-not-found, closed-by-peer, or aborted-by-peer
+    evidence.
+- Duplicate mapping: ISSUE-063, ISSUE-139, and ISSUE-170.
+- Root-cause summary impact: no new root cause; this strengthens existing stale
+  route-sync, shutdown-send, and stopped-forwarding storm evidence without
+  adding a new issue.
+- Smallest fix proposal: guard or drop stale route sync when the direct metric
+  is gone, replace shutdown-path `expect("should send to main")` sends with
+  graceful closed-channel handling, and dedupe/coalesce `PeerStopped`
+  forwarding with bounded retry/backpressure behavior.
 
 ### Cycle after ISSUE-204 no-new cycle 284: broad invalid service panic
 
