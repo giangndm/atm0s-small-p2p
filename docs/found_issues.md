@@ -11,7 +11,7 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 274
+- Current consecutive no-new-issue cycles: 275
 - Stop condition requested by user: continue until 5 consecutive cycles find no
   new accepted issue.
 
@@ -5783,6 +5783,33 @@ the source of truth for evidence and reviewer decisions.
     `src/peer.rs:1092` with `got 2`.
 
 ## No-New-Issue Audit Cycles
+
+### Cycle after ISSUE-204 no-new cycle 275: valid stale sync panic
+
+- Result: no accepted non-duplicate issue.
+- Reviewer: `Aristotle the 6th`, forked subagent review, confirmed
+  duplicate/no-new.
+- Source and test evidence reviewed:
+  - `src/tests/fuzz.rs`
+  - `src/router.rs`
+  - `RUST_LOG=error P2P_FUZZ_SEED=275 P2P_FUZZ_NODES=9 P2P_FUZZ_STEPS=2400 cargo test fuzz_random_valid_node_actions_must_not_panic_connection_tasks -- --nocapture`
+    failed; the test assertion reported `seed=275, nodes=8, steps=2400`.
+- Evidence summary:
+  - exit status 101; log had 21 lines; the fuzz assertion at
+    `src/tests/fuzz.rs:183:5` reported background connection/service task
+    failure with `seed=275, nodes=8, steps=2400`.
+  - one `src/router.rs:76:66` panic marker with
+    `should have direct metric with apply_sync`.
+  - one connection-closed log line was reviewed as fallout.
+  - no invalid-service, shutdown-send, channel-closed, connection-lost,
+    closed-by-peer, path-not-found, no-capacity, forwarded-stop,
+    broadcast-data, open_bi, connect-answer, or aborted-by-peer evidence.
+- Duplicate mapping: ISSUE-063.
+- Root-cause summary impact: no new root cause; this strengthens existing stale
+  route-sync evidence without adding a new issue.
+- Smallest fix proposal: guard `Router::apply_sync` against missing direct
+  metrics, drop or ignore queued stale sync when the direct route is gone, and
+  keep seed `275` as regression evidence.
 
 ### Cycle after ISSUE-204 no-new cycle 274: broad invalid service and shutdown send panics
 
