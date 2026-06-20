@@ -7,9 +7,9 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Accepted issues: 204
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 167
+- Current consecutive no-new-issue cycles: 168
 - Stop condition: continue until 5 consecutive cycles find no new accepted
-  issue; currently 167/5 after ISSUE-204.
+  issue; currently 168/5 after ISSUE-204.
 
 ## Root Cause Summary
 
@@ -256,6 +256,17 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Recent Fuzz Evidence
 
+- Valid-action fuzz review:
+  `RUST_LOG=error P2P_FUZZ_SEED=168 P2P_FUZZ_NODES=8 P2P_FUZZ_STEPS=1800 cargo test fuzz_random_valid_node_actions_must_not_panic_connection_tasks -- --nocapture`
+  failed with duplicate evidence for ISSUE-063 only. Reviewer
+  `Dirac the 5th` confirmed the one `src/router.rs:76` direct-metric panic
+  marker is the existing stale `PeerData::Sync` root cause. The two
+  connection-lost logs were reviewed as lifecycle fallout around the same
+  disconnect/routing race. No ISSUE-053, ISSUE-139, or ISSUE-170 evidence was
+  present; there were no backpressure storm, WARN, or path-not-found logs. The
+  smallest fix proposal remains unchanged: replace the direct-route `expect`
+  with a checked direct-metric lookup and drop or recompute stale sync entries
+  when the direct metric is absent. No new issue was created.
 - Broad random fuzz review:
   `RUST_LOG=error P2P_FUZZ_SEED=167 P2P_FUZZ_NODES=8 P2P_FUZZ_STEPS=1800 cargo test fuzz_random_node_actions_must_not_panic_connection_tasks -- --nocapture`
   failed with duplicate evidence for ISSUE-063 and ISSUE-170. Reviewer
