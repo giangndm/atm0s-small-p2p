@@ -11,7 +11,7 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 78
+- Current consecutive no-new-issue cycles: 79
 - Stop condition requested by user: continue until 5 consecutive cycles find no
   new accepted issue.
 
@@ -5783,6 +5783,40 @@ the source of truth for evidence and reviewer decisions.
     `src/peer.rs:1092` with `got 2`.
 
 ## No-New-Issue Audit Cycles
+
+### Cycle after ISSUE-204 no-new cycle 79: sanitized churn duplicate outgoing send panic and stop storm
+
+- Result: no accepted non-duplicate issue.
+- Reviewer: `Meitner the 4th`, forked subagent review, confirmed
+  duplicate-only no-new classification.
+- Source and test evidence reviewed:
+  - `src/peer.rs`
+  - `src/peer/peer_internal.rs`
+  - `src/tests/fuzz.rs`
+  - `RUST_LOG=error P2P_FUZZ_SEED=79 P2P_FUZZ_NODES=8 P2P_FUZZ_STEPS=1800 cargo test fuzz_random_sanitized_node_churn_actions_must_not_panic_connection_tasks -- --nocapture`
+    failed.
+- Duplicate or too-close symptoms rejected:
+  - exit status 101.
+  - five background panics occurred at `src/peer.rs:133:113` with
+    `should send to main: SendError { .. }`.
+  - 221,765 `forward peer stopped over peer alias got error no available
+    capacity` logs and 2,660 `forward peer stopped over peer alias got error
+    channel closed` logs were emitted.
+  - the fuzz harness then failed at `src/tests/fuzz.rs:372:5`.
+  - the `src/peer.rs:133` panics map directly to ISSUE-139: early outgoing
+    `PeerConnectError` reporting can panic after main-loop shutdown because
+    `PeerConnection::new_connecting` reports early errors with
+    `main_tx.send(...).await.expect("should send to main")`. Existing score:
+    63/100.
+  - the PeerStopped forwarding storm is secondary amplification evidence for
+    ISSUE-170: stop forwarding lacks dedupe/TTL/tombstone suppression in cyclic
+    meshes. Existing score: 62/100.
+  - sanitized churn excludes invalid service ids and forged `PeerStopped`
+    messages, so this run narrows the primary failure to shutdown
+    send-to-main panic plus already-known stop forwarding amplification.
+- Root-cause summary impact: no new root cause; this sanitized-churn fuzz run
+  strengthens existing ISSUE-139 and ISSUE-170 evidence without adding
+  ISSUE-205.
 
 ### Cycle after ISSUE-204 no-new cycle 78: valid-action fuzz duplicate stale sync and stop storm
 
