@@ -267,6 +267,14 @@ the source of truth for evidence and reviewer decisions.
 - Evidence test:
   - `cargo test peer_stopped_for_seed_must_not_remove_active_seed_route -- --nocapture`
   - Failure summary: route to seed becomes `None`; expected active seed route.
+- Fix status: fixed by ISSUE-170 ownership validation in `87cf6ce`.
+  `MainEvent::PeerStopped(conn, peer)` now requires `conn` to be the direct
+  authenticated connection for `peer`, so a third-party stopped notification
+  cannot delete a configured seed route. The seed route evidence test now
+  passes, as do
+  `cargo test forged_peer_stopped_must_not_remove_third_party_route -- --nocapture`,
+  `cargo test peer_stopped_must_remove_stopped_neighbour_immediately -- --nocapture`,
+  and `cargo test peer_stopped -- --nocapture`.
 
 ### ISSUE-005: Discovery accepts advertisements for the local peer id
 
