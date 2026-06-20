@@ -4054,6 +4054,9 @@ the source of truth for evidence and reviewer decisions.
 - Category: correctness, pubsub membership stability, bad-network lifecycle
 - Score: 62/100
 - Reviewer: `Aquinas the 2nd`, confirmed.
+- Status: Fixed by replaying known remote pubsub membership to newly-created
+  local handles while preserving the existing first-local publisher/subscriber
+  behavior and broadcasts.
 - Affected code:
   - `src/service/pubsub_service.rs`: inbound `PublisherJoined` and heartbeat
     repair add `remote_publishers` and notify only currently-existing local
@@ -4084,6 +4087,8 @@ the source of truth for evidence and reviewer decisions.
     handles; the publisher event backlog contains only `PeerJoined(Local)` and
     no `PeerJoined(Remote(PeerId(3)))`, and the subscriber likewise misses the
     existing remote publisher.
+- Fixed verification:
+  - `cargo test new_local_pubsub_handles_must_observe_existing_remote_members -- --nocapture`
 
 ### ISSUE-143: Replicated KV full sync accepts stale terminal snapshot responses
 

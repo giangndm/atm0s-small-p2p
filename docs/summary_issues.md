@@ -2590,6 +2590,11 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   failed with duplicate evidence for ISSUE-142. Reviewer `Leibniz the 4th`
   confirmed new local pubsub handles still replay only local peer presence and
   miss already-known remote publishers/subscribers.
+- ISSUE-142 fixed: newly-created local pubsub publishers now replay known
+  remote subscribers, and newly-created local subscribers now replay known
+  remote publishers, without notifying existing local handles again or changing
+  first-local broadcasts. Verification:
+  `cargo test new_local_pubsub_handles_must_observe_existing_remote_members -- --nocapture`.
 - Steady-valid fuzz pass:
   `RUST_LOG=error P2P_FUZZ_SEED=50 P2P_FUZZ_NODES=8 P2P_FUZZ_STEPS=2200 cargo test fuzz_random_steady_valid_node_actions_must_not_panic_connection_tasks -- --nocapture`
   passed with no failing assertion or error logs. Reviewer `Epicurus the 4th`

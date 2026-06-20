@@ -417,6 +417,9 @@ impl PubsubService {
                     // notify that we already have local subscribers
                     Self::try_send_publisher_event(&tx, PublisherEvent::PeerJoined(PeerSrc::Local));
                 }
+                for peer in state.remote_subscribers.iter() {
+                    Self::try_send_publisher_event(&tx, PublisherEvent::PeerJoined(PeerSrc::Remote(*peer)));
+                }
                 if state.local_publishers.is_empty() {
                     // if this is first local_publisher => notify to all local_subscribers
                     for sub_tx in state.local_subscribers.values() {
@@ -451,6 +454,9 @@ impl PubsubService {
                 if !state.local_publishers.is_empty() {
                     // notify that we already have local publishers
                     Self::try_send_subscriber_event(&tx, SubscriberEvent::PeerJoined(PeerSrc::Local));
+                }
+                for peer in state.remote_publishers.iter() {
+                    Self::try_send_subscriber_event(&tx, SubscriberEvent::PeerJoined(PeerSrc::Remote(*peer)));
                 }
                 if state.local_subscribers.is_empty() {
                     // if this is first local_subsrciber => notify to all local_publishers
