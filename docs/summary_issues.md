@@ -11,7 +11,7 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 - Stop condition: continue until 5 consecutive cycles find no new accepted
   issue; currently 341/5 after ISSUE-204.
 - Fix phase status: ISSUE-001, ISSUE-003, ISSUE-004, ISSUE-005, ISSUE-006, ISSUE-007,
-  ISSUE-002, ISSUE-008, ISSUE-009, ISSUE-010, ISSUE-011, ISSUE-012, ISSUE-013, ISSUE-014, ISSUE-015, ISSUE-021, ISSUE-024, ISSUE-033, ISSUE-055, ISSUE-103, ISSUE-122, ISSUE-123,
+  ISSUE-002, ISSUE-008, ISSUE-009, ISSUE-010, ISSUE-011, ISSUE-012, ISSUE-013, ISSUE-014, ISSUE-015, ISSUE-021, ISSUE-024, ISSUE-033, ISSUE-055, ISSUE-103, ISSUE-118, ISSUE-122, ISSUE-123,
   ISSUE-124, ISSUE-125, ISSUE-126, ISSUE-127, ISSUE-128, ISSUE-129, ISSUE-130,
   ISSUE-131, ISSUE-132, ISSUE-133, ISSUE-134, ISSUE-135, ISSUE-136, ISSUE-137,
   ISSUE-140, ISSUE-143, ISSUE-145, ISSUE-147, ISSUE-148, ISSUE-150, ISSUE-151,
@@ -64,8 +64,8 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ### RC-3: Backpressure is inconsistent across async boundaries
 
-- Representative issues: ISSUE-049, ISSUE-050, ISSUE-056, ISSUE-118,
-  ISSUE-119, ISSUE-120, ISSUE-123, ISSUE-124, ISSUE-125, ISSUE-126,
+- Representative issues: ISSUE-049, ISSUE-050, ISSUE-056, ISSUE-119,
+  ISSUE-120, ISSUE-123, ISSUE-124, ISSUE-125, ISSUE-126,
   ISSUE-127, ISSUE-136, ISSUE-153,
   ISSUE-178, ISSUE-182, ISSUE-184, ISSUE-198, ISSUE-199,
   ISSUE-200, ISSUE-201, ISSUE-202, ISSUE-203, ISSUE-204.
@@ -186,6 +186,14 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Recently Fixed Issues
 
+- ISSUE-118: fixed by making `P2pNetwork::shutdown_gracefully` attempt
+  peer-stopped notifications concurrently with `futures::future::join_all`
+  under one outer one-second timeout. Root cause was a sequential per-peer
+  timeout around `send_wait`, which made shutdown latency scale by congested
+  peer count. The fix preserves best-effort logging, avoids detached tasks, and
+  still closes the endpoint after completion or the global deadline.
+  Verification:
+  `cargo test shutdown_gracefully_must_not_wait_one_second_per_congested_peer -- --nocapture`.
 - ISSUE-147: fixed by changing inbound `PeerMessage::Sync` handling in
   `PeerConnectionInternal::on_msg` from lossy `try_send` to bounded
   `send().await`. A briefly full main queue now backpressures the peer

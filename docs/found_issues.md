@@ -59,8 +59,8 @@ the source of truth for evidence and reviewer decisions.
 
 ### RC-3: Backpressure is inconsistent across async boundaries
 
-- Representative issues: ISSUE-049, ISSUE-050, ISSUE-056, ISSUE-118,
-  ISSUE-119, ISSUE-120, ISSUE-123, ISSUE-124, ISSUE-125, ISSUE-126,
+- Representative issues: ISSUE-049, ISSUE-050, ISSUE-056, ISSUE-119,
+  ISSUE-120, ISSUE-123, ISSUE-124, ISSUE-125, ISSUE-126,
   ISSUE-127, ISSUE-136, ISSUE-147, ISSUE-153, ISSUE-157,
   ISSUE-178, ISSUE-182, ISSUE-184, ISSUE-198, ISSUE-199.
 - Pattern: some paths use bounded channels and drop on `try_send`, some await
@@ -3220,7 +3220,8 @@ the source of truth for evidence and reviewer decisions.
   - `src/peer/peer_alias.rs`: `PeerConnectionAlias::send_wait` first awaits
     admission to the bounded peer control queue, then waits for the connection
     task to write the message and answer.
-- Impact: each congested peer control queue can consume its own one-second
+- Impact: fixed. Previously, each congested peer control queue could consume
+  its own one-second
   timeout before the next peer is attempted. With multiple congested or stalled
   peers, `shutdown_gracefully()` latency scales roughly with peer count and can
   delay `endpoint.close()` and process termination far beyond the apparent
@@ -3228,12 +3229,22 @@ the source of truth for evidence and reviewer decisions.
   fanout blocking, ISSUE-050's unicast blocking, ISSUE-056's stream-open queue
   blocking, ISSUE-051's received `PeerStopped` cleanup, and ISSUE-117's idle
   inbound stream-connect admission gap.
+- Root cause: `P2pNetwork::shutdown_gracefully` iterated peer aliases
+  sequentially and wrapped each `send_wait(PeerMessage::PeerStopped(...))` in
+  its own one-second timeout, so per-peer queue pressure multiplied shutdown
+  latency.
+- Fix status: fixed. Peer-stopped notifications are now built as futures,
+  awaited concurrently with `futures::future::join_all`, and bounded by a single
+  outer one-second timeout before `endpoint.close()`.
+- Smallest fix: preserve best-effort semantics by logging failed notifications,
+  avoid detached tasks by awaiting all notification futures in the shutdown
+  call, and keep the existing shutdown close path after the global deadline or
+  completion.
 - Evidence test:
   - `cargo test shutdown_gracefully_must_not_wait_one_second_per_congested_peer -- --nocapture`
-  - Failure summary: two synthetic peer aliases with full bounded control
-    queues make `timeout(Duration::from_millis(1500), node.shutdown_gracefully())`
-    expire before shutdown completes; expected graceful shutdown to use a global
-    deadline or parallel/best-effort peer notification.
+  - Fix verification: passes. Two synthetic peer aliases with full bounded
+    control queues no longer make
+    `timeout(Duration::from_millis(1500), node.shutdown_gracefully())` expire.
 
 ### ISSUE-119: Inbound unicast is silently dropped when the local service queue is full
 

@@ -261,13 +261,17 @@ impl<SECURE: HandshakeProtocol> P2pNetwork<SECURE> {
 
     pub async fn shutdown_gracefully(&mut self) {
         let conns = self.ctx.conns();
-        for conn in conns {
-            let local_id = self.local_id;
-            match tokio::time::timeout(Duration::from_secs(1), conn.send_wait(PeerMessage::PeerStopped(local_id))).await {
-                Ok(Ok(())) => {}
-                Ok(Err(err)) => log::warn!("[P2pNetwork] graceful shutdown notify failed: {err}"),
-                Err(err) => log::warn!("[P2pNetwork] graceful shutdown notify timeout: {err}"),
+        let local_id = self.local_id;
+        let notifications = conns.into_iter().map(|conn| async move { conn.send_wait(PeerMessage::PeerStopped(local_id)).await });
+        let notify_all = async {
+            for result in futures::future::join_all(notifications).await {
+                if let Err(err) = result {
+                    log::warn!("[P2pNetwork] graceful shutdown notify failed: {err}");
+                }
             }
+        };
+        if let Err(err) = tokio::time::timeout(Duration::from_secs(1), notify_all).await {
+            log::warn!("[P2pNetwork] graceful shutdown notify timeout: {err}");
         }
         self.shutdown();
     }
