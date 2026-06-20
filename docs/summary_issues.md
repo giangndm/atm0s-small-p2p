@@ -10,7 +10,7 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 - Current consecutive no-new-issue cycles: 341
 - Stop condition: continue until 5 consecutive cycles find no new accepted
   issue; currently 341/5 after ISSUE-204.
-- Fix phase status: ISSUE-003, ISSUE-004, ISSUE-006, ISSUE-053, ISSUE-063,
+- Fix phase status: ISSUE-003, ISSUE-004, ISSUE-006, ISSUE-007, ISSUE-053, ISSUE-063,
   ISSUE-139, and ISSUE-170 have focused fixes committed. ISSUE-003 is fixed by
   `cfc8e57`; ISSUE-004 is covered by the ISSUE-170 ownership-validation
   follow-up `87cf6ce`; earlier fixes are `648cfd0`, `2cbf096`, `15b788c`, and
@@ -204,6 +204,18 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   `cargo test active_path_should_not_jump_for_tiny_rtt_jitter -- --nocapture`,
   `cargo test direct_peer_route_must_not_be_replaced_by_relayed_path -- --nocapture`,
   and `cargo fmt -- --check`. Reviewer `Arendt the 7th` approved.
+- ISSUE-007: fixed by rejecting composed over-`MAX_HOPS` route metrics during
+  router sync ingestion. `RouterTable::apply_sync` now adds the direct
+  connection metric before storage and drops rows whose resulting
+  `relay_hops > MAX_HOPS`, causing existing paths for that connection to be
+  removed through the normal deletion path. Verified with
+  `cargo test should_reject_over_max_hops_for_forwarding -- --nocapture`,
+  `cargo test dont_create_sync_over_max_hops -- --nocapture`,
+  `cargo test should_remove_relay_path_after_disconnect -- --nocapture`,
+  `cargo test should_not_store_or_advertise_route_to_local_peer -- --nocapture`,
+  `cargo test active_path_should_not_jump_for_tiny_rtt_jitter -- --nocapture`,
+  `cargo test direct_peer_route_must_not_be_replaced_by_relayed_path -- --nocapture`,
+  and `cargo fmt -- --check`. Reviewer `Schrodinger the 7th` approved.
 - ISSUE-053: fixed by `648cfd0` with range-checked service table indexing.
   Verified with `cargo test ctx::tests -- --nocapture` and seed-340
   invalid-service fuzz passing without `src/ctx.rs` panics.

@@ -82,7 +82,14 @@ impl RouterTable {
             log::debug!("[RouterTable] ignore stale sync from removed connection {conn}");
             return;
         };
-        let mut new_paths = BTreeMap::<PeerId, PathMetric>::from_iter(sync.0.into_iter().filter(|(peer, _)| !self.peer_id.eq(peer)));
+        let mut new_paths = BTreeMap::<PeerId, PathMetric>::from_iter(sync.0.into_iter().filter_map(|(peer, mut metric)| {
+            if self.peer_id.eq(&peer) {
+                return None;
+            }
+
+            metric += direct_metric;
+            (metric.relay_hops <= MAX_HOPS).then_some((peer, metric))
+        }));
 
         // ensure we have memory for each sync paths
         for peer in new_paths.keys() {
@@ -94,9 +101,8 @@ impl RouterTable {
             let previous = memory.paths.contains_key(&conn);
             let current = new_paths.remove(peer);
             match (previous, current) {
-                (true, Some(mut new_metric)) => {
+                (true, Some(new_metric)) => {
                     // has update
-                    new_metric += direct_metric;
                     memory.paths.insert(conn, new_metric);
                     Self::select_best_for(peer, memory);
                 }
@@ -106,10 +112,9 @@ impl RouterTable {
                     memory.paths.remove(&conn);
                     Self::select_best_for(peer, memory);
                 }
-                (false, Some(mut new_metric)) => {
+                (false, Some(new_metric)) => {
                     // new create
                     log::info!("[RouterTable] create path for {peer}");
-                    new_metric += direct_metric;
                     memory.paths.insert(conn, new_metric);
                     Self::select_best_for(peer, memory);
                 }
@@ -398,7 +403,7 @@ mod tests {
         table.set_direct(conn3, peer3, 300);
 
         table.apply_sync(conn1, RouterTableSync(vec![(peer2, (MAX_HOPS, 200).into())]));
-        assert_eq!(table.next_remote(&peer2), Some((conn1, (MAX_HOPS + 1, 300).into())));
+        assert_eq!(table.next_remote(&peer2), None);
 
         // we shouldn't create sync with peer2 because it over MAX_HOPS
         assert_eq!(table.create_sync(&peer3), RouterTableSync(vec![(peer1, (0, 100).into())]));
@@ -416,7 +421,7 @@ mod tests {
         table.set_direct(conn1, peer1, 100);
 
         table.apply_sync(conn1, RouterTableSync(vec![(peer2, (MAX_HOPS, 200).into())]));
-        assert_eq!(table.next_remote(&peer2), Some((conn1, (MAX_HOPS + 1, 300).into())));
+        assert_eq!(table.next_remote(&peer2), None);
 
         // after disconnect peer1
         table.del_direct(&conn1);

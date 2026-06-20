@@ -330,6 +330,17 @@ the source of truth for evidence and reviewer decisions.
 - Evidence test:
   - `cargo test should_reject_over_max_hops_for_forwarding -- --nocapture`
   - Failure summary: route with `relay_hops: 7` is still selected.
+- Fix status: fixed by rejecting composed over-`MAX_HOPS` route metrics during
+  router sync ingestion. `RouterTable::apply_sync` now adds the direct
+  connection metric before storage and drops rows whose resulting
+  `relay_hops > MAX_HOPS`, so over-hop routes are not stored or used for local
+  forwarding. Verified with the evidence test plus
+  `cargo test dont_create_sync_over_max_hops -- --nocapture`,
+  `cargo test should_remove_relay_path_after_disconnect -- --nocapture`,
+  `cargo test should_not_store_or_advertise_route_to_local_peer -- --nocapture`,
+  `cargo test active_path_should_not_jump_for_tiny_rtt_jitter -- --nocapture`,
+  `cargo test direct_peer_route_must_not_be_replaced_by_relayed_path -- --nocapture`,
+  and `cargo fmt -- --check`. Reviewer `Schrodinger the 7th` approved.
 
 ### ISSUE-008: Routes learned from a peer are advertised back to that peer
 
