@@ -112,7 +112,11 @@ impl PeerDiscovery {
         }
     }
     pub fn remotes(&self) -> impl Iterator<Item = PeerAddress> + '_ {
-        self.remotes.iter().map(|(p, (_, a))| PeerAddress(*p, a.clone())).chain(self.seeds.iter().cloned())
+        let local_peer = self.local.as_ref().map(|(peer, _)| *peer);
+        self.remotes
+            .iter()
+            .map(|(p, (_, a))| PeerAddress(*p, a.clone()))
+            .chain(self.seeds.iter().filter(move |seed| Some(seed.peer_id()) != local_peer).cloned())
     }
 }
 

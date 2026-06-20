@@ -2653,6 +2653,14 @@ the source of truth for evidence and reviewer decisions.
   - Failure summary: after enabling local peer `1` with a configured seed
     `1@127.0.0.1:9000`, `PeerDiscovery::remotes()` still returns peer `1` as a
     remote candidate.
+- Fix status: fixed by filtering configured seeds whose peer id equals the
+  enabled local peer id in `PeerDiscovery::remotes()`, while preserving normal
+  configured seed retry behavior. Verified with the evidence test plus
+  `cargo test non_seed_discovered_peer_ages_out_but_seed_remains_retryable -- --nocapture`,
+  `cargo test graceful_stop_tombstone_keeps_seed_retry_address -- --nocapture`,
+  `cargo test apply_sync_rejects_local_peer_advertisement -- --nocapture`,
+  `cargo test apply_sync_must_not_duplicate_or_override_configured_seed -- --nocapture`,
+  and `cargo fmt -- --check`. Reviewer `Leibniz the 7th` approved.
 
 ### ISSUE-104: Metrics `Info` batches have no service-level row cap
 

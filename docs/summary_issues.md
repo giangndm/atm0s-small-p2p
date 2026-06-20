@@ -11,7 +11,7 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 - Stop condition: continue until 5 consecutive cycles find no new accepted
   issue; currently 341/5 after ISSUE-204.
 - Fix phase status: ISSUE-003, ISSUE-004, ISSUE-005, ISSUE-006, ISSUE-007,
-  ISSUE-008, ISSUE-009, ISSUE-055, ISSUE-053, ISSUE-063, ISSUE-139, and
+  ISSUE-008, ISSUE-009, ISSUE-055, ISSUE-103, ISSUE-053, ISSUE-063, ISSUE-139, and
   ISSUE-170 have focused fixes committed. ISSUE-003 is fixed by `cfc8e57`;
   ISSUE-004 is covered by the ISSUE-170 ownership-validation follow-up
   `87cf6ce`; earlier fixes are `648cfd0`, `2cbf096`, `15b788c`, and
@@ -264,6 +264,15 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   `cargo test non_seed_discovered_peer_ages_out_but_seed_remains_retryable -- --nocapture`,
   and `cargo fmt -- --check`. Reviewer `Singer the 7th` approved. The
   configured-seed-with-local-peer-id dial-candidate failure remains separate.
+- ISSUE-103: fixed by filtering configured seeds whose peer id equals the
+  enabled local peer id in `PeerDiscovery::remotes()`, while preserving normal
+  configured seed retry behavior. Verified with
+  `cargo test configured_seed_with_local_peer_id_must_not_be_dial_candidate -- --nocapture`,
+  `cargo test non_seed_discovered_peer_ages_out_but_seed_remains_retryable -- --nocapture`,
+  `cargo test graceful_stop_tombstone_keeps_seed_retry_address -- --nocapture`,
+  `cargo test apply_sync_rejects_local_peer_advertisement -- --nocapture`,
+  `cargo test apply_sync_must_not_duplicate_or_override_configured_seed -- --nocapture`,
+  and `cargo fmt -- --check`. Reviewer `Leibniz the 7th` approved.
 - ISSUE-053: fixed by `648cfd0` with range-checked service table indexing.
   Verified with `cargo test ctx::tests -- --nocapture` and seed-340
   invalid-service fuzz passing without `src/ctx.rs` panics.
