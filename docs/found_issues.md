@@ -11,7 +11,7 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 69
+- Current consecutive no-new-issue cycles: 70
 - Stop condition requested by user: continue until 5 consecutive cycles find no
   new accepted issue.
 
@@ -5783,6 +5783,34 @@ the source of truth for evidence and reviewer decisions.
     `src/peer.rs:1092` with `got 2`.
 
 ## No-New-Issue Audit Cycles
+
+### Cycle after ISSUE-204 no-new cycle 70: sanitized churn duplicate stale sync and stop storm
+
+- Result: no accepted non-duplicate issue.
+- Reviewer: `Mencius the 4th`, forked subagent review, confirmed
+  duplicate-only no-new classification.
+- Source and test evidence reviewed:
+  - `src/router.rs`
+  - `src/peer/peer_internal.rs`
+  - `src/tests/fuzz.rs`
+  - `RUST_LOG=error P2P_FUZZ_SEED=70 P2P_FUZZ_NODES=8 P2P_FUZZ_STEPS=1800 cargo test fuzz_random_sanitized_node_churn_actions_must_not_panic_connection_tasks -- --nocapture`
+    failed.
+- Duplicate or too-close symptoms rejected:
+  - exit status 101.
+  - 56,948 `forward peer stopped over peer alias got error no available
+    capacity` logs were emitted before the panic.
+  - one background panic occurred at `src/router.rs:76:66` with
+    `should have direct metric with apply_sync`.
+  - the fuzz harness then failed at `src/tests/fuzz.rs:372:5`.
+  - the `src/router.rs:76` panic maps directly to ISSUE-063: stale
+    `PeerData::Sync` reaches `RouterTable::apply_sync` after the direct
+    route/metric has already been removed. Existing score: 72/100.
+  - the no-capacity `PeerStopped` storm is secondary amplification evidence for
+    ISSUE-170: stop forwarding lacks dedupe/TTL/tombstone suppression in cyclic
+    meshes. Existing score: 62/100.
+- Root-cause summary impact: no new root cause; this sanitized-churn fuzz run
+  strengthens existing ISSUE-063 and ISSUE-170 evidence without adding
+  ISSUE-205.
 
 ### Cycle after ISSUE-204 no-new cycle 69: valid-action fuzz duplicate stale sync panic
 
