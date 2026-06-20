@@ -11,7 +11,7 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 - Stop condition: continue until 5 consecutive cycles find no new accepted
   issue; currently 341/5 after ISSUE-204.
 - Fix phase status: ISSUE-001, ISSUE-003, ISSUE-004, ISSUE-005, ISSUE-006, ISSUE-007,
-  ISSUE-002, ISSUE-008, ISSUE-009, ISSUE-011, ISSUE-013, ISSUE-014, ISSUE-015, ISSUE-021, ISSUE-033, ISSUE-055, ISSUE-103,
+  ISSUE-002, ISSUE-008, ISSUE-009, ISSUE-011, ISSUE-012, ISSUE-013, ISSUE-014, ISSUE-015, ISSUE-021, ISSUE-033, ISSUE-055, ISSUE-103,
   ISSUE-053, ISSUE-063, ISSUE-139, ISSUE-146, ISSUE-168, ISSUE-170,
   ISSUE-176, ISSUE-189, ISSUE-190, ISSUE-191, ISSUE-192, ISSUE-193,
   ISSUE-194, ISSUE-195, ISSUE-196, ISSUE-197, ISSUE-198, ISSUE-199,
@@ -182,6 +182,11 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Recently Fixed Issues
 
+- ISSUE-012: fixed by the same destination service queue reservation used for
+  ISSUE-011. A full destination service queue now prevents a successful stream
+  setup response, so the opener receives `Err(_)` instead of an orphan pipe.
+  Verified with
+  `cargo test open_stream_does_not_succeed_when_destination_service_queue_is_full -- --nocapture`.
 - ISSUE-011: fixed by reserving destination service queue capacity before
   sending a successful stream setup response. Closed destination service
   receivers now produce an error response to the opener instead of a successful

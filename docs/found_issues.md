@@ -461,6 +461,10 @@ the source of truth for evidence and reviewer decisions.
 
 ### ISSUE-012: `open_stream` succeeds when destination service queue is full
 
+- Status: fixed by the stream setup queue-reservation change. Local stream
+  delivery now reserves bounded destination service queue capacity before
+  sending a successful `StreamConnectRes`; if the queue cannot admit the stream
+  within the local delivery timeout, the opener receives an error response.
 - Category: high-load stability, pipe reliability
 - Score: 78/100
 - Reviewer: `Pasteur`, confirmed.
@@ -473,8 +477,8 @@ the source of truth for evidence and reviewer decisions.
   was never handed to the destination service.
 - Evidence test:
   - `cargo test open_stream_does_not_succeed_when_destination_service_queue_is_full -- --nocapture`
-  - Failure summary: the 11th stream reports success while the destination
-    service queue is already full and unconsumed.
+  - Fixed summary: once the destination service queue is full, the next
+    `open_stream` returns `Err(_)` instead of reporting success.
 
 ### ISSUE-013: `open_stream` to the local peer panics instead of returning an error
 
