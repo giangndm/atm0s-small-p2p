@@ -5082,17 +5082,26 @@ the source of truth for evidence and reviewer decisions.
 - Category: correctness, lifecycle stability
 - Score: 44/100
 - Reviewer: `Jason the 3rd`, confirmed after `Mill the 3rd` discovery.
+- Fix status: fixed by internal `PublisherHandleId` and `SubscriberHandleId`
+  generation tokens. Pubsub service state now keys local publishers and
+  subscribers by exact handle id rather than public local id, destroy removes
+  only the exact live handle, and publish/feedback controls require the exact
+  handle before acting.
 - Affected code:
   - `src/service/pubsub_service/publisher.rs`: `PublisherLocalId::rand`
-    creates an untracked random id.
+    still provides the public local id while `PublisherHandleId` adds an
+    internal owner token for service controls.
+  - `src/service/pubsub_service/subscriber.rs`: `SubscriberLocalId::rand`
+    still provides the public local id while `SubscriberHandleId` adds an
+    internal owner token for service controls.
   - `src/service/pubsub_service.rs`: `InternalMsg::PublisherCreated` calls
-    `state.local_publishers.insert(local_id, tx)` and silently replaces any
-    existing live publisher with the same local id.
+    `state.local_publishers.insert(handle_id, tx)`, so duplicate public
+    publisher local ids no longer replace another live handle.
   - `src/service/pubsub_service.rs`: `InternalMsg::SubscriberCreated` has the
-    same collision shape for `local_subscribers`.
+    same owner-token keying for `local_subscribers`.
   - `src/service/pubsub_service.rs`: destroy and action controls identify
-    local handles only by `(local_id, channel)`, so a collision can corrupt
-    ownership.
+    local handles by `(handle_id, channel)`, so a collision cannot corrupt
+    ownership of another live handle.
 - Impact: if two live local pubsub handles collide on their random local id,
   the later create replaces the first handle's event sender and disconnects the
   first live handle. Later destroy/action controls for the shared id can also
@@ -5108,17 +5117,21 @@ the source of truth for evidence and reviewer decisions.
   local id.
 - Evidence test:
   - `cargo test duplicate_publisher_local_id_must_not_detach_live_handle -- --nocapture`
-  - Failure summary: after two `PublisherCreated` controls use the same
+  - Current result: passes. After two `PublisherCreated` controls use the same
     `PublisherLocalId`, the first publisher receiver returns
-    `Err(Disconnected)` instead of receiving `PeerJoined(Local)` from a later
-    local subscriber join.
+    `PeerJoined(Local)` from a later local subscriber join instead of
+    `Err(Disconnected)`.
   - Additional reviewer `Noether the 2nd` accepted
     `cargo test duplicate_subscriber_local_id_must_not_detach_live_handle -- --nocapture`
     as subscriber-side evidence for the same issue.
-  - Additional failure summary: after two `SubscriberCreated` controls use the
+  - Current result: passes. After two `SubscriberCreated` controls use the
     same `SubscriberLocalId`, the first subscriber receiver returns
-    `Err(Disconnected)` instead of receiving `PeerJoined(Local)` from a later
-    local publisher join.
+    `PeerJoined(Local)` from a later local publisher join instead of
+    `Err(Disconnected)`.
+  - Broad `cargo test pubsub -- --nocapture` still fails on separate accepted
+    issues including stale requesters, remote membership retention/removal,
+    phantom channel cleanup/resource limits, RPC timeout/backpressure,
+    unauthorized remote membership, method bounds, and object serialization.
 
 ### ISSUE-169: Stream open hangs while writing connect request to stalled peer
 

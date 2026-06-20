@@ -12,9 +12,9 @@ use std::{
 
 use anyhow::anyhow;
 use derive_more::derive::{Display, From};
-use publisher::PublisherLocalId;
+use publisher::{PublisherHandleId, PublisherLocalId};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
-use subscriber::SubscriberLocalId;
+use subscriber::{SubscriberHandleId, SubscriberLocalId};
 use thiserror::Error;
 use tokio::{
     select,
@@ -135,19 +135,19 @@ pub(crate) fn encode_empty_heartbeat_for_test() -> Vec<u8> {
 }
 
 enum InternalMsg {
-    PublisherCreated(PublisherLocalId, PubsubChannelId, UnboundedSender<PublisherEvent>),
-    PublisherDestroyed(PublisherLocalId, PubsubChannelId),
-    SubscriberCreated(SubscriberLocalId, PubsubChannelId, UnboundedSender<SubscriberEvent>),
-    SubscriberDestroyed(SubscriberLocalId, PubsubChannelId),
+    PublisherCreated(PublisherHandleId, PubsubChannelId, UnboundedSender<PublisherEvent>),
+    PublisherDestroyed(PublisherHandleId, PubsubChannelId),
+    SubscriberCreated(SubscriberHandleId, PubsubChannelId, UnboundedSender<SubscriberEvent>),
+    SubscriberDestroyed(SubscriberHandleId, PubsubChannelId),
     GuestPublish(PubsubChannelId, Vec<u8>),
     GuestPublishRpc(PubsubChannelId, Vec<u8>, String, oneshot::Sender<Result<Vec<u8>, PubsubRpcError>>, Duration),
-    Publish(PublisherLocalId, PubsubChannelId, Vec<u8>),
-    PublishRpc(PublisherLocalId, PubsubChannelId, Vec<u8>, String, oneshot::Sender<Result<Vec<u8>, PubsubRpcError>>, Duration),
+    Publish(PublisherHandleId, PubsubChannelId, Vec<u8>),
+    PublishRpc(PublisherHandleId, PubsubChannelId, Vec<u8>, String, oneshot::Sender<Result<Vec<u8>, PubsubRpcError>>, Duration),
     PublishRpcAnswer(RpcId, PeerSrc, Vec<u8>),
     GuestFeedback(PubsubChannelId, Vec<u8>),
     GuestFeedbackRpc(PubsubChannelId, Vec<u8>, String, oneshot::Sender<Result<Vec<u8>, PubsubRpcError>>, Duration),
-    Feedback(SubscriberLocalId, PubsubChannelId, Vec<u8>),
-    FeedbackRpc(SubscriberLocalId, PubsubChannelId, Vec<u8>, String, oneshot::Sender<Result<Vec<u8>, PubsubRpcError>>, Duration),
+    Feedback(SubscriberHandleId, PubsubChannelId, Vec<u8>),
+    FeedbackRpc(SubscriberHandleId, PubsubChannelId, Vec<u8>, String, oneshot::Sender<Result<Vec<u8>, PubsubRpcError>>, Duration),
     FeedbackRpcAnswer(RpcId, PeerSrc, Vec<u8>),
 }
 
@@ -163,8 +163,8 @@ pub struct PubsubServiceRequester {
 struct PubsubChannelState {
     remote_publishers: HashSet<PeerId>,
     remote_subscribers: HashSet<PeerId>,
-    local_publishers: HashMap<PublisherLocalId, UnboundedSender<PublisherEvent>>,
-    local_subscribers: HashMap<SubscriberLocalId, UnboundedSender<SubscriberEvent>>,
+    local_publishers: HashMap<PublisherHandleId, UnboundedSender<PublisherEvent>>,
+    local_subscribers: HashMap<SubscriberHandleId, UnboundedSender<SubscriberEvent>>,
 }
 
 pub struct PubsubService {
@@ -409,8 +409,8 @@ impl PubsubService {
     #[allow(clippy::collapsible_else_if)]
     async fn on_internal(&mut self, control: InternalMsg) -> anyhow::Result<()> {
         match control {
-            InternalMsg::PublisherCreated(local_id, channel, tx) => {
-                log::info!("[PubsubService] local created pub channel {channel} / {local_id}");
+            InternalMsg::PublisherCreated(handle_id, channel, tx) => {
+                log::info!("[PubsubService] local created pub channel {channel} / {handle_id}");
                 let state = self.channels.entry(channel).or_default();
                 if !state.local_subscribers.is_empty() {
                     // notify that we already have local subscribers
@@ -421,17 +421,21 @@ impl PubsubService {
                     for (_, sub_tx) in state.local_subscribers.iter() {
                         let _ = sub_tx.send(SubscriberEvent::PeerJoined(PeerSrc::Local));
                     }
-                    state.local_publishers.insert(local_id, tx);
+                    state.local_publishers.insert(handle_id, tx);
                     self.broadcast(&PubsubMessage::PublisherJoined(channel)).await;
                 } else {
-                    state.local_publishers.insert(local_id, tx);
+                    state.local_publishers.insert(handle_id, tx);
                 }
             }
-            InternalMsg::PublisherDestroyed(local_id, channel) => {
-                log::info!("[PubsubService] local destroyed pub channel {channel} / {local_id}");
+            InternalMsg::PublisherDestroyed(handle_id, channel) => {
+                log::info!("[PubsubService] local destroyed pub channel {channel} / {handle_id}");
 
-                let state = self.channels.entry(channel).or_default();
-                state.local_publishers.remove(&local_id);
+                let Some(state) = self.channels.get_mut(&channel) else {
+                    return Ok(());
+                };
+                if state.local_publishers.remove(&handle_id).is_none() {
+                    return Ok(());
+                }
                 if state.local_publishers.is_empty() {
                     // if this is last local_publisher => notify all subscribers
                     for (_, sub_tx) in state.local_subscribers.iter() {
@@ -440,8 +444,8 @@ impl PubsubService {
                     self.broadcast(&PubsubMessage::PublisherLeaved(channel)).await;
                 }
             }
-            InternalMsg::SubscriberCreated(local_id, channel, tx) => {
-                log::info!("[PubsubService] local created sub channel {channel} / {local_id}");
+            InternalMsg::SubscriberCreated(handle_id, channel, tx) => {
+                log::info!("[PubsubService] local created sub channel {channel} / {handle_id}");
                 let state = self.channels.entry(channel).or_default();
                 if !state.local_publishers.is_empty() {
                     // notify that we already have local publishers
@@ -452,16 +456,20 @@ impl PubsubService {
                     for (_, pub_tx) in state.local_publishers.iter() {
                         let _ = pub_tx.send(PublisherEvent::PeerJoined(PeerSrc::Local));
                     }
-                    state.local_subscribers.insert(local_id, tx);
+                    state.local_subscribers.insert(handle_id, tx);
                     self.broadcast(&PubsubMessage::SubscriberJoined(channel)).await;
                 } else {
-                    state.local_subscribers.insert(local_id, tx);
+                    state.local_subscribers.insert(handle_id, tx);
                 }
             }
-            InternalMsg::SubscriberDestroyed(local_id, channel) => {
-                log::info!("[PubsubService] local destroyed sub channel {channel} / {local_id}");
-                let state = self.channels.entry(channel).or_default();
-                state.local_subscribers.remove(&local_id);
+            InternalMsg::SubscriberDestroyed(handle_id, channel) => {
+                log::info!("[PubsubService] local destroyed sub channel {channel} / {handle_id}");
+                let Some(state) = self.channels.get_mut(&channel) else {
+                    return Ok(());
+                };
+                if state.local_subscribers.remove(&handle_id).is_none() {
+                    return Ok(());
+                }
                 if state.local_subscribers.is_empty() {
                     // if this is last local_subscriber => notify all publishers
                     for (_, pub_tx) in state.local_publishers.iter() {
@@ -505,8 +513,11 @@ impl PubsubService {
                     let _ = tx.send(Err(PubsubRpcError::NoDestination));
                 }
             }
-            InternalMsg::Publish(_local_id, channel, vec) => {
+            InternalMsg::Publish(handle_id, channel, vec) => {
                 if let Some(state) = self.channels.get(&channel) {
+                    if !state.local_publishers.contains_key(&handle_id) {
+                        return Ok(());
+                    }
                     for (_, sub_tx) in state.local_subscribers.iter() {
                         let _ = sub_tx.send(SubscriberEvent::Publish(vec.clone()));
                     }
@@ -515,8 +526,12 @@ impl PubsubService {
                     }
                 }
             }
-            InternalMsg::PublishRpc(_local_id, channel, data, method, tx, timeout) => {
+            InternalMsg::PublishRpc(handle_id, channel, data, method, tx, timeout) => {
                 if let Some(state) = self.channels.get(&channel) {
+                    if !state.local_publishers.contains_key(&handle_id) {
+                        let _ = tx.send(Err(PubsubRpcError::NoDestination));
+                        return Ok(());
+                    }
                     let req_id = RpcId::rand();
                     if state.local_subscribers.is_empty() && state.remote_subscribers.is_empty() {
                         let _ = tx.send(Err(PubsubRpcError::NoDestination));
@@ -575,8 +590,11 @@ impl PubsubService {
                     let _ = tx.send(Err(PubsubRpcError::NoDestination));
                 }
             }
-            InternalMsg::Feedback(_local_id, channel, vec) => {
+            InternalMsg::Feedback(handle_id, channel, vec) => {
                 if let Some(state) = self.channels.get(&channel) {
+                    if !state.local_subscribers.contains_key(&handle_id) {
+                        return Ok(());
+                    }
                     for (_, pub_tx) in state.local_publishers.iter() {
                         let _ = pub_tx.send(PublisherEvent::Feedback(vec.clone()));
                     }
@@ -585,8 +603,12 @@ impl PubsubService {
                     }
                 }
             }
-            InternalMsg::FeedbackRpc(_local_id, channel, data, method, tx, timeout) => {
+            InternalMsg::FeedbackRpc(handle_id, channel, data, method, tx, timeout) => {
                 if let Some(state) = self.channels.get(&channel) {
+                    if !state.local_subscribers.contains_key(&handle_id) {
+                        let _ = tx.send(Err(PubsubRpcError::NoDestination));
+                        return Ok(());
+                    }
                     let req_id = RpcId::rand();
                     if state.local_publishers.is_empty() && state.remote_publishers.is_empty() {
                         let _ = tx.send(Err(PubsubRpcError::NoDestination));
@@ -740,6 +762,14 @@ mod test {
         PubsubService::new(service)
     }
 
+    fn publisher_handle(local_id: PublisherLocalId) -> PublisherHandleId {
+        PublisherHandleId::new(local_id)
+    }
+
+    fn subscriber_handle(local_id: SubscriberLocalId) -> SubscriberHandleId {
+        SubscriberHandleId::new(local_id)
+    }
+
     #[tokio::test]
     async fn pubsub_internal_control_backlog_must_be_bounded() {
         const MAX_PENDING_CONTROLS: usize = 1024;
@@ -766,7 +796,7 @@ mod test {
         let (sub_tx, _sub_rx) = unbounded_channel();
 
         service
-            .on_internal(InternalMsg::SubscriberCreated(SubscriberLocalId::rand(), channel, sub_tx))
+            .on_internal(InternalMsg::SubscriberCreated(subscriber_handle(SubscriberLocalId::rand()), channel, sub_tx))
             .await
             .expect("subscriber should be registered");
 
@@ -793,13 +823,7 @@ mod test {
         let (tx, mut rx) = oneshot::channel();
 
         service
-            .on_internal(InternalMsg::GuestPublishRpc(
-                channel,
-                b"payload".to_vec(),
-                "method".to_string(),
-                tx,
-                Duration::from_secs(60),
-            ))
+            .on_internal(InternalMsg::GuestPublishRpc(channel, b"payload".to_vec(), "method".to_string(), tx, Duration::from_secs(60)))
             .await
             .expect("RPC should process");
 
@@ -808,10 +832,7 @@ mod test {
             Ok(Err(PubsubRpcError::NoDestination)),
             "if every remote send fails immediately, RPC must fail as NoDestination instead of waiting for timeout"
         );
-        assert!(
-            service.publish_rpc_reqs.is_empty(),
-            "failed fanout must not leave a pending RPC request"
-        );
+        assert!(service.publish_rpc_reqs.is_empty(), "failed fanout must not leave a pending RPC request");
     }
 
     #[tokio::test]
@@ -822,20 +843,14 @@ mod test {
         drop(sub_rx);
 
         service
-            .on_internal(InternalMsg::SubscriberCreated(SubscriberLocalId::rand(), channel, sub_tx))
+            .on_internal(InternalMsg::SubscriberCreated(subscriber_handle(SubscriberLocalId::rand()), channel, sub_tx))
             .await
             .expect("closed subscriber sender should still reach current broken state");
 
         let (tx, mut rx) = oneshot::channel();
 
         service
-            .on_internal(InternalMsg::GuestPublishRpc(
-                channel,
-                b"payload".to_vec(),
-                "method".to_string(),
-                tx,
-                Duration::from_secs(60),
-            ))
+            .on_internal(InternalMsg::GuestPublishRpc(channel, b"payload".to_vec(), "method".to_string(), tx, Duration::from_secs(60)))
             .await
             .expect("RPC should process");
 
@@ -844,10 +859,7 @@ mod test {
             Ok(Err(PubsubRpcError::NoDestination)),
             "if every local RPC event send fails immediately, RPC must fail as NoDestination instead of waiting for timeout"
         );
-        assert!(
-            service.publish_rpc_reqs.is_empty(),
-            "failed local fanout must not leave a pending RPC request"
-        );
+        assert!(service.publish_rpc_reqs.is_empty(), "failed local fanout must not leave a pending RPC request");
     }
 
     #[tokio::test]
@@ -881,7 +893,7 @@ mod test {
         let joined = bincode::serialize(&PubsubMessage::PublisherJoined(channel)).expect("test message should serialize");
 
         service
-            .on_internal(InternalMsg::SubscriberCreated(SubscriberLocalId::rand(), channel, sub_tx))
+            .on_internal(InternalMsg::SubscriberCreated(subscriber_handle(SubscriberLocalId::rand()), channel, sub_tx))
             .await
             .expect("subscriber should be registered");
 
@@ -905,7 +917,7 @@ mod test {
         let (sub_tx, sub_rx) = unbounded_channel();
 
         service
-            .on_internal(InternalMsg::SubscriberCreated(SubscriberLocalId::rand(), channel, sub_tx))
+            .on_internal(InternalMsg::SubscriberCreated(subscriber_handle(SubscriberLocalId::rand()), channel, sub_tx))
             .await
             .expect("subscriber should be registered");
 
@@ -930,7 +942,7 @@ mod test {
         let (pub_tx, pub_rx) = unbounded_channel();
 
         service
-            .on_internal(InternalMsg::PublisherCreated(PublisherLocalId::rand(), channel, pub_tx))
+            .on_internal(InternalMsg::PublisherCreated(publisher_handle(PublisherLocalId::rand()), channel, pub_tx))
             .await
             .expect("publisher should be registered");
 
@@ -939,11 +951,7 @@ mod test {
             service.on_service(P2pServiceEvent::Unicast(from_peer, payload)).await.expect("feedback should be processed");
         }
 
-        assert!(
-            pub_rx.len() <= MAX_LOCAL_EVENT_BACKLOG,
-            "undrained local publisher event backlog must be bounded, got {}",
-            pub_rx.len()
-        );
+        assert!(pub_rx.len() <= MAX_LOCAL_EVENT_BACKLOG, "undrained local publisher event backlog must be bounded, got {}", pub_rx.len());
     }
 
     #[tokio::test]
@@ -960,11 +968,11 @@ mod test {
         state.remote_subscribers.insert(remote_subscriber);
 
         service
-            .on_internal(InternalMsg::PublisherCreated(PublisherLocalId::rand(), channel, pub_tx))
+            .on_internal(InternalMsg::PublisherCreated(publisher_handle(PublisherLocalId::rand()), channel, pub_tx))
             .await
             .expect("publisher should be registered");
         service
-            .on_internal(InternalMsg::SubscriberCreated(SubscriberLocalId::rand(), channel, sub_tx))
+            .on_internal(InternalMsg::SubscriberCreated(subscriber_handle(SubscriberLocalId::rand()), channel, sub_tx))
             .await
             .expect("subscriber should be registered");
 
@@ -1000,7 +1008,7 @@ mod test {
 
         let (sub_tx, mut sub_rx) = unbounded_channel();
         service
-            .on_internal(InternalMsg::SubscriberCreated(SubscriberLocalId::rand(), channel, sub_tx))
+            .on_internal(InternalMsg::SubscriberCreated(subscriber_handle(SubscriberLocalId::rand()), channel, sub_tx))
             .await
             .expect("late subscriber should be registered");
 
@@ -1031,7 +1039,7 @@ mod test {
             let channel = PubsubChannelId(channel as u64 + 10);
             let (sub_tx, _sub_rx) = unbounded_channel();
             service
-                .on_internal(InternalMsg::SubscriberCreated(SubscriberLocalId::rand(), channel, sub_tx))
+                .on_internal(InternalMsg::SubscriberCreated(subscriber_handle(SubscriberLocalId::rand()), channel, sub_tx))
                 .await
                 .expect("subscriber should be registered");
             heartbeats.push(ChannelHeartbeat {
@@ -1060,13 +1068,14 @@ mod test {
         for channel in 0..=MAX_EMPTY_CHANNELS {
             let channel = PubsubChannelId(channel as u64 + 10);
             let local_id = SubscriberLocalId::rand();
+            let handle_id = subscriber_handle(local_id);
             let (sub_tx, _sub_rx) = unbounded_channel();
 
             service
-                .on_internal(InternalMsg::SubscriberCreated(local_id, channel, sub_tx))
+                .on_internal(InternalMsg::SubscriberCreated(handle_id, channel, sub_tx))
                 .await
                 .expect("subscriber should be registered");
-            service.on_internal(InternalMsg::SubscriberDestroyed(local_id, channel)).await.expect("subscriber should be destroyed");
+            service.on_internal(InternalMsg::SubscriberDestroyed(handle_id, channel)).await.expect("subscriber should be destroyed");
         }
 
         let empty_channels = service
@@ -1088,11 +1097,11 @@ mod test {
         let subscriber_channel = PubsubChannelId(78);
 
         service
-            .on_internal(InternalMsg::PublisherDestroyed(PublisherLocalId::rand(), publisher_channel))
+            .on_internal(InternalMsg::PublisherDestroyed(publisher_handle(PublisherLocalId::rand()), publisher_channel))
             .await
             .expect("stale publisher destroy should be processed");
         service
-            .on_internal(InternalMsg::SubscriberDestroyed(SubscriberLocalId::rand(), subscriber_channel))
+            .on_internal(InternalMsg::SubscriberDestroyed(subscriber_handle(SubscriberLocalId::rand()), subscriber_channel))
             .await
             .expect("stale subscriber destroy should be processed");
 
@@ -1116,15 +1125,15 @@ mod test {
         let (sub_tx, _sub_rx) = unbounded_channel();
 
         service
-            .on_internal(InternalMsg::PublisherCreated(local_id, channel, first_pub_tx))
+            .on_internal(InternalMsg::PublisherCreated(publisher_handle(local_id), channel, first_pub_tx))
             .await
             .expect("first publisher should be registered");
         service
-            .on_internal(InternalMsg::PublisherCreated(local_id, channel, second_pub_tx))
+            .on_internal(InternalMsg::PublisherCreated(publisher_handle(local_id), channel, second_pub_tx))
             .await
             .expect("duplicate publisher id should be handled without detaching the first handle");
         service
-            .on_internal(InternalMsg::SubscriberCreated(SubscriberLocalId::rand(), channel, sub_tx))
+            .on_internal(InternalMsg::SubscriberCreated(subscriber_handle(SubscriberLocalId::rand()), channel, sub_tx))
             .await
             .expect("subscriber should be registered");
 
@@ -1145,15 +1154,15 @@ mod test {
         let (pub_tx, _pub_rx) = unbounded_channel();
 
         service
-            .on_internal(InternalMsg::SubscriberCreated(local_id, channel, first_sub_tx))
+            .on_internal(InternalMsg::SubscriberCreated(subscriber_handle(local_id), channel, first_sub_tx))
             .await
             .expect("first subscriber should be registered");
         service
-            .on_internal(InternalMsg::SubscriberCreated(local_id, channel, second_sub_tx))
+            .on_internal(InternalMsg::SubscriberCreated(subscriber_handle(local_id), channel, second_sub_tx))
             .await
             .expect("duplicate subscriber id should be handled without detaching the first handle");
         service
-            .on_internal(InternalMsg::PublisherCreated(PublisherLocalId::rand(), channel, pub_tx))
+            .on_internal(InternalMsg::PublisherCreated(publisher_handle(PublisherLocalId::rand()), channel, pub_tx))
             .await
             .expect("publisher should be registered");
 
@@ -1172,7 +1181,7 @@ mod test {
         let (sub_tx, mut sub_rx) = unbounded_channel();
 
         service
-            .on_internal(InternalMsg::SubscriberCreated(SubscriberLocalId::rand(), channel, sub_tx))
+            .on_internal(InternalMsg::SubscriberCreated(subscriber_handle(SubscriberLocalId::rand()), channel, sub_tx))
             .await
             .expect("subscriber should be registered");
 
@@ -1184,19 +1193,13 @@ mod test {
         assert_eq!(sub_rx.try_recv(), Ok(SubscriberEvent::PeerJoined(PeerSrc::Remote(remote))));
 
         let stale_leave = bincode::serialize(&PubsubMessage::PublisherLeaved(channel)).expect("leave message should serialize");
-        service
-            .on_service(P2pServiceEvent::Unicast(remote, stale_leave))
-            .await
-            .expect("stale leave should be processed");
+        service.on_service(P2pServiceEvent::Unicast(remote, stale_leave)).await.expect("stale leave should be processed");
 
         assert!(
             service.channels.get(&channel).expect("channel should exist").remote_publishers.contains(&remote),
             "stale PublisherLeaved must not remove a publisher confirmed by a newer heartbeat"
         );
-        assert!(
-            sub_rx.try_recv().is_err(),
-            "stale PublisherLeaved must not emit PeerLeaved for a still-live remote publisher"
-        );
+        assert!(sub_rx.try_recv().is_err(), "stale PublisherLeaved must not emit PeerLeaved for a still-live remote publisher");
     }
 
     #[tokio::test]
@@ -1208,7 +1211,7 @@ mod test {
         let (sub_tx, mut sub_rx) = unbounded_channel();
 
         service
-            .on_internal(InternalMsg::SubscriberCreated(SubscriberLocalId::rand(), channel, sub_tx))
+            .on_internal(InternalMsg::SubscriberCreated(subscriber_handle(SubscriberLocalId::rand()), channel, sub_tx))
             .await
             .expect("subscriber should be registered");
 

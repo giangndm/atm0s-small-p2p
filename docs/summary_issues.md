@@ -12,10 +12,10 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   issue; currently 341/5 after ISSUE-204.
 - Fix phase status: ISSUE-003, ISSUE-004, ISSUE-005, ISSUE-006, ISSUE-007,
   ISSUE-002, ISSUE-008, ISSUE-009, ISSUE-021, ISSUE-033, ISSUE-055, ISSUE-103,
-  ISSUE-053, ISSUE-063, ISSUE-139, ISSUE-146, ISSUE-170, ISSUE-176,
-  ISSUE-189, ISSUE-190, ISSUE-191, ISSUE-192, ISSUE-193, ISSUE-195,
-  ISSUE-196, ISSUE-197, ISSUE-198, ISSUE-199, ISSUE-200, ISSUE-201,
-  ISSUE-202, ISSUE-203, and ISSUE-204 have focused fixes committed.
+  ISSUE-053, ISSUE-063, ISSUE-139, ISSUE-146, ISSUE-168, ISSUE-170,
+  ISSUE-176, ISSUE-189, ISSUE-190, ISSUE-191, ISSUE-192, ISSUE-193,
+  ISSUE-195, ISSUE-196, ISSUE-197, ISSUE-198, ISSUE-199, ISSUE-200,
+  ISSUE-201, ISSUE-202, ISSUE-203, and ISSUE-204 have focused fixes committed.
   ISSUE-003 is fixed by `cfc8e57`;
   ISSUE-004 is covered by the ISSUE-170 ownership-validation follow-up
   `87cf6ce`; earlier fixes are `648cfd0`, `2cbf096`, `15b788c`, and
@@ -181,6 +181,16 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Recently Fixed Issues
 
+- ISSUE-168: fixed by internal `PublisherHandleId` and `SubscriberHandleId`
+  generation tokens. Pubsub local publisher/subscriber maps are now keyed by
+  exact handle id, duplicate public local ids no longer replace another live
+  handle, destroy removes only the exact handle, and publish/feedback controls
+  require the exact live handle before acting. Verified with
+  `cargo test duplicate_publisher_local_id_must_not_detach_live_handle -- --nocapture`,
+  `cargo test duplicate_subscriber_local_id_must_not_detach_live_handle -- --nocapture`,
+  and `cargo fmt -- --check`. Stale requesters, phantom channel creation,
+  remote membership retention/removal, RPC timeout/backpressure, and
+  unauthorized/stale remote membership remain separate issues.
 - ISSUE-204: fixed by `MetricsService::pending_scan_responses` plus bounded
   `requester.send_unicast(...)` response tasks, so duplicate metrics scans from
   one requester coalesce while a response is still backpressured. Verified with

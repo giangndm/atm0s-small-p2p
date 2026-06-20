@@ -1,4 +1,6 @@
 use std::{
+    fmt,
+    sync::atomic::{AtomicU64, Ordering},
     task::{Context, Poll},
     time::Duration,
 };
@@ -23,6 +25,28 @@ impl SubscriberLocalId {
     #[cfg(test)]
     pub(crate) fn from_raw_for_test(id: u64) -> Self {
         Self(id)
+    }
+}
+
+#[derive(Debug, Hash, PartialEq, Eq, Clone, Copy)]
+pub(crate) struct SubscriberHandleId {
+    local_id: SubscriberLocalId,
+    owner: u64,
+}
+
+impl SubscriberHandleId {
+    pub(crate) fn new(local_id: SubscriberLocalId) -> Self {
+        static NEXT_OWNER: AtomicU64 = AtomicU64::new(1);
+        Self {
+            local_id,
+            owner: NEXT_OWNER.fetch_add(1, Ordering::Relaxed),
+        }
+    }
+}
+
+impl fmt::Display for SubscriberHandleId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}#{}", self.local_id, self.owner)
     }
 }
 
@@ -52,6 +76,7 @@ pub enum SubscriberEventOb<Fb> {
 
 pub struct Subscriber {
     local_id: SubscriberLocalId,
+    handle_id: SubscriberHandleId,
     channel_id: PubsubChannelId,
     control_tx: UnboundedSender<InternalMsg>,
     requester: SubscriberRequester,
@@ -62,14 +87,16 @@ impl Subscriber {
     pub(super) fn build(channel_id: PubsubChannelId, control_tx: UnboundedSender<InternalMsg>) -> Self {
         let (sub_tx, sub_rx) = unbounded_channel();
         let local_id = SubscriberLocalId::rand();
+        let handle_id = SubscriberHandleId::new(local_id);
         log::info!("[Subscriber {channel_id}/{local_id}] created");
-        let _ = control_tx.send(InternalMsg::SubscriberCreated(local_id, channel_id, sub_tx));
+        let _ = control_tx.send(InternalMsg::SubscriberCreated(handle_id, channel_id, sub_tx));
 
         Self {
             local_id,
+            handle_id,
             channel_id,
             control_tx: control_tx.clone(),
-            requester: SubscriberRequester { local_id, channel_id, control_tx },
+            requester: SubscriberRequester { handle_id, channel_id, control_tx },
             sub_rx,
         }
     }
@@ -126,20 +153,20 @@ impl Subscriber {
 impl Drop for Subscriber {
     fn drop(&mut self) {
         log::info!("[Subscriber {}/{}] destroy", self.channel_id, self.local_id);
-        let _ = self.control_tx.send(InternalMsg::SubscriberDestroyed(self.local_id, self.channel_id));
+        let _ = self.control_tx.send(InternalMsg::SubscriberDestroyed(self.handle_id, self.channel_id));
     }
 }
 
 #[derive(Debug, Clone)]
 pub struct SubscriberRequester {
-    local_id: SubscriberLocalId,
+    handle_id: SubscriberHandleId,
     channel_id: PubsubChannelId,
     control_tx: UnboundedSender<InternalMsg>,
 }
 
 impl SubscriberRequester {
     pub async fn feedback(&self, data: Vec<u8>) -> anyhow::Result<()> {
-        self.control_tx.send(InternalMsg::Feedback(self.local_id, self.channel_id, data))?;
+        self.control_tx.send(InternalMsg::Feedback(self.handle_id, self.channel_id, data))?;
         Ok(())
     }
 
@@ -150,7 +177,7 @@ impl SubscriberRequester {
 
     pub async fn feedback_rpc(&self, method: &str, data: Vec<u8>, timeout: Duration) -> anyhow::Result<Vec<u8>> {
         let (tx, rx) = oneshot::channel::<Result<Vec<u8>, PubsubRpcError>>();
-        self.control_tx.send(InternalMsg::FeedbackRpc(self.local_id, self.channel_id, data, method.to_owned(), tx, timeout))?;
+        self.control_tx.send(InternalMsg::FeedbackRpc(self.handle_id, self.channel_id, data, method.to_owned(), tx, timeout))?;
         let data = rx.await??;
         Ok(data)
     }

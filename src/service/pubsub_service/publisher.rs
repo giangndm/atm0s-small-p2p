@@ -1,4 +1,6 @@
 use std::{
+    fmt,
+    sync::atomic::{AtomicU64, Ordering},
     task::{Context, Poll},
     time::Duration,
 };
@@ -23,6 +25,28 @@ impl PublisherLocalId {
     #[cfg(test)]
     pub(crate) fn from_raw_for_test(id: u64) -> Self {
         Self(id)
+    }
+}
+
+#[derive(Debug, Hash, PartialEq, Eq, Clone, Copy)]
+pub(crate) struct PublisherHandleId {
+    local_id: PublisherLocalId,
+    owner: u64,
+}
+
+impl PublisherHandleId {
+    pub(crate) fn new(local_id: PublisherLocalId) -> Self {
+        static NEXT_OWNER: AtomicU64 = AtomicU64::new(1);
+        Self {
+            local_id,
+            owner: NEXT_OWNER.fetch_add(1, Ordering::Relaxed),
+        }
+    }
+}
+
+impl fmt::Display for PublisherHandleId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}#{}", self.local_id, self.owner)
     }
 }
 
@@ -52,6 +76,7 @@ pub enum PublisherEventOb<Fb> {
 
 pub struct Publisher {
     local_id: PublisherLocalId,
+    handle_id: PublisherHandleId,
     channel_id: PubsubChannelId,
     control_tx: UnboundedSender<InternalMsg>,
     requester: PublisherRequester,
@@ -62,14 +87,16 @@ impl Publisher {
     pub(super) fn build(channel_id: PubsubChannelId, control_tx: UnboundedSender<InternalMsg>) -> Self {
         let (pub_tx, pub_rx) = unbounded_channel();
         let local_id = PublisherLocalId::rand();
+        let handle_id = PublisherHandleId::new(local_id);
         log::info!("[Publisher {channel_id}/{local_id}] created");
-        let _ = control_tx.send(InternalMsg::PublisherCreated(local_id, channel_id, pub_tx));
+        let _ = control_tx.send(InternalMsg::PublisherCreated(handle_id, channel_id, pub_tx));
 
         Self {
             local_id,
+            handle_id,
             channel_id,
             control_tx: control_tx.clone(),
-            requester: PublisherRequester { local_id, channel_id, control_tx },
+            requester: PublisherRequester { handle_id, channel_id, control_tx },
             pub_rx,
         }
     }
@@ -126,20 +153,20 @@ impl Publisher {
 impl Drop for Publisher {
     fn drop(&mut self) {
         log::info!("[Publisher {}/{}] destroy", self.channel_id, self.local_id);
-        let _ = self.control_tx.send(InternalMsg::PublisherDestroyed(self.local_id, self.channel_id));
+        let _ = self.control_tx.send(InternalMsg::PublisherDestroyed(self.handle_id, self.channel_id));
     }
 }
 
 #[derive(Debug, Clone)]
 pub struct PublisherRequester {
-    local_id: PublisherLocalId,
+    handle_id: PublisherHandleId,
     channel_id: PubsubChannelId,
     control_tx: UnboundedSender<InternalMsg>,
 }
 
 impl PublisherRequester {
     pub async fn publish(&self, data: Vec<u8>) -> anyhow::Result<()> {
-        self.control_tx.send(InternalMsg::Publish(self.local_id, self.channel_id, data))?;
+        self.control_tx.send(InternalMsg::Publish(self.handle_id, self.channel_id, data))?;
         Ok(())
     }
 
@@ -150,7 +177,7 @@ impl PublisherRequester {
 
     pub async fn publish_rpc(&self, method: &str, data: Vec<u8>, timeout: Duration) -> anyhow::Result<Vec<u8>> {
         let (tx, rx) = oneshot::channel::<Result<Vec<u8>, PubsubRpcError>>();
-        self.control_tx.send(InternalMsg::PublishRpc(self.local_id, self.channel_id, data, method.to_owned(), tx, timeout))?;
+        self.control_tx.send(InternalMsg::PublishRpc(self.handle_id, self.channel_id, data, method.to_owned(), tx, timeout))?;
         let data = rx.await??;
         Ok(data)
     }
