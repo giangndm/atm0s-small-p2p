@@ -14,6 +14,7 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   ISSUE-002, ISSUE-008, ISSUE-009, ISSUE-010, ISSUE-011, ISSUE-012, ISSUE-013, ISSUE-014, ISSUE-015, ISSUE-021, ISSUE-024, ISSUE-033, ISSUE-055, ISSUE-103, ISSUE-122, ISSUE-123,
   ISSUE-124, ISSUE-125, ISSUE-126, ISSUE-127, ISSUE-128, ISSUE-129, ISSUE-130,
   ISSUE-131, ISSUE-132, ISSUE-133, ISSUE-134, ISSUE-135, ISSUE-136, ISSUE-137,
+  ISSUE-140,
   ISSUE-053, ISSUE-063, ISSUE-139, ISSUE-146, ISSUE-168, ISSUE-170,
   ISSUE-149, ISSUE-169, ISSUE-174, ISSUE-176, ISSUE-181, ISSUE-189, ISSUE-190, ISSUE-191, ISSUE-192, ISSUE-193,
   ISSUE-194, ISSUE-195, ISSUE-196, ISSUE-197, ISSUE-198, ISSUE-199,
@@ -184,6 +185,16 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Recently Fixed Issues
 
+- ISSUE-140: fixed by making replicated-KV remote state handlers return whether
+  an RPC response or broadcast was accepted. `RemoteStore` now refreshes
+  `last_active` only for accepted events, using one timestamp for dispatch,
+  transition init, and liveness. Ignored working-state snapshots, unsolicited
+  `FetchChanged` responses without a pending request, stale/equal version
+  broadcasts, sync-full broadcasts, and destroy-state events no longer keep
+  remotes alive. This also covers ISSUE-186. Verification:
+  `cargo test ignored_rpc_response_must_not_refresh_remote_activity -- --nocapture`
+  and
+  `cargo test ignored_broadcast_must_not_refresh_remote_activity -- --nocapture`.
 - ISSUE-137: fixed by completing and removing any pending alias find when the
   same alias is registered locally. The pending lookup now resolves as
   `AliasFoundLocation::Local`, the live-find gauge is decremented, and the

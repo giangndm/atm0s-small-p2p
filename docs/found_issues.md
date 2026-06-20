@@ -3971,6 +3971,8 @@ the source of truth for evidence and reviewer decisions.
 - Category: stability, resource cleanup, bad-network resilience
 - Score: 55/100
 - Reviewer: `Helmholtz the 2nd`, confirmed.
+- Status: Fixed by accepted-event liveness refresh in
+  `src/service/replicate_kv_service/remote_storage.rs`.
 - Affected code:
   - `src/service/replicate_kv_service/remote_storage.rs`:
     `RemoteStore::on_rpc_res` updates `last_active` before dispatching the
@@ -3994,6 +3996,16 @@ the source of truth for evidence and reviewer decisions.
     `RpcRes::FetchSnapshot(None, Version(99))`; no output is produced, but
     `last_active` changes from the stale instant to `Instant::now()`, preventing
     timeout cleanup from recognizing the remote as inactive.
+- Fix summary: `State::on_broadcast` and `State::on_rpc_res` now return whether
+  the current state accepted the event. `RemoteStore` refreshes `last_active`
+  only for accepted events, using the same `Instant` for dispatch, transition
+  init, and liveness. Ignored `FetchSnapshot` responses in working state,
+  unsolicited `FetchChanged` responses without a pending request, stale/equal
+  version broadcasts, sync-full broadcasts, and destroy-state events no longer
+  keep stale remotes alive.
+- Verification:
+  - `cargo test ignored_rpc_response_must_not_refresh_remote_activity -- --nocapture`
+  - `cargo test ignored_broadcast_must_not_refresh_remote_activity -- --nocapture`
 
 ### ISSUE-141: Replicated KV drops remaining repair range after partial FetchChanged success
 
@@ -4558,6 +4570,8 @@ the source of truth for evidence and reviewer decisions.
 - Category: stability, resource cleanup, bad-network resilience
 - Score: 54/100
 - Reviewer: `Nietzsche the 3rd`, confirmed after local discovery.
+- Status: Fixed by the accepted-event liveness refresh introduced for
+  ISSUE-140.
 - Affected code:
   - `src/service/replicate_kv_service/remote_storage.rs`:
     `RemoteStore::on_broadcast` sets `last_active = Instant::now()`

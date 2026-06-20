@@ -40,7 +40,7 @@ where
         }
     }
 
-    fn on_broadcast(&mut self, ctx: &mut StateCtx<N, K, V>, now: Instant, event: BroadcastEvent<K, V>) {
+    fn on_broadcast(&mut self, ctx: &mut StateCtx<N, K, V>, now: Instant, event: BroadcastEvent<K, V>) -> bool {
         match self {
             RemoteStoreState::SyncFull(state) => state.on_broadcast(ctx, now, event),
             RemoteStoreState::Working(state) => state.on_broadcast(ctx, now, event),
@@ -48,7 +48,7 @@ where
         }
     }
 
-    fn on_rpc_res(&mut self, ctx: &mut StateCtx<N, K, V>, now: Instant, event: RpcRes<K, V>) {
+    fn on_rpc_res(&mut self, ctx: &mut StateCtx<N, K, V>, now: Instant, event: RpcRes<K, V>) -> bool {
         match self {
             RemoteStoreState::SyncFull(state) => state.on_rpc_res(ctx, now, event),
             RemoteStoreState::Working(state) => state.on_rpc_res(ctx, now, event),
@@ -67,8 +67,8 @@ struct StateCtx<N, K, V> {
 trait State<N, K, V> {
     fn init(&mut self, ctx: &mut StateCtx<N, K, V>, now: Instant);
     fn on_tick(&mut self, ctx: &mut StateCtx<N, K, V>, now: Instant);
-    fn on_broadcast(&mut self, ctx: &mut StateCtx<N, K, V>, now: Instant, event: BroadcastEvent<K, V>);
-    fn on_rpc_res(&mut self, ctx: &mut StateCtx<N, K, V>, now: Instant, event: RpcRes<K, V>);
+    fn on_broadcast(&mut self, ctx: &mut StateCtx<N, K, V>, now: Instant, event: BroadcastEvent<K, V>) -> bool;
+    fn on_rpc_res(&mut self, ctx: &mut StateCtx<N, K, V>, now: Instant, event: RpcRes<K, V>) -> bool;
 }
 
 pub struct RemoteStore<N, K, V> {
@@ -116,20 +116,26 @@ where
     }
 
     pub fn on_broadcast(&mut self, event: BroadcastEvent<K, V>) {
-        self.last_active = Instant::now();
-        self.state.on_broadcast(&mut self.ctx, Instant::now(), event);
+        let now = Instant::now();
+        let accepted = self.state.on_broadcast(&mut self.ctx, now, event);
         if let Some(mut next_state) = self.ctx.next_state.take() {
-            next_state.init(&mut self.ctx, Instant::now());
+            next_state.init(&mut self.ctx, now);
             self.state = next_state;
+        }
+        if accepted {
+            self.last_active = now;
         }
     }
 
     pub fn on_rpc_res(&mut self, event: RpcRes<K, V>) {
-        self.last_active = Instant::now();
-        self.state.on_rpc_res(&mut self.ctx, Instant::now(), event);
+        let now = Instant::now();
+        let accepted = self.state.on_rpc_res(&mut self.ctx, now, event);
         if let Some(mut next_state) = self.ctx.next_state.take() {
-            next_state.init(&mut self.ctx, Instant::now());
+            next_state.init(&mut self.ctx, now);
             self.state = next_state;
+        }
+        if accepted {
+            self.last_active = now;
         }
     }
 
@@ -193,16 +199,21 @@ where
         }
     }
 
-    fn on_broadcast(&mut self, _ctx: &mut StateCtx<N, K, V>, _now: Instant, _event: BroadcastEvent<K, V>) {
+    fn on_broadcast(&mut self, _ctx: &mut StateCtx<N, K, V>, _now: Instant, _event: BroadcastEvent<K, V>) -> bool {
         // dont process here
+        false
     }
 
-    fn on_rpc_res(&mut self, ctx: &mut StateCtx<N, K, V>, now: Instant, event: RpcRes<K, V>) {
+    fn on_rpc_res(&mut self, ctx: &mut StateCtx<N, K, V>, now: Instant, event: RpcRes<K, V>) -> bool {
         match event {
             RpcRes::FetchChanged { .. } => {
                 // dont process here
+                false
             }
             RpcRes::FetchSnapshot(Some(snapshot), version) => {
+                if self.sending_req.is_none() {
+                    return false;
+                }
                 // TODO check snapshot is not empty
                 log::info!(
                     "[RemoteStore {:?}] got snapshot {} slots and biggest_key {:?}, current version {version:?}, next {:?}",
@@ -217,7 +228,7 @@ where
                         ctx.remote,
                         snapshot.slots.len()
                     );
-                    return;
+                    return false;
                 }
                 for (k, slot) in snapshot.slots.into_iter() {
                     ctx.outs.push_back(Event::KvEvent(KvEvent::Set(Some(ctx.remote.clone()), k.clone(), slot.value.clone())));
@@ -251,11 +262,16 @@ where
                     self.sending_req = None;
                     ctx.next_state = Some(RemoteStoreState::Working(WorkingState::new(version)));
                 }
+                true
             }
             RpcRes::FetchSnapshot(None, version) => {
+                if self.sending_req.is_none() {
+                    return false;
+                }
                 log::info!("[RemoteStore {:?}] switch to working with 0 slots and version {version:?}", ctx.remote);
                 self.sending_req = None;
                 ctx.next_state = Some(RemoteStoreState::Working(WorkingState::new(version)));
+                true
             }
         }
     }
@@ -336,12 +352,15 @@ where
         }
     }
 
-    fn on_broadcast(&mut self, ctx: &mut StateCtx<N, K, V>, now: Instant, event: BroadcastEvent<K, V>) {
+    fn on_broadcast(&mut self, ctx: &mut StateCtx<N, K, V>, now: Instant, event: BroadcastEvent<K, V>) -> bool {
         match event {
             BroadcastEvent::Changed(changed) => {
                 if self.version < changed.version {
                     self.pendings.insert(changed.version, changed);
                     self.apply_pendings(ctx);
+                    true
+                } else {
+                    false
                 }
             }
             BroadcastEvent::Version(version) => {
@@ -353,14 +372,20 @@ where
                     let req = NetEvent::Unicast(ctx.remote.clone(), RpcEvent::RpcReq(RpcReq::FetchChanged { from, count }));
                     self.sending_req = Some((now, req.clone()));
                     ctx.outs.push_back(Event::NetEvent(req));
+                    true
+                } else {
+                    false
                 }
             }
         }
     }
 
-    fn on_rpc_res(&mut self, ctx: &mut StateCtx<N, K, V>, _now: Instant, event: RpcRes<K, V>) {
+    fn on_rpc_res(&mut self, ctx: &mut StateCtx<N, K, V>, _now: Instant, event: RpcRes<K, V>) -> bool {
         match event {
             RpcRes::FetchChanged(Ok(changeds)) => {
+                if self.sending_req.is_none() {
+                    return false;
+                }
                 log::info!("[RemoteStore {:?}] fetch changed success with {} changeds => apply", ctx.remote, changeds.len());
                 for changed in changeds {
                     if changed.version > self.version {
@@ -369,14 +394,20 @@ where
                 }
                 self.sending_req = None;
                 self.apply_pendings(ctx);
+                true
             }
             RpcRes::FetchChanged(Err(err)) => {
+                if self.sending_req.is_none() {
+                    return false;
+                }
                 log::info!("[RemoteStore] fetch changed error: {err:?} => switch to resyncFull");
                 self.sending_req = None;
                 ctx.next_state = Some(RemoteStoreState::SyncFull(SyncFullState::default()));
+                true
             }
             RpcRes::FetchSnapshot { .. } => {
                 // not process here
+                false
             }
         }
     }
@@ -403,12 +434,14 @@ where
         // dont process here
     }
 
-    fn on_broadcast(&mut self, _ctx: &mut StateCtx<N, K, V>, _now: Instant, _event: BroadcastEvent<K, V>) {
+    fn on_broadcast(&mut self, _ctx: &mut StateCtx<N, K, V>, _now: Instant, _event: BroadcastEvent<K, V>) -> bool {
         // dont process here
+        false
     }
 
-    fn on_rpc_res(&mut self, _ctx: &mut StateCtx<N, K, V>, _now: Instant, _event: RpcRes<K, V>) {
+    fn on_rpc_res(&mut self, _ctx: &mut StateCtx<N, K, V>, _now: Instant, _event: RpcRes<K, V>) -> bool {
         // dont process here
+        false
     }
 }
 
