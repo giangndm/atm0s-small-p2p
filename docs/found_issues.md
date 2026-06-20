@@ -11,7 +11,7 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 51
+- Current consecutive no-new-issue cycles: 52
 - Stop condition requested by user: continue until 5 consecutive cycles find no
   new accepted issue.
 
@@ -5783,6 +5783,29 @@ the source of truth for evidence and reviewer decisions.
     `src/peer.rs:1092` with `got 2`.
 
 ## No-New-Issue Audit Cycles
+
+### Cycle after ISSUE-204 no-new cycle 52: pubsub early remote join duplicate
+
+- Result: no accepted non-duplicate issue.
+- Reviewer: `Gauss the 4th`, forked subagent review, confirmed duplicate-only
+  no-new classification.
+- Source and test evidence reviewed:
+  - `src/service/pubsub_service.rs`
+  - `cargo test early_remote_publisher_join_must_survive_late_local_subscriber_creation -- --nocapture`
+    failed at `src/service/pubsub_service.rs:985:9`.
+- Duplicate or too-close symptoms rejected:
+  - an inbound `PublisherJoined` from `PeerId(2)` arrives before any local
+    channel state exists.
+  - `PubsubMessage::PublisherJoined` is handled only when
+    `self.channels.get_mut(&channel)` succeeds, so the early remote publisher
+    membership is silently discarded.
+  - later local subscriber creation creates the channel, but the previous
+    `remote_publishers` state is gone and no `PeerJoined(Remote(...))` event is
+    emitted.
+  - this maps directly to ISSUE-188: pubsub drops early remote publisher joins
+    before local channel creation.
+- Root-cause summary impact: no new root cause; this source/test cycle
+  strengthens existing ISSUE-188 evidence without adding ISSUE-205.
 
 ### Cycle after ISSUE-204 no-new cycle 51: pubsub existing remote member duplicate
 

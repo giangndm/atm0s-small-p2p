@@ -7,9 +7,9 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Accepted issues: 204
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 51
+- Current consecutive no-new-issue cycles: 52
 - Stop condition: continue until 5 consecutive cycles find no new accepted
-  issue; currently 51/5 after ISSUE-204.
+  issue; currently 52/5 after ISSUE-204.
 
 ## Root Cause Summary
 
@@ -256,6 +256,11 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Recent Fuzz Evidence
 
+- Focused pubsub early-join review:
+  `cargo test early_remote_publisher_join_must_survive_late_local_subscriber_creation -- --nocapture`
+  failed with duplicate evidence for ISSUE-188. Reviewer `Gauss the 4th`
+  confirmed inbound `PublisherJoined` is still ignored when no local channel
+  state exists, so a later local subscriber misses that remote publisher.
 - Focused pubsub local-handle membership review:
   `cargo test new_local_pubsub_handles_must_observe_existing_remote_members -- --nocapture`
   failed with duplicate evidence for ISSUE-142. Reviewer `Leibniz the 4th`
