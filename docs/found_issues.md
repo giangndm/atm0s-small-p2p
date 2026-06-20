@@ -11,7 +11,7 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 194
+- Current consecutive no-new-issue cycles: 195
 - Stop condition requested by user: continue until 5 consecutive cycles find no
   new accepted issue.
 
@@ -5783,6 +5783,33 @@ the source of truth for evidence and reviewer decisions.
     `src/peer.rs:1092` with `got 2`.
 
 ## No-New-Issue Audit Cycles
+
+### Cycle after ISSUE-204 no-new cycle 195: broad random duplicate invalid service panics
+
+- Result: no accepted non-duplicate issue.
+- Reviewer: `Euler the 6th`, forked subagent review, confirmed
+  `DUPLICATE/NO_NEW`.
+- Source and test evidence reviewed:
+  - `src/tests/fuzz.rs`
+  - `src/ctx.rs`
+  - `RUST_LOG=error P2P_FUZZ_SEED=195 P2P_FUZZ_NODES=8 P2P_FUZZ_STEPS=1800 cargo test fuzz_random_node_actions_must_not_panic_connection_tasks -- --nocapture`
+    failed.
+- Evidence summary:
+  - exit status 101; `0 passed; 1 failed`; the fuzz assertion at
+    `src/tests/fuzz.rs:183:5` detected background connection/service task
+    panics.
+  - three `src/ctx.rs:34` panic markers with
+    `index out of bounds: the len is 256 but the index is 256`.
+  - three `channel closed` send errors plus connection-lost and closed-by-peer
+    logs were reviewed as teardown/lifecycle noise in the same failure
+    context.
+  - no `src/router.rs:76` stale-sync evidence.
+  - no `src/peer.rs:89/92/130/133` `should send to main` evidence.
+  - no no-capacity, forwarded-stop, broadcast-data, open_bi, connect-answer,
+    path-not-found, or WARN logs.
+- Duplicate mapping: ISSUE-053.
+- Root-cause summary impact: no new root cause; this strengthens existing
+  ISSUE-053 invalid-service-id evidence without adding a new issue.
 
 ### Cycle after ISSUE-204 no-new cycle 194: valid random duplicate stale sync and shutdown send panics
 
