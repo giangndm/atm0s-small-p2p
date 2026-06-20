@@ -1,5 +1,7 @@
 use crate::PeerId;
+use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 
 pub trait HandshakeProtocol: Send + Sync + 'static {
     fn create_request(&self, from: PeerId, to: PeerId, now: u64) -> Vec<u8>;
@@ -11,6 +13,7 @@ pub trait HandshakeProtocol: Send + Sync + 'static {
 const HASH_SEED: &str = "atm0s-small-p2p";
 const HANDSHAKE_TIMEOUT: u64 = 30_000;
 const HANDSHAKE_MAX_FUTURE_SKEW: u64 = 1_000;
+const HANDSHAKE_REPLAY_CACHE_MAX_ENTRIES: usize = 8192;
 
 #[derive(Debug, Serialize, Deserialize)]
 struct HandshakeMessage {
@@ -24,6 +27,7 @@ struct HandshakeData {
     to: PeerId,
     timestamp: u64,
     is_initiator: bool,
+    nonce: u128,
 }
 
 /// Simple secure_key protect with hash
@@ -32,11 +36,15 @@ struct HandshakeData {
 /// at_ts timestamp is used for avoiding relay attach, if it older than HANDSHAKE_TIMEOUT then we reject
 pub struct SharedKeyHandshake {
     secure_key: String,
+    accepted_tokens: Mutex<HashMap<[u8; 32], u64>>,
 }
 
 impl From<&str> for SharedKeyHandshake {
     fn from(value: &str) -> Self {
-        Self { secure_key: value.to_owned() }
+        Self {
+            secure_key: value.to_owned(),
+            accepted_tokens: Mutex::new(HashMap::new()),
+        }
     }
 }
 
@@ -47,6 +55,7 @@ impl SharedKeyHandshake {
             to,
             timestamp: now,
             is_initiator: is_client,
+            nonce: rand::random(),
         };
 
         let data = bincode::serialize(&handshake_data).unwrap();
@@ -100,6 +109,17 @@ impl SharedKeyHandshake {
         if handshake.signature != expected_hash {
             return Err("Invalid handshake hash".to_string());
         }
+
+        let token_id: [u8; 32] = expected_hash.as_slice().try_into().map_err(|_| "Invalid handshake hash length".to_string())?;
+        let mut accepted_tokens = self.accepted_tokens.lock();
+        accepted_tokens.retain(|_, accepted_expires_at| current_ts <= *accepted_expires_at);
+        if accepted_tokens.contains_key(&token_id) {
+            return Err("Handshake token replayed".to_string());
+        }
+        if accepted_tokens.len() >= HANDSHAKE_REPLAY_CACHE_MAX_ENTRIES {
+            return Err("Handshake replay cache full".to_string());
+        }
+        accepted_tokens.insert(token_id, expires_at);
 
         Ok(())
     }
@@ -221,7 +241,7 @@ mod tests {
         let peer2 = PeerId::from(2);
 
         let request = secure.create_request(peer1, peer2, u64::MAX);
-        let result = std::panic::catch_unwind(|| secure.verify_request(request, peer1, peer2, 1_000));
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| secure.verify_request(request, peer1, peer2, 1_000)));
 
         assert!(matches!(result, Ok(Err(_))), "overflowing handshake timestamps must be rejected without panicking or wrapping");
     }

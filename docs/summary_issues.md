@@ -12,8 +12,9 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   issue; currently 341/5 after ISSUE-204.
 - Fix phase status: ISSUE-003, ISSUE-004, ISSUE-005, ISSUE-006, ISSUE-007,
   ISSUE-002, ISSUE-008, ISSUE-009, ISSUE-021, ISSUE-033, ISSUE-055, ISSUE-103,
-  ISSUE-053, ISSUE-063, ISSUE-139, ISSUE-170, ISSUE-190, and ISSUE-192 have
-  focused fixes committed. ISSUE-003 is fixed by `cfc8e57`;
+  ISSUE-053, ISSUE-063, ISSUE-139, ISSUE-146, ISSUE-170, ISSUE-176,
+  ISSUE-190, and ISSUE-192 have focused fixes committed. ISSUE-003 is fixed by
+  `cfc8e57`;
   ISSUE-004 is covered by the ISSUE-170 ownership-validation follow-up
   `87cf6ce`; earlier fixes are `648cfd0`, `2cbf096`, `15b788c`, and
   `4997404`.
@@ -272,6 +273,20 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   `cargo test test_handshake_timeout -- --nocapture`,
   `cargo test test_handshake_flow -- --nocapture`, and
   `cargo fmt -- --check`. Reviewer `Singer the 8th` accepted.
+- ISSUE-146 and ISSUE-176: fixed by adding a signed random nonce and bounded
+  replay cache to `SharedKeyHandshake`. Accepted token hashes are recorded only
+  after full validation, expired entries are pruned, duplicate request or
+  response tokens are rejected, and cache exhaustion fails closed. Verified with
+  `cargo test request_handshake_tokens_must_not_be_replayable -- --nocapture`,
+  `cargo test response_handshake_tokens_must_not_be_replayable -- --nocapture`,
+  `cargo test test_handshake_flow -- --nocapture`,
+  `cargo test test_invalid_handshake -- --nocapture`,
+  `cargo test test_handshake_timeout -- --nocapture`,
+  `cargo test rejects_arbitrarily_future_request_timestamp -- --nocapture`,
+  `cargo test rejects_overflowing_request_timestamp_without_panic -- --nocapture`,
+  `cargo test --lib tests::cross_nodes::send_direct -- --nocapture`, and
+  `cargo fmt -- --check`. Reviewer `Copernicus the 8th` accepted. This changes
+  the handshake wire payload; compatibility/versioning remains separate.
 - ISSUE-033: fixed by checked route metric composition in
   `RouterTable::apply_sync`. Peer-advertised metrics are combined with the
   direct-link metric through `PathMetric::checked_add`, and overflowing hop or

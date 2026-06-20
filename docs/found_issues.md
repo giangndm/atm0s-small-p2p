@@ -4010,6 +4010,23 @@ the source of truth for evidence and reviewer decisions.
   - Failure summary: a request token created at timestamp `1000` verifies at
     `1005` and then verifies again at `1010`; expected the second use of the
     same request blob to be rejected.
+- Fix status: fixed together with ISSUE-176 by adding a signed random nonce and
+  bounded replay cache to `SharedKeyHandshake`. `HandshakeData` now includes a
+  nonce, and `validate_handshake` records accepted token hashes in an interior
+  `Mutex<HashMap<_, _>>` after format, timestamp, peer-id, role, and signature
+  checks pass. Expired entries are pruned, duplicate tokens are rejected, and a
+  full replay cache fails closed instead of evicting live entries. Verified
+  with the evidence test plus
+  `cargo test response_handshake_tokens_must_not_be_replayable -- --nocapture`,
+  `cargo test test_handshake_flow -- --nocapture`,
+  `cargo test test_invalid_handshake -- --nocapture`,
+  `cargo test test_handshake_timeout -- --nocapture`,
+  `cargo test rejects_arbitrarily_future_request_timestamp -- --nocapture`,
+  `cargo test rejects_overflowing_request_timestamp_without_panic -- --nocapture`,
+  `cargo test --lib tests::cross_nodes::send_direct -- --nocapture`, and
+  `cargo fmt -- --check`. Reviewer `Copernicus the 8th` accepted. This changes
+  the handshake wire payload; mixed old/new nodes will fail handshakes unless a
+  separate compatibility/versioning layer is added.
 
 ### ISSUE-147: Valid route sync is dropped when the main event queue is full
 
@@ -5346,6 +5363,19 @@ the source of truth for evidence and reviewer decisions.
   - Failure summary: a response token created at timestamp `1000` verifies at
     `1005` and then verifies again at `1010`; expected the second use of the
     same response blob to be rejected.
+- Fix status: fixed together with ISSUE-146 by the nonce plus bounded replay
+  cache in `SharedKeyHandshake::validate_handshake`. Request and response
+  verification share the same validated-token cache, so captured response blobs
+  are one-use within their validity window. Verified with the evidence test
+  plus
+  `cargo test request_handshake_tokens_must_not_be_replayable -- --nocapture`,
+  `cargo test test_handshake_flow -- --nocapture`,
+  `cargo test test_invalid_handshake -- --nocapture`,
+  `cargo test test_handshake_timeout -- --nocapture`,
+  `cargo test rejects_arbitrarily_future_request_timestamp -- --nocapture`,
+  `cargo test rejects_overflowing_request_timestamp_without_panic -- --nocapture`,
+  `cargo test --lib tests::cross_nodes::send_direct -- --nocapture`, and
+  `cargo fmt -- --check`. Reviewer `Copernicus the 8th` accepted.
 
 ### ISSUE-188: Pubsub drops early remote publisher joins before local channel creation
 
