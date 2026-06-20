@@ -152,7 +152,7 @@ the source of truth for evidence and reviewer decisions.
 
 - Representative issues: ISSUE-003, ISSUE-005, ISSUE-006, ISSUE-007,
   ISSUE-008, ISSUE-033, ISSUE-044, ISSUE-055, ISSUE-092, ISSUE-103,
-  ISSUE-112 through ISSUE-114, ISSUE-160, ISSUE-161, ISSUE-164, ISSUE-167,
+  ISSUE-112 through ISSUE-114, ISSUE-160, ISSUE-164, ISSUE-167,
   ISSUE-177, ISSUE-180, ISSUE-181, ISSUE-190, ISSUE-192, ISSUE-197.
 - Pattern: route/discovery inputs can include local ids, self seeds, stale
   addresses, overflowed metrics, over-hop routes, duplicate connection races, or
@@ -5026,6 +5026,14 @@ the source of truth for evidence and reviewer decisions.
 
 - Category: correctness, graceful-shutdown stability, route lifecycle
 - Score: 64/100
+- Status: fixed. `PeerDiscovery` now exposes live graceful-stop tombstones to
+  route sync handling, and `P2pNetwork::process_internal` applies discovery
+  sync before filtering `RouterTableSync` rows whose destination peer is still
+  stopped. Stale relay advertisements cannot reinstall a route during the
+  tombstone window, while fresh restart discovery advertisements can clear the
+  tombstone before route sync is applied. Verified with the evidence test
+  below, plus `cargo test graceful_stop_tombstone -- --nocapture` and
+  `cargo test router -- --nocapture`.
 - Reviewer: `Epicurus the 2nd`, confirmed after `Locke the 2nd` discovery.
 - Affected code:
   - `src/lib.rs`: `PeerData::Sync` applies router sync unconditionally before

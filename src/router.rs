@@ -91,6 +91,13 @@ impl RouterTable {
     }
 
     fn apply_sync(&mut self, conn: ConnectionId, sync: RouterTableSync) {
+        self.apply_sync_filtered(conn, sync, |_| false);
+    }
+
+    fn apply_sync_filtered<F>(&mut self, conn: ConnectionId, sync: RouterTableSync, mut reject_peer: F)
+    where
+        F: FnMut(&PeerId) -> bool,
+    {
         let Some((from_peer, direct_metric)) = self.directs.get(&conn).copied() else {
             log::debug!("[RouterTable] ignore stale sync from removed connection {conn}");
             return;
@@ -111,6 +118,10 @@ impl RouterTable {
             if !seen_peers.insert(peer) {
                 log::debug!("[RouterTable] ignore malformed sync from {from_peer}: duplicate route to {peer:?}");
                 return;
+            }
+
+            if reject_peer(&peer) {
+                continue;
             }
 
             let Some(metric) = metric.checked_add(direct_metric) else {
@@ -330,6 +341,13 @@ impl SharedRouterTable {
 
     pub fn apply_sync(&self, conn: ConnectionId, sync: RouterTableSync) {
         self.table.write().apply_sync(conn, sync);
+    }
+
+    pub fn apply_sync_filtered<F>(&self, conn: ConnectionId, sync: RouterTableSync, reject_peer: F)
+    where
+        F: FnMut(&PeerId) -> bool,
+    {
+        self.table.write().apply_sync_filtered(conn, sync, reject_peer);
     }
 
     pub fn set_direct(&self, conn: ConnectionId, to: PeerId, ttl_ms: u16) {

@@ -85,6 +85,10 @@ impl PeerDiscovery {
         }
     }
 
+    pub fn is_stopped(&self, now_ms: u64, peer: &PeerId) -> bool {
+        self.stopped.get(peer).copied().is_some_and(|stopped_at| timestamp_is_live(stopped_at, now_ms))
+    }
+
     pub fn create_sync_for(&self, now_ms: u64, dest: &PeerId) -> PeerDiscoverySync {
         let iter = self.local.iter().map(|(p, addr)| (*p, now_ms, addr.clone()));
         PeerDiscoverySync(

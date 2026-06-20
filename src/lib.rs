@@ -321,8 +321,8 @@ impl<SECURE: HandshakeProtocol> P2pNetwork<SECURE> {
 
                 match data {
                     PeerMainData::Sync { route, advertise } => {
-                        self.router.apply_sync(conn, route);
                         self.discovery.apply_sync(now_ms, advertise);
+                        self.router.apply_sync_filtered(conn, route, |peer| self.discovery.is_stopped(now_ms, peer));
                     }
                 }
                 Ok(P2pNetworkEvent::Continue)
