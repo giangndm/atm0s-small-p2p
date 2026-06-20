@@ -20,6 +20,10 @@ impl NetworkNeighbours {
         self.conns.values().any(|c| c.is_connected() && c.peer_id().eq(&Some(*peer)))
     }
 
+    pub fn has_peer_connection_attempt(&self, peer: &PeerId) -> bool {
+        self.conns.values().any(|c| c.peer_id().eq(&Some(*peer)))
+    }
+
     pub fn mark_connected(&mut self, conn_id: &ConnectionId, peer: PeerId) -> Option<()> {
         self.conns.get_mut(conn_id)?.set_connected(peer);
         Some(())

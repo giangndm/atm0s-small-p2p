@@ -103,4 +103,9 @@ async fn discovery_tick_connect_backlog_must_coalesce_duplicate_remotes() {
         "discovery ticks must coalesce pending connects for the same remote, got {}",
         node.control_rx.len()
     );
+    assert!(
+        node.neighbours.len() <= MAX_PENDING_PER_REMOTE,
+        "discovery ticks must coalesce in-flight connects for the same remote, got {}",
+        node.neighbours.len()
+    );
 }

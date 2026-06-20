@@ -15,7 +15,7 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   ISSUE-124, ISSUE-125, ISSUE-126, ISSUE-127, ISSUE-128, ISSUE-129, ISSUE-130,
   ISSUE-131, ISSUE-132, ISSUE-133, ISSUE-134, ISSUE-135, ISSUE-136, ISSUE-137,
   ISSUE-140, ISSUE-143, ISSUE-145, ISSUE-147, ISSUE-148, ISSUE-150, ISSUE-151,
-  ISSUE-152,
+  ISSUE-152, ISSUE-153,
   ISSUE-053, ISSUE-063, ISSUE-139, ISSUE-146, ISSUE-168, ISSUE-170,
   ISSUE-149, ISSUE-169, ISSUE-174, ISSUE-176, ISSUE-181, ISSUE-189, ISSUE-190, ISSUE-191, ISSUE-192, ISSUE-193,
   ISSUE-194, ISSUE-195, ISSUE-196, ISSUE-197, ISSUE-198, ISSUE-199,
@@ -217,6 +217,22 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   `cargo test stale_not_found_must_not_evict_alias_cache_without_pending_check -- --nocapture`,
   `cargo test test_find_cached_alias_not_found -- --nocapture`, and
   `cargo test shutdown_from_cached_hint_must_unblock_pending_find -- --nocapture`.
+- ISSUE-153: fixed by coalescing connect work against existing neighbour
+  connection attempts. `NetworkNeighbours::has_peer_connection_attempt` matches
+  connected peers and pending outbound attempts for the target peer id, but not
+  unauthenticated inbound attempts. Best-effort discovery/requester connects
+  coalesce duplicate in-flight `endpoint.connect` work, while awaited duplicate
+  connects return an error instead of synthetic success for a potentially
+  different socket address. Immediate connect errors and later
+  `PeerConnectError` cleanup still allow retry.
+  Verification:
+  `cargo test discovery_tick_connect_backlog_must_coalesce_duplicate_remotes -- --nocapture`,
+  `cargo test concurrent_connects_to_same_peer_must_be_coalesced -- --nocapture`,
+  `cargo test stale_pending_outgoing_peer_does_not_suppress_reconnect -- --nocapture`,
+  `cargo test requester_connect_backlog_must_be_bounded -- --nocapture`, and
+  `cargo test awaited_connect_must_error_while_same_peer_connect_is_pending -- --nocapture`,
+  plus
+  `cargo test connect_to_same_peer_id_at_different_address_must_not_report_success -- --nocapture`.
 - ISSUE-145: fixed by validating `MainEvent::PeerData(conn, peer, ...)`
   against the router's live direct `(ConnectionId, PeerId)` binding before
   applying route sync or discovery advertisements. Stale or mismatched peer-data

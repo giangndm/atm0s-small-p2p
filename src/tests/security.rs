@@ -1184,6 +1184,24 @@ async fn connect_to_same_peer_id_at_different_address_must_not_report_success() 
 }
 
 #[tokio::test]
+async fn awaited_connect_must_error_while_same_peer_connect_is_pending() {
+    let (mut node, _addr) = create_node(false, 1, vec![]).await;
+    let target: PeerAddress = "2@127.0.0.1:9".parse().expect("target address should parse");
+
+    node.process_connect(target.clone(), None).expect("best-effort connect should process");
+    assert_eq!(node.neighbours.len(), 1, "test setup should have one pending outbound connection");
+
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    node.process_connect(target.clone(), Some(tx)).expect("awaited duplicate connect should process");
+
+    assert!(
+        rx.await.expect("connect response should be sent").is_err(),
+        "awaited duplicate connect must return Err while an outbound connect to the same peer is still pending"
+    );
+    assert_eq!(node.neighbours.len(), 1, "awaited duplicate connect must not spawn a second pending connection");
+}
+
+#[tokio::test]
 async fn inbound_duplicate_connections_from_same_peer_must_be_coalesced() {
     let (mut node1, addr1) = create_node(true, 1, vec![]).await;
 

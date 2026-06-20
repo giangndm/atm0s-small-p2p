@@ -4515,6 +4515,25 @@ the source of truth for evidence and reviewer decisions.
   - Failure summary: calling `process_tick` 1,025 times with one unreachable
     seed leaves `node.control_rx.len() == 1025`; expected discovery retries to
     coalesce to at most one pending connect per remote.
+- Fixed summary: discovery tick retries now process connects directly, and
+  `P2pNetwork::process_connect` checks
+  `NetworkNeighbours::has_peer_connection_attempt` before starting a new
+  `endpoint.connect`. The new neighbour predicate covers connected peers and
+  pending outbound attempts with `peer_id: Some(_)`, while leaving
+  unauthenticated inbound attempts with `peer_id: None` out of duplicate
+  suppression. Best-effort duplicate connects coalesce silently; awaited
+  duplicate connect requests return an error instead of reporting synthetic
+  success for a potentially different socket address. Immediate
+  `endpoint.connect` errors are not inserted, and later `PeerConnectError`
+  events still remove failed pending attempts so reconnects can retry. Verified
+  with
+  `cargo test discovery_tick_connect_backlog_must_coalesce_duplicate_remotes -- --nocapture`,
+  `cargo test concurrent_connects_to_same_peer_must_be_coalesced -- --nocapture`,
+  `cargo test stale_pending_outgoing_peer_does_not_suppress_reconnect -- --nocapture`,
+  `cargo test requester_connect_backlog_must_be_bounded -- --nocapture`, and
+  `cargo test awaited_connect_must_error_while_same_peer_connect_is_pending -- --nocapture`,
+  plus
+  `cargo test connect_to_same_peer_id_at_different_address_must_not_report_success -- --nocapture`.
 
 ### ISSUE-154: Stale FetchChanged response cancels a newer replicated-KV repair
 
