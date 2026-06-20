@@ -25,22 +25,29 @@ The architecture of the P2P network is designed to facilitate efficient communic
 To get started with the P2P network, you need to set up a node. Here’s a basic example of how to create a node:
 
 ```rust
-let _ = rustls::crypto::ring::default_provider().install_default();
+async fn start_node(addr: SocketAddr, advertise: bool) -> anyhow::Result<()> {
+    let _ = rustls::crypto::ring::default_provider().install_default();
 
-let priv_key: PrivatePkcs8KeyDer<'_> = PrivatePkcs8KeyDer::from(DEFAULT_CLUSTER_KEY.to_vec());
-let cert = CertificateDer::from(DEFAULT_CLUSTER_CERT.to_vec());
+    let priv_key: PrivatePkcs8KeyDer<'_> = PrivatePkcs8KeyDer::from(DEFAULT_CLUSTER_KEY.to_vec());
+    let cert = CertificateDer::from(DEFAULT_CLUSTER_CERT.to_vec());
+    let seeds = vec![];
 
-let peer_id = PeerId::from("127.0.0.1:10000".parse().unwrap());
-let network = P2pNetwork::new(P2pNetworkConfig {
-    peer_id,
-    listen_addr: addr,
-    advertise: advertise.then(|| addr.into()),
-    priv_key,
-    cert,
-    tick_ms: 100,
-    seeds,
-    secure: DEFAULT_SECURE_KEY.into(),
-}).await;
+    let peer_id = PeerId::from(1);
+    let mut network = P2pNetwork::new(P2pNetworkConfig {
+        peer_id,
+        listen_addr: addr,
+        advertise: advertise.then(|| addr.into()),
+        priv_key,
+        cert,
+        tick_ms: 100,
+        seeds,
+        secure: DEFAULT_SECURE_KEY.into(),
+    }).await?;
+
+    let service = network.create_service(1.into());
+
+    Ok(())
+}
 ```
 
 ### Create a service

@@ -5517,6 +5517,13 @@ the source of truth for evidence and reviewer decisions.
 - Minimal fix proposal: update the README snippet to use a numeric peer id,
   bind `let mut network = P2pNetwork::new(...).await?;`, and make the snippet
   part of a doctest, example, or focused compile test so it cannot drift again.
+- Fix status: fixed by updating the README setup snippet and its compile-mirror
+  example to use `PeerId::from(1)`, propagate `P2pNetwork::new(...).await?`,
+  bind a mutable `P2pNetwork`, and call `create_service` only after successful
+  construction. Verified with
+  `cargo test readme_getting_started_snippet_must_compile -- --nocapture`,
+  `cargo check --example readme_getting_started`, and
+  `cargo fmt -- --check`. Reviewer `James the 8th` accepted.
 - Evidence test:
   - `cargo test readme_getting_started_snippet_must_compile -- --nocapture`
   - Failure summary: the test runs `cargo check --example

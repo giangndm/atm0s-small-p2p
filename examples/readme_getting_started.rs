@@ -6,13 +6,13 @@ use rustls::pki_types::{CertificateDer, PrivatePkcs8KeyDer};
 pub const DEFAULT_CLUSTER_CERT: &[u8] = include_bytes!("../certs/dev.cluster.cert");
 pub const DEFAULT_CLUSTER_KEY: &[u8] = include_bytes!("../certs/dev.cluster.key");
 
-async fn readme_snippet(addr: SocketAddr, advertise: bool) {
+async fn readme_snippet(addr: SocketAddr, advertise: bool) -> anyhow::Result<()> {
     let priv_key: PrivatePkcs8KeyDer<'_> = PrivatePkcs8KeyDer::from(DEFAULT_CLUSTER_KEY.to_vec());
     let cert = CertificateDer::from(DEFAULT_CLUSTER_CERT.to_vec());
     let seeds = vec![];
 
-    let peer_id = PeerId::from("127.0.0.1:10000".parse().unwrap());
-    let network = P2pNetwork::new(P2pNetworkConfig {
+    let peer_id = PeerId::from(1);
+    let mut network = P2pNetwork::new(P2pNetworkConfig {
         peer_id,
         listen_addr: addr,
         advertise: advertise.then(|| addr.into()),
@@ -22,10 +22,12 @@ async fn readme_snippet(addr: SocketAddr, advertise: bool) {
         seeds,
         secure: SharedKeyHandshake::from("DEFAULT_SECURE_KEY"),
     })
-    .await;
+    .await?;
 
     let service = network.create_service(1.into());
     let _ = service;
+
+    Ok(())
 }
 
 fn main() {}

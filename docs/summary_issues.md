@@ -13,7 +13,7 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 - Fix phase status: ISSUE-003, ISSUE-004, ISSUE-005, ISSUE-006, ISSUE-007,
   ISSUE-002, ISSUE-008, ISSUE-009, ISSUE-021, ISSUE-033, ISSUE-055, ISSUE-103,
   ISSUE-053, ISSUE-063, ISSUE-139, ISSUE-146, ISSUE-170, ISSUE-176,
-  ISSUE-190, and ISSUE-192 have focused fixes committed. ISSUE-003 is fixed by
+  ISSUE-190, ISSUE-191, and ISSUE-192 have focused fixes committed. ISSUE-003 is fixed by
   `cfc8e57`;
   ISSUE-004 is covered by the ISSUE-170 ownership-validation follow-up
   `87cf6ce`; earlier fixes are `648cfd0`, `2cbf096`, `15b788c`, and
@@ -179,6 +179,13 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Recently Fixed Issues
 
+- ISSUE-191: fixed by updating the README getting-started snippet and its
+  compile-mirror example to use a numeric `PeerId`, propagate
+  `P2pNetwork::new(...).await?`, bind a mutable network, and create the service
+  after successful construction. Verified with
+  `cargo test readme_getting_started_snippet_must_compile -- --nocapture`,
+  `cargo check --example readme_getting_started`, and
+  `cargo fmt -- --check`. Reviewer `James the 8th` accepted.
 - ISSUE-002: fixed by bounded future-skew validation in
   `SharedKeyHandshake::validate_handshake`. Handshake timestamps more than
   1 second ahead of verifier time are rejected with checked
