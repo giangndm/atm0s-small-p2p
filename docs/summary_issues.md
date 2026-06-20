@@ -7,9 +7,9 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Accepted issues: 204
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 293
+- Current consecutive no-new-issue cycles: 294
 - Stop condition: continue until 5 consecutive cycles find no new accepted
-  issue; currently 293/5 after ISSUE-204.
+  issue; currently 294/5 after ISSUE-204.
 
 ## Root Cause Summary
 
@@ -2389,6 +2389,14 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Recent No-New Audit
 
+- Cycle after ISSUE-204 no-new cycle 294 ran a sanitized churn fuzz pass with
+  forked reviewer `Copernicus the 7th`. The run failed with exit code 101 and
+  assertion `seed=294, nodes=8, steps=3200`. The hard failure was duplicate
+  ISSUE-139 evidence: one `src/peer.rs:92:104` incoming shutdown-send panic
+  with `should send to main: SendError { .. }`. The seven connection-lost, one
+  closed-by-peer, and one aborted-by-peer markers were reviewed as lifecycle
+  fallout around the same churn/shutdown condition. No accepted issue or
+  summary root-cause change was recorded.
 - Cycle after ISSUE-204 no-new cycle 293 ran a valid-action fuzz pass with
   forked reviewer `Sagan the 7th`. The run failed with exit code 101 and
   assertion `seed=293, nodes=8, steps=3200`. The hard failure was duplicate

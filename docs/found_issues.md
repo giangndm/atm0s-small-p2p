@@ -11,7 +11,7 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 293
+- Current consecutive no-new-issue cycles: 294
 - Stop condition requested by user: continue until 5 consecutive cycles find no
   new accepted issue.
 
@@ -5783,6 +5783,37 @@ the source of truth for evidence and reviewer decisions.
     `src/peer.rs:1092` with `got 2`.
 
 ## No-New-Issue Audit Cycles
+
+### Cycle after ISSUE-204 no-new cycle 294: sanitized churn incoming shutdown send panic
+
+- Result: no accepted non-duplicate issue.
+- Reviewer: `Copernicus the 7th`, forked subagent review, confirmed
+  duplicate/no-new.
+- Source and test evidence reviewed:
+  - `src/tests/fuzz.rs`
+  - `src/peer.rs`
+  - `RUST_LOG=error P2P_FUZZ_SEED=294 P2P_FUZZ_NODES=8 P2P_FUZZ_STEPS=3200 cargo test fuzz_random_sanitized_node_churn_actions_must_not_panic_connection_tasks -- --nocapture`
+    failed with `seed=294, nodes=8, steps=3200`.
+- Evidence summary:
+  - exit status 101; log had 29 lines; the fuzz assertion at
+    `src/tests/fuzz.rs:372:5` reported background connection/service task
+    failure.
+  - one hard shutdown-send panic at `src/peer.rs:92:104` with
+    `should send to main: SendError { .. }`.
+  - seven connection-lost markers, one closed-by-peer marker, and one
+    aborted-by-peer marker were reviewed as lifecycle fallout around the same
+    churn/shutdown condition.
+  - no invalid-service-id, stale-sync, stopped-forwarding, broadcast-alias,
+    path-not-found, no-capacity, or channel-closed evidence.
+- Duplicate mapping: ISSUE-139.
+- Root-cause summary impact: no new root cause; this strengthens existing
+  shutdown/closed-main reporting evidence for the incoming `accept().await`
+  error branch.
+- Smallest fix proposal: replace the `expect("should send to main")` sends in
+  peer connection error reporting with graceful closed-channel handling; if
+  `main_tx.send(...)` fails because the main loop has stopped, return from the
+  peer task without panicking, and keep seed `294` as regression evidence for
+  the `src/peer.rs:92` incoming accept path.
 
 ### Cycle after ISSUE-204 no-new cycle 293: valid stale sync and stopped storm
 
