@@ -7,9 +7,9 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Accepted issues: 204
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 110
+- Current consecutive no-new-issue cycles: 111
 - Stop condition: continue until 5 consecutive cycles find no new accepted
-  issue; currently 110/5 after ISSUE-204.
+  issue; currently 111/5 after ISSUE-204.
 
 ## Root Cause Summary
 
@@ -256,6 +256,15 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Recent Fuzz Evidence
 
+- Sanitized churn fuzz review:
+  `RUST_LOG=error P2P_FUZZ_SEED=111 P2P_FUZZ_NODES=8 P2P_FUZZ_STEPS=1800 cargo test fuzz_random_sanitized_node_churn_actions_must_not_panic_connection_tasks -- --nocapture`
+  failed with duplicate evidence for ISSUE-139. Reviewer `Bohr the 5th`
+  confirmed the single `src/peer.rs:133` outgoing `connecting.await`
+  send-to-main panic is the same early `PeerConnectError` reporting after
+  main-loop shutdown root cause. No ISSUE-053, ISSUE-063, ISSUE-170, or new
+  ISSUE-205 evidence was present. The smallest fix proposal remains unchanged:
+  make peer connection tasks treat main-channel closure during shutdown as a
+  terminal lifecycle event instead of panicking.
 - Steady-valid fuzz pass:
   `RUST_LOG=error P2P_FUZZ_SEED=110 P2P_FUZZ_NODES=8 P2P_FUZZ_STEPS=2400 cargo test fuzz_random_steady_valid_node_actions_must_not_panic_connection_tasks -- --nocapture`
   passed with exit status 0, `1 passed; 0 failed`, no panic lines, no failed
