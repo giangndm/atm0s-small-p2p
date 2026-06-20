@@ -11,7 +11,7 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 138
+- Current consecutive no-new-issue cycles: 139
 - Stop condition requested by user: continue until 5 consecutive cycles find no
   new accepted issue.
 
@@ -5783,6 +5783,38 @@ the source of truth for evidence and reviewer decisions.
     `src/peer.rs:1092` with `got 2`.
 
 ## No-New-Issue Audit Cycles
+
+### Cycle after ISSUE-204 no-new cycle 139: valid random duplicate stale sync and PeerStopped storm
+
+- Result: no accepted non-duplicate issue.
+- Reviewer: `Lovelace the 5th`, forked subagent review, confirmed
+  `DUPLICATE/NO_NEW`.
+- Source and test evidence reviewed:
+  - `src/tests/fuzz.rs`
+  - `src/router.rs`
+  - `src/peer/peer_internal.rs`
+  - `RUST_LOG=error P2P_FUZZ_SEED=139 P2P_FUZZ_NODES=8 P2P_FUZZ_STEPS=1800 cargo test fuzz_random_valid_node_actions_must_not_panic_connection_tasks -- --nocapture`
+    failed.
+- Evidence summary:
+  - exit status 101; `0 passed; 1 failed`; the fuzz assertion at
+    `src/tests/fuzz.rs:183:5` detected a background connection/task panic.
+  - eight `src/router.rs:76` / `should have direct metric with apply_sync`
+    markers from four direct stale-sync panics.
+  - 7,151 `no available capacity`, 2,258 `channel closed`, and 9,402
+    `forward peer stopped over peer alias` logs show the same forwarded-stop
+    storm shape.
+  - no `src/ctx.rs:34` out-of-range service-id panic evidence.
+  - no `src/peer.rs:89/92/130/133` `should send to main` evidence.
+  - no broadcast-data, open_bi, connect-answer, path-not-found, or WARN logs.
+- Duplicate mapping:
+  - primary: the `src/router.rs:76` panic maps directly to ISSUE-063: stale
+    `PeerData::Sync` can survive after a direct route is removed, then
+    `apply_sync` asserts that the missing direct metric exists.
+  - secondary: the stop-forwarding capacity/channel-closed storm maps to
+    ISSUE-170: forwarded `PeerStopped` events lack dedupe, TTL, or tombstone
+    suppression and can amplify under churn.
+- Root-cause summary impact: no new root cause; this strengthens existing
+  ISSUE-063 and ISSUE-170 evidence without adding a new issue.
 
 ### Cycle after ISSUE-204 no-new cycle 138: broad random duplicate invalid service panic
 
