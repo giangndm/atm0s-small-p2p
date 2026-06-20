@@ -11,7 +11,7 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 243
+- Current consecutive no-new-issue cycles: 244
 - Stop condition requested by user: continue until 5 consecutive cycles find no
   new accepted issue.
 
@@ -5783,6 +5783,32 @@ the source of truth for evidence and reviewer decisions.
     `src/peer.rs:1092` with `got 2`.
 
 ## No-New-Issue Audit Cycles
+
+### Cycle after ISSUE-204 no-new cycle 244: broad stale sync panic
+
+- Result: no accepted non-duplicate issue.
+- Reviewer: `Sartre the 6th`, forked subagent review, confirmed
+  duplicate/no-new.
+- Source and test evidence reviewed:
+  - `src/tests/fuzz.rs`
+  - `src/router.rs`
+  - `RUST_LOG=error P2P_FUZZ_SEED=244 P2P_FUZZ_NODES=8 P2P_FUZZ_STEPS=1800 cargo test fuzz_random_node_actions_must_not_panic_connection_tasks -- --nocapture`
+    failed.
+- Evidence summary:
+  - exit status 101; log had 20 lines; the fuzz assertion at
+    `src/tests/fuzz.rs:183:5` reported a background connection/service task
+    panic with `seed=244, nodes=8, steps=1800`.
+  - one `src/router.rs:76` panic marker with
+    `should have direct metric with apply_sync`.
+  - no invalid-service-id, shutdown-send, no-capacity, channel-closed,
+    forwarded-stop, broadcast-data, open_bi, connect-answer, connection-lost,
+    or path-not-found evidence.
+- Duplicate mapping: ISSUE-063.
+- Root-cause summary impact: no new root cause; this strengthens existing
+  stale-route-sync evidence without adding a new issue.
+- Smallest fix proposal: guard the direct-route lookup, ignore stale sync for
+  unknown direct connections, and clear queued sync when direct connection state
+  is removed.
 
 ### Cycle after ISSUE-204 no-new cycle 243: valid stale sync panic and large stopped storm
 
