@@ -2,7 +2,7 @@ use std::net::UdpSocket;
 
 use rustls::pki_types::{CertificateDer, PrivatePkcs8KeyDer};
 
-use crate::{P2pNetwork, P2pNetworkConfig, PeerAddress, PeerId, SharedKeyHandshake};
+use crate::{InboundPeerBindings, P2pNetwork, P2pNetworkConfig, PeerAddress, PeerId, SharedKeyHandshake};
 
 mod alias;
 mod cross_nodes;
@@ -36,6 +36,7 @@ async fn create_node(advertise: bool, peer_id: u64, seeds: Vec<PeerAddress>) -> 
             peer_id,
             listen_addr: addr,
             advertise: advertise.then(|| addr.into()),
+            inbound_peer_bindings: InboundPeerBindings::insecure_open_cluster(),
             priv_key,
             cert,
             tick_ms: 100,

@@ -14,8 +14,9 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   ISSUE-002, ISSUE-008, ISSUE-009, ISSUE-021, ISSUE-033, ISSUE-055, ISSUE-103,
   ISSUE-053, ISSUE-063, ISSUE-139, ISSUE-146, ISSUE-168, ISSUE-170,
   ISSUE-176, ISSUE-189, ISSUE-190, ISSUE-191, ISSUE-192, ISSUE-193,
-  ISSUE-195, ISSUE-196, ISSUE-197, ISSUE-198, ISSUE-199, ISSUE-200,
-  ISSUE-201, ISSUE-202, ISSUE-203, and ISSUE-204 have focused fixes committed.
+  ISSUE-194, ISSUE-195, ISSUE-196, ISSUE-197, ISSUE-198, ISSUE-199,
+  ISSUE-200, ISSUE-201, ISSUE-202, ISSUE-203, and ISSUE-204 have focused
+  fixes committed.
   ISSUE-003 is fixed by `cfc8e57`;
   ISSUE-004 is covered by the ISSUE-170 ownership-validation follow-up
   `87cf6ce`; earlier fixes are `648cfd0`, `2cbf096`, `15b788c`, and
@@ -181,6 +182,15 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Recently Fixed Issues
 
+- ISSUE-194: fixed by `InboundPeerBindings`, whose default is a strict static
+  binding set. Inbound shared-key `ConnectReq.from` claims are now rejected
+  unless the claimed peer id is explicitly bound to the observed remote address;
+  legacy open-cluster admission requires the explicit
+  `InboundPeerBindings::insecure_open_cluster()` opt-out. Verified with
+  `cargo test inbound_handshake_must_reject_peer_claiming_third_party_id -- --nocapture`,
+  `cargo test inbound_handshake_must_accept_bound_peer_claim -- --nocapture`,
+  `cargo check --tests`, `cargo check --examples`, and
+  `cargo fmt -- --check`.
 - ISSUE-168: fixed by internal `PublisherHandleId` and `SubscriberHandleId`
   generation tokens. Pubsub local publisher/subscriber maps are now keyed by
   exact handle id, duplicate public local ids no longer replace another live
@@ -517,8 +527,10 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   address. Reviewer: Arendt the 3rd.
 - ISSUE-193, score 31: connection teardown emits RTT as both gauge and counter.
   Reviewer: Copernicus the 3rd.
-- ISSUE-194, score 88: inbound handshake accepts arbitrary third-party peer-id
-  claims. Reviewer: Confucius the 3rd.
+- ISSUE-194, score 88: inbound handshake accepted arbitrary third-party peer-id
+  claims; strict static inbound peer bindings are now the default, with legacy
+  open-cluster admission behind an explicit insecure opt-out. Reviewer:
+  Confucius the 3rd.
 - ISSUE-195, score 42: connection teardown resets monotonic counters to zero.
   Reviewer: Dalton the 3rd.
 - ISSUE-196, score 47: replicated-KV local mutations build an unbounded

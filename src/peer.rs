@@ -18,7 +18,7 @@ use crate::{
     now_ms,
     secure::HandshakeProtocol,
     stream::{wait_object, write_object, P2pQuicStream},
-    ConnectionId, PeerId, P2P_CONNECTION_RTT, P2P_LIVE_CONNECTION_COUNT,
+    ConnectionId, InboundPeerBindings, PeerId, P2P_CONNECTION_RTT, P2P_LIVE_CONNECTION_COUNT,
 };
 #[cfg(test)]
 use crate::{P2P_CONNECTION_CONGESTION_EVENTS, P2P_CONNECTION_LOST_BYTES, P2P_CONNECTION_LOST_PKT, P2P_CONNECTION_RECV_BYTES, P2P_CONNECTION_SENT_BYTES, P2P_CONNECTION_UPTIME};
@@ -69,7 +69,14 @@ pub struct PeerConnection {
 }
 
 impl PeerConnection {
-    pub fn new_incoming<SECURE: HandshakeProtocol>(secure: Arc<SECURE>, local_id: PeerId, incoming: Incoming, main_tx: Sender<MainEvent>, ctx: SharedCtx) -> Self {
+    pub fn new_incoming<SECURE: HandshakeProtocol>(
+        secure: Arc<SECURE>,
+        local_id: PeerId,
+        incoming: Incoming,
+        inbound_peer_bindings: Arc<InboundPeerBindings>,
+        main_tx: Sender<MainEvent>,
+        ctx: SharedCtx,
+    ) -> Self {
         let remote = incoming.remote_address();
         let conn_id = ConnectionId::rand();
 
@@ -80,7 +87,20 @@ impl PeerConnection {
                     log::info!("[PeerConnection {conn_id}] got connection from {remote}");
                     match connection.accept_bi().await {
                         Ok((send, recv)) => {
-                            if let Err(e) = run_connection(secure, ctx, remote, conn_id, local_id, PeerConnectionDirection::Incoming, &connection, send, recv, main_tx.clone()).await {
+                            if let Err(e) = run_connection(
+                                secure,
+                                ctx,
+                                remote,
+                                conn_id,
+                                local_id,
+                                PeerConnectionDirection::Incoming(inbound_peer_bindings),
+                                &connection,
+                                send,
+                                recv,
+                                main_tx.clone(),
+                            )
+                            .await
+                            {
                                 log::error!("[PeerConnection {conn_id}] connection from {remote} error {e}");
                                 let _ = main_tx.send(MainEvent::PeerConnectError(conn_id, None, e)).await;
                                 let _ = tokio::time::timeout(Duration::from_secs(2), connection.closed()).await;
@@ -167,7 +187,7 @@ async fn report_peer_connect_error(main_tx: &Sender<MainEvent>, conn_id: Connect
 }
 
 enum PeerConnectionDirection {
-    Incoming,
+    Incoming(Arc<InboundPeerBindings>),
     Outgoing(PeerId),
 }
 
@@ -196,49 +216,61 @@ async fn run_connection<SECURE: HandshakeProtocol>(
     mut recv: RecvStream,
     main_tx: Sender<MainEvent>,
 ) -> anyhow::Result<()> {
-    let to_id = if let PeerConnectionDirection::Outgoing(dest) = direction {
-        let auth = secure.create_request(local_id, dest, now_ms());
-        write_object::<_, _, MAX_CONTROL_PEER_PKT>(&mut send, &ConnectReq { from: local_id, to: dest, auth }).await?;
-        let res: ConnectRes = wait_object::<_, _, MAX_CONTROL_PEER_PKT>(&mut recv).await?;
-        log::info!("{res:?}");
-        match res.result {
-            Ok(auth) => {
-                if let Err(e) = secure.verify_response(auth, dest, local_id, now_ms()) {
-                    return Err(anyhow!("destination auth failure: {e}"));
+    let to_id = match direction {
+        PeerConnectionDirection::Outgoing(dest) => {
+            let auth = secure.create_request(local_id, dest, now_ms());
+            write_object::<_, _, MAX_CONTROL_PEER_PKT>(&mut send, &ConnectReq { from: local_id, to: dest, auth }).await?;
+            let res: ConnectRes = wait_object::<_, _, MAX_CONTROL_PEER_PKT>(&mut recv).await?;
+            log::info!("{res:?}");
+            match res.result {
+                Ok(auth) => {
+                    if let Err(e) = secure.verify_response(auth, dest, local_id, now_ms()) {
+                        return Err(anyhow!("destination auth failure: {e}"));
+                    }
+                    dest
                 }
-                dest
-            }
-            Err(err) => {
-                return Err(anyhow!("destination rejected: {err}"));
+                Err(err) => {
+                    return Err(anyhow!("destination rejected: {err}"));
+                }
             }
         }
-    } else {
-        let req: ConnectReq = wait_object::<_, _, MAX_CONTROL_PEER_PKT>(&mut recv).await?;
-        if let Err(e) = secure.verify_request(req.auth, req.from, req.to, now_ms()) {
-            write_object::<_, _, MAX_CONTROL_PEER_PKT>(&mut send, &ConnectRes { result: Err(e.clone()) }).await?;
-            return Err(anyhow!("destination auth failure: {e}"));
-        } else if req.to != local_id {
-            write_object::<_, _, MAX_CONTROL_PEER_PKT>(
-                &mut send,
-                &ConnectRes {
-                    result: Err("destination not match".to_owned()),
-                },
-            )
-            .await?;
-            return Err(anyhow!("destination wrong"));
-        } else if req.from == local_id {
-            write_object::<_, _, MAX_CONTROL_PEER_PKT>(
-                &mut send,
-                &ConnectRes {
-                    result: Err("source must not match destination".to_owned()),
-                },
-            )
-            .await?;
-            return Err(anyhow!("source wrong"));
-        } else {
-            let auth = secure.create_response(req.to, req.from, now_ms());
-            write_object::<_, _, MAX_CONTROL_PEER_PKT>(&mut send, &ConnectRes { result: Ok(auth) }).await?;
-            req.from
+        PeerConnectionDirection::Incoming(inbound_peer_bindings) => {
+            let req: ConnectReq = wait_object::<_, _, MAX_CONTROL_PEER_PKT>(&mut recv).await?;
+            if let Err(e) = secure.verify_request(req.auth, req.from, req.to, now_ms()) {
+                write_object::<_, _, MAX_CONTROL_PEER_PKT>(&mut send, &ConnectRes { result: Err(e.clone()) }).await?;
+                return Err(anyhow!("destination auth failure: {e}"));
+            } else if req.to != local_id {
+                write_object::<_, _, MAX_CONTROL_PEER_PKT>(
+                    &mut send,
+                    &ConnectRes {
+                        result: Err("destination not match".to_owned()),
+                    },
+                )
+                .await?;
+                return Err(anyhow!("destination wrong"));
+            } else if req.from == local_id {
+                write_object::<_, _, MAX_CONTROL_PEER_PKT>(
+                    &mut send,
+                    &ConnectRes {
+                        result: Err("source must not match destination".to_owned()),
+                    },
+                )
+                .await?;
+                return Err(anyhow!("source wrong"));
+            } else if !inbound_peer_bindings.is_authorized(req.from, remote) {
+                write_object::<_, _, MAX_CONTROL_PEER_PKT>(
+                    &mut send,
+                    &ConnectRes {
+                        result: Err("source not authorized for remote address".to_owned()),
+                    },
+                )
+                .await?;
+                return Err(anyhow!("source not authorized for remote address"));
+            } else {
+                let auth = secure.create_response(req.to, req.from, now_ms());
+                write_object::<_, _, MAX_CONTROL_PEER_PKT>(&mut send, &ConnectRes { result: Ok(auth) }).await?;
+                req.from
+            }
         }
     };
 
@@ -299,7 +331,7 @@ mod tests {
             P2pService, P2pServiceEvent,
         },
         stream::BincodeCodec,
-        NetworkAddress, P2pNetwork, P2pNetworkConfig, PeerMainData, SharedKeyHandshake, CERT_DOMAIN_NAME,
+        InboundPeerBindings, NetworkAddress, P2pNetwork, P2pNetworkConfig, PeerAddress, PeerMainData, SharedKeyHandshake, CERT_DOMAIN_NAME,
     };
 
     const DEFAULT_CLUSTER_CERT: &[u8] = include_bytes!("../certs/dev.cluster.cert");
@@ -559,7 +591,14 @@ mod tests {
 
         let connecting = client.connect(server_addr, CERT_DOMAIN_NAME).expect("client should start connecting");
         let incoming = server.accept().await.expect("server should accept incoming connection");
-        let _conn = PeerConnection::new_incoming(Arc::new(SharedKeyHandshake::from("atm0s")), PeerId::from(1), incoming, main_tx, ctx);
+        let _conn = PeerConnection::new_incoming(
+            Arc::new(SharedKeyHandshake::from("atm0s")),
+            PeerId::from(1),
+            incoming,
+            Arc::new(InboundPeerBindings::default()),
+            main_tx,
+            ctx,
+        );
         let connected = connecting.await.expect("client should connect");
         connected.close(VarInt::from_u32(0), b"close before p2p control stream");
         let deadline = tokio::time::Instant::now() + Duration::from_secs(1);
@@ -600,7 +639,7 @@ mod tests {
 
         let connecting = client.connect(server_addr, CERT_DOMAIN_NAME).expect("client should start connecting");
         let incoming = server.accept().await.expect("server should accept incoming connection");
-        let conn = PeerConnection::new_incoming(secure.clone(), local_id, incoming, main_tx, ctx.clone());
+        let conn = PeerConnection::new_incoming(secure.clone(), local_id, incoming, Arc::new(InboundPeerBindings::insecure_open_cluster()), main_tx, ctx.clone());
         let conn_id = conn.conn_id();
         let connection = connecting.await.expect("client should connect");
         let (mut send, mut recv) = connection.open_bi().await.expect("client should open control stream");
@@ -638,7 +677,7 @@ mod tests {
 
         let connecting = client.connect(server_addr, CERT_DOMAIN_NAME).expect("client should start connecting");
         let incoming = server.accept().await.expect("server should accept incoming connection");
-        let conn = PeerConnection::new_incoming(secure.clone(), local_id, incoming, main_tx, ctx.clone());
+        let conn = PeerConnection::new_incoming(secure.clone(), local_id, incoming, Arc::new(InboundPeerBindings::default()), main_tx, ctx.clone());
         let conn_id = conn.conn_id();
         let connection = connecting.await.expect("client should connect");
         let (mut send, mut recv) = connection.open_bi().await.expect("client should open control stream");
@@ -671,12 +710,13 @@ mod tests {
         let secure = Arc::new(SharedKeyHandshake::from("atm0s"));
         let local_id = PeerId::from(1);
         let claimed_peer = PeerId::from(99);
+        let inbound_peer_bindings = Arc::new(InboundPeerBindings::default());
         let ctx = SharedCtx::new(local_id, SharedRouterTable::new(local_id));
         let (main_tx, mut main_rx) = channel(1);
 
         let connecting = client.connect(server_addr, CERT_DOMAIN_NAME).expect("client should start connecting");
         let incoming = server.accept().await.expect("server should accept incoming connection");
-        let conn = PeerConnection::new_incoming(secure.clone(), local_id, incoming, main_tx, ctx.clone());
+        let conn = PeerConnection::new_incoming(secure.clone(), local_id, incoming, inbound_peer_bindings, main_tx, ctx.clone());
         let conn_id = conn.conn_id();
         let connection = connecting.await.expect("client should connect");
         let (mut send, mut recv) = connection.open_bi().await.expect("client should open control stream");
@@ -705,6 +745,45 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn inbound_handshake_must_accept_bound_peer_claim() {
+        let _ = rustls::crypto::ring::default_provider().install_default();
+        let server_addr = UdpSocket::bind("127.0.0.1:0").expect("should bind server udp").local_addr().expect("should read server addr");
+        let client_addr = UdpSocket::bind("127.0.0.1:0").expect("should bind client udp").local_addr().expect("should read client addr");
+        let priv_key = PrivatePkcs8KeyDer::from(DEFAULT_CLUSTER_KEY.to_vec());
+        let cert = CertificateDer::from(DEFAULT_CLUSTER_CERT.to_vec());
+        let server = make_server_endpoint(server_addr, priv_key.clone_key(), cert.clone()).expect("server endpoint should build");
+        let client = make_server_endpoint(client_addr, priv_key, cert).expect("client endpoint should build");
+        let secure = Arc::new(SharedKeyHandshake::from("atm0s"));
+        let local_id = PeerId::from(1);
+        let remote_id = PeerId::from(2);
+        let inbound_peer_bindings = Arc::new(InboundPeerBindings::static_bindings([PeerAddress::new(remote_id, NetworkAddress::from(client_addr))]));
+        let ctx = SharedCtx::new(local_id, SharedRouterTable::new(local_id));
+        let (main_tx, mut main_rx) = channel(1);
+
+        let connecting = client.connect(server_addr, CERT_DOMAIN_NAME).expect("client should start connecting");
+        let incoming = server.accept().await.expect("server should accept incoming connection");
+        let conn = PeerConnection::new_incoming(secure.clone(), local_id, incoming, inbound_peer_bindings, main_tx, ctx.clone());
+        let conn_id = conn.conn_id();
+        let connection = connecting.await.expect("client should connect");
+        let (mut send, mut recv) = connection.open_bi().await.expect("client should open control stream");
+
+        let auth = secure.create_request(remote_id, local_id, now_ms());
+        write_object::<_, _, MAX_CONTROL_PEER_PKT>(&mut send, &ConnectReq { from: remote_id, to: local_id, auth })
+            .await
+            .expect("client should send bound identity connect request");
+
+        let response: ConnectRes = wait_object::<_, _, MAX_CONTROL_PEER_PKT>(&mut recv).await.expect("server should answer the accepted connect request");
+        assert!(response.result.is_ok(), "inbound handshake must accept a peer id bound to the observed remote address");
+
+        let event = tokio::time::timeout(Duration::from_millis(200), main_rx.recv()).await;
+        assert!(
+            matches!(event, Ok(Some(MainEvent::PeerConnected(event_conn, peer, _))) if event_conn == conn_id && peer == remote_id),
+            "bound inbound peer must emit PeerConnected for its configured PeerId"
+        );
+        assert!(ctx.conn(&conn_id).is_some(), "bound inbound peer must register a peer alias");
+    }
+
+    #[tokio::test]
     async fn valid_sync_must_survive_full_main_event_queue() {
         let _ = rustls::crypto::ring::default_provider().install_default();
         let server_addr = UdpSocket::bind("127.0.0.1:0").expect("should bind server udp").local_addr().expect("should read server addr");
@@ -722,7 +801,7 @@ mod tests {
 
         let connecting = client.connect(server_addr, CERT_DOMAIN_NAME).expect("client should start connecting");
         let incoming = server.accept().await.expect("server should accept incoming connection");
-        let conn = PeerConnection::new_incoming(secure.clone(), local_id, incoming, main_tx.clone(), ctx.clone());
+        let conn = PeerConnection::new_incoming(secure.clone(), local_id, incoming, Arc::new(InboundPeerBindings::insecure_open_cluster()), main_tx.clone(), ctx.clone());
         let conn_id = conn.conn_id();
         let connection = connecting.await.expect("client should connect");
         let (mut send, mut recv) = connection.open_bi().await.expect("client should open control stream");
@@ -802,6 +881,7 @@ mod tests {
             peer_id: PeerId::from(1),
             listen_addr,
             advertise: None,
+            inbound_peer_bindings: Default::default(),
             priv_key,
             cert,
             tick_ms: 100,
@@ -855,7 +935,14 @@ mod tests {
 
         let connecting = client.connect(server_addr, CERT_DOMAIN_NAME).expect("raw client should start connecting");
         let incoming = server.accept().await.expect("server should accept incoming connection");
-        let _conn = PeerConnection::new_incoming(Arc::new(LargeResponseHandshake), local_id, incoming, main_tx, ctx);
+        let _conn = PeerConnection::new_incoming(
+            Arc::new(LargeResponseHandshake),
+            local_id,
+            incoming,
+            Arc::new(InboundPeerBindings::insecure_open_cluster()),
+            main_tx,
+            ctx,
+        );
         let connection = connecting.await.expect("raw client should complete transport");
         let (mut send, recv) = connection.open_bi().await.expect("raw client should open p2p control stream");
         let auth = LargeResponseHandshake.create_request(remote_id, local_id, now_ms());
@@ -1214,6 +1301,7 @@ mod tests {
             peer_id: PeerId::from(1),
             listen_addr,
             advertise: None,
+            inbound_peer_bindings: Default::default(),
             priv_key,
             cert,
             tick_ms: 100,
@@ -1268,6 +1356,7 @@ mod tests {
             peer_id: PeerId::from(1),
             listen_addr,
             advertise: Some(NetworkAddress::from(listen_addr)),
+            inbound_peer_bindings: Default::default(),
             priv_key,
             cert,
             tick_ms: 100,

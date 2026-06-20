@@ -37,6 +37,8 @@ async fn start_node(addr: SocketAddr, advertise: bool) -> anyhow::Result<()> {
         peer_id,
         listen_addr: addr,
         advertise: advertise.then(|| addr.into()),
+        // Open-cluster discovery demo; production deployments should configure static inbound bindings.
+        inbound_peer_bindings: InboundPeerBindings::insecure_open_cluster(),
         priv_key,
         cert,
         tick_ms: 100,

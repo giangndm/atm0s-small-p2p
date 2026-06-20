@@ -5662,13 +5662,22 @@ the source of truth for evidence and reviewer decisions.
   an expected-peer/admission check for inbound claims plus the existing self-id
   rejection, with the stronger fix being per-peer credentials or another
   identity proof that binds the transport peer to the claimed `PeerId`.
+- Resolution: implemented static inbound peer bindings via
+  `P2pNetworkConfig::inbound_peer_bindings`. The default is a strict static
+  binding set, so unbound inbound `ConnectReq.from` claims are rejected before
+  the node sends `ConnectRes Ok`, registers a `PeerConnectionAlias`, or emits
+  `PeerConnected`. Legacy open-cluster admission is available only through the
+  explicitly named `InboundPeerBindings::insecure_open_cluster()` opt-out.
 - Evidence test:
   - `cargo test inbound_handshake_must_reject_peer_claiming_third_party_id -- --nocapture`
-  - Failure summary: a raw client sends a fresh valid shared-key `ConnectReq`
+  - Current result: passes. A raw client sends a fresh valid shared-key `ConnectReq`
     with `from == PeerId(99)` and `to == PeerId(1)` to a node whose local id is
-    `PeerId(1)`; current code returns `ConnectRes { result: Ok(_) }`, so the
-    test fails because the claimed third-party id is admitted as the
+    `PeerId(1)`; the default strict inbound binding set now returns
+    `ConnectRes { result: Err(_) }` before the claimed third-party id becomes the
     authenticated connection identity.
+  - Additional current result: `cargo test inbound_handshake_must_accept_bound_peer_claim -- --nocapture`
+    passes, proving an explicitly bound peer id and observed remote address can
+    still complete inbound admission.
 
 ### ISSUE-195: Connection teardown resets monotonic counters to zero
 
