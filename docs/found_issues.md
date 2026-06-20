@@ -11,7 +11,7 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 94
+- Current consecutive no-new-issue cycles: 95
 - Stop condition requested by user: continue until 5 consecutive cycles find no
   new accepted issue.
 
@@ -5783,6 +5783,40 @@ the source of truth for evidence and reviewer decisions.
     `src/peer.rs:1092` with `got 2`.
 
 ## No-New-Issue Audit Cycles
+
+### Cycle after ISSUE-204 no-new cycle 95: broad random duplicate stale sync and stop-forwarding storm
+
+- Result: no accepted non-duplicate issue.
+- Reviewer: `Locke the 5th`, forked subagent review, confirmed
+  `DUPLICATE/NO_NEW`.
+- Source and test evidence reviewed:
+  - `src/tests/fuzz.rs`
+  - `src/router.rs`
+  - `src/utils.rs`
+  - `RUST_LOG=error P2P_FUZZ_SEED=95 P2P_FUZZ_NODES=8 P2P_FUZZ_STEPS=1800 cargo test fuzz_random_node_actions_must_not_panic_connection_tasks -- --nocapture`
+    failed.
+- Evidence summary:
+  - exit status 101; `0 passed; 1 failed`; the fuzz assertion at
+    `src/tests/fuzz.rs:183:5` detected background connection/service task
+    panics.
+  - two `src/router.rs:76:66` panics with
+    `should have direct metric with apply_sync`.
+  - the same log contains 4,496 exact
+    `forward peer stopped over peer alias got error no available capacity`
+    entries and 260 exact
+    `forward peer stopped over peer alias got error channel closed` entries.
+  - reviewer found no invalid-service `src/ctx.rs:34` panic, no
+    `src/peer.rs` send-to-main panic, and no `should send to main` evidence in
+    this log.
+- Duplicate mapping:
+  - primary: the `src/router.rs:76` panics map directly to ISSUE-063: stale
+    `PeerData::Sync` reaches `RouterTable::apply_sync` after direct route
+    state is gone.
+  - secondary: the forwarded-stop no-capacity/channel-closed storm maps to
+    ISSUE-170: stop forwarding lacks dedupe/TTL/tombstone suppression in cyclic
+    meshes and can amplify shutdown churn into repeated failed control sends.
+- Root-cause summary impact: no new root cause; this strengthens existing
+  ISSUE-063 and ISSUE-170 evidence without adding ISSUE-205.
 
 ### Cycle after ISSUE-204 no-new cycle 94: sanitized churn duplicate peer-connect panic and stop-forwarding storm
 
