@@ -11,7 +11,7 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 291
+- Current consecutive no-new-issue cycles: 292
 - Stop condition requested by user: continue until 5 consecutive cycles find no
   new accepted issue.
 
@@ -5783,6 +5783,37 @@ the source of truth for evidence and reviewer decisions.
     `src/peer.rs:1092` with `got 2`.
 
 ## No-New-Issue Audit Cycles
+
+### Cycle after ISSUE-204 no-new cycle 292: broad invalid service panic
+
+- Result: no accepted non-duplicate issue.
+- Reviewer: `Pascal the 7th`, forked subagent review, confirmed
+  duplicate/no-new.
+- Source and test evidence reviewed:
+  - `src/tests/fuzz.rs`
+  - `src/ctx.rs`
+  - `RUST_LOG=error P2P_FUZZ_SEED=292 P2P_FUZZ_NODES=8 P2P_FUZZ_STEPS=3000 cargo test fuzz_random_node_actions_must_not_panic_connection_tasks -- --nocapture`
+    failed with `seed=292, nodes=8, steps=3000`.
+- Evidence summary:
+  - exit status 101; log had 49 lines; the fuzz assertion at
+    `src/tests/fuzz.rs:183:5` reported background connection/service task
+    failure.
+  - seven hard invalid-service panics at `src/ctx.rs:34:9`, each with
+    `index out of bounds: the len is 256 but the index is 256`.
+  - one connection-lost marker, eight channel-closed markers, and six
+    closed-by-peer markers were reviewed as teardown fallout after the
+    background task panics.
+  - no stale-sync, shutdown-send, stopped-forwarding, broadcast-alias,
+    path-not-found, no-capacity, or aborted-by-peer evidence.
+- Duplicate mapping: ISSUE-053.
+- Root-cause summary impact: no new root cause; the repeated panics strengthen
+  existing unchecked inbound service-id validation evidence without adding a
+  new issue.
+- Smallest fix proposal: validate service ids before indexing the fixed
+  256-entry service table; for inbound messages, reject or drop ids outside
+  `0..256` and avoid calling `get_service` with invalid `P2pServiceId` values,
+  keeping seed `292` as regression evidence for repeated invalid-service
+  broadcast delivery.
 
 ### Cycle after ISSUE-204 no-new cycle 291: steady valid clean pass
 

@@ -7,9 +7,9 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Accepted issues: 204
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 291
+- Current consecutive no-new-issue cycles: 292
 - Stop condition: continue until 5 consecutive cycles find no new accepted
-  issue; currently 291/5 after ISSUE-204.
+  issue; currently 292/5 after ISSUE-204.
 
 ## Root Cause Summary
 
@@ -2389,6 +2389,14 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Recent No-New Audit
 
+- Cycle after ISSUE-204 no-new cycle 292 ran a broad invalid-action fuzz pass
+  with forked reviewer `Pascal the 7th`. The run failed with exit code 101 and
+  assertion `seed=292, nodes=8, steps=3000`. The hard failure was duplicate
+  ISSUE-053 evidence: seven `src/ctx.rs:34:9` invalid-service panics with
+  `index out of bounds: the len is 256 but the index is 256`. The
+  connection-lost, channel-closed, and closed-by-peer markers were reviewed as
+  teardown fallout after background task panics. No accepted issue or summary
+  root-cause change was recorded.
 - Cycle after ISSUE-204 no-new cycle 291 ran a steady valid-node fuzz pass with
   forked reviewer `Lovelace the 7th`. The run passed with exit code 0:
   `1 passed`, `0 failed`, and no panic, invalid-service-id, stale-sync,
