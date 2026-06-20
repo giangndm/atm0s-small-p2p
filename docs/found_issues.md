@@ -11,7 +11,7 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 67
+- Current consecutive no-new-issue cycles: 68
 - Stop condition requested by user: continue until 5 consecutive cycles find no
   new accepted issue.
 
@@ -5783,6 +5783,34 @@ the source of truth for evidence and reviewer decisions.
     `src/peer.rs:1092` with `got 2`.
 
 ## No-New-Issue Audit Cycles
+
+### Cycle after ISSUE-204 no-new cycle 68: broad random fuzz duplicate invalid service and shutdown panics
+
+- Result: no accepted non-duplicate issue.
+- Reviewer: `Aristotle the 4th`, forked subagent review, confirmed
+  duplicate-only no-new classification.
+- Source and test evidence reviewed:
+  - `src/ctx.rs`
+  - `src/peer.rs`
+  - `src/tests/fuzz.rs`
+  - `RUST_LOG=error P2P_FUZZ_SEED=68 P2P_FUZZ_NODES=8 P2P_FUZZ_STEPS=1800 cargo test fuzz_random_node_actions_must_not_panic_connection_tasks -- --nocapture`
+    failed.
+- Duplicate or too-close symptoms rejected:
+  - exit status 101.
+  - one background panic occurred at `src/ctx.rs:34:9` with
+    `index out of bounds: the len is 256 but the index is 256`.
+  - the fuzz harness then failed at `src/tests/fuzz.rs:183:5`.
+  - one Tokio worker panic occurred at `src/peer.rs:133:113` with
+    `should send to main: SendError { .. }`.
+  - the `src/ctx.rs:34` panic maps directly to ISSUE-053: inbound
+    out-of-range `P2pServiceId(256)` indexes the fixed service table. Existing
+    score: 84/100.
+  - the `src/peer.rs:133` panic maps directly to ISSUE-139: early
+    `PeerConnectError` reporting can panic after main-loop shutdown. Existing
+    score: 53/100.
+- Root-cause summary impact: no new root cause; this broad random fuzz run
+  strengthens existing ISSUE-053 and ISSUE-139 evidence without adding
+  ISSUE-205.
 
 ### Cycle after ISSUE-204 no-new cycle 67: steady-valid fuzz pass
 
