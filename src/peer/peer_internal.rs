@@ -179,12 +179,17 @@ impl PeerConnectionInternal {
                 }
             }
             PeerMessage::PeerStopped(peer_id) => {
+                if !self.ctx.check_peer_stopped_msg(peer_id) {
+                    log::debug!("[PeerConnectionInternal {}] peer stopped {peer_id} already delivered", self.remote);
+                    return Ok(());
+                }
+
                 for conn in self.ctx.conns().into_iter().filter(|p| !self.to_id.eq(&p.to_id())) {
                     conn.try_send(PeerMessage::PeerStopped(peer_id))
                         .print_on_err("[PeerConnectionInternal] forward peer stopped over peer alias");
                 }
 
-                if let Err(_e) = self.main_tx.send(MainEvent::PeerStopped(self.conn_id, peer_id)).await {
+                if let Err(_e) = self.main_tx.try_send(MainEvent::PeerStopped(self.conn_id, peer_id)) {
                     log::warn!("[PeerConnectionInternal {}] queue main loop full", self.remote);
                 }
             }

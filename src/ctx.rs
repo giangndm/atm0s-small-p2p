@@ -21,6 +21,7 @@ struct SharedCtxInternal {
     conns: HashMap<ConnectionId, PeerConnectionAlias>,
     conn_metrics: HashMap<ConnectionId, (PeerId, PeerConnectionMetric)>,
     received_broadcast_msg: LruCache<BroadcastMsgId, ()>,
+    received_peer_stopped_msg: LruCache<PeerId, ()>,
     services: [Option<Sender<P2pServiceEvent>>; 256],
 }
 
@@ -80,6 +81,15 @@ impl SharedCtxInternal {
             false
         }
     }
+
+    fn check_peer_stopped_msg(&mut self, peer_id: PeerId) -> bool {
+        if !self.received_peer_stopped_msg.contains(&peer_id) {
+            self.received_peer_stopped_msg.get_or_insert(peer_id, || ());
+            true
+        } else {
+            false
+        }
+    }
 }
 
 #[cfg(test)]
@@ -104,6 +114,16 @@ mod tests {
 
         assert!(ctx.get_service(&P2pServiceId::from(255u16)).is_some());
     }
+
+    #[test]
+    fn peer_stopped_admission_must_deduplicate_per_stopped_peer() {
+        let ctx = SharedCtx::new(PeerId::from(1), SharedRouterTable::new(PeerId::from(1)));
+        let stopped = PeerId::from(2);
+
+        assert!(ctx.check_peer_stopped_msg(stopped));
+        assert!(!ctx.check_peer_stopped_msg(stopped));
+        assert!(ctx.check_peer_stopped_msg(PeerId::from(3)));
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -121,6 +141,7 @@ impl SharedCtx {
                 conns: Default::default(),
                 conn_metrics: Default::default(),
                 received_broadcast_msg: LruCache::new(8192.try_into().expect("should ok")),
+                received_peer_stopped_msg: LruCache::new(8192.try_into().expect("should ok")),
                 services: std::array::from_fn(|_| None),
             })),
             router,
@@ -172,6 +193,10 @@ impl SharedCtx {
     /// if already it return false and do nothing
     pub fn check_broadcast_msg(&self, id: BroadcastMsgId) -> bool {
         self.ctx.write().check_broadcast_msg(id)
+    }
+
+    pub fn check_peer_stopped_msg(&self, peer_id: PeerId) -> bool {
+        self.ctx.write().check_peer_stopped_msg(peer_id)
     }
 
     pub fn try_send_unicast(&self, service_id: P2pServiceId, dest: PeerId, data: Vec<u8>) -> anyhow::Result<()> {
