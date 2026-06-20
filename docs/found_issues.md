@@ -3578,6 +3578,20 @@ the source of truth for evidence and reviewer decisions.
   - Failure summary: 1,025 `AliasServiceRequester::register(...)` calls leave
     1,025 pending messages in `service.rx`, exceeding the bounded
     control-backlog assertion.
+- Fixed evidence:
+  - `cargo test alias_internal_control_backlog_must_be_bounded -- --nocapture`
+  - `cargo test alias_find_returns_none_when_control_queue_full -- --nocapture`
+  - `cargo test alias_shutdown_when_control_queue_full_must_not_panic -- --nocapture`
+  - `cargo test alias_guard_drop_when_control_queue_full_must_not_panic -- --nocapture`
+  - `cargo test alias_find_after_service_drop_returns_none_not_panic -- --nocapture`
+- Fix summary: `AliasService` now uses a bounded
+  `ALIAS_CONTROL_QUEUE_SIZE = 1024` control queue. `find` returns `None` when
+  admission fails, while `register`, `shutdown`, and `AliasGuard::drop` use
+  best-effort `try_send` with debug logging to preserve their current
+  non-`Result` APIs.
+- Caveat: preserving `register -> AliasGuard` means overloaded registration can
+  return a dead-on-arrival guard when the control queue is full or closed. The
+  API-level correction remains a separate breaking-change follow-up.
 
 ### ISSUE-128: Metrics recv panics when the base service channel closes
 

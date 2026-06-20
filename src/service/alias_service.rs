@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 use tokio::{
     select,
     sync::{
-        mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender},
+        mpsc::{channel, error::TrySendError, Receiver, Sender},
         oneshot,
     },
     time::Interval,
@@ -27,6 +27,7 @@ use crate::{
 use super::{P2pService, P2pServiceEvent, P2pServiceRequester};
 
 const LRU_CACHE_SIZE: usize = 1_000_000;
+pub(crate) const ALIAS_CONTROL_QUEUE_SIZE: usize = 1024;
 const HINT_TIMEOUT_MS: u64 = 500;
 const SCAN_TIMEOUT_MS: u64 = 1000;
 
@@ -68,26 +69,26 @@ enum AliasControl {
 #[derive(Debug)]
 pub struct AliasGuard {
     alias: AliasId,
-    tx: UnboundedSender<AliasControl>,
+    tx: Sender<AliasControl>,
 }
 
 impl Drop for AliasGuard {
     fn drop(&mut self) {
         log::info!("[AliasGuard] drop {} => auto unregister", self.alias);
-        self.tx.send(AliasControl::Unregister(self.alias)).expect("alias service main channal should work");
+        try_send_alias_control(&self.tx, AliasControl::Unregister(self.alias), "guard drop unregister");
     }
 }
 
 #[derive(Debug, Clone)]
 pub struct AliasServiceRequester {
-    tx: UnboundedSender<AliasControl>,
+    tx: Sender<AliasControl>,
 }
 
 impl AliasServiceRequester {
     pub fn register<A: Into<AliasId>>(&self, alias: A) -> AliasGuard {
         let alias: AliasId = alias.into();
         log::info!("[AliasServiceRequester] register alias {alias}");
-        self.tx.send(AliasControl::Register(alias)).expect("alias service main channal should work");
+        try_send_alias_control(&self.tx, AliasControl::Register(alias), "requester register");
 
         AliasGuard { alias, tx: self.tx.clone() }
     }
@@ -96,7 +97,9 @@ impl AliasServiceRequester {
         let alias: AliasId = alias.into();
         log::info!("[AliasServiceRequester] find alias {alias}");
         let (tx, rx) = oneshot::channel();
-        self.tx.send(AliasControl::Find(alias, tx)).expect("alias service main channal should work");
+        if !try_send_alias_control(&self.tx, AliasControl::Find(alias, tx), "requester find") {
+            return None;
+        }
         let res = rx.await.ok()?;
         log::info!("[AliasServiceRequester] find alias {alias} => result {res:?}");
         res
@@ -113,7 +116,21 @@ impl AliasServiceRequester {
 
     pub fn shutdown(&self) {
         log::info!("[AliasServiceRequester] shutdown");
-        self.tx.send(AliasControl::Shutdown).expect("alias service main channal should work");
+        try_send_alias_control(&self.tx, AliasControl::Shutdown, "requester shutdown");
+    }
+}
+
+fn try_send_alias_control(tx: &Sender<AliasControl>, msg: AliasControl, context: &str) -> bool {
+    match tx.try_send(msg) {
+        Ok(()) => true,
+        Err(TrySendError::Full(_)) => {
+            log::debug!("[AliasService] alias control queue full while handling {context}");
+            false
+        }
+        Err(TrySendError::Closed(_)) => {
+            log::debug!("[AliasService] alias control queue closed while handling {context}");
+            false
+        }
     }
 }
 
@@ -142,15 +159,15 @@ struct AliasServiceInternal {
 
 pub struct AliasService {
     service: P2pService,
-    tx: UnboundedSender<AliasControl>,
-    rx: UnboundedReceiver<AliasControl>,
+    tx: Sender<AliasControl>,
+    rx: Receiver<AliasControl>,
     internal: AliasServiceInternal,
     interval: Interval,
 }
 
 impl AliasService {
     pub fn new(service: P2pService) -> Self {
-        let (tx, rx) = unbounded_channel();
+        let (tx, rx) = channel(ALIAS_CONTROL_QUEUE_SIZE);
         Self {
             service,
             tx,
@@ -472,19 +489,75 @@ mod test {
 
     #[tokio::test]
     async fn alias_internal_control_backlog_must_be_bounded() {
-        const MAX_PENDING_CONTROLS: usize = 1024;
         let service = test_service();
         let requester = service.requester();
         let mut guards = Vec::new();
 
-        for alias in 0..=MAX_PENDING_CONTROLS {
+        for alias in 0..=ALIAS_CONTROL_QUEUE_SIZE {
             guards.push(requester.register(AliasId(alias as u64 + 10)));
         }
 
+        assert_eq!(
+            service.rx.len(),
+            ALIAS_CONTROL_QUEUE_SIZE,
+            "pending alias internal control messages should stop at the bounded control queue size"
+        );
         assert!(
-            service.rx.len() <= MAX_PENDING_CONTROLS,
+            service.rx.len() <= ALIAS_CONTROL_QUEUE_SIZE,
             "pending alias internal control messages must be bounded, got {}",
             service.rx.len()
+        );
+    }
+
+    #[tokio::test]
+    async fn alias_find_returns_none_when_control_queue_full() {
+        let service = test_service();
+        let requester = service.requester();
+        let mut guards = Vec::new();
+
+        for alias in 0..ALIAS_CONTROL_QUEUE_SIZE {
+            guards.push(requester.register(AliasId(alias as u64 + 10)));
+        }
+
+        assert_eq!(service.rx.len(), ALIAS_CONTROL_QUEUE_SIZE);
+
+        let result = requester.find(AliasId(999_999)).await;
+
+        assert_eq!(result, None, "find must fail closed instead of waiting on a oneshot that was never enqueued");
+        assert_eq!(service.rx.len(), ALIAS_CONTROL_QUEUE_SIZE, "failed find admission must not grow the bounded control queue");
+    }
+
+    #[tokio::test]
+    async fn alias_shutdown_when_control_queue_full_must_not_panic() {
+        let service = test_service();
+        let requester = service.requester();
+        let mut guards = Vec::new();
+
+        for alias in 0..ALIAS_CONTROL_QUEUE_SIZE {
+            guards.push(requester.register(AliasId(alias as u64 + 10)));
+        }
+
+        assert_eq!(service.rx.len(), ALIAS_CONTROL_QUEUE_SIZE);
+        requester.shutdown();
+        assert_eq!(service.rx.len(), ALIAS_CONTROL_QUEUE_SIZE, "failed shutdown admission must not grow the bounded control queue");
+    }
+
+    #[tokio::test]
+    async fn alias_guard_drop_when_control_queue_full_must_not_panic() {
+        let service = test_service();
+        let requester = service.requester();
+        let mut guards = Vec::new();
+
+        for alias in 0..ALIAS_CONTROL_QUEUE_SIZE {
+            guards.push(requester.register(AliasId(alias as u64 + 10)));
+        }
+
+        assert_eq!(service.rx.len(), ALIAS_CONTROL_QUEUE_SIZE);
+        drop(guards.pop());
+        assert_eq!(
+            service.rx.len(),
+            ALIAS_CONTROL_QUEUE_SIZE,
+            "failed unregister admission from Drop must not grow the bounded control queue"
         );
     }
 
@@ -508,7 +581,7 @@ mod test {
         let ctx = SharedCtx::new(PeerId::from(1), SharedRouterTable::new(PeerId::from(1)));
         let (base_service, _service_tx) = P2pService::build(P2pServiceId::from(0), ctx);
         let mut service = AliasService::new(base_service);
-        let (replacement_tx, _replacement_rx) = unbounded_channel();
+        let (replacement_tx, _replacement_rx) = channel(ALIAS_CONTROL_QUEUE_SIZE);
         service.tx = replacement_tx;
 
         let result = std::panic::AssertUnwindSafe(service.run_loop()).catch_unwind().await;
