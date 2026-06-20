@@ -59,6 +59,15 @@ pub struct BincodeCodec<Item> {
     _tmp: PhantomData<Item>,
 }
 
+impl<Item> BincodeCodec<Item> {
+    pub(crate) fn with_max_frame_length(max: usize) -> Self {
+        Self {
+            length_decode: LengthDelimitedCodec::builder().max_frame_length(max).new_codec(),
+            _tmp: Default::default(),
+        }
+    }
+}
+
 impl<Item> Default for BincodeCodec<Item> {
     fn default() -> Self {
         Self {
@@ -126,7 +135,10 @@ mod tests {
 
     use futures::FutureExt;
     use serde::{ser::SerializeSeq, Serializer};
-    use tokio_util::{bytes::BytesMut, codec::Encoder};
+    use tokio_util::{
+        bytes::BytesMut,
+        codec::{Decoder, Encoder},
+    };
 
     use crate::{
         msg::{P2pServiceId, PeerMessage},
@@ -166,13 +178,40 @@ mod tests {
 
     #[test]
     fn peer_message_codec_must_reject_oversized_service_payloads() {
-        let mut codec = BincodeCodec::<PeerMessage>::default();
+        let mut codec = BincodeCodec::<PeerMessage>::with_max_frame_length(60_000);
         let mut dst = BytesMut::new();
         let oversized = vec![0; 70_000];
 
         let result = codec.encode(PeerMessage::Unicast(PeerId::from(1), PeerId::from(2), P2pServiceId::from(0), oversized), &mut dst);
 
         assert!(result.is_err(), "main peer message codec must reject oversized service payloads before framing");
+        assert!(dst.is_empty(), "oversized peer messages must not append partial frames");
+    }
+
+    #[test]
+    fn peer_message_codec_must_reject_oversized_inbound_frames() {
+        let mut codec = BincodeCodec::<PeerMessage>::with_max_frame_length(60_000);
+        let mut src = BytesMut::new();
+        src.extend_from_slice(&(70_000u32.to_be_bytes()));
+
+        let result = codec.decode(&mut src);
+
+        assert!(result.is_err(), "main peer message codec must reject oversized inbound frames before payload allocation");
+    }
+
+    #[test]
+    fn peer_message_codec_must_allow_small_messages() {
+        let mut codec = BincodeCodec::<PeerMessage>::with_max_frame_length(60_000);
+        let mut framed = BytesMut::new();
+        codec
+            .encode(PeerMessage::Unicast(PeerId::from(1), PeerId::from(2), P2pServiceId::from(0), b"ok".to_vec()), &mut framed)
+            .expect("small peer message should encode");
+
+        let decoded = codec.decode(&mut framed).expect("small peer message should decode");
+
+        assert!(
+            matches!(decoded, Some(PeerMessage::Unicast(source, dest, service, payload)) if source == PeerId::from(1) && dest == PeerId::from(2) && service == P2pServiceId::from(0) && payload == b"ok")
+        );
     }
 
     #[tokio::test]

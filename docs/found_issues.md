@@ -739,6 +739,9 @@ the source of truth for evidence and reviewer decisions.
 
 ### ISSUE-024: Peer message codec lacks the 60 KB application payload cap
 
+- Status: fixed. Peer main-stream framing now uses `BincodeCodec` with the
+  project 60 KB frame cap, so oversized `PeerMessage` service payloads are
+  rejected before framing instead of using tokio-util's multi-MiB default.
 - Category: high-load stability, resource exhaustion
 - Score: 70/100
 - Reviewer: `Descartes`, confirmed.
@@ -755,8 +758,7 @@ the source of truth for evidence and reviewer decisions.
   clones.
 - Evidence test:
   - `cargo test peer_message_codec_must_reject_oversized_service_payloads -- --nocapture`
-  - Failure summary: a 70 KB unicast service payload is encoded successfully
-    instead of being rejected before framing.
+  - Fixed summary: a 70 KB unicast service payload is rejected before framing.
 
 ### ISSUE-025: Replicated KV `FetchSnapshot` reversed bounds panic
 

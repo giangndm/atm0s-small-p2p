@@ -38,6 +38,7 @@ use super::PeerConnectionControl;
 const OPEN_BI_TIMEOUT: Duration = Duration::from_secs(2);
 const LOCAL_SERVICE_DELIVERY_TIMEOUT: Duration = Duration::from_secs(1);
 const MAX_CONTROL_STREAM_PKT: usize = 60000;
+const MAX_PEER_MESSAGE_FRAME: usize = 60000;
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 pub struct PeerConnectionMetric {
@@ -84,7 +85,7 @@ impl PeerConnectionInternal {
             ctx,
             remote: connection.remote_address(),
             connection,
-            framed: Framed::new(stream, BincodeCodec::default()),
+            framed: Framed::new(stream, peer_message_codec()),
             main_tx,
             control_rx,
             ticker: tokio::time::interval(Duration::from_secs(1)),
@@ -257,6 +258,10 @@ impl PeerConnectionInternal {
         }
         Ok(())
     }
+}
+
+fn peer_message_codec() -> BincodeCodec<PeerMessage> {
+    BincodeCodec::with_max_frame_length(MAX_PEER_MESSAGE_FRAME)
 }
 
 #[derive(Debug, PartialEq, Eq)]
