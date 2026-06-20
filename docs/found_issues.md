@@ -11,7 +11,7 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 340
+- Current consecutive no-new-issue cycles: 341
 - Stop condition requested by user: continue until 5 consecutive cycles find no
   new accepted issue.
 
@@ -5783,6 +5783,36 @@ the source of truth for evidence and reviewer decisions.
     `src/peer.rs:1092` with `got 2`.
 
 ## No-New-Issue Audit Cycles
+
+### Cycle after ISSUE-204 no-new cycle 341: valid churn stale-sync duplicate
+
+- Result: no accepted non-duplicate issue.
+- Reviewer: `Avicenna the 7th`, forked subagent review, confirmed
+  duplicate/no-new.
+- Source and test evidence reviewed:
+  - `src/tests/fuzz.rs`
+  - `src/router.rs`
+  - `RUST_LOG=error P2P_FUZZ_SEED=341 P2P_FUZZ_NODES=8 P2P_FUZZ_STEPS=5200 cargo test fuzz_random_valid_node_churn_actions_must_not_panic_connection_tasks -- --nocapture`
+    failed with `seed=341, nodes=8, steps=5200`.
+- Evidence summary:
+  - exit status 101; log had 26 lines; the fuzz assertion at
+    `src/tests/fuzz.rs:372:5` reported background connection/service task
+    failure.
+  - one stale-route panic at `src/router.rs:76:66` with
+    `should have direct metric with apply_sync`.
+  - invalid-service, shutdown-send, PeerStopped storm, no-capacity,
+    channel-closed, broadcast-failure, endpoint-driver-dropped, and
+    internal-channel-error signatures were absent.
+  - lifecycle context included five `connection lost` markers and one
+    `closed by peer` marker; reviewer treated these as churn context, not as
+    separate issue evidence.
+- Duplicate mapping: ISSUE-063 for stale `PeerData::Sync` after a direct route
+  was removed.
+- Root-cause summary impact: no new root cause; reviewer classified the hard
+  failure as the already accepted stale-sync route panic.
+- Smallest fix proposal: no summary fix change; keep ISSUE-063 fix proposal to
+  guard or drop stale sync when the direct metric is missing and clear queued
+  sync state on direct route removal.
 
 ### Cycle after ISSUE-204 no-new cycle 340: broad random invalid-service duplicate
 
