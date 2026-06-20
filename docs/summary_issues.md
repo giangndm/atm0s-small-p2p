@@ -7,9 +7,9 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Accepted issues: 204
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 85
+- Current consecutive no-new-issue cycles: 86
 - Stop condition: continue until 5 consecutive cycles find no new accepted
-  issue; currently 85/5 after ISSUE-204.
+  issue; currently 86/5 after ISSUE-204.
 
 ## Root Cause Summary
 
@@ -256,6 +256,14 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Recent Fuzz Evidence
 
+- Sanitized churn fuzz review:
+  `RUST_LOG=error P2P_FUZZ_SEED=86 P2P_FUZZ_NODES=8 P2P_FUZZ_STEPS=1800 cargo test fuzz_random_sanitized_node_churn_actions_must_not_panic_connection_tasks -- --nocapture`
+  failed with duplicate evidence for ISSUE-063 and secondary ISSUE-170
+  amplification. Reviewer `Nash the 5th` confirmed the single
+  `src/router.rs:76` `should have direct metric with apply_sync` panic is the
+  existing stale `PeerData::Sync` after direct-route removal root cause, while
+  44,181 no-capacity and 2,266 channel-closed forwarded-stop logs are the
+  existing stop-forwarding storm pattern.
 - Valid-action fuzz review:
   `RUST_LOG=error P2P_FUZZ_SEED=85 P2P_FUZZ_NODES=8 P2P_FUZZ_STEPS=1800 cargo test fuzz_random_valid_node_actions_must_not_panic_connection_tasks -- --nocapture`
   failed with duplicate evidence for ISSUE-063 and secondary ISSUE-170
