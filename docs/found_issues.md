@@ -11,7 +11,7 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 68
+- Current consecutive no-new-issue cycles: 69
 - Stop condition requested by user: continue until 5 consecutive cycles find no
   new accepted issue.
 
@@ -5783,6 +5783,27 @@ the source of truth for evidence and reviewer decisions.
     `src/peer.rs:1092` with `got 2`.
 
 ## No-New-Issue Audit Cycles
+
+### Cycle after ISSUE-204 no-new cycle 69: valid-action fuzz duplicate stale sync panic
+
+- Result: no accepted non-duplicate issue.
+- Reviewer: `Kuhn the 4th`, forked subagent review, confirmed duplicate-only
+  no-new classification.
+- Source and test evidence reviewed:
+  - `src/router.rs`
+  - `src/tests/fuzz.rs`
+  - `RUST_LOG=error P2P_FUZZ_SEED=69 P2P_FUZZ_NODES=8 P2P_FUZZ_STEPS=1800 cargo test fuzz_random_valid_node_actions_must_not_panic_connection_tasks -- --nocapture`
+    failed.
+- Duplicate or too-close symptoms rejected:
+  - exit status 101.
+  - one background panic occurred at `src/router.rs:76:66` with
+    `should have direct metric with apply_sync`.
+  - the fuzz harness then failed at `src/tests/fuzz.rs:183:5`.
+  - this maps directly to ISSUE-063: stale `PeerData::Sync` reaches
+    `RouterTable::apply_sync` after the direct route/metric has already been
+    removed. Existing score: 72/100.
+- Root-cause summary impact: no new root cause; this valid-action fuzz run
+  strengthens existing ISSUE-063 evidence without adding ISSUE-205.
 
 ### Cycle after ISSUE-204 no-new cycle 68: broad random fuzz duplicate invalid service and shutdown panics
 
