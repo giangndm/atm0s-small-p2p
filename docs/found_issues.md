@@ -62,8 +62,7 @@ the source of truth for evidence and reviewer decisions.
 - Representative issues: ISSUE-049, ISSUE-050, ISSUE-056, ISSUE-118,
   ISSUE-119, ISSUE-120, ISSUE-123, ISSUE-124, ISSUE-125, ISSUE-126,
   ISSUE-127, ISSUE-136, ISSUE-147, ISSUE-153, ISSUE-157,
-  ISSUE-163, ISSUE-164, ISSUE-178, ISSUE-182, ISSUE-184, ISSUE-198,
-  ISSUE-199.
+  ISSUE-164, ISSUE-178, ISSUE-182, ISSUE-184, ISSUE-198, ISSUE-199.
 - Pattern: some paths use bounded channels and drop on `try_send`, some await
   bounded sends from critical tasks, and others use unbounded queues or produce
   duplicate internal control work. Under load this causes silent data loss,
@@ -5107,6 +5106,16 @@ the source of truth for evidence and reviewer decisions.
 
 ### ISSUE-163: Pubsub RPC waits for timeout after every remote send fails
 
+- Status: fixed by `c979cea2cfdcbc49c1cb6fdafa212bd115524d3a`
+  (`c979cea`, `fix: bound pubsub subscriber events`), with later
+  active-membership support from `f9f3c81` (`fix: version pubsub membership
+  updates`). `send_to` now reports success/failure, and `GuestPublishRpc`
+  counts only successful local/remote fanout. If `delivered == 0`, the caller
+  receives `PubsubRpcError::NoDestination` and no pending RPC state is
+  inserted. Verification:
+  `cargo test pubsub_rpc_must_return_no_destination_when_all_remote_sends_fail -- --nocapture`.
+  Caveat: this closes failed remote pubsub RPC send fanout only; local
+  analogs/backpressure issues such as ISSUE-178 and ISSUE-124 remain separate.
 - Category: correctness, pubsub RPC stability, bad-network delivery failure
 - Score: 61/100
 - Reviewer: `Einstein the 2nd`, confirmed after `Descartes the 2nd` discovery.

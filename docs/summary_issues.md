@@ -16,7 +16,7 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   ISSUE-131, ISSUE-132, ISSUE-133, ISSUE-134, ISSUE-135, ISSUE-136, ISSUE-137,
   ISSUE-140, ISSUE-143, ISSUE-145, ISSUE-147, ISSUE-148, ISSUE-150, ISSUE-151,
   ISSUE-152, ISSUE-153, ISSUE-154, ISSUE-155, ISSUE-156, ISSUE-157, ISSUE-158,
-  ISSUE-159, ISSUE-160, ISSUE-161, ISSUE-053, ISSUE-063, ISSUE-139, ISSUE-146, ISSUE-168, ISSUE-170,
+  ISSUE-159, ISSUE-160, ISSUE-161, ISSUE-163, ISSUE-053, ISSUE-063, ISSUE-139, ISSUE-146, ISSUE-168, ISSUE-170,
   ISSUE-149, ISSUE-169, ISSUE-174, ISSUE-176, ISSUE-181, ISSUE-189, ISSUE-190, ISSUE-191, ISSUE-192, ISSUE-193,
   ISSUE-194, ISSUE-195, ISSUE-196, ISSUE-197, ISSUE-198, ISSUE-199,
   ISSUE-200, ISSUE-201, ISSUE-202, ISSUE-203, ISSUE-204, ISSUE-097, ISSUE-098, and ISSUE-018 have focused
@@ -67,8 +67,8 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 - Representative issues: ISSUE-049, ISSUE-050, ISSUE-056, ISSUE-118,
   ISSUE-119, ISSUE-120, ISSUE-123, ISSUE-124, ISSUE-125, ISSUE-126,
   ISSUE-127, ISSUE-136, ISSUE-153,
-  ISSUE-163, ISSUE-164, ISSUE-178, ISSUE-182, ISSUE-184, ISSUE-198,
-  ISSUE-199, ISSUE-200, ISSUE-201, ISSUE-202, ISSUE-203, ISSUE-204.
+  ISSUE-164, ISSUE-178, ISSUE-182, ISSUE-184, ISSUE-198, ISSUE-199,
+  ISSUE-200, ISSUE-201, ISSUE-202, ISSUE-203, ISSUE-204.
 - Pattern: some paths drop on `try_send`, some await bounded sends from
   critical tasks, and others use unbounded queues or duplicate internal control
   work. Under load this causes silent loss, head-of-line blocking, unreported
@@ -253,6 +253,18 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   `cargo test stale_pubsub_leave_must_not_remove_membership_after_newer_heartbeat -- --nocapture`,
   `cargo test pubsub_remote_heartbeat_restore -- --nocapture`, and
   `cargo test pubsub_remote_single_pair_pub_first -- --nocapture`.
+- ISSUE-163: fixed by `c979cea2cfdcbc49c1cb6fdafa212bd115524d3a`
+  (`c979cea`, `fix: bound pubsub subscriber events`), with later
+  active-membership support from `f9f3c81` (`fix: version pubsub membership
+  updates`). Root cause: pubsub RPC fanout treated stale remote membership as a
+  live destination even when every `send_unicast` failed immediately, inserted
+  pending RPC state, and waited for timeout. Smallest fix: make `send_to`
+  return success/failure, count only successful local/remote fanout in
+  `GuestPublishRpc`, and return `PubsubRpcError::NoDestination` without
+  pending RPC state when `delivered == 0`. Verification:
+  `cargo test pubsub_rpc_must_return_no_destination_when_all_remote_sends_fail -- --nocapture`.
+  This closes failed remote pubsub RPC send fanout only; local
+  analogs/backpressure issues such as ISSUE-178 and ISSUE-124 remain separate.
 - ISSUE-156: fixed by writing the upstream relay setup `Ok(())` before opening
   the downstream stream. A closed upstream response side now fails that write
   and returns before `alias.open_stream` can deliver an orphan downstream
