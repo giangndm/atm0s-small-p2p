@@ -189,24 +189,31 @@ the source of truth for evidence and reviewer decisions.
 
 ### ISSUE-001: Forged third-party `PeerStopped` removes a live peer
 
+- Status: fixed by authenticated stopped-peer ownership validation. Inbound
+  `PeerMessage::PeerStopped(peer_id)` is ignored unless `peer_id` is the
+  authenticated direct peer for that connection, and
+  `MainEvent::PeerStopped(conn, peer)` is ignored unless `conn` is the direct
+  route owner for `peer`. Graceful shutdown still removes stopped non-seed
+  direct peers promptly, while seed discovery remains retryable.
 - Category: security, correctness
 - Score: 92/100
 - Reviewer: `Leibniz`, confirmed. Also confirmed by `Bernoulli`, `Wegener`,
   and `Carver`.
 - Affected code:
   - `src/msg.rs`: `PeerMessage::PeerStopped(PeerId)` carries a free peer id.
-  - `src/peer/peer_internal.rs`: accepts and forwards any stopped peer id.
-  - `src/lib.rs`: trusts `MainEvent::PeerStopped(conn, peer)` and removes the supplied peer.
+  - `src/peer/peer_internal.rs`: formerly accepted and forwarded any stopped
+    peer id.
+  - `src/lib.rs`: formerly trusted `MainEvent::PeerStopped(conn, peer)` and
+    removed the supplied peer.
   - `src/router.rs`: `del_peer` deletes route state for the supplied peer.
 - Impact: any authenticated peer can claim that a third-party peer stopped and
   cause route/discovery removal across the mesh.
 - Evidence test:
   - `cargo test forged_peer_stopped_must_not_remove_third_party_route -- --nocapture`
-  - Failure summary: route to victim becomes `None`; expected `Some(Next(ConnectionId(20)))`.
   - Additional propagation evidence:
     `cargo test forged_peer_stopped_must_not_be_forwarded_to_other_neighbours -- --nocapture`
-  - Failure summary: a relay forwards a forged stop for an unrelated victim,
-    causing an observer to remove its route to that victim.
+  - Fixed summary: third-party stopped notifications no longer remove the
+    victim route and are not forwarded to other neighbours.
 
 ### ISSUE-002: Future-dated handshake timestamps are accepted
 

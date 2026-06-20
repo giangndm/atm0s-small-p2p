@@ -10,7 +10,7 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 - Current consecutive no-new-issue cycles: 341
 - Stop condition: continue until 5 consecutive cycles find no new accepted
   issue; currently 341/5 after ISSUE-204.
-- Fix phase status: ISSUE-003, ISSUE-004, ISSUE-005, ISSUE-006, ISSUE-007,
+- Fix phase status: ISSUE-001, ISSUE-003, ISSUE-004, ISSUE-005, ISSUE-006, ISSUE-007,
   ISSUE-002, ISSUE-008, ISSUE-009, ISSUE-014, ISSUE-015, ISSUE-021, ISSUE-033, ISSUE-055, ISSUE-103,
   ISSUE-053, ISSUE-063, ISSUE-139, ISSUE-146, ISSUE-168, ISSUE-170,
   ISSUE-176, ISSUE-189, ISSUE-190, ISSUE-191, ISSUE-192, ISSUE-193,
@@ -18,7 +18,7 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   ISSUE-200, ISSUE-201, ISSUE-202, ISSUE-203, ISSUE-204, and ISSUE-018 have focused
   fixes committed.
   ISSUE-003 is fixed by `cfc8e57`;
-  ISSUE-004 is covered by the ISSUE-170 ownership-validation follow-up
+  ISSUE-001 and ISSUE-004 are covered by the ISSUE-170 ownership-validation follow-up
   `87cf6ce`; earlier fixes are `648cfd0`, `2cbf096`, `15b788c`, and
   `4997404`.
 
@@ -182,6 +182,15 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Recently Fixed Issues
 
+- ISSUE-001: fixed by validating stopped-peer ownership before accepting or
+  propagating graceful stop notifications. Inbound `PeerStopped(peer)` must
+  name the authenticated direct peer for that connection, and
+  `MainEvent::PeerStopped(conn, peer)` is ignored unless `conn` owns the direct
+  route for `peer`. Verified with
+  `cargo test forged_peer_stopped_must_not_remove_third_party_route -- --nocapture`,
+  `cargo test forged_peer_stopped_must_not_be_forwarded_to_other_neighbours -- --nocapture`,
+  and
+  `cargo test peer_stopped_for_seed_must_not_remove_active_seed_route -- --nocapture`.
 - ISSUE-018: fixed by treating the accepted bidirectional stream's
   authenticated ingress peer as the authoritative stream source. Decoded
   `StreamConnectReq.source` is normalized to that peer before local
