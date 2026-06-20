@@ -282,9 +282,15 @@ impl<SECURE: HandshakeProtocol> P2pNetwork<SECURE> {
             }
             MainEvent::PeerStopped(conn, peer) => {
                 log::info!("[P2pNetwork] connection {conn} reported peer {peer} stopped");
+                if !self.router.is_direct_peer(&conn, &peer) {
+                    log::warn!("[P2pNetwork] ignore peer stopped for {peer} from non-direct connection {conn}");
+                    return Ok(P2pNetworkEvent::Continue);
+                }
+
                 self.discovery.remove_remote(now_ms, &peer);
                 self.router.del_peer(&peer);
-                Ok(P2pNetworkEvent::Continue)
+                self.neighbours.remove(&conn);
+                Ok(P2pNetworkEvent::PeerDisconnected(conn, peer))
             }
             MainEvent::PeerConnectError(conn, peer, err) => {
                 log::error!("[P2pNetwork] connection {conn} outgoing: {peer:?} error {err}");

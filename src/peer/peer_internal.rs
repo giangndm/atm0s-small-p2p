@@ -179,6 +179,11 @@ impl PeerConnectionInternal {
                 }
             }
             PeerMessage::PeerStopped(peer_id) => {
+                if peer_id != self.to_id {
+                    log::warn!("[PeerConnectionInternal {}] ignore peer stopped for {peer_id} from direct peer {}", self.remote, self.to_id);
+                    return Ok(());
+                }
+
                 if !self.ctx.check_peer_stopped_msg(peer_id) {
                     log::debug!("[PeerConnectionInternal {}] peer stopped {peer_id} already delivered", self.remote);
                     return Ok(());

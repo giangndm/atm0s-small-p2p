@@ -6,6 +6,7 @@
 
 use std::{collections::BTreeMap, ops::AddAssign, sync::Arc};
 
+use lru::LruCache;
 use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
 
@@ -14,6 +15,7 @@ use crate::ConnectionId;
 use super::PeerId;
 
 const MAX_HOPS: u8 = 6;
+const REMOVED_DIRECT_CACHE_SIZE: usize = 8192;
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Clone, Copy)]
 pub struct PathMetric {
@@ -47,6 +49,7 @@ struct RouterTable {
     peer_id: PeerId,
     peers: BTreeMap<PeerId, PeerMemory>,
     directs: BTreeMap<ConnectionId, (PeerId, PathMetric)>,
+    removed_directs: LruCache<ConnectionId, ()>,
 }
 
 impl RouterTable {
@@ -55,6 +58,7 @@ impl RouterTable {
             peer_id,
             peers: Default::default(),
             directs: Default::default(),
+            removed_directs: LruCache::new(REMOVED_DIRECT_CACHE_SIZE.try_into().expect("should create nonzero cache size")),
         }
     }
 
@@ -115,6 +119,11 @@ impl RouterTable {
     }
 
     fn set_direct(&mut self, conn: ConnectionId, to: PeerId, ttl_ms: u16) {
+        if self.removed_directs.contains(&conn) {
+            log::debug!("[RouterTable] ignore direct update from removed connection {conn}");
+            return;
+        }
+
         self.directs.insert(conn, (to, (1, ttl_ms).into()));
         let memory = self.peers.entry(to).or_default();
         memory.paths.insert(conn, PathMetric { relay_hops: 0, rtt_ms: ttl_ms });
@@ -122,6 +131,7 @@ impl RouterTable {
     }
 
     fn del_direct(&mut self, conn: &ConnectionId) {
+        self.removed_directs.get_or_insert(*conn, || ());
         if let Some((to, _)) = self.directs.remove(conn) {
             if let Some(memory) = self.peers.get_mut(&to) {
                 memory.paths.remove(conn);
@@ -147,6 +157,7 @@ impl RouterTable {
         let direct_conns = self.directs.iter().filter_map(|(conn, (direct_peer, _))| direct_peer.eq(peer).then_some(*conn)).collect::<Vec<_>>();
 
         for conn in direct_conns {
+            self.removed_directs.get_or_insert(conn, || ());
             self.directs.remove(&conn);
             for (route_peer, memory) in self.peers.iter_mut() {
                 if memory.paths.remove(&conn).is_some() {
@@ -155,6 +166,10 @@ impl RouterTable {
             }
         }
         self.peers.retain(|_k, v| v.best().is_some());
+    }
+
+    fn is_direct_peer(&self, conn: &ConnectionId, peer: &PeerId) -> bool {
+        self.directs.get(conn).is_some_and(|(direct_peer, _)| direct_peer == peer)
     }
 
     fn action(&self, dest: &PeerId) -> Option<RouteAction> {
@@ -269,6 +284,10 @@ impl SharedRouterTable {
 
     pub fn del_peer(&self, peer: &PeerId) {
         self.table.write().del_peer(peer);
+    }
+
+    pub fn is_direct_peer(&self, conn: &ConnectionId, peer: &PeerId) -> bool {
+        self.table.read().is_direct_peer(conn, peer)
     }
 
     pub fn action(&self, dest: &PeerId) -> Option<RouteAction> {
