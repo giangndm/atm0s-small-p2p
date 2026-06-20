@@ -954,7 +954,7 @@ async fn broadcast_source_must_be_bound_to_authenticated_connection_peer() {
     let _service1 = node1.create_service(0.into());
     tokio::spawn(async move { while node1.recv().await.is_ok() {} });
 
-    let (mut node2, _addr2) = create_node(false, 2, vec![addr1]).await;
+    let (mut node2, _addr2) = create_node(false, 2, vec![addr1.clone()]).await;
     let mut service2 = node2.create_service(0.into());
     tokio::spawn(async move { while node2.recv().await.is_ok() {} });
 
@@ -979,10 +979,56 @@ async fn broadcast_source_must_be_bound_to_authenticated_connection_peer() {
         .expect("destination service should receive or reject the injected broadcast")
         .expect("destination service channel should stay open");
 
-    assert_ne!(
+    assert_eq!(
         event,
-        P2pServiceEvent::Broadcast(forged_source, data),
-        "service must not observe a broadcast sender id that was forged inside the message body"
+        P2pServiceEvent::Broadcast(addr1.peer_id(), data),
+        "service must observe the authenticated immediate peer, not a forged message source"
+    );
+}
+
+#[tokio::test]
+async fn forged_broadcast_relay_must_use_previous_hop_identity() {
+    let (mut node1, addr1) = create_node(true, 1, vec![]).await;
+    let node1_ctx = node1.ctx.clone();
+    let _service1 = node1.create_service(0.into());
+    tokio::spawn(async move { while node1.recv().await.is_ok() {} });
+
+    let (mut node2, addr2) = create_node(false, 2, vec![addr1.clone()]).await;
+    let mut service2 = node2.create_service(0.into());
+    tokio::spawn(async move { while node2.recv().await.is_ok() {} });
+
+    let (mut node3, _addr3) = create_node(false, 3, vec![addr2.clone()]).await;
+    let mut service3 = node3.create_service(0.into());
+    tokio::spawn(async move { while node3.recv().await.is_ok() {} });
+
+    let conn = tokio::time::timeout(Duration::from_secs(3), async {
+        loop {
+            if let Some(conn) = node1_ctx.conns().into_iter().next() {
+                return conn;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .expect("node1 should connect to node2");
+
+    let forged_source = PeerId::from(99);
+    let msg_id = BroadcastMsgId::rand();
+    let data = b"forged-broadcast-relay-source".to_vec();
+    conn.try_send(PeerMessage::Broadcast(forged_source, 0.into(), msg_id, data.clone()))
+        .expect("forged broadcast should be sent over the authenticated connection");
+
+    assert_eq!(
+        tokio::time::timeout(Duration::from_secs(1), service2.recv()).await.expect("relay service should receive broadcast"),
+        Some(P2pServiceEvent::Broadcast(addr1.peer_id(), data.clone())),
+        "relay-local delivery must carry the authenticated ingress peer"
+    );
+    assert_eq!(
+        tokio::time::timeout(Duration::from_secs(1), service3.recv())
+            .await
+            .expect("downstream service should receive forwarded broadcast"),
+        Some(P2pServiceEvent::Broadcast(addr2.peer_id(), data)),
+        "forwarded broadcast must carry the authenticated previous hop"
     );
 }
 
@@ -1398,7 +1444,7 @@ async fn broadcast_dedup_must_include_source_not_only_message_id() {
         .expect("attacker should be able to send first broadcast");
     assert_eq!(
         service2.recv().await,
-        Some(P2pServiceEvent::Broadcast(PeerId::from(99), attack_data)),
+        Some(P2pServiceEvent::Broadcast(addr1.peer_id(), attack_data)),
         "the first broadcast establishes the duplicate-cache entry"
     );
 

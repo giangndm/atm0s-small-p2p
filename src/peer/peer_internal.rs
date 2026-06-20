@@ -199,15 +199,20 @@ impl PeerConnectionInternal {
                 }
             }
             PeerMessage::Broadcast(source, service_id, msg_id, data) => {
+                let effective_source = self.to_id;
+                if source != effective_source {
+                    log::warn!("[PeerConnectionInternal {}] normalize broadcast source {source} to authenticated peer {}", self.remote, self.to_id);
+                }
+
                 if self.ctx.check_broadcast_msg(msg_id) {
                     for conn in self.ctx.conns().into_iter().filter(|p| !self.to_id.eq(&p.to_id())) {
-                        conn.try_send(PeerMessage::Broadcast(source, service_id, msg_id, data.clone()))
+                        conn.try_send(PeerMessage::Broadcast(effective_source, service_id, msg_id, data.clone()))
                             .print_on_err("[PeerConnectionInternal] broadcast data over peer alias");
                     }
 
                     if let Some(service) = self.ctx.get_service(&service_id) {
                         log::debug!("[PeerConnectionInternal {}] broadcast msg {msg_id} to service {service_id}", self.remote);
-                        send_local_service_event(self.remote, service_id, &service, P2pServiceEvent::Broadcast(source, data)).await;
+                        send_local_service_event(self.remote, service_id, &service, P2pServiceEvent::Broadcast(effective_source, data)).await;
                     } else {
                         log::warn!("[PeerConnectionInternal {}] broadcast msg to unknown service {service_id}", self.remote);
                     }

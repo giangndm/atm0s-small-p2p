@@ -117,7 +117,7 @@ async fn broadcast_relay() {
     let data = "from_node1".as_bytes().to_vec();
     service1.send_broadcast(data.clone()).await.expect("node1 should send broadcast");
     assert_eq!(service2.recv().await, Some(P2pServiceEvent::Broadcast(addr1.peer_id(), data.clone())));
-    assert_eq!(service3.recv().await, Some(P2pServiceEvent::Broadcast(addr1.peer_id(), data)));
+    assert_eq!(service3.recv().await, Some(P2pServiceEvent::Broadcast(addr2.peer_id(), data)));
 
     let data = "from_node2".as_bytes().to_vec();
     service2.send_broadcast(data.clone()).await.expect("node2 should send broadcast");
@@ -126,7 +126,7 @@ async fn broadcast_relay() {
 
     let data = "from_node3".as_bytes().to_vec();
     service3.send_broadcast(data.clone()).await.expect("node3 should send broadcast");
-    assert_eq!(service1.recv().await, Some(P2pServiceEvent::Broadcast(addr3.peer_id(), data.clone())));
+    assert_eq!(service1.recv().await, Some(P2pServiceEvent::Broadcast(addr2.peer_id(), data.clone())));
     assert_eq!(service2.recv().await, Some(P2pServiceEvent::Broadcast(addr3.peer_id(), data)));
 }
 

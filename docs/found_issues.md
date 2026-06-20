@@ -515,6 +515,12 @@ the source of truth for evidence and reviewer decisions.
 
 ### ISSUE-015: Broadcast sender identity is not bound to the authenticated connection
 
+- Status: fixed. Inbound `PeerMessage::Broadcast(source, ...)` is normalized
+  to the authenticated immediate peer before forwarding and local delivery;
+  `msg_id` is unchanged, and ISSUE-017 duplicate suppression remains separate.
+  Relayed broadcasts now expose the previous hop rather than a message-body
+  original source; end-to-end original broadcaster identity requires a later
+  authenticated forwarding protocol.
 - Category: security, correctness
 - Score: 94/100
 - Reviewer: `Carson`, confirmed. Also confirmed by external review subagent
@@ -530,9 +536,14 @@ the source of truth for evidence and reviewer decisions.
   such as pubsub, alias, metrics, visualization, and replicated KV.
 - Evidence test:
   - `cargo test broadcast_source_must_be_bound_to_authenticated_connection_peer -- --nocapture`
-  - Failure summary: node2 receives
-    `P2pServiceEvent::Broadcast(PeerId(99), ...)` from a message sent over
-    node1's authenticated connection.
+  - Current result: passes. Node2 receives
+    `P2pServiceEvent::Broadcast(PeerId(1), ...)` from a forged
+    `PeerMessage::Broadcast(PeerId(99), ...)` sent over node1's authenticated
+    connection.
+  - Additional current result:
+    `cargo test forged_broadcast_relay_must_use_previous_hop_identity -- --nocapture`
+    passes, proving a forged relayed broadcast is normalized before local
+    delivery and again to the previous hop downstream.
 
 ### ISSUE-016: `connect()` can report success before peer identity is authenticated
 
