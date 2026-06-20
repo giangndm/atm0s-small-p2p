@@ -11,7 +11,7 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 112
+- Current consecutive no-new-issue cycles: 113
 - Stop condition requested by user: continue until 5 consecutive cycles find no
   new accepted issue.
 
@@ -5783,6 +5783,40 @@ the source of truth for evidence and reviewer decisions.
     `src/peer.rs:1092` with `got 2`.
 
 ## No-New-Issue Audit Cycles
+
+### Cycle after ISSUE-204 no-new cycle 113: broad random duplicate invalid service and send panics
+
+- Result: no accepted non-duplicate issue.
+- Reviewer: `Chandrasekhar the 5th`, forked subagent review, confirmed
+  `DUPLICATE/NO_NEW`.
+- Source and test evidence reviewed:
+  - `src/tests/fuzz.rs`
+  - `src/ctx.rs`
+  - `src/peer.rs`
+  - `RUST_LOG=error P2P_FUZZ_SEED=113 P2P_FUZZ_NODES=8 P2P_FUZZ_STEPS=1800 cargo test fuzz_random_node_actions_must_not_panic_connection_tasks -- --nocapture`
+    failed.
+- Evidence summary:
+  - exit status 101; `0 passed; 1 failed`; the fuzz assertion at
+    `src/tests/fuzz.rs:183:5` detected background connection/service task
+    panics.
+  - two `src/ctx.rs:34:9` panics with
+    `index out of bounds: the len is 256 but the index is 256`.
+  - one `src/peer.rs:92:104` panic and one `src/peer.rs:133:113` panic with
+    `should send to main: SendError { .. }`.
+  - reviewer found no `src/router.rs:76` stale-sync panic, no forwarded
+    `PeerStopped` no-capacity/channel-closed storm, and classified the six
+    ordinary `channel closed` network send logs as shutdown fallout rather than
+    separate ISSUE-170 evidence.
+- Duplicate mapping:
+  - primary: the `src/ctx.rs:34` panics map directly to ISSUE-053: inbound
+    out-of-range `P2pServiceId(256)` reaches unchecked service table indexing
+    in `SharedCtxInternal::get_service`.
+  - secondary: the `src/peer.rs:92` incoming `incoming.await` error path and
+    `src/peer.rs:133` outgoing `connecting.await` error path map to ISSUE-139:
+    early `PeerConnectError` reporting after main-loop shutdown uses unchecked
+    `main_tx.send(...).await.expect("should send to main")`.
+- Root-cause summary impact: no new root cause; this strengthens existing
+  ISSUE-053 and ISSUE-139 evidence without adding ISSUE-205.
 
 ### Cycle after ISSUE-204 no-new cycle 112: valid-action duplicate stale sync send panic and stop storm
 
