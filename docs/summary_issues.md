@@ -7,9 +7,9 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Accepted issues: 204
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 81
+- Current consecutive no-new-issue cycles: 82
 - Stop condition: continue until 5 consecutive cycles find no new accepted
-  issue; currently 81/5 after ISSUE-204.
+  issue; currently 82/5 after ISSUE-204.
 
 ## Root Cause Summary
 
@@ -256,6 +256,13 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Recent Fuzz Evidence
 
+- Sanitized churn fuzz review:
+  `RUST_LOG=error P2P_FUZZ_SEED=82 P2P_FUZZ_NODES=8 P2P_FUZZ_STEPS=1800 cargo test fuzz_random_sanitized_node_churn_actions_must_not_panic_connection_tasks -- --nocapture`
+  failed with duplicate evidence for ISSUE-139. Reviewer `Lagrange the 4th`
+  confirmed three `src/peer.rs:133` `should send to main` panics are the
+  existing outgoing `PeerConnectError` reporting panic after main-loop
+  shutdown. No forwarded-stop no-capacity/channel-closed storm appeared, so
+  reviewer found no ISSUE-170 mapping for this cycle.
 - Valid-action fuzz review:
   `RUST_LOG=error P2P_FUZZ_SEED=81 P2P_FUZZ_NODES=8 P2P_FUZZ_STEPS=1800 cargo test fuzz_random_valid_node_actions_must_not_panic_connection_tasks -- --nocapture`
   failed with duplicate evidence for ISSUE-063 and secondary ISSUE-170
