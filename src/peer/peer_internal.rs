@@ -342,9 +342,9 @@ async fn accept_bi(authenticated_ingress_peer: PeerId, mut stream: P2pQuicStream
         Some(RouteAction::Next(next)) => {
             if let Some(alias) = ctx.conn(&next) {
                 log::info!("[PeerConnectionInternal {authenticated_ingress_peer}] stream service {service} source {effective_source} to dest {dest} => forward to {next}");
+                write_object::<_, _, MAX_CONTROL_STREAM_PKT>(&mut stream, &Ok::<_, String>(())).await?;
                 match alias.open_stream(service, effective_source, dest, meta).await {
                     Ok(mut next_stream) => {
-                        write_object::<_, _, MAX_CONTROL_STREAM_PKT>(&mut stream, &Ok::<_, String>(())).await?;
                         log::info!("[PeerConnectionInternal {authenticated_ingress_peer}] stream service {service} source {effective_source} to dest {dest} => start copy_bidirectional");
                         match copy_bidirectional(&mut next_stream, &mut stream).await {
                             Ok(stats) => {
@@ -358,7 +358,6 @@ async fn accept_bi(authenticated_ingress_peer: PeerId, mut stream: P2pQuicStream
                     }
                     Err(err) => {
                         log::error!("[PeerConnectionInternal {authenticated_ingress_peer}] stream service {service} source {effective_source} to dest {dest} => open bi error {err}");
-                        write_object::<_, _, MAX_CONTROL_STREAM_PKT>(&mut stream, &Err::<(), _>(err.to_string())).await?;
                         Err(err)
                     }
                 }

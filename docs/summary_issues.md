@@ -15,7 +15,7 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   ISSUE-124, ISSUE-125, ISSUE-126, ISSUE-127, ISSUE-128, ISSUE-129, ISSUE-130,
   ISSUE-131, ISSUE-132, ISSUE-133, ISSUE-134, ISSUE-135, ISSUE-136, ISSUE-137,
   ISSUE-140, ISSUE-143, ISSUE-145, ISSUE-147, ISSUE-148, ISSUE-150, ISSUE-151,
-  ISSUE-152, ISSUE-153, ISSUE-154, ISSUE-155,
+  ISSUE-152, ISSUE-153, ISSUE-154, ISSUE-155, ISSUE-156,
   ISSUE-053, ISSUE-063, ISSUE-139, ISSUE-146, ISSUE-168, ISSUE-170,
   ISSUE-149, ISSUE-169, ISSUE-174, ISSUE-176, ISSUE-181, ISSUE-189, ISSUE-190, ISSUE-191, ISSUE-192, ISSUE-193,
   ISSUE-194, ISSUE-195, ISSUE-196, ISSUE-197, ISSUE-198, ISSUE-199,
@@ -98,7 +98,7 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Representative issues: ISSUE-002, ISSUE-009, ISSUE-021, ISSUE-036,
   ISSUE-042, ISSUE-093, ISSUE-117, ISSUE-121, ISSUE-149,
-  ISSUE-156, ISSUE-159, ISSUE-169, ISSUE-172, ISSUE-173, ISSUE-176.
+  ISSUE-159, ISSUE-169, ISSUE-172, ISSUE-173, ISSUE-176.
 - Pattern: timeouts wrap only one await point, rely on unchecked timestamp
   arithmetic, use coarse global sweeps, or complete one side of setup before
   proving the end-to-end setup is still alive. Handshake tokens also lack
@@ -253,6 +253,14 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   `cargo test stale_pubsub_leave_must_not_remove_membership_after_newer_heartbeat -- --nocapture`,
   `cargo test pubsub_remote_heartbeat_restore -- --nocapture`, and
   `cargo test pubsub_remote_single_pair_pub_first -- --nocapture`.
+- ISSUE-156: fixed by writing the upstream relay setup `Ok(())` before opening
+  the downstream stream. A closed upstream response side now fails that write
+  and returns before `alias.open_stream` can deliver an orphan downstream
+  service event. After a successful upstream acknowledgement, downstream open
+  failure is observed as stream failure/EOF rather than a second setup
+  response; preserving downstream setup errors would require a broader
+  two-phase relay protocol. Verification:
+  `cargo test relay_must_not_deliver_downstream_stream_after_upstream_setup_closes -- --nocapture`.
 - ISSUE-145: fixed by validating `MainEvent::PeerData(conn, peer, ...)`
   against the router's live direct `(ConnectionId, PeerId)` binding before
   applying route sync or discovery advertisements. Stale or mismatched peer-data

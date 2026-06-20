@@ -4813,8 +4813,17 @@ the source of truth for evidence and reviewer decisions.
   the upstream stream fails, immediately close/reset the downstream stream and
   return an error; for a broader fix, pass an upstream cancellation token into
   downstream `open_stream`.
+- Fix status: fixed by acknowledging the upstream relay setup before opening
+  the downstream stream. If the upstream response side has already been stopped,
+  the `Ok(())` write fails and the relay returns before `alias.open_stream`
+  can deliver a downstream stream to the destination service. After the
+  acknowledgement succeeds, downstream open failures are reported as stream
+  failure/EOF rather than a second setup response; a full two-phase relay
+  handshake would be needed to preserve downstream setup errors without
+  reintroducing pre-ack orphan delivery.
 - Evidence test:
   - `cargo test relay_must_not_deliver_downstream_stream_after_upstream_setup_closes -- --nocapture`
+  - Current status: passes after the relay setup ordering change.
   - Failure summary: a raw authenticated node sends a relayed
     `StreamConnectReq` to node2 for node3, finishes the request, and stops the
     response side before node2 writes setup success. Node3 still receives
