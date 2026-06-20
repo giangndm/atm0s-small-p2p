@@ -19,7 +19,7 @@ use thiserror::Error;
 use tokio::{
     select,
     sync::{
-        mpsc::{error::TrySendError, unbounded_channel, Sender, UnboundedReceiver, UnboundedSender},
+        mpsc::{channel, error::TrySendError, Receiver, Sender},
         oneshot,
     },
     time::Interval,
@@ -37,6 +37,7 @@ pub use subscriber::{Subscriber, SubscriberEvent, SubscriberEventOb, SubscriberR
 
 const HEARTBEAT_INTERVAL_MS: u64 = 5_000;
 const RPC_TICK_INTERVAL_MS: u64 = 1_000;
+pub(crate) const PUBSUB_INTERNAL_CONTROL_QUEUE_SIZE: usize = 1024;
 
 #[derive(Debug, Hash, PartialEq, Eq, Clone)]
 pub enum PeerSrc {
@@ -156,7 +157,7 @@ pub struct PubsubChannelId(u64);
 
 #[derive(Debug, Clone)]
 pub struct PubsubServiceRequester {
-    internal_tx: UnboundedSender<InternalMsg>,
+    internal_tx: Sender<InternalMsg>,
 }
 
 #[derive(Debug, Default)]
@@ -169,8 +170,8 @@ struct PubsubChannelState {
 
 pub struct PubsubService {
     service: P2pService,
-    internal_tx: UnboundedSender<InternalMsg>,
-    internal_rx: UnboundedReceiver<InternalMsg>,
+    internal_tx: Sender<InternalMsg>,
+    internal_rx: Receiver<InternalMsg>,
     channels: HashMap<PubsubChannelId, PubsubChannelState>,
     publish_rpc_reqs: HashMap<RpcId, PublishRpcReq>,
     feedback_rpc_reqs: HashMap<RpcId, FeedbackRpcReq>,
@@ -180,7 +181,7 @@ pub struct PubsubService {
 
 impl PubsubService {
     pub fn new(service: P2pService) -> Self {
-        let (internal_tx, internal_rx) = unbounded_channel();
+        let (internal_tx, internal_rx) = channel(PUBSUB_INTERNAL_CONTROL_QUEUE_SIZE);
         Self {
             service,
             internal_rx,
@@ -743,9 +744,17 @@ impl PubsubService {
     }
 }
 
+fn try_send_internal_control(tx: &Sender<InternalMsg>, msg: InternalMsg, context: &str) -> anyhow::Result<()> {
+    match tx.try_send(msg) {
+        Ok(()) => Ok(()),
+        Err(TrySendError::Full(_)) => Err(anyhow!("{context}: pubsub internal control queue full")),
+        Err(TrySendError::Closed(_)) => Err(anyhow!("{context}: pubsub internal control queue closed")),
+    }
+}
+
 impl PubsubServiceRequester {
     pub async fn publish_as_guest(&self, channel: PubsubChannelId, data: Vec<u8>) -> anyhow::Result<()> {
-        self.internal_tx.send(InternalMsg::GuestPublish(channel, data))?;
+        try_send_internal_control(&self.internal_tx, InternalMsg::GuestPublish(channel, data), "publish_as_guest")?;
         Ok(())
     }
 
@@ -756,7 +765,7 @@ impl PubsubServiceRequester {
 
     pub async fn publish_rpc_as_guest(&self, channel: PubsubChannelId, method: &str, data: Vec<u8>, timeout: Duration) -> anyhow::Result<Vec<u8>> {
         let (tx, rx) = oneshot::channel::<Result<Vec<u8>, PubsubRpcError>>();
-        self.internal_tx.send(InternalMsg::GuestPublishRpc(channel, data, method.to_owned(), tx, timeout))?;
+        try_send_internal_control(&self.internal_tx, InternalMsg::GuestPublishRpc(channel, data, method.to_owned(), tx, timeout), "publish_rpc_as_guest")?;
         let data = rx.await??;
         Ok(data)
     }
@@ -768,7 +777,7 @@ impl PubsubServiceRequester {
     }
 
     pub async fn feedback_as_guest(&self, channel: PubsubChannelId, data: Vec<u8>) -> anyhow::Result<()> {
-        self.internal_tx.send(InternalMsg::GuestFeedback(channel, data))?;
+        try_send_internal_control(&self.internal_tx, InternalMsg::GuestFeedback(channel, data), "feedback_as_guest")?;
         Ok(())
     }
 
@@ -779,7 +788,7 @@ impl PubsubServiceRequester {
 
     pub async fn feedback_rpc_as_guest(&self, channel: PubsubChannelId, method: &str, data: Vec<u8>, timeout: Duration) -> anyhow::Result<Vec<u8>> {
         let (tx, rx) = oneshot::channel::<Result<Vec<u8>, PubsubRpcError>>();
-        self.internal_tx.send(InternalMsg::GuestFeedbackRpc(channel, data, method.to_owned(), tx, timeout))?;
+        try_send_internal_control(&self.internal_tx, InternalMsg::GuestFeedbackRpc(channel, data, method.to_owned(), tx, timeout), "feedback_rpc_as_guest")?;
         let data = rx.await??;
         Ok(data)
     }
@@ -844,22 +853,76 @@ mod test {
         channel(publisher::LOCAL_PUBLISHER_EVENT_QUEUE_SIZE)
     }
 
+    async fn fill_internal_control_queue(requester: &PubsubServiceRequester) -> Vec<Publisher> {
+        let mut publishers = Vec::with_capacity(PUBSUB_INTERNAL_CONTROL_QUEUE_SIZE);
+        for channel in 0..PUBSUB_INTERNAL_CONTROL_QUEUE_SIZE {
+            publishers.push(requester.publisher(PubsubChannelId(channel as u64 + 10)).await);
+        }
+        publishers
+    }
+
     #[tokio::test]
     async fn pubsub_internal_control_backlog_must_be_bounded() {
-        const MAX_PENDING_CONTROLS: usize = 1024;
         let service = test_service();
         let requester = service.requester();
         let mut publishers = Vec::new();
 
-        for channel in 0..=MAX_PENDING_CONTROLS {
+        for channel in 0..=PUBSUB_INTERNAL_CONTROL_QUEUE_SIZE {
             publishers.push(requester.publisher(PubsubChannelId(channel as u64 + 10)).await);
         }
 
         assert!(
-            service.internal_rx.len() <= MAX_PENDING_CONTROLS,
+            service.internal_rx.len() <= PUBSUB_INTERNAL_CONTROL_QUEUE_SIZE,
             "pending pubsub internal control messages must be bounded, got {}",
             service.internal_rx.len()
         );
+    }
+
+    #[tokio::test]
+    async fn pubsub_guest_publish_returns_error_when_internal_queue_full() {
+        let service = test_service();
+        let requester = service.requester();
+        let _publishers = fill_internal_control_queue(&requester).await;
+
+        assert_eq!(service.internal_rx.len(), PUBSUB_INTERNAL_CONTROL_QUEUE_SIZE);
+        assert!(requester.publish_as_guest(PubsubChannelId(1), b"payload".to_vec()).await.is_err());
+        assert_eq!(service.internal_rx.len(), PUBSUB_INTERNAL_CONTROL_QUEUE_SIZE);
+    }
+
+    #[tokio::test]
+    async fn pubsub_guest_publish_rpc_returns_error_when_internal_queue_full() {
+        let service = test_service();
+        let requester = service.requester();
+        let _publishers = fill_internal_control_queue(&requester).await;
+
+        assert_eq!(service.internal_rx.len(), PUBSUB_INTERNAL_CONTROL_QUEUE_SIZE);
+        assert!(requester.publish_rpc_as_guest(PubsubChannelId(1), "method", b"payload".to_vec(), Duration::from_secs(1)).await.is_err());
+        assert_eq!(service.internal_rx.len(), PUBSUB_INTERNAL_CONTROL_QUEUE_SIZE);
+    }
+
+    #[tokio::test]
+    async fn pubsub_guest_feedback_returns_error_when_internal_queue_full() {
+        let service = test_service();
+        let requester = service.requester();
+        let _publishers = fill_internal_control_queue(&requester).await;
+
+        assert_eq!(service.internal_rx.len(), PUBSUB_INTERNAL_CONTROL_QUEUE_SIZE);
+        assert!(requester.feedback_as_guest(PubsubChannelId(1), b"payload".to_vec()).await.is_err());
+        assert_eq!(service.internal_rx.len(), PUBSUB_INTERNAL_CONTROL_QUEUE_SIZE);
+    }
+
+    #[tokio::test]
+    async fn pubsub_guest_feedback_rpc_returns_error_when_internal_queue_full() {
+        let service = test_service();
+        let requester = service.requester();
+        let _publishers = fill_internal_control_queue(&requester).await;
+
+        assert_eq!(service.internal_rx.len(), PUBSUB_INTERNAL_CONTROL_QUEUE_SIZE);
+        assert!(requester
+            .feedback_rpc_as_guest(PubsubChannelId(1), "method", b"payload".to_vec(), Duration::from_secs(1))
+            .await
+            .is_err());
+        assert_eq!(service.internal_rx.len(), PUBSUB_INTERNAL_CONTROL_QUEUE_SIZE);
     }
 
     #[tokio::test]

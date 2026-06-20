@@ -3515,6 +3515,13 @@ the source of truth for evidence and reviewer decisions.
 - Category: high-load stability, resource exhaustion, API backpressure
 - Score: 70/100
 - Reviewer: `Banach the 2nd`, confirmed.
+- Status: fixed. Pubsub internal control messages now enter a bounded
+  `PUBSUB_INTERNAL_CONTROL_QUEUE_SIZE = 1024` queue. Result-returning guest,
+  publisher, and subscriber request paths fail immediately when admission fails,
+  while lifecycle registration/drop paths use best-effort `try_send` with debug
+  logging to preserve the current handle-returning API. If a full or closed
+  queue prevents handle registration, the returned dead-on-arrival handle
+  behavior remains tracked by ISSUE-058/API correctness follow-up.
 - Affected code:
   - `src/service/pubsub_service.rs`: `PubsubService::new` creates
     `internal_tx/internal_rx` with `tokio::sync::mpsc::unbounded_channel`.
@@ -3537,6 +3544,12 @@ the source of truth for evidence and reviewer decisions.
   - Failure summary: 1,025 `PubsubServiceRequester::publisher(...)` calls leave
     1,025 pending messages in `service.internal_rx`, exceeding the bounded
     control-backlog assertion.
+- Fixed evidence:
+  - `cargo test pubsub_internal_control_backlog_must_be_bounded -- --nocapture`
+  - `cargo test pubsub_guest_publish_returns_error_when_internal_queue_full -- --nocapture`
+  - `cargo test pubsub_guest_publish_rpc_returns_error_when_internal_queue_full -- --nocapture`
+  - `cargo test pubsub_guest_feedback_returns_error_when_internal_queue_full -- --nocapture`
+  - `cargo test pubsub_guest_feedback_rpc_returns_error_when_internal_queue_full -- --nocapture`
 
 ### ISSUE-127: Alias internal control messages can accumulate without bound
 

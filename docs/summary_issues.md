@@ -319,6 +319,20 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   `cargo test requester_connect_after_network_drop_returns_error_not_panic -- --nocapture`,
   `cargo test requester_try_connect_after_network_drop_must_not_panic -- --nocapture`,
   and `cargo fmt -- --check`.
+- ISSUE-126: fixed by replacing the pubsub internal control inbox with bounded
+  `PUBSUB_INTERNAL_CONTROL_QUEUE_SIZE = 1024` admission. Existing
+  Result-returning guest, publisher, and subscriber request APIs now fail fast
+  on full or closed queues instead of enqueueing without bound or awaiting
+  response channels that were never admitted. Handle registration and drop
+  paths use best-effort `try_send` with debug logging to preserve the current
+  direct-handle API; dead-on-arrival handles when registration cannot be
+  admitted remain tracked separately by ISSUE-058/API correctness follow-up.
+  Verified with `cargo test pubsub_internal_control_backlog_must_be_bounded -- --nocapture`,
+  `cargo test pubsub_guest_publish_returns_error_when_internal_queue_full -- --nocapture`,
+  `cargo test pubsub_guest_publish_rpc_returns_error_when_internal_queue_full -- --nocapture`,
+  `cargo test pubsub_guest_feedback_returns_error_when_internal_queue_full -- --nocapture`,
+  `cargo test pubsub_guest_feedback_rpc_returns_error_when_internal_queue_full -- --nocapture`,
+  and `cargo fmt -- --check`.
 - ISSUE-204: fixed by `MetricsService::pending_scan_responses` plus bounded
   `requester.send_unicast(...)` response tasks, so duplicate metrics scans from
   one requester coalesce while a response is still backpressured. Verified with

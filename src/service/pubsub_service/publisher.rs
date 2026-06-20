@@ -9,11 +9,11 @@ use anyhow::anyhow;
 use derive_more::derive::Display;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use tokio::sync::{
-    mpsc::{channel, Receiver, UnboundedSender},
+    mpsc::{channel, Receiver, Sender},
     oneshot,
 };
 
-use super::{InternalMsg, PeerSrc, PubsubChannelId, PubsubRpcError, RpcId};
+use super::{try_send_internal_control, InternalMsg, PeerSrc, PubsubChannelId, PubsubRpcError, RpcId};
 
 pub(crate) const LOCAL_PUBLISHER_EVENT_QUEUE_SIZE: usize = 1024;
 
@@ -80,18 +80,20 @@ pub struct Publisher {
     local_id: PublisherLocalId,
     handle_id: PublisherHandleId,
     channel_id: PubsubChannelId,
-    control_tx: UnboundedSender<InternalMsg>,
+    control_tx: Sender<InternalMsg>,
     requester: PublisherRequester,
     pub_rx: Receiver<PublisherEvent>,
 }
 
 impl Publisher {
-    pub(super) fn build(channel_id: PubsubChannelId, control_tx: UnboundedSender<InternalMsg>) -> Self {
+    pub(super) fn build(channel_id: PubsubChannelId, control_tx: Sender<InternalMsg>) -> Self {
         let (pub_tx, pub_rx) = channel(LOCAL_PUBLISHER_EVENT_QUEUE_SIZE);
         let local_id = PublisherLocalId::rand();
         let handle_id = PublisherHandleId::new(local_id);
         log::info!("[Publisher {channel_id}/{local_id}] created");
-        let _ = control_tx.send(InternalMsg::PublisherCreated(handle_id, channel_id, pub_tx));
+        if let Err(err) = try_send_internal_control(&control_tx, InternalMsg::PublisherCreated(handle_id, channel_id, pub_tx), "publisher registration") {
+            log::debug!("[Publisher {channel_id}/{local_id}] registration dropped: {err}");
+        }
 
         Self {
             local_id,
@@ -155,7 +157,9 @@ impl Publisher {
 impl Drop for Publisher {
     fn drop(&mut self) {
         log::info!("[Publisher {}/{}] destroy", self.channel_id, self.local_id);
-        let _ = self.control_tx.send(InternalMsg::PublisherDestroyed(self.handle_id, self.channel_id));
+        if let Err(err) = try_send_internal_control(&self.control_tx, InternalMsg::PublisherDestroyed(self.handle_id, self.channel_id), "publisher destruction") {
+            log::debug!("[Publisher {}/{}] destruction dropped: {err}", self.channel_id, self.local_id);
+        }
     }
 }
 
@@ -163,12 +167,12 @@ impl Drop for Publisher {
 pub struct PublisherRequester {
     handle_id: PublisherHandleId,
     channel_id: PubsubChannelId,
-    control_tx: UnboundedSender<InternalMsg>,
+    control_tx: Sender<InternalMsg>,
 }
 
 impl PublisherRequester {
     pub async fn publish(&self, data: Vec<u8>) -> anyhow::Result<()> {
-        self.control_tx.send(InternalMsg::Publish(self.handle_id, self.channel_id, data))?;
+        try_send_internal_control(&self.control_tx, InternalMsg::Publish(self.handle_id, self.channel_id, data), "publisher publish")?;
         Ok(())
     }
 
@@ -179,7 +183,11 @@ impl PublisherRequester {
 
     pub async fn publish_rpc(&self, method: &str, data: Vec<u8>, timeout: Duration) -> anyhow::Result<Vec<u8>> {
         let (tx, rx) = oneshot::channel::<Result<Vec<u8>, PubsubRpcError>>();
-        self.control_tx.send(InternalMsg::PublishRpc(self.handle_id, self.channel_id, data, method.to_owned(), tx, timeout))?;
+        try_send_internal_control(
+            &self.control_tx,
+            InternalMsg::PublishRpc(self.handle_id, self.channel_id, data, method.to_owned(), tx, timeout),
+            "publisher publish_rpc",
+        )?;
         let data = rx.await??;
         Ok(data)
     }
@@ -191,12 +199,11 @@ impl PublisherRequester {
     }
 
     pub async fn answer_feedback_rpc(&self, rpc: RpcId, source: PeerSrc, data: Vec<u8>) -> anyhow::Result<()> {
-        self.control_tx.send(InternalMsg::FeedbackRpcAnswer(rpc, source, data))?;
+        try_send_internal_control(&self.control_tx, InternalMsg::FeedbackRpcAnswer(rpc, source, data), "publisher answer_feedback_rpc")?;
         Ok(())
     }
 
     pub async fn answer_feedback_rpc_ob<RES: Serialize>(&self, rpc: RpcId, source: PeerSrc, res: &RES) -> anyhow::Result<()> {
-        self.control_tx.send(InternalMsg::FeedbackRpcAnswer(rpc, source, bincode::serialize(res).expect("should serialize")))?;
-        Ok(())
+        self.answer_feedback_rpc(rpc, source, bincode::serialize(res).expect("should serialize")).await
     }
 }

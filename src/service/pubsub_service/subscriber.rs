@@ -9,11 +9,11 @@ use anyhow::anyhow;
 use derive_more::derive::Display;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use tokio::sync::{
-    mpsc::{channel, Receiver, UnboundedSender},
+    mpsc::{channel, Receiver, Sender},
     oneshot,
 };
 
-use super::{InternalMsg, PeerSrc, PubsubChannelId, PubsubRpcError, RpcId};
+use super::{try_send_internal_control, InternalMsg, PeerSrc, PubsubChannelId, PubsubRpcError, RpcId};
 
 pub(crate) const LOCAL_SUBSCRIBER_EVENT_QUEUE_SIZE: usize = 1024;
 
@@ -80,18 +80,20 @@ pub struct Subscriber {
     local_id: SubscriberLocalId,
     handle_id: SubscriberHandleId,
     channel_id: PubsubChannelId,
-    control_tx: UnboundedSender<InternalMsg>,
+    control_tx: Sender<InternalMsg>,
     requester: SubscriberRequester,
     sub_rx: Receiver<SubscriberEvent>,
 }
 
 impl Subscriber {
-    pub(super) fn build(channel_id: PubsubChannelId, control_tx: UnboundedSender<InternalMsg>) -> Self {
+    pub(super) fn build(channel_id: PubsubChannelId, control_tx: Sender<InternalMsg>) -> Self {
         let (sub_tx, sub_rx) = channel(LOCAL_SUBSCRIBER_EVENT_QUEUE_SIZE);
         let local_id = SubscriberLocalId::rand();
         let handle_id = SubscriberHandleId::new(local_id);
         log::info!("[Subscriber {channel_id}/{local_id}] created");
-        let _ = control_tx.send(InternalMsg::SubscriberCreated(handle_id, channel_id, sub_tx));
+        if let Err(err) = try_send_internal_control(&control_tx, InternalMsg::SubscriberCreated(handle_id, channel_id, sub_tx), "subscriber registration") {
+            log::debug!("[Subscriber {channel_id}/{local_id}] registration dropped: {err}");
+        }
 
         Self {
             local_id,
@@ -155,7 +157,9 @@ impl Subscriber {
 impl Drop for Subscriber {
     fn drop(&mut self) {
         log::info!("[Subscriber {}/{}] destroy", self.channel_id, self.local_id);
-        let _ = self.control_tx.send(InternalMsg::SubscriberDestroyed(self.handle_id, self.channel_id));
+        if let Err(err) = try_send_internal_control(&self.control_tx, InternalMsg::SubscriberDestroyed(self.handle_id, self.channel_id), "subscriber destruction") {
+            log::debug!("[Subscriber {}/{}] destruction dropped: {err}", self.channel_id, self.local_id);
+        }
     }
 }
 
@@ -163,12 +167,12 @@ impl Drop for Subscriber {
 pub struct SubscriberRequester {
     handle_id: SubscriberHandleId,
     channel_id: PubsubChannelId,
-    control_tx: UnboundedSender<InternalMsg>,
+    control_tx: Sender<InternalMsg>,
 }
 
 impl SubscriberRequester {
     pub async fn feedback(&self, data: Vec<u8>) -> anyhow::Result<()> {
-        self.control_tx.send(InternalMsg::Feedback(self.handle_id, self.channel_id, data))?;
+        try_send_internal_control(&self.control_tx, InternalMsg::Feedback(self.handle_id, self.channel_id, data), "subscriber feedback")?;
         Ok(())
     }
 
@@ -179,7 +183,11 @@ impl SubscriberRequester {
 
     pub async fn feedback_rpc(&self, method: &str, data: Vec<u8>, timeout: Duration) -> anyhow::Result<Vec<u8>> {
         let (tx, rx) = oneshot::channel::<Result<Vec<u8>, PubsubRpcError>>();
-        self.control_tx.send(InternalMsg::FeedbackRpc(self.handle_id, self.channel_id, data, method.to_owned(), tx, timeout))?;
+        try_send_internal_control(
+            &self.control_tx,
+            InternalMsg::FeedbackRpc(self.handle_id, self.channel_id, data, method.to_owned(), tx, timeout),
+            "subscriber feedback_rpc",
+        )?;
         let data = rx.await??;
         Ok(data)
     }
@@ -191,12 +199,11 @@ impl SubscriberRequester {
     }
 
     pub async fn answer_publish_rpc(&self, rpc: RpcId, source: PeerSrc, data: Vec<u8>) -> anyhow::Result<()> {
-        self.control_tx.send(InternalMsg::PublishRpcAnswer(rpc, source, data))?;
+        try_send_internal_control(&self.control_tx, InternalMsg::PublishRpcAnswer(rpc, source, data), "subscriber answer_publish_rpc")?;
         Ok(())
     }
 
     pub async fn answer_publish_rpc_ob<RES: Serialize>(&self, rpc: RpcId, source: PeerSrc, res: &RES) -> anyhow::Result<()> {
-        self.control_tx.send(InternalMsg::PublishRpcAnswer(rpc, source, bincode::serialize(res).expect("should serialize")))?;
-        Ok(())
+        self.answer_publish_rpc(rpc, source, bincode::serialize(res).expect("should serialize")).await
     }
 }
