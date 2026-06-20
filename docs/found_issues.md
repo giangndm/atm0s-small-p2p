@@ -5608,6 +5608,15 @@ the source of truth for evidence and reviewer decisions.
     exercises the teardown reset sequence. The recorder observes the same RTT
     key as both gauge and counter, so the test fails with the assertion that
     teardown must not emit RTT as a counter.
+- Fix status: fixed by keeping connection teardown on the RTT gauge metric
+  kind. `emit_connection_teardown_metrics` now decrements
+  `P2P_LIVE_CONNECTION_COUNT` and resets `P2P_CONNECTION_RTT` with
+  `gauge!(...).set(0)` only; it no longer emits RTT through
+  `counter!(P2P_CONNECTION_RTT).absolute(0)`. Verified with
+  `cargo test connection_teardown_must_not_emit_rtt_as_counter -- --nocapture`,
+  `cargo test connection_teardown_must_not_reset_monotonic_counters -- --nocapture`,
+  and `cargo fmt -- --check`. ISSUE-195 remains separate for monotonic counter
+  reset behavior.
 
 ### ISSUE-194: Inbound handshake accepts arbitrary third-party peer-id claims
 

@@ -13,7 +13,8 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 - Fix phase status: ISSUE-003, ISSUE-004, ISSUE-005, ISSUE-006, ISSUE-007,
   ISSUE-002, ISSUE-008, ISSUE-009, ISSUE-021, ISSUE-033, ISSUE-055, ISSUE-103,
   ISSUE-053, ISSUE-063, ISSUE-139, ISSUE-146, ISSUE-170, ISSUE-176,
-  ISSUE-189, ISSUE-190, ISSUE-191, and ISSUE-192 have focused fixes committed.
+  ISSUE-189, ISSUE-190, ISSUE-191, ISSUE-192, and ISSUE-193 have focused fixes
+  committed.
   ISSUE-003 is fixed by `cfc8e57`;
   ISSUE-004 is covered by the ISSUE-170 ownership-validation follow-up
   `87cf6ce`; earlier fixes are `648cfd0`, `2cbf096`, `15b788c`, and
@@ -179,6 +180,14 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Recently Fixed Issues
 
+- ISSUE-193: fixed by keeping connection teardown on the RTT gauge metric kind.
+  `emit_connection_teardown_metrics` now decrements live connection count and
+  resets `P2P_CONNECTION_RTT` with `gauge!(...).set(0)` only, so RTT is not
+  emitted as both a gauge and counter. Verified with
+  `cargo test connection_teardown_must_not_emit_rtt_as_counter -- --nocapture`,
+  `cargo test connection_teardown_must_not_reset_monotonic_counters -- --nocapture`,
+  and `cargo fmt -- --check`. ISSUE-195 remains open as the separate
+  monotonic-counter reset issue.
 - ISSUE-189: fixed by the existing inbound `run_connection` self-identity
   guard, which rejects `ConnectReq` messages with `req.from == local_id` before
   emitting a successful handshake response or installing alias/neighbour state.
