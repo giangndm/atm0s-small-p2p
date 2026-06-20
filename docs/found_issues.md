@@ -2576,6 +2576,10 @@ the source of truth for evidence and reviewer decisions.
 
 ### ISSUE-174: QUIC object writer can bypass `MAX_SIZE` with non-deterministic serialization
 
+- Status: fixed by the `write_object` serialize-once validation in `9b331cd`
+  (`fix: return stream serialization errors`). `write_object` now validates the
+  actual serialized buffer length against `MAX_SIZE` before writing, so
+  non-deterministic serialization can no longer bypass the configured cap.
 - Category: correctness, API stability, framing validation
 - Score: 46/100
 - Reviewer: `Hypatia the 3rd`, confirmed after `Locke the 3rd` discovery.
@@ -2600,10 +2604,10 @@ the source of truth for evidence and reviewer decisions.
   `data_buf.len() <= u16::MAX` before writing any bytes.
 - Evidence test:
   - `cargo test write_object_must_recheck_actual_serialized_size -- --nocapture`
-  - Failure summary: a test `Serialize` implementation emits a one-element
+  - Fixed summary: a test `Serialize` implementation emits a one-element
     sequence during `serialized_size` and a 32-element sequence during
-    `serialize`; `write_object::<_, _, 16>` returns `Ok(())` instead of
-    rejecting the actual oversized serialized payload.
+    `serialize`; `write_object::<_, _, 16>` now rejects the actual oversized
+    serialized payload.
 
 ### ISSUE-099: Replicated KV accepts zero-count FetchChanged as successful repair
 
