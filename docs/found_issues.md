@@ -11,7 +11,7 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 57
+- Current consecutive no-new-issue cycles: 58
 - Stop condition requested by user: continue until 5 consecutive cycles find no
   new accepted issue.
 
@@ -5783,6 +5783,31 @@ the source of truth for evidence and reviewer decisions.
     `src/peer.rs:1092` with `got 2`.
 
 ## No-New-Issue Audit Cycles
+
+### Cycle after ISSUE-204 no-new cycle 58: valid-action fuzz duplicate stale sync
+
+- Result: no accepted non-duplicate issue.
+- Reviewer: `Einstein the 4th`, forked subagent review, confirmed
+  duplicate-only no-new classification.
+- Source and test evidence reviewed:
+  - `src/router.rs`
+  - `src/tests/fuzz.rs`
+  - `RUST_LOG=error P2P_FUZZ_SEED=58 P2P_FUZZ_NODES=8 P2P_FUZZ_STEPS=1800 cargo test fuzz_random_valid_node_actions_must_not_panic_connection_tasks -- --nocapture`
+    failed.
+- Duplicate or too-close symptoms rejected:
+  - deterministic rerun exited with status 101.
+  - the primary background panics were two `src/router.rs:76:66` failures with
+    `should have direct metric with apply_sync`.
+  - the fuzz harness then failed at `src/tests/fuzz.rs:183:5`.
+  - this maps directly to ISSUE-063: stale `PeerData::Sync` reaches
+    `RouterTable::apply_sync` after the direct route/metric has already been
+    removed. Existing score: 72/100.
+  - 63,420 `forward peer stopped ... no available capacity` logs and 838
+    `channel closed` logs are secondary ISSUE-170-style amplification evidence,
+    not the primary failing invariant for this run.
+- Root-cause summary impact: no new root cause; this valid-action fuzz run
+  strengthens existing ISSUE-063 and ISSUE-170 evidence without adding
+  ISSUE-205.
 
 ### Cycle after ISSUE-204 no-new cycle 57: sanitized churn duplicate open_bi connect-error panic
 
