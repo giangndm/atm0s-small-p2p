@@ -7,9 +7,9 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Accepted issues: 204
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 258
+- Current consecutive no-new-issue cycles: 259
 - Stop condition: continue until 5 consecutive cycles find no new accepted
-  issue; currently 258/5 after ISSUE-204.
+  issue; currently 259/5 after ISSUE-204.
 
 ## Root Cause Summary
 
@@ -2389,6 +2389,14 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Recent No-New Audit
 
+- Cycle after ISSUE-204 no-new cycle 259 ran a valid-action fuzz pass with
+  forked reviewer `Kierkegaard the 6th`. The command set `P2P_FUZZ_NODES=9`,
+  while the failing assertion reported `seed=259, nodes=8, steps=2200`. The
+  run failed with exit code 101, but the only hard invariant failure was
+  duplicate ISSUE-063 evidence: `src/router.rs:76:66` panicked with `should
+  have direct metric with apply_sync`. The single `P2pNetwork connection ...
+  outgoing: None error closed` line was not enough to establish a distinct
+  issue. No accepted issue or summary root-cause change was recorded.
 - Cycle after ISSUE-204 no-new cycle 258 ran a broad invalid-action fuzz pass
   with forked reviewer `James the 6th`. The command set `P2P_FUZZ_NODES=10`,
   while the failing assertion reported `seed=258, nodes=8, steps=2400`. The

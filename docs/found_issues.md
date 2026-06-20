@@ -11,7 +11,7 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 258
+- Current consecutive no-new-issue cycles: 259
 - Stop condition requested by user: continue until 5 consecutive cycles find no
   new accepted issue.
 
@@ -5783,6 +5783,34 @@ the source of truth for evidence and reviewer decisions.
     `src/peer.rs:1092` with `got 2`.
 
 ## No-New-Issue Audit Cycles
+
+### Cycle after ISSUE-204 no-new cycle 259: compact valid stale sync panic
+
+- Result: no accepted non-duplicate issue.
+- Reviewer: `Kierkegaard the 6th`, forked subagent review, confirmed
+  duplicate/no-new.
+- Source and test evidence reviewed:
+  - `src/tests/fuzz.rs`
+  - `src/router.rs`
+  - `RUST_LOG=error P2P_FUZZ_SEED=259 P2P_FUZZ_NODES=9 P2P_FUZZ_STEPS=2200 cargo test fuzz_random_valid_node_actions_must_not_panic_connection_tasks -- --nocapture`
+    failed; the test assertion reported `seed=259, nodes=8, steps=2200`.
+- Evidence summary:
+  - exit status 101; log had 21 lines; the fuzz assertion at
+    `src/tests/fuzz.rs:183:5` reported background connection/service task
+    failure with `seed=259, nodes=8, steps=2200`.
+  - one router panic marker at `src/router.rs:76:66` with
+    `should have direct metric with apply_sync`.
+  - one `P2pNetwork connection ... outgoing: None error closed` line was
+    reviewed as insufficient to establish a distinct issue.
+  - no invalid-service-id, shutdown-send, open_bi, connect-answer,
+    no-capacity, forwarded-stop, broadcast-data, path-not-found,
+    connection-lost, closed-by-peer, or aborted-by-peer evidence.
+- Duplicate mapping: ISSUE-063.
+- Root-cause summary impact: no new root cause; this strengthens existing
+  stale route-sync invalidation evidence without adding a new issue.
+- Smallest fix proposal: guard stale route-sync application when the direct
+  metric has already been removed, and invalidate or drop queued route sync
+  work when its direct metric source disappears.
 
 ### Cycle after ISSUE-204 no-new cycle 258: broad invalid service and shutdown send panics
 
