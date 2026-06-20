@@ -7,9 +7,9 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Accepted issues: 204
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 198
+- Current consecutive no-new-issue cycles: 199
 - Stop condition: continue until 5 consecutive cycles find no new accepted
-  issue; currently 198/5 after ISSUE-204.
+  issue; currently 199/5 after ISSUE-204.
 
 ## Root Cause Summary
 
@@ -256,6 +256,20 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Recent Fuzz Evidence
 
+- Broad random fuzz review:
+  `RUST_LOG=error P2P_FUZZ_SEED=199 P2P_FUZZ_NODES=8 P2P_FUZZ_STEPS=1800 cargo test fuzz_random_node_actions_must_not_panic_connection_tasks -- --nocapture`
+  failed with duplicate evidence for ISSUE-053 and ISSUE-063. Reviewer
+  `Lagrange the 6th` confirmed the `src/ctx.rs:34` panic is the existing
+  unchecked inbound service-id root cause, and the `src/router.rs:76`
+  direct-metric panic is the existing stale `PeerData::Sync` root cause. The
+  connection-lost and channel-closed logs were reviewed as lifecycle/teardown
+  noise, and the fuzz harness panic only reported background task failure. No
+  ISSUE-139 or ISSUE-170 evidence was present, and no new invariant appeared
+  in this cycle. Smallest fixes remain unchanged: validate decoded
+  `P2pServiceId` before indexing the fixed service table, reject/drop
+  out-of-bounds remote ids, guard/drop stale sync without a direct metric, and
+  clear queued sync state when direct routes are removed. No new issue was
+  created.
 - Valid-action fuzz review:
   `RUST_LOG=error P2P_FUZZ_SEED=198 P2P_FUZZ_NODES=8 P2P_FUZZ_STEPS=1800 cargo test fuzz_random_valid_node_actions_must_not_panic_connection_tasks -- --nocapture`
   failed with duplicate evidence for ISSUE-063 and ISSUE-170. Reviewer
