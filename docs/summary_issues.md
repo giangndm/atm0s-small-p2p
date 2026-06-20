@@ -7,9 +7,9 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Accepted issues: 204
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 86
+- Current consecutive no-new-issue cycles: 87
 - Stop condition: continue until 5 consecutive cycles find no new accepted
-  issue; currently 86/5 after ISSUE-204.
+  issue; currently 87/5 after ISSUE-204.
 
 ## Root Cause Summary
 
@@ -256,6 +256,13 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Recent Fuzz Evidence
 
+- Broad random fuzz review:
+  `RUST_LOG=error P2P_FUZZ_SEED=87 P2P_FUZZ_NODES=8 P2P_FUZZ_STEPS=1800 cargo test fuzz_random_node_actions_must_not_panic_connection_tasks -- --nocapture`
+  failed with duplicate evidence for ISSUE-053. Reviewer `Jason the 5th`
+  confirmed the single `src/ctx.rs:34` out-of-range `P2pServiceId(256)` panic
+  is the existing fixed-service-table indexing root cause. The later
+  channel-closed send line was follow-on lifecycle noise, not ISSUE-063,
+  ISSUE-139, ISSUE-170, or a new ISSUE-205.
 - Sanitized churn fuzz review:
   `RUST_LOG=error P2P_FUZZ_SEED=86 P2P_FUZZ_NODES=8 P2P_FUZZ_STEPS=1800 cargo test fuzz_random_sanitized_node_churn_actions_must_not_panic_connection_tasks -- --nocapture`
   failed with duplicate evidence for ISSUE-063 and secondary ISSUE-170
