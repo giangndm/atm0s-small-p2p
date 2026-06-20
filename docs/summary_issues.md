@@ -7,9 +7,9 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Accepted issues: 204
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 219
+- Current consecutive no-new-issue cycles: 220
 - Stop condition: continue until 5 consecutive cycles find no new accepted
-  issue; currently 219/5 after ISSUE-204.
+  issue; currently 220/5 after ISSUE-204.
 
 ## Root Cause Summary
 
@@ -256,6 +256,18 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Recent Fuzz Evidence
 
+- Broad random fuzz review:
+  `RUST_LOG=error P2P_FUZZ_SEED=220 P2P_FUZZ_NODES=8 P2P_FUZZ_STEPS=1800 cargo test fuzz_random_node_actions_must_not_panic_connection_tasks -- --nocapture`
+  failed with duplicate evidence for ISSUE-053 only. Reviewer
+  `Mencius the 6th` confirmed the four `src/ctx.rs:34` panics with index
+  `256` into len `256` are the existing unchecked inbound service-id root
+  cause. The channel-closed, closed-by-peer, connection-lost, and connection
+  closed logs were reviewed as teardown fallout after the service task panics,
+  and the fuzz harness assertion only reported those background panics. No
+  ISSUE-063, ISSUE-139, or ISSUE-170 evidence was present, and no new
+  invariant appeared. The smallest fix proposal remains unchanged: validate
+  decoded `P2pServiceId` before indexing the fixed service table and
+  reject/drop out-of-bounds remote ids. No new issue was created.
 - Valid-action fuzz review:
   `RUST_LOG=error P2P_FUZZ_SEED=219 P2P_FUZZ_NODES=8 P2P_FUZZ_STEPS=1800 cargo test fuzz_random_valid_node_actions_must_not_panic_connection_tasks -- --nocapture`
   failed with duplicate evidence for ISSUE-063 and ISSUE-170. Reviewer
