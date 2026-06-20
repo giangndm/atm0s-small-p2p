@@ -11,7 +11,7 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 178
+- Current consecutive no-new-issue cycles: 179
 - Stop condition requested by user: continue until 5 consecutive cycles find no
   new accepted issue.
 
@@ -5783,6 +5783,38 @@ the source of truth for evidence and reviewer decisions.
     `src/peer.rs:1092` with `got 2`.
 
 ## No-New-Issue Audit Cycles
+
+### Cycle after ISSUE-204 no-new cycle 179: broad random duplicate invalid service and send-to-main panics
+
+- Result: no accepted non-duplicate issue.
+- Reviewer: `Galileo the 5th`, forked subagent review, confirmed
+  `DUPLICATE/NO_NEW`.
+- Source and test evidence reviewed:
+  - `src/tests/fuzz.rs`
+  - `src/ctx.rs`
+  - `src/peer.rs`
+  - `RUST_LOG=error P2P_FUZZ_SEED=179 P2P_FUZZ_NODES=8 P2P_FUZZ_STEPS=1800 cargo test fuzz_random_node_actions_must_not_panic_connection_tasks -- --nocapture`
+    failed.
+- Evidence summary:
+  - exit status 101; `0 passed; 1 failed`; the fuzz assertion at
+    `src/tests/fuzz.rs:183:5` detected background connection/service task
+    panics.
+  - two `src/ctx.rs:34` panic markers with
+    `index out of bounds: the len is 256 but the index is 256`.
+  - one `src/peer.rs:92` panic marker with
+    `should send to main: SendError { .. }`.
+  - two channel-closed logs and two closed-by-peer logs were reviewed as
+    lifecycle fallout after task panics, with no separate failed invariant.
+  - no `src/router.rs:76` stale-sync panic evidence.
+  - no no-capacity, forwarded-stop, broadcast-data, connect-answer, open_bi,
+    WARN, or path-not-found logs.
+- Duplicate mapping:
+  - primary: ISSUE-053, unchecked inbound out-of-range service ids can index
+    past the fixed service table.
+  - secondary: ISSUE-139, peer connect-error reporting can panic when the main
+    receiver is already closed during shutdown.
+- Root-cause summary impact: no new root cause; this strengthens existing
+  ISSUE-053 and ISSUE-139 evidence without adding a new issue.
 
 ### Cycle after ISSUE-204 no-new cycle 178: valid random duplicate stale sync and PeerStopped storm
 

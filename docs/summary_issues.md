@@ -7,9 +7,9 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Accepted issues: 204
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 178
+- Current consecutive no-new-issue cycles: 179
 - Stop condition: continue until 5 consecutive cycles find no new accepted
-  issue; currently 178/5 after ISSUE-204.
+  issue; currently 179/5 after ISSUE-204.
 
 ## Root Cause Summary
 
@@ -256,6 +256,19 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Recent Fuzz Evidence
 
+- Broad random fuzz review:
+  `RUST_LOG=error P2P_FUZZ_SEED=179 P2P_FUZZ_NODES=8 P2P_FUZZ_STEPS=1800 cargo test fuzz_random_node_actions_must_not_panic_connection_tasks -- --nocapture`
+  failed with duplicate evidence for ISSUE-053 and ISSUE-139. Reviewer
+  `Galileo the 5th` confirmed the two `src/ctx.rs:34` panics with index `256`
+  into len `256` are the existing unchecked inbound service-id root cause, and
+  the `src/peer.rs:92` `should send to main: SendError` panic is the existing
+  peer-connect-error reporting after main-loop shutdown root cause. The
+  channel-closed and closed-by-peer logs were reviewed as lifecycle fallout
+  after task panics. No ISSUE-063 or ISSUE-170 evidence was present. Smallest
+  fixes remain unchanged: validate decoded service ids before indexing the
+  fixed table, and replace peer connect-error reporting `expect` calls with
+  normal teardown handling when the main receiver is closed. No new issue was
+  created.
 - Valid-action fuzz review:
   `RUST_LOG=error P2P_FUZZ_SEED=178 P2P_FUZZ_NODES=8 P2P_FUZZ_STEPS=1800 cargo test fuzz_random_valid_node_actions_must_not_panic_connection_tasks -- --nocapture`
   failed with duplicate evidence for ISSUE-063 and ISSUE-170. Reviewer
