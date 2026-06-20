@@ -3598,12 +3598,15 @@ the source of truth for evidence and reviewer decisions.
 - Category: correctness, shutdown stability, API stability
 - Score: 56/100
 - Reviewer: `Meitner the 2nd`, confirmed.
+- Fix status: fixed by `c83321c`. `MetricsService::recv` now returns
+  `Err("metrics base service channel closed")` when the underlying
+  `P2pService` receiver closes instead of panicking.
 - Affected code:
   - `src/service/metrics_service.rs`: `MetricsService::recv` returns
     `anyhow::Result<MetricsServiceEvent>`.
   - `src/service/metrics_service.rs`: the `event = self.service.recv()` branch
-    calls `event.expect("should work")` when the underlying `P2pService`
-    receiver returns `None`.
+    now maps a closed underlying `P2pService` receiver to `anyhow::bail!`
+    instead of calling `expect`.
 - Impact: if the base service channel closes during shutdown or teardown,
   `MetricsService::recv()` unwinds instead of returning `Err`. This breaks the
   public result-returning API and can turn an orderly service shutdown into a
@@ -3613,9 +3616,9 @@ the source of truth for evidence and reviewer decisions.
   metrics forged/disclosure/batch issues.
 - Evidence test:
   - `cargo test metrics_recv_after_base_service_close_must_not_panic -- --nocapture`
-  - Failure summary: after dropping the underlying `P2pService` sender,
-    `MetricsService::recv()` panics at `src/service/metrics_service.rs` with
-    `should work`; expected `Ok(Err(_))` from the public `Result` API.
+  - Current result: passes. After dropping the underlying `P2pService` sender,
+    `MetricsService::recv()` returns `Err(_)` from the public `Result` API
+    instead of unwinding.
 
 ### ISSUE-129: Visualization recv panics when the base service channel closes
 

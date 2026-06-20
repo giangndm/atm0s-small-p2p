@@ -12,7 +12,7 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   issue; currently 341/5 after ISSUE-204.
 - Fix phase status: ISSUE-001, ISSUE-003, ISSUE-004, ISSUE-005, ISSUE-006, ISSUE-007,
   ISSUE-002, ISSUE-008, ISSUE-009, ISSUE-010, ISSUE-011, ISSUE-012, ISSUE-013, ISSUE-014, ISSUE-015, ISSUE-021, ISSUE-024, ISSUE-033, ISSUE-055, ISSUE-103, ISSUE-122, ISSUE-123,
-  ISSUE-124, ISSUE-125, ISSUE-126, ISSUE-127,
+  ISSUE-124, ISSUE-125, ISSUE-126, ISSUE-127, ISSUE-128,
   ISSUE-053, ISSUE-063, ISSUE-139, ISSUE-146, ISSUE-168, ISSUE-170,
   ISSUE-149, ISSUE-169, ISSUE-174, ISSUE-176, ISSUE-181, ISSUE-189, ISSUE-190, ISSUE-191, ISSUE-192, ISSUE-193,
   ISSUE-194, ISSUE-195, ISSUE-196, ISSUE-197, ISSUE-198, ISSUE-199,
@@ -344,6 +344,11 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   `cargo test alias_shutdown_when_control_queue_full_must_not_panic -- --nocapture`,
   `cargo test alias_guard_drop_when_control_queue_full_must_not_panic -- --nocapture`,
   `cargo test alias_find_after_service_drop_returns_none_not_panic -- --nocapture`,
+  and `cargo fmt -- --check`.
+- ISSUE-128: fixed by `c83321c`, which makes `MetricsService::recv` return
+  `Err(_)` when the underlying base service channel closes instead of panicking
+  on `expect("should work")`. Verified with
+  `cargo test metrics_recv_after_base_service_close_must_not_panic -- --nocapture`
   and `cargo fmt -- --check`.
 - ISSUE-204: fixed by `MetricsService::pending_scan_responses` plus bounded
   `requester.send_unicast(...)` response tasks, so duplicate metrics scans from
