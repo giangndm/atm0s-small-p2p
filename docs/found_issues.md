@@ -61,7 +61,7 @@ the source of truth for evidence and reviewer decisions.
 
 - Representative issues: ISSUE-049, ISSUE-050, ISSUE-056, ISSUE-118,
   ISSUE-119, ISSUE-120, ISSUE-123, ISSUE-124, ISSUE-125, ISSUE-126,
-  ISSUE-127, ISSUE-133, ISSUE-136, ISSUE-147, ISSUE-153, ISSUE-157,
+  ISSUE-127, ISSUE-136, ISSUE-147, ISSUE-153, ISSUE-157,
   ISSUE-163, ISSUE-164, ISSUE-178, ISSUE-182, ISSUE-184, ISSUE-198,
   ISSUE-199.
 - Pattern: some paths use bounded channels and drop on `try_send`, some await
@@ -3736,26 +3736,30 @@ the source of truth for evidence and reviewer decisions.
 - Category: high-load stability, shutdown stability, head-of-line blocking
 - Score: 71/100
 - Reviewer: `Pasteur the 2nd`, confirmed.
+- Status: fixed by `4997404` (`fix: deduplicate peer stopped forwarding`).
+  `PeerConnectionInternal::on_msg` now reports
+  `MainEvent::PeerStopped(self.conn_id, peer_id)` with `try_send`, so a full
+  bounded main event queue cannot park the peer connection task during
+  `PeerStopped` handling.
 - Affected code:
   - `src/peer/peer_internal.rs`: `PeerConnectionInternal::on_msg` handles
     `PeerMessage::PeerStopped(peer_id)`.
   - `src/peer/peer_internal.rs`: after forwarding the stop signal to other
-    peer aliases, the handler awaits
-    `self.main_tx.send(MainEvent::PeerStopped(self.conn_id, peer_id)).await`
-    on the bounded main event queue.
-- Impact: when the main loop is saturated, a peer connection task can park
-  inside `PeerStopped` handling and stop processing later messages from that
-  connection. This turns graceful stop notification into head-of-line blocking
-  under load or slow main-loop processing, delaying unrelated unicast/broadcast
-  traffic and connection cleanup. This is distinct from ISSUE-001/004/051,
+    peer aliases, the handler uses
+    `self.main_tx.try_send(MainEvent::PeerStopped(self.conn_id, peer_id))`
+    for best-effort lifecycle reporting instead of awaiting the bounded main
+    event queue.
+- Impact: fixed. When the main loop is saturated, a peer connection task no
+  longer parks inside `PeerStopped` handling and can continue processing later
+  messages from that connection. This was distinct from ISSUE-001/004/051,
   which cover forged or legitimate stop semantics, and from ISSUE-118, which
   covers caller-side graceful shutdown latency while notifying congested peers.
 - Evidence test:
   - `cargo test peer_stopped_must_not_block_connection_task_on_full_main_queue -- --nocapture`
-  - Failure summary: after filling node2's bounded main event queue and sending
-    `PeerStopped`, a later unicast over the same peer connection times out with
-    `Err(Elapsed(()))`; expected the connection task to keep processing traffic
-    instead of blocking on `main_tx.send`.
+  - Current result: passes. After filling node2's bounded main event queue and
+    sending `PeerStopped`, a later unicast over the same peer connection
+    succeeds because the connection task keeps processing traffic instead of
+    blocking on main-loop reporting.
 
 ### ISSUE-134: Unauthenticated inbound QUIC connections are not admission bounded
 
