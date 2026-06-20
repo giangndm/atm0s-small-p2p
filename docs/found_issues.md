@@ -11,7 +11,7 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 89
+- Current consecutive no-new-issue cycles: 90
 - Stop condition requested by user: continue until 5 consecutive cycles find no
   new accepted issue.
 
@@ -5783,6 +5783,31 @@ the source of truth for evidence and reviewer decisions.
     `src/peer.rs:1092` with `got 2`.
 
 ## No-New-Issue Audit Cycles
+
+### Cycle after ISSUE-204 no-new cycle 90: sanitized churn duplicate outgoing send-to-main panic
+
+- Result: no accepted non-duplicate issue.
+- Reviewer: `Kierkegaard the 5th`, forked subagent review, confirmed
+  `DUPLICATE/NO_NEW`.
+- Source and test evidence reviewed:
+  - `src/tests/fuzz.rs`
+  - `src/peer.rs`
+  - `RUST_LOG=error P2P_FUZZ_SEED=90 P2P_FUZZ_NODES=8 P2P_FUZZ_STEPS=1800 cargo test fuzz_random_sanitized_node_churn_actions_must_not_panic_connection_tasks -- --nocapture`
+    failed.
+- Evidence summary:
+  - exit status 101; `0 passed; 1 failed`; the fuzz assertion at
+    `src/tests/fuzz.rs:372` detected background connection task panics.
+  - three `src/peer.rs:133:113` panics and one `src/peer.rs:130:121` panic,
+    all with `should send to main: SendError { .. }`.
+  - reviewer found no evidence for ISSUE-053, ISSUE-063, or ISSUE-170 in this
+    log.
+- Duplicate mapping:
+  - the `src/peer.rs:133` and `src/peer.rs:130` panics map directly to
+    ISSUE-139: early outbound `PeerConnectError` reporting can panic after the
+    main event loop has closed because the spawned connection task uses
+    `main_tx.send(...).await.expect("should send to main")`.
+- Root-cause summary impact: no new root cause; this strengthens existing
+  ISSUE-139 evidence without adding ISSUE-205.
 
 ### Cycle after ISSUE-204 no-new cycle 89: valid-action duplicate stale sync without stop storm
 

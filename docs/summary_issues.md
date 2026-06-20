@@ -7,9 +7,9 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Accepted issues: 204
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 89
+- Current consecutive no-new-issue cycles: 90
 - Stop condition: continue until 5 consecutive cycles find no new accepted
-  issue; currently 89/5 after ISSUE-204.
+  issue; currently 90/5 after ISSUE-204.
 
 ## Root Cause Summary
 
@@ -256,6 +256,13 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Recent Fuzz Evidence
 
+- Sanitized churn fuzz review:
+  `RUST_LOG=error P2P_FUZZ_SEED=90 P2P_FUZZ_NODES=8 P2P_FUZZ_STEPS=1800 cargo test fuzz_random_sanitized_node_churn_actions_must_not_panic_connection_tasks -- --nocapture`
+  failed with duplicate evidence for ISSUE-139. Reviewer `Kierkegaard the 5th`
+  confirmed three `src/peer.rs:133` panics and one `src/peer.rs:130` panic
+  with `should send to main` are the existing outbound `PeerConnectError`
+  reporting panic after main-loop shutdown. No ISSUE-053, ISSUE-063, or
+  ISSUE-170 mapping was present for this cycle.
 - Valid-action fuzz review:
   `RUST_LOG=error P2P_FUZZ_SEED=89 P2P_FUZZ_NODES=8 P2P_FUZZ_STEPS=1800 cargo test fuzz_random_valid_node_actions_must_not_panic_connection_tasks -- --nocapture`
   failed with duplicate evidence for ISSUE-063. Reviewer `Euclid the 5th`
