@@ -11,7 +11,7 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 162
+- Current consecutive no-new-issue cycles: 163
 - Stop condition requested by user: continue until 5 consecutive cycles find no
   new accepted issue.
 
@@ -5783,6 +5783,41 @@ the source of truth for evidence and reviewer decisions.
     `src/peer.rs:1092` with `got 2`.
 
 ## No-New-Issue Audit Cycles
+
+### Cycle after ISSUE-204 no-new cycle 163: broad random duplicate stale sync and PeerStopped storm
+
+- Result: no accepted non-duplicate issue.
+- Reviewer: `Anscombe the 5th`, forked subagent review, confirmed
+  `DUPLICATE/NO_NEW`.
+- Source and test evidence reviewed:
+  - `src/tests/fuzz.rs`
+  - `src/router.rs`
+  - `src/peer/peer_internal.rs`
+  - `RUST_LOG=error P2P_FUZZ_SEED=163 P2P_FUZZ_NODES=8 P2P_FUZZ_STEPS=1800 cargo test fuzz_random_node_actions_must_not_panic_connection_tasks -- --nocapture`
+    failed.
+- Evidence summary:
+  - exit status 101; `0 passed; 1 failed`; the fuzz assertion at
+    `src/tests/fuzz.rs:183:5` detected background connection/service task
+    panics.
+  - two `src/router.rs:76` stale-sync panic markers with
+    `should have direct metric with apply_sync`.
+  - 4,100 `forward peer stopped over peer alias` logs, 3,974
+    `no available capacity` logs, and 134 `channel closed` logs show the known
+    peer-alias stop-forwarding/backpressure storm.
+  - no `src/ctx.rs:34` invalid-service panic evidence.
+  - no `src/peer.rs:89/92/130/133` `should send to main` evidence.
+  - no broadcast-data, connect-answer, open_bi, WARN, or path-not-found logs;
+    two endpoint/transport lifecycle lines are teardown fallout without a
+    separate invariant.
+- Duplicate mapping:
+  - primary: the `src/router.rs:76` panic maps directly to ISSUE-063: stale
+    `PeerData::Sync` route state can outlive the direct metric required by
+    `RouterTable::apply_sync`.
+  - secondary: the forwarded-stop/no-capacity/channel-closed storm maps
+    directly to ISSUE-170: `PeerStopped` forwarding has no dedupe, TTL, or
+    tombstone suppression and amplifies under peer-alias backpressure.
+- Root-cause summary impact: no new root cause; this strengthens existing
+  ISSUE-063 and ISSUE-170 evidence without adding a new issue.
 
 ### Cycle after ISSUE-204 no-new cycle 162: valid random duplicate stale sync, send-to-main, and PeerStopped storm
 
