@@ -15,7 +15,7 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   ISSUE-124, ISSUE-125, ISSUE-126, ISSUE-127, ISSUE-128, ISSUE-129, ISSUE-130,
   ISSUE-131, ISSUE-132, ISSUE-133, ISSUE-134, ISSUE-135, ISSUE-136, ISSUE-137,
   ISSUE-140, ISSUE-143, ISSUE-145, ISSUE-147, ISSUE-148, ISSUE-150, ISSUE-151,
-  ISSUE-152, ISSUE-153,
+  ISSUE-152, ISSUE-153, ISSUE-154,
   ISSUE-053, ISSUE-063, ISSUE-139, ISSUE-146, ISSUE-168, ISSUE-170,
   ISSUE-149, ISSUE-169, ISSUE-174, ISSUE-176, ISSUE-181, ISSUE-189, ISSUE-190, ISSUE-191, ISSUE-192, ISSUE-193,
   ISSUE-194, ISSUE-195, ISSUE-196, ISSUE-197, ISSUE-198, ISSUE-199,
@@ -50,7 +50,7 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 - Representative issues: ISSUE-034, ISSUE-037, ISSUE-038, ISSUE-047,
   ISSUE-059, ISSUE-071, ISSUE-081 through ISSUE-089, ISSUE-095, ISSUE-099,
   ISSUE-110, ISSUE-111, ISSUE-143,
-  ISSUE-154, ISSUE-155, ISSUE-158, ISSUE-166, ISSUE-171, ISSUE-175,
+  ISSUE-155, ISSUE-158, ISSUE-166, ISSUE-171, ISSUE-175,
   ISSUE-186.
 - Pattern: replicated-KV, alias, metrics, visualization, and pubsub flows accept
   stale, unsolicited, reordered, or mismatched responses or broadcasts because
@@ -233,6 +233,16 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   `cargo test awaited_connect_must_error_while_same_peer_connect_is_pending -- --nocapture`,
   plus
   `cargo test connect_to_same_peer_id_at_different_address_must_not_report_success -- --nocapture`.
+- ISSUE-154: fixed by `55b79e5` (`fix: continue partial kv repair
+  responses`). `WorkingState::on_rpc_res` now accepts `FetchChanged` success
+  only for an active pending `FetchChanged { from, count }`, validates returned
+  versions against the pending range, rejects duplicates and zero-count pending
+  repairs, and sends a follow-up request for the remaining range after a valid
+  partial response. This makes a delayed narrow response to an older repair
+  continue, rather than cancel, the newer wider repair. Verification:
+  `cargo test working_state_must_not_let_stale_fetch_changed_response_cancel_newer_repair -- --nocapture`
+  and
+  `cargo test working_state_must_continue_repair_after_partial_fetch_changed_success -- --nocapture`.
 - ISSUE-145: fixed by validating `MainEvent::PeerData(conn, peer, ...)`
   against the router's live direct `(ConnectionId, PeerId)` binding before
   applying route sync or discovery advertisements. Stale or mismatched peer-data

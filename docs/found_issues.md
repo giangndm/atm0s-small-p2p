@@ -4564,8 +4564,19 @@ the source of truth for evidence and reviewer decisions.
   descriptor and reject or ignore responses that cannot be matched to that
   descriptor; after applying a matched response, keep or narrow the pending
   descriptor until the entire requested range is covered.
+- Fix status: fixed by `55b79e5` (`fix: continue partial kv repair
+  responses`), which behaviorally covers this stale-response case by accepting
+  `FetchChanged` success only while a pending `FetchChanged { from, count }`
+  repair exists, validating returned versions against that requested range,
+  rejecting duplicates and zero-count pending repairs, and emitting a follow-up
+  request for any remaining versions after applying a partial response.
 - Evidence test:
   - `cargo test working_state_must_not_let_stale_fetch_changed_response_cancel_newer_repair -- --nocapture`
+  - Current status: passes after `55b79e5`; the stale narrow response is
+    treated as a valid partial response to the current wider pending range, then
+    the remaining `FetchChanged { from: Version(2), count: 4 }` repair is sent.
+  - Related verification:
+    `cargo test working_state_must_continue_repair_after_partial_fetch_changed_success -- --nocapture`
   - Failure summary: after a `FetchChanged { from: Version(1), count: 1 }`
     request is superseded by `{ from: Version(1), count: 5 }`, a delayed
     response containing only `Version(1)` clears the wider repair. The timeout
