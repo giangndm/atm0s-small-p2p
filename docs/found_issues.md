@@ -1296,6 +1296,12 @@ the source of truth for evidence and reviewer decisions.
   - Failure summary: a single `FetchChanged(Ok(...))` response containing
     versions `2..=2050` leaves 2049 pending changes, exceeding the test cap of
     1024.
+- Fix status: fixed by routing accepted `FetchChanged(Ok(_))` items through
+  `WorkingState::enqueue_pending_changed`, which caps pending future changes at
+  1,024 unique versions and switches to full sync when the cap is exceeded.
+  The same response path now also requires an active pending
+  `RpcReq::FetchChanged { from, count }` and validates returned versions before
+  insertion.
 
 ### ISSUE-047: Replicated KV full sync accepts mismatched continuation versions
 

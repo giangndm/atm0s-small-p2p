@@ -11,7 +11,7 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 - Stop condition: continue until 5 consecutive cycles find no new accepted
   issue; currently 0/5 after ISSUE-207.
 - Fix phase status: ISSUE-001, ISSUE-003, ISSUE-004, ISSUE-005, ISSUE-006, ISSUE-007,
-  ISSUE-002, ISSUE-008, ISSUE-009, ISSUE-010, ISSUE-011, ISSUE-012, ISSUE-013, ISSUE-014, ISSUE-015, ISSUE-017, ISSUE-020, ISSUE-021, ISSUE-024, ISSUE-025, ISSUE-027, ISSUE-033, ISSUE-034, ISSUE-039, ISSUE-047, ISSUE-048, ISSUE-055, ISSUE-059, ISSUE-103, ISSUE-115, ISSUE-116, ISSUE-118, ISSUE-119, ISSUE-120, ISSUE-122, ISSUE-123,
+  ISSUE-002, ISSUE-008, ISSUE-009, ISSUE-010, ISSUE-011, ISSUE-012, ISSUE-013, ISSUE-014, ISSUE-015, ISSUE-017, ISSUE-020, ISSUE-021, ISSUE-024, ISSUE-025, ISSUE-027, ISSUE-033, ISSUE-034, ISSUE-039, ISSUE-046, ISSUE-047, ISSUE-048, ISSUE-055, ISSUE-059, ISSUE-103, ISSUE-115, ISSUE-116, ISSUE-118, ISSUE-119, ISSUE-120, ISSUE-122, ISSUE-123,
   ISSUE-124, ISSUE-125, ISSUE-126, ISSUE-127, ISSUE-128, ISSUE-129, ISSUE-130,
   ISSUE-131, ISSUE-132, ISSUE-133, ISSUE-134, ISSUE-135, ISSUE-136, ISSUE-137,
   ISSUE-140, ISSUE-143, ISSUE-145, ISSUE-147, ISSUE-148, ISSUE-150, ISSUE-151,
@@ -450,6 +450,11 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   clears incremental repair state and falls back to full sync instead of
   silently evicting incremental data. Verification:
   `cargo test working_state_must_cap_pending_future_changes -- --nocapture`.
+- ISSUE-046: fixed by applying the same pending-change admission helper to
+  `FetchChanged(Ok(_))` response items. Oversized response batches now hit the
+  1,024-entry pending cap and fall back to full sync after request-correlation
+  and version-range validation. Verification:
+  `cargo test working_state_must_cap_pending_fetch_changed_response -- --nocapture`.
 - ISSUE-181: fixed by validating local discovery advertise addresses in
   `PeerDiscovery::enable_local`. Addresses with an unspecified IP or port zero
   are now warned about, suppressed, and clear any previous local advertise
