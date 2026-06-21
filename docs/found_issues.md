@@ -2588,6 +2588,9 @@ the source of truth for evidence and reviewer decisions.
     `127.0.0.1:9001`, a later sync containing timestamp `100` and address
     `127.0.0.1:9000` overwrites the newer address; expected the stale
     advertisement to be ignored.
+- Fix status: fixed by the discovery timestamp validation path. `apply_sync`
+  now compares incoming advertisements with the existing remote timestamp and
+  ignores stale rows where the stored `last_updated` is newer or equal.
 
 ### ISSUE-093: Discovery tombstones suppress fresh restart advertisements
 
