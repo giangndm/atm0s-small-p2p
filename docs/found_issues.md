@@ -3216,6 +3216,20 @@ the source of truth for evidence and reviewer decisions.
   - Failure summary: after requesting `FetchChanged { from: Version(1), count:
     1 }`, an empty successful response clears the in-flight repair; the next
     timeout tick emits no retry and does not transition to full resync.
+- Fix status: fixed by the hardened `WorkingState::on_rpc_res` pending-request
+  validation and repair-continuation logic from ISSUE-141. A successful
+  `FetchChanged` response is accepted only when it matches an active pending
+  `FetchChanged { from, count }`, returned versions are validated against the
+  requested range, and after applying pendings the worker emits a follow-up
+  `FetchChanged` when `self.version` is still below the requested upper bound.
+  Empty successful responses therefore leave the gap open and trigger an
+  immediate remaining-range request instead of canceling repair. Verified with
+  `cargo test working_state_must_not_cancel_repair_after_empty_fetch_changed_success -- --nocapture`,
+  `cargo test working_state_must_continue_repair_after_partial_fetch_changed_success -- --nocapture`,
+  and
+  `cargo test working_state_must_not_let_stale_fetch_changed_response_cancel_newer_repair -- --nocapture`.
+  `working_state_must_cancel_fetch_changed_when_broadcast_fills_gap` is a
+  separate stale-retry issue and is not part of ISSUE-111.
 
 ### ISSUE-112: `connect()` accepts the node's own peer address
 
