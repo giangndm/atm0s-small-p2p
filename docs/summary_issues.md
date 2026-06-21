@@ -18,7 +18,7 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   ISSUE-152, ISSUE-153, ISSUE-154, ISSUE-155, ISSUE-156, ISSUE-157, ISSUE-158,
   ISSUE-159, ISSUE-160, ISSUE-161, ISSUE-163, ISSUE-164, ISSUE-053, ISSUE-062, ISSUE-063, ISSUE-086, ISSUE-087, ISSUE-088, ISSUE-089, ISSUE-090, ISSUE-091, ISSUE-092, ISSUE-093, ISSUE-139, ISSUE-146, ISSUE-168, ISSUE-170,
   ISSUE-094, ISSUE-095, ISSUE-096,
-  ISSUE-149, ISSUE-169, ISSUE-174, ISSUE-176, ISSUE-078, ISSUE-079, ISSUE-080, ISSUE-081, ISSUE-082, ISSUE-083, ISSUE-084, ISSUE-085, ISSUE-181, ISSUE-189, ISSUE-190, ISSUE-191, ISSUE-192, ISSUE-193,
+  ISSUE-149, ISSUE-169, ISSUE-174, ISSUE-176, ISSUE-177, ISSUE-078, ISSUE-079, ISSUE-080, ISSUE-081, ISSUE-082, ISSUE-083, ISSUE-084, ISSUE-085, ISSUE-181, ISSUE-189, ISSUE-190, ISSUE-191, ISSUE-192, ISSUE-193,
   ISSUE-194, ISSUE-195, ISSUE-196, ISSUE-197, ISSUE-198, ISSUE-199,
   ISSUE-200, ISSUE-201, ISSUE-202, ISSUE-203, ISSUE-204, ISSUE-205, ISSUE-206, ISSUE-207, ISSUE-097, ISSUE-098, ISSUE-099, ISSUE-100, ISSUE-101, ISSUE-102, ISSUE-104, ISSUE-105, ISSUE-106, ISSUE-107, ISSUE-108, ISSUE-109, ISSUE-112, and ISSUE-018 have focused
   fixes committed.
@@ -292,6 +292,16 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   `cargo test awaited_connect_must_error_while_same_peer_connect_is_pending -- --nocapture`,
   plus
   `cargo test connect_to_same_peer_id_at_different_address_must_not_report_success -- --nocapture`.
+- ISSUE-177: fixed by the same ISSUE-153 `process_connect` path.
+  `NetworkNeighbours::has_peer_connection_attempt` is checked before
+  `endpoint.connect` and matches existing connected peers or pending outbound
+  attempts for the requested peer id. Awaited connects to the same peer id at a
+  different socket now return `Err(_)` instead of synthetic success, while
+  best-effort duplicates coalesce. Verification:
+  `cargo test connect_to_same_peer_id_at_different_address_must_not_report_success -- --nocapture`,
+  `cargo test awaited_connect_must_error_while_same_peer_connect_is_pending -- --nocapture`,
+  and
+  `cargo test concurrent_connects_to_same_peer_must_be_coalesced -- --nocapture`.
 - ISSUE-154: fixed by `55b79e5` (`fix: continue partial kv repair
   responses`). `WorkingState::on_rpc_res` now accepts `FetchChanged` success
   only for an active pending `FetchChanged { from, count }`, validates returned

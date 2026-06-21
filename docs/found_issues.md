@@ -3404,6 +3404,17 @@ the source of truth for evidence and reviewer decisions.
     `process_control(ControlCmd::Connect(node1_peer_id@127.0.0.1:9, Some(tx)))`
     sends `Ok(())`; expected an error because the requested socket address does
     not match the existing connection.
+- Fixed summary: fixed by the shared ISSUE-153 `process_connect` path.
+  `P2pNetwork::process_connect` now calls
+  `NetworkNeighbours::has_peer_connection_attempt` before `endpoint.connect`;
+  that predicate matches existing connected peers and pending outbound attempts
+  for the target peer id. An awaited `connect()` to the same peer id at a
+  different socket now returns `Err(_)` instead of synthetic success, while
+  best-effort duplicates coalesce without starting another dial. Verified with
+  `cargo test connect_to_same_peer_id_at_different_address_must_not_report_success -- --nocapture`,
+  `cargo test awaited_connect_must_error_while_same_peer_connect_is_pending -- --nocapture`,
+  and
+  `cargo test concurrent_connects_to_same_peer_must_be_coalesced -- --nocapture`.
 
 ### ISSUE-115: Local pubsub publish RPC answers are not bound to the subscriber handle
 
