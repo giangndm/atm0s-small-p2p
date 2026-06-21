@@ -2615,6 +2615,10 @@ the source of truth for evidence and reviewer decisions.
     stop at timestamp `110`, and receiving a fresh restart advertisement at
     timestamp `120` with address `127.0.0.1:9002`, `remotes()` stays empty;
     expected the fresh restart advertisement to be accepted.
+- Fix status: fixed by the discovery tombstone freshness check. `apply_sync`
+  now ignores live tombstone advertisements only when `last_updated <=
+  stopped_at`; fresher restart advertisements clear the tombstone and enter the
+  normal remote freshness path.
 
 ### ISSUE-094: Pubsub object helper panics on user serialization failure
 
