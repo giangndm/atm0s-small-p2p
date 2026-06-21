@@ -1307,6 +1307,11 @@ the source of truth for evidence and reviewer decisions.
   - Failure summary: after locking the snapshot at `Version(1)`, a continuation
     response declaring `Version(2)` stores key `2` instead of rejecting the
     mismatched page.
+- Fix status: fixed by continuation `max_version` validation in
+  `SyncFullState::on_rpc_res`. When a pending continuation request carries
+  `max_version: Some(v)`, any response declaring a different snapshot version
+  is rejected before slot insertion, `KvEvent` emission, or transition to
+  `WorkingState`.
 
 ### ISSUE-048: Pubsub RPC member messages bypass channel membership
 
