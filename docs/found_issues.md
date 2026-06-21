@@ -2472,6 +2472,10 @@ the source of truth for evidence and reviewer decisions.
     1 }`, a response with two `Changed { version: Version(1), ... }` entries is
     accepted and advances `state.version` to `Version(1)`; expected the
     duplicate-version response to be rejected.
+- Fix status: fixed by `55b79e5` (`fix: continue partial kv repair
+  responses`). `WorkingState` now validates the entire `FetchChanged(Ok(_))`
+  batch against the active pending request and rejects duplicate versions before
+  applying any changes.
 
 ### ISSUE-089: Replicated KV applies FetchChanged versions beyond the requested count
 
