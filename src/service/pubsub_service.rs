@@ -256,9 +256,33 @@ impl PubsubChannelState {
         Self::apply_remote_role(&mut self.remote_subscribers, peer, generation, active)
     }
 
+    fn apply_remote_publisher_heartbeat(&mut self, peer: PeerId, generation: u64, active: bool) -> Option<(bool, bool)> {
+        Self::apply_remote_role_heartbeat(&mut self.remote_publishers, peer, generation, active)
+    }
+
+    fn apply_remote_subscriber_heartbeat(&mut self, peer: PeerId, generation: u64, active: bool) -> Option<(bool, bool)> {
+        Self::apply_remote_role_heartbeat(&mut self.remote_subscribers, peer, generation, active)
+    }
+
     fn apply_remote_role(map: &mut HashMap<PeerId, RemoteRoleState>, peer: PeerId, generation: u64, active: bool) -> Option<(bool, bool)> {
         match map.get_mut(&peer) {
             Some(state) if generation <= state.generation => None,
+            Some(state) => {
+                let was_active = state.active;
+                state.generation = generation;
+                state.active = active;
+                Some((was_active, active))
+            }
+            None => {
+                map.insert(peer, RemoteRoleState { generation, active });
+                Some((false, active))
+            }
+        }
+    }
+
+    fn apply_remote_role_heartbeat(map: &mut HashMap<PeerId, RemoteRoleState>, peer: PeerId, generation: u64, active: bool) -> Option<(bool, bool)> {
+        match map.get_mut(&peer) {
+            Some(state) if generation < state.generation => None,
             Some(state) => {
                 let was_active = state.active;
                 state.generation = generation;
@@ -424,9 +448,11 @@ impl PubsubService {
                             }
                         }
                         PubsubMessage::Heartbeat(channels) => {
+                            let seen_channels: HashSet<_> = channels.iter().map(|heartbeat| heartbeat.channel).collect();
+
                             for heartbeat in channels {
                                 if let Some(state) = self.channels.get_mut(&heartbeat.channel) {
-                                    if let Some((was_active, is_active)) = state.apply_remote_publisher(from_peer, heartbeat.publish_generation, heartbeat.publish) {
+                                    if let Some((was_active, is_active)) = state.apply_remote_publisher_heartbeat(from_peer, heartbeat.publish_generation, heartbeat.publish) {
                                         if was_active != is_active {
                                             for sub_tx in state.local_subscribers.values() {
                                                 let event = if is_active {
@@ -439,7 +465,7 @@ impl PubsubService {
                                         }
                                     }
 
-                                    if let Some((was_active, is_active)) = state.apply_remote_subscriber(from_peer, heartbeat.subscribe_generation, heartbeat.subscribe) {
+                                    if let Some((was_active, is_active)) = state.apply_remote_subscriber_heartbeat(from_peer, heartbeat.subscribe_generation, heartbeat.subscribe) {
                                         if was_active != is_active {
                                             for (_, pub_tx) in state.local_publishers.iter() {
                                                 let event = if is_active {
@@ -450,6 +476,26 @@ impl PubsubService {
                                                 Self::try_send_publisher_event(pub_tx, event);
                                             }
                                         }
+                                    }
+                                }
+                            }
+
+                            for (channel, state) in self.channels.iter_mut() {
+                                if seen_channels.contains(channel) {
+                                    continue;
+                                }
+
+                                if state.remote_publishers.remove(&from_peer).is_some_and(|role| role.active) {
+                                    log::info!("[PubsubService] remote peer {from_peer} heartbeat omitted {channel} as publisher");
+                                    for sub_tx in state.local_subscribers.values() {
+                                        Self::try_send_subscriber_event(sub_tx, SubscriberEvent::PeerLeaved(PeerSrc::Remote(from_peer)));
+                                    }
+                                }
+
+                                if state.remote_subscribers.remove(&from_peer).is_some_and(|role| role.active) {
+                                    log::info!("[PubsubService] remote peer {from_peer} heartbeat omitted {channel} as subscriber");
+                                    for pub_tx in state.local_publishers.values() {
+                                        Self::try_send_publisher_event(pub_tx, PublisherEvent::PeerLeaved(PeerSrc::Remote(from_peer)));
                                     }
                                 }
                             }

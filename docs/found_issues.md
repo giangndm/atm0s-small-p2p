@@ -2239,6 +2239,10 @@ the source of truth for evidence and reviewer decisions.
     heartbeat omitting that channel does not produce
     `SubscriberEvent::PeerLeaved(PeerSrc::Remote(node2))`; the test times out
     waiting for the leave event.
+- Fix status: fixed by adding heartbeat-specific remote role reconciliation.
+  Heartbeats now allow equal-generation repair, reject older generations, and
+  treat omitted channels as inactive for the heartbeat sender while preserving
+  stricter explicit join/leave generation checks.
 
 ### ISSUE-081: Replicated KV full sync accepts an initial empty snapshot as nonzero complete state
 

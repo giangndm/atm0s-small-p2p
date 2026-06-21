@@ -17,7 +17,7 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   ISSUE-140, ISSUE-143, ISSUE-145, ISSUE-147, ISSUE-148, ISSUE-150, ISSUE-151,
   ISSUE-152, ISSUE-153, ISSUE-154, ISSUE-155, ISSUE-156, ISSUE-157, ISSUE-158,
   ISSUE-159, ISSUE-160, ISSUE-161, ISSUE-163, ISSUE-164, ISSUE-053, ISSUE-062, ISSUE-063, ISSUE-086, ISSUE-087, ISSUE-091, ISSUE-139, ISSUE-146, ISSUE-168, ISSUE-170,
-  ISSUE-149, ISSUE-169, ISSUE-174, ISSUE-176, ISSUE-078, ISSUE-079, ISSUE-181, ISSUE-189, ISSUE-190, ISSUE-191, ISSUE-192, ISSUE-193,
+  ISSUE-149, ISSUE-169, ISSUE-174, ISSUE-176, ISSUE-078, ISSUE-079, ISSUE-080, ISSUE-181, ISSUE-189, ISSUE-190, ISSUE-191, ISSUE-192, ISSUE-193,
   ISSUE-194, ISSUE-195, ISSUE-196, ISSUE-197, ISSUE-198, ISSUE-199,
   ISSUE-200, ISSUE-201, ISSUE-202, ISSUE-203, ISSUE-204, ISSUE-205, ISSUE-206, ISSUE-207, ISSUE-097, ISSUE-098, and ISSUE-018 have focused
   fixes committed.
@@ -726,6 +726,15 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   and `cargo fmt -- --check`. `cargo test discovery_new_node -- --nocapture`
   still fails with the pre-existing `PeerLeaved` vs `PeerUpdated` behavior, so
   that regression remains separate from ISSUE-079.
+- ISSUE-080: fixed by adding heartbeat-specific pubsub role reconciliation.
+  Heartbeats now repair equal-generation active/inactive changes and clear
+  active remote publisher/subscriber roles for channels omitted from the
+  sender's heartbeat snapshot, while explicit join/leave messages keep the
+  stricter stale-generation guard. Verified with
+  `cargo test pubsub_heartbeat_must_remove_stale_remote_publisher -- --nocapture`,
+  `cargo test pubsub_empty_heartbeat_must_remove_omitted_stale_remote_publisher -- --nocapture`,
+  `cargo test pubsub_heartbeat_must_remove_stale_remote_subscriber -- --nocapture`,
+  stale leave/reset/disconnect pubsub tests, and `cargo fmt -- --check`.
 - ISSUE-130: fixed by `e78c190` (`fix: return errors when alias channels
   close`), which makes `AliasService::run_loop` return `Err(_)` when the
   underlying base service channel closes instead of panicking on
