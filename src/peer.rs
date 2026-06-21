@@ -1159,7 +1159,7 @@ mod tests {
         let mut visualization = VisualizationService::new(None, false, base_service);
         for _ in 0..8 {
             service_tx
-                .send(P2pServiceEvent::Unicast(peer, encode_visualization_scan_for_test()))
+                .send(P2pServiceEvent::Broadcast(peer, encode_visualization_scan_for_test()))
                 .await
                 .expect("test service queue should accept scan");
             let _ = tokio::time::timeout(Duration::from_millis(20), visualization.recv()).await;
@@ -1180,9 +1180,9 @@ mod tests {
             }
         }
 
-        assert!(
-            responses <= 1,
-            "visualization Scan responses must be coalesced while the previous response is still backpressured; got {responses}"
+        assert_eq!(
+            responses, 1,
+            "visualization Scan responses must be retried and coalesced while the previous response is still backpressured; got {responses}"
         );
     }
 

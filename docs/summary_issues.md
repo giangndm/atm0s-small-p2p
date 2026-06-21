@@ -964,9 +964,8 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   coalescing, and ISSUE-078/related issues remain separate for unauthorized
   metrics disclosure.
 - ISSUE-203: fixed by `VisualizationService::pending_scan_responses` plus
-  bounded `requester.send_unicast(...)` response tasks, so duplicate
-  visualization scans from one peer coalesce while a response is still
-  backpressured. Verified with
+  bounded unacked response retries, so duplicate visualization scans from one
+  peer coalesce while a response is still backpressured. Verified with
   `cargo test visualization_scan_responses_must_not_accumulate_behind_full_peer_control_queue -- --nocapture`
   and `cargo fmt -- --check`. ISSUE-201 remains separate for periodic
   visualization scan-broadcast coalescing, ISSUE-204 remains separate for

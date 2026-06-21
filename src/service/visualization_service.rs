@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use tokio::task::JoinHandle;
 use tokio::{select, time::Interval};
 
-use crate::{now_ms, ConnectionId, ErrorExt, PeerId};
+use crate::{now_ms, ConnectionId, PeerId};
 
 use super::{P2pService, P2pServiceEvent};
 
@@ -36,6 +36,7 @@ pub(crate) fn encode_scan_for_test() -> Vec<u8> {
 }
 
 const SCAN_RESPONSE_SEND_TIMEOUT: Duration = Duration::from_secs(1);
+const SCAN_RESPONSE_RETRY_DELAY: Duration = Duration::from_millis(5);
 const SCAN_BROADCAST_SEND_TIMEOUT: Duration = Duration::from_secs(1);
 const MAX_VISUALIZATION_REMOTE_PEERS: usize = 1024;
 const MAX_TOPOLOGY_ROWS_PER_INFO: usize = 1024;
@@ -185,10 +186,27 @@ impl VisualizationService {
             let neighbours = requester.router().neighbours();
             let data = bincode::serialize(&Message::Info(neighbours)).expect("should convert to buf");
             self.scan_response_tasks.push(tokio::spawn(async move {
-                // Coalesce repeated scans while one response is backpressured.
-                match tokio::time::timeout(SCAN_RESPONSE_SEND_TIMEOUT, requester.send_unicast(from, data)).await {
-                    Ok(result) => result.print_on_err("send neighbour info to visualization collector"),
-                    Err(_) => log::warn!("send neighbour info to visualization collector timed out"),
+                let deadline = tokio::time::Instant::now() + SCAN_RESPONSE_SEND_TIMEOUT;
+                loop {
+                    let now = tokio::time::Instant::now();
+                    if now >= deadline {
+                        log::warn!("send neighbour info to visualization collector timed out");
+                        break;
+                    }
+
+                    let remaining = deadline.saturating_duration_since(now);
+                    match tokio::time::timeout(remaining, requester.send_unicast_unacked(from, data.clone())).await {
+                        Ok(Ok(())) => break,
+                        Ok(Err(err)) if tokio::time::Instant::now() >= deadline => {
+                            log::warn!("send neighbour info to visualization collector timed out: {err}");
+                            break;
+                        }
+                        Ok(Err(_)) => tokio::time::sleep(SCAN_RESPONSE_RETRY_DELAY).await,
+                        Err(_) => {
+                            log::warn!("send neighbour info to visualization collector timed out");
+                            break;
+                        }
+                    }
                 }
                 from
             }));

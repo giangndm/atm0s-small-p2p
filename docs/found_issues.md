@@ -6826,8 +6826,9 @@ the source of truth for evidence and reviewer decisions.
 - Score: 56/100
 - Reviewer: `Sartre the 3rd`, confirmed after `Boole the 3rd` discovery.
 - Fix status: fixed by `VisualizationService::pending_scan_responses`, which
-  keeps one bounded in-flight `Info` response task per scanning peer and sends
-  it with `requester.send_unicast(...)` under `SCAN_RESPONSE_SEND_TIMEOUT`.
+  keeps one bounded in-flight `Info` response task per scanning peer and retries
+  it through `requester.send_unicast_unacked(...)` under
+  `SCAN_RESPONSE_SEND_TIMEOUT`.
   ISSUE-201 remains separate for periodic visualization scan-broadcast
   coalescing, ISSUE-204 remains separate for metrics response accumulation,
   and ISSUE-079/related issues remain separate for unauthorized topology
@@ -6835,8 +6836,9 @@ the source of truth for evidence and reviewer decisions.
 - Affected code:
   - `src/service/visualization_service.rs`: when a `Message::Scan` arrives,
     the service gathers neighbour topology from the requester router.
-  - `src/service/visualization_service.rs`: the response path spawns a
-    detached task for every scan and awaits `requester.send_unicast(...)`.
+  - `src/service/visualization_service.rs`: the response path keeps one pending
+    task per scanning peer and retries `requester.send_unicast_unacked(...)`
+    until `SCAN_RESPONSE_SEND_TIMEOUT`.
   - `src/ctx.rs`: `SharedCtx::send_unicast` awaits the selected next-hop
     peer alias.
   - `src/peer/peer_alias.rs`: `PeerConnectionAlias::send` awaits the bounded
