@@ -2963,9 +2963,13 @@ the source of truth for evidence and reviewer decisions.
   frame-size cap gap, and ISSUE-010's route/discovery sync vector growth.
 - Evidence test:
   - `cargo test metrics_info_batches_must_be_bounded -- --nocapture`
-  - Failure summary: a single metrics `Info` frame with 1,025 rows is delivered
-    as one `OnPeerConnectionMetric` event, exceeding the test cap of 1,024
-    rows.
+  - Failure summary: a correlated metrics `Info` response with 1,025 rows is
+    delivered as one `OnPeerConnectionMetric` event, exceeding the test cap of
+    1,024 rows.
+- Fix status: fixed by enforcing `MAX_METRICS_PER_INFO = 1024` after the
+  existing pending-responder correlation check and before emitting
+  `OnPeerConnectionMetric`. Oversized accepted responses are dropped instead of
+  forwarded as partial or oversized metric batches.
 
 ### ISSUE-105: Visualization `Info` batches have no service-level row cap
 

@@ -39,10 +39,12 @@ mod test {
 
     #[tokio::test]
     async fn metrics_info_batches_must_be_bounded() {
-        const MAX_METRICS_PER_INFO: usize = 1024;
         let ctx = SharedCtx::new(PeerId::from(1), SharedRouterTable::new(PeerId::from(1)));
         let (base_service, service_tx) = P2pService::build(P2pServiceId::from(0), ctx);
-        let mut service = MetricsService::new(None, base_service, false);
+        let mut service = MetricsService::new(Some(Duration::from_secs(3600)), base_service, true);
+        let peer = PeerId::from(2);
+        let _ = service.recv().await.expect("collector should emit initial local metrics");
+        service.pending_info_responders.insert(peer);
         let metric = PeerConnectionMetric {
             uptime: 1,
             rtt: 2,
@@ -58,13 +60,48 @@ mod test {
             .collect::<Vec<_>>();
 
         service_tx
-            .send(P2pServiceEvent::Unicast(PeerId::from(2), encode_info_for_test(metrics)))
+            .send(P2pServiceEvent::Unicast(peer, encode_info_for_test(metrics)))
             .await
             .expect("metrics service channel should accept test message");
 
-        let MetricsServiceEvent::OnPeerConnectionMetric(_, delivered) = service.recv().await.expect("metrics event should be emitted");
+        let delivered = tokio::time::timeout(Duration::from_millis(200), service.recv()).await;
 
-        assert!(delivered.len() <= MAX_METRICS_PER_INFO, "metrics Info batches must be bounded, got {} rows", delivered.len());
+        assert!(
+            !matches!(delivered, Ok(Ok(MetricsServiceEvent::OnPeerConnectionMetric(delivered_peer, _))) if delivered_peer == peer),
+            "oversized correlated metrics Info batches must be rejected"
+        );
+    }
+
+    #[tokio::test]
+    async fn metrics_info_batch_at_cap_must_be_accepted() {
+        let ctx = SharedCtx::new(PeerId::from(1), SharedRouterTable::new(PeerId::from(1)));
+        let (base_service, service_tx) = P2pService::build(P2pServiceId::from(0), ctx);
+        let mut service = MetricsService::new(Some(Duration::from_secs(3600)), base_service, true);
+        let peer = PeerId::from(2);
+        let _ = service.recv().await.expect("collector should emit initial local metrics");
+        service.pending_info_responders.insert(peer);
+        let metric = PeerConnectionMetric {
+            uptime: 1,
+            rtt: 2,
+            sent_pkt: 3,
+            lost_pkt: 4,
+            lost_bytes: 5,
+            send_bytes: 6,
+            recv_bytes: 7,
+            current_mtu: 1200,
+        };
+        let metrics = (0..MAX_METRICS_PER_INFO)
+            .map(|idx| (ConnectionId::from(idx as u64 + 10), PeerId::from(idx as u64 + 100), metric.clone()))
+            .collect::<Vec<_>>();
+
+        service_tx
+            .send(P2pServiceEvent::Unicast(peer, encode_info_for_test(metrics)))
+            .await
+            .expect("metrics service channel should accept test message");
+
+        let MetricsServiceEvent::OnPeerConnectionMetric(delivered_peer, delivered) = service.recv().await.expect("metrics event should be emitted");
+        assert_eq!(delivered_peer, peer);
+        assert_eq!(delivered.len(), MAX_METRICS_PER_INFO);
     }
 }
 
@@ -87,6 +124,7 @@ pub(crate) fn encode_scan_for_test() -> Vec<u8> {
 const DEFAULT_COLLECTOR_INTERVAL: u64 = 1;
 const SCAN_RESPONSE_SEND_TIMEOUT: Duration = Duration::from_secs(1);
 const SCAN_BROADCAST_SEND_TIMEOUT: Duration = Duration::from_secs(1);
+const MAX_METRICS_PER_INFO: usize = 1024;
 
 pub struct MetricsService {
     is_collector: bool,
@@ -194,7 +232,11 @@ impl MetricsService {
                                 Message::Scan => {}
                                 Message::Info(peer_metrics) => {
                                     if self.is_collector && self.pending_info_responders.remove(&from) {
-                                        self.outs.push_back(MetricsServiceEvent::OnPeerConnectionMetric(from, peer_metrics));
+                                        if peer_metrics.len() > MAX_METRICS_PER_INFO {
+                                            log::warn!("metrics info from {from} has {} rows, dropping oversized batch", peer_metrics.len());
+                                        } else {
+                                            self.outs.push_back(MetricsServiceEvent::OnPeerConnectionMetric(from, peer_metrics));
+                                        }
                                     }
                                 }
                             }
