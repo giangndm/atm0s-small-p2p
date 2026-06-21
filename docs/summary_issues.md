@@ -17,7 +17,7 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   ISSUE-140, ISSUE-143, ISSUE-145, ISSUE-147, ISSUE-148, ISSUE-150, ISSUE-151,
   ISSUE-152, ISSUE-153, ISSUE-154, ISSUE-155, ISSUE-156, ISSUE-157, ISSUE-158,
   ISSUE-159, ISSUE-160, ISSUE-161, ISSUE-163, ISSUE-164, ISSUE-053, ISSUE-062, ISSUE-063, ISSUE-086, ISSUE-087, ISSUE-091, ISSUE-139, ISSUE-146, ISSUE-168, ISSUE-170,
-  ISSUE-149, ISSUE-169, ISSUE-174, ISSUE-176, ISSUE-078, ISSUE-181, ISSUE-189, ISSUE-190, ISSUE-191, ISSUE-192, ISSUE-193,
+  ISSUE-149, ISSUE-169, ISSUE-174, ISSUE-176, ISSUE-078, ISSUE-079, ISSUE-181, ISSUE-189, ISSUE-190, ISSUE-191, ISSUE-192, ISSUE-193,
   ISSUE-194, ISSUE-195, ISSUE-196, ISSUE-197, ISSUE-198, ISSUE-199,
   ISSUE-200, ISSUE-201, ISSUE-202, ISSUE-203, ISSUE-204, ISSUE-205, ISSUE-206, ISSUE-207, ISSUE-097, ISSUE-098, and ISSUE-018 have focused
   fixes committed.
@@ -718,6 +718,14 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   `cargo test metrics_scan_must_not_disclose_metrics_to_non_collector -- --nocapture`
   and
   `cargo test metrics_info_must_not_be_accepted_without_scan_request -- --nocapture`.
+- ISSUE-079: fixed by treating visualization `Scan` as a broadcast-only
+  collection message. `VisualizationService` now ignores unicast `Scan` frames,
+  closing the direct injected-scan topology disclosure path while preserving
+  broadcast scan handling for collectors. Verified with
+  `cargo test visualization_scan_must_not_disclose_topology_to_non_collector -- --nocapture`
+  and `cargo fmt -- --check`. `cargo test discovery_new_node -- --nocapture`
+  still fails with the pre-existing `PeerLeaved` vs `PeerUpdated` behavior, so
+  that regression remains separate from ISSUE-079.
 - ISSUE-130: fixed by `e78c190` (`fix: return errors when alias channels
   close`), which makes `AliasService::run_loop` return `Err(_)` when the
   underlying base service channel closes instead of panicking on

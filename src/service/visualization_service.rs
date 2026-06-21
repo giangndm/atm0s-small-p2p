@@ -133,24 +133,26 @@ impl VisualizationService {
                     }
                 }
                 event = self.service.recv() => match event {
-                    Some(P2pServiceEvent::Unicast(from, data) | P2pServiceEvent::Broadcast(from, data)) => {
+                    Some(P2pServiceEvent::Broadcast(from, data)) => {
                         if let Ok(msg) = bincode::deserialize::<Message>(&data) {
                             match msg {
                                 Message::Scan => {
-                                    if self.pending_scan_responses.insert(from) {
-                                        let requester = self.service.requester();
-                                        let neighbours = requester.router().neighbours();
-                                        let data = bincode::serialize(&Message::Info(neighbours)).expect("should convert to buf");
-                                        self.scan_response_tasks.push(tokio::spawn(async move {
-                                            // Coalesce repeated scans while one response is backpressured.
-                                            match tokio::time::timeout(SCAN_RESPONSE_SEND_TIMEOUT, requester.send_unicast(from, data)).await {
-                                                Ok(result) => result.print_on_err("send neighbour info to visualization collector"),
-                                                Err(_) => log::warn!("send neighbour info to visualization collector timed out"),
-                                            }
-                                            from
-                                        }));
+                                    self.on_scan(from);
+                                }
+                                Message::Info(neighbours) => {
+                                    if self.neighbours.insert(from, now_ms()).is_none() {
+                                        self.outs.push_back(VisualizationServiceEvent::PeerJoined(from, neighbours));
+                                    } else {
+                                        self.outs.push_back(VisualizationServiceEvent::PeerUpdated(from, neighbours));
                                     }
                                 }
+                            }
+                        }
+                    }
+                    Some(P2pServiceEvent::Unicast(from, data)) => {
+                        if let Ok(msg) = bincode::deserialize::<Message>(&data) {
+                            match msg {
+                                Message::Scan => {}
                                 Message::Info(neighbours) => {
                                     if self.neighbours.insert(from, now_ms()).is_none() {
                                         self.outs.push_back(VisualizationServiceEvent::PeerJoined(from, neighbours));
@@ -165,6 +167,22 @@ impl VisualizationService {
                     None => anyhow::bail!("visualization base service channel closed"),
                 }
             }
+        }
+    }
+
+    fn on_scan(&mut self, from: PeerId) {
+        if self.pending_scan_responses.insert(from) {
+            let requester = self.service.requester();
+            let neighbours = requester.router().neighbours();
+            let data = bincode::serialize(&Message::Info(neighbours)).expect("should convert to buf");
+            self.scan_response_tasks.push(tokio::spawn(async move {
+                // Coalesce repeated scans while one response is backpressured.
+                match tokio::time::timeout(SCAN_RESPONSE_SEND_TIMEOUT, requester.send_unicast(from, data)).await {
+                    Ok(result) => result.print_on_err("send neighbour info to visualization collector"),
+                    Err(_) => log::warn!("send neighbour info to visualization collector timed out"),
+                }
+                from
+            }));
         }
     }
 }

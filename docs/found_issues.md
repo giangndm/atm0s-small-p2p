@@ -2203,6 +2203,10 @@ the source of truth for evidence and reviewer decisions.
   - Failure summary: node2 injects a visualization `Scan` into node1's
     visualization service, and node2's base service receives a unicast response
     from node1 containing a topology `Info` frame.
+- Fix status: fixed by treating visualization `Scan` as a broadcast-only
+  collection message. `VisualizationService` now ignores unicast `Scan` frames,
+  while broadcast `Scan` still triggers the existing bounded response path used
+  by collectors.
 
 ### ISSUE-080: Pubsub heartbeat does not remove stale remote publishers
 
