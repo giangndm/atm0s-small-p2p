@@ -223,6 +223,10 @@ struct PubsubChannelState {
 }
 
 impl PubsubChannelState {
+    fn is_fully_empty(&self) -> bool {
+        self.local_publishers.is_empty() && self.local_subscribers.is_empty() && self.remote_publishers.is_empty() && self.remote_subscribers.is_empty()
+    }
+
     fn active_remote_publishers(&self) -> impl Iterator<Item = PeerId> + '_ {
         self.remote_publishers.iter().filter_map(|(peer, state)| state.active.then_some(*peer))
     }
@@ -323,6 +327,8 @@ pub struct PubsubService {
     channels: HashMap<PubsubChannelId, PubsubChannelState>,
     publish_rpc_reqs: HashMap<RpcId, PublishRpcReq>,
     feedback_rpc_reqs: HashMap<RpcId, FeedbackRpcReq>,
+    local_publish_generation: u64,
+    local_subscribe_generation: u64,
     heartbeat_tick: Interval,
     rpc_tick: Interval,
 }
@@ -337,6 +343,8 @@ impl PubsubService {
             channels: HashMap::new(),
             publish_rpc_reqs: HashMap::new(),
             feedback_rpc_reqs: HashMap::new(),
+            local_publish_generation: 0,
+            local_subscribe_generation: 0,
             heartbeat_tick: tokio::time::interval(Duration::from_millis(HEARTBEAT_INTERVAL_MS)),
             rpc_tick: tokio::time::interval(Duration::from_millis(RPC_TICK_INTERVAL_MS)),
         }
@@ -346,6 +354,16 @@ impl PubsubService {
         PubsubServiceRequester {
             internal_tx: self.internal_tx.clone(),
         }
+    }
+
+    fn next_local_publish_generation(&mut self) -> u64 {
+        self.local_publish_generation = self.local_publish_generation.saturating_add(1);
+        self.local_publish_generation
+    }
+
+    fn next_local_subscribe_generation(&mut self) -> u64 {
+        self.local_subscribe_generation = self.local_subscribe_generation.saturating_add(1);
+        self.local_subscribe_generation
     }
 
     fn rpc_method_is_allowed(from_peer: PeerId, kind: &str, method: &str) -> bool {
@@ -673,7 +691,7 @@ impl PubsubService {
         match control {
             InternalMsg::PublisherCreated(handle_id, channel, tx) => {
                 log::info!("[PubsubService] local created pub channel {channel} / {handle_id}");
-                let mut broadcast = None;
+                let mut should_broadcast = false;
                 {
                     let state = self.channels.entry(channel).or_default();
                     if !state.local_subscribers.is_empty() {
@@ -689,20 +707,24 @@ impl PubsubService {
                             Self::try_send_subscriber_event(sub_tx, SubscriberEvent::PeerJoined(PeerSrc::Local));
                         }
                         state.local_publishers.insert(handle_id, tx);
-                        state.local_publish_generation = state.local_publish_generation.saturating_add(1);
-                        broadcast = Some(PubsubMessage::PublisherJoined(channel, state.local_publish_generation));
+                        should_broadcast = true;
                     } else {
                         state.local_publishers.insert(handle_id, tx);
                     }
                 }
-                if let Some(msg) = broadcast {
-                    self.broadcast(&msg).await;
+                if should_broadcast {
+                    let generation = self.next_local_publish_generation();
+                    if let Some(state) = self.channels.get_mut(&channel) {
+                        state.local_publish_generation = generation;
+                    }
+                    self.broadcast(&PubsubMessage::PublisherJoined(channel, generation)).await;
                 }
             }
             InternalMsg::PublisherDestroyed(handle_id, channel) => {
                 log::info!("[PubsubService] local destroyed pub channel {channel} / {handle_id}");
 
-                let mut broadcast = None;
+                let mut should_broadcast = false;
+                let should_prune;
                 {
                     let Some(state) = self.channels.get_mut(&channel) else {
                         return Ok(());
@@ -715,17 +737,24 @@ impl PubsubService {
                         for sub_tx in state.local_subscribers.values() {
                             Self::try_send_subscriber_event(sub_tx, SubscriberEvent::PeerLeaved(PeerSrc::Local));
                         }
-                        state.local_publish_generation = state.local_publish_generation.saturating_add(1);
-                        broadcast = Some(PubsubMessage::PublisherLeaved(channel, state.local_publish_generation));
+                        should_broadcast = true;
                     }
+                    should_prune = state.is_fully_empty();
                 }
-                if let Some(msg) = broadcast {
-                    self.broadcast(&msg).await;
+                if should_broadcast {
+                    let generation = self.next_local_publish_generation();
+                    if let Some(state) = self.channels.get_mut(&channel) {
+                        state.local_publish_generation = generation;
+                    }
+                    self.broadcast(&PubsubMessage::PublisherLeaved(channel, generation)).await;
+                }
+                if should_prune {
+                    self.channels.remove(&channel);
                 }
             }
             InternalMsg::SubscriberCreated(handle_id, channel, tx) => {
                 log::info!("[PubsubService] local created sub channel {channel} / {handle_id}");
-                let mut broadcast = None;
+                let mut should_broadcast = false;
                 {
                     let state = self.channels.entry(channel).or_default();
                     if !state.local_publishers.is_empty() {
@@ -741,19 +770,23 @@ impl PubsubService {
                             Self::try_send_publisher_event(pub_tx, PublisherEvent::PeerJoined(PeerSrc::Local));
                         }
                         state.local_subscribers.insert(handle_id, tx);
-                        state.local_subscribe_generation = state.local_subscribe_generation.saturating_add(1);
-                        broadcast = Some(PubsubMessage::SubscriberJoined(channel, state.local_subscribe_generation));
+                        should_broadcast = true;
                     } else {
                         state.local_subscribers.insert(handle_id, tx);
                     }
                 }
-                if let Some(msg) = broadcast {
-                    self.broadcast(&msg).await;
+                if should_broadcast {
+                    let generation = self.next_local_subscribe_generation();
+                    if let Some(state) = self.channels.get_mut(&channel) {
+                        state.local_subscribe_generation = generation;
+                    }
+                    self.broadcast(&PubsubMessage::SubscriberJoined(channel, generation)).await;
                 }
             }
             InternalMsg::SubscriberDestroyed(handle_id, channel) => {
                 log::info!("[PubsubService] local destroyed sub channel {channel} / {handle_id}");
-                let mut broadcast = None;
+                let mut should_broadcast = false;
+                let should_prune;
                 {
                     let Some(state) = self.channels.get_mut(&channel) else {
                         return Ok(());
@@ -766,12 +799,19 @@ impl PubsubService {
                         for (_, pub_tx) in state.local_publishers.iter() {
                             Self::try_send_publisher_event(pub_tx, PublisherEvent::PeerLeaved(PeerSrc::Local));
                         }
-                        state.local_subscribe_generation = state.local_subscribe_generation.saturating_add(1);
-                        broadcast = Some(PubsubMessage::SubscriberLeaved(channel, state.local_subscribe_generation));
+                        should_broadcast = true;
                     }
+                    should_prune = state.is_fully_empty();
                 }
-                if let Some(msg) = broadcast {
-                    self.broadcast(&msg).await;
+                if should_broadcast {
+                    let generation = self.next_local_subscribe_generation();
+                    if let Some(state) = self.channels.get_mut(&channel) {
+                        state.local_subscribe_generation = generation;
+                    }
+                    self.broadcast(&PubsubMessage::SubscriberLeaved(channel, generation)).await;
+                }
+                if should_prune {
+                    self.channels.remove(&channel);
                 }
             }
             InternalMsg::GuestPublish(channel, vec) => {
@@ -1767,15 +1807,126 @@ mod test {
             service.on_internal(InternalMsg::SubscriberDestroyed(handle_id, channel)).await.expect("subscriber should be destroyed");
         }
 
-        let empty_channels = service
-            .channels
-            .values()
-            .filter(|state| state.local_publishers.is_empty() && state.local_subscribers.is_empty() && !state.has_active_remote_publishers() && !state.has_active_remote_subscribers())
-            .count();
+        let empty_channels = service.channels.values().filter(|state| state.is_fully_empty()).count();
+
+        assert_eq!(empty_channels, 0, "empty pubsub channel state must be removed after last local handle drops");
+    }
+
+    #[tokio::test]
+    async fn empty_pubsub_publisher_channels_must_be_removed_after_last_local_handle_drops() {
+        const MAX_EMPTY_CHANNELS: usize = 1024;
+        let mut service = test_service();
+
+        for channel in 0..=MAX_EMPTY_CHANNELS {
+            let channel = PubsubChannelId(channel as u64 + 10);
+            let handle_id = publisher_handle(PublisherLocalId::rand());
+            let (pub_tx, _pub_rx) = publisher_event_channel();
+
+            service
+                .on_internal(InternalMsg::PublisherCreated(handle_id, channel, pub_tx))
+                .await
+                .expect("publisher should be registered");
+            service.on_internal(InternalMsg::PublisherDestroyed(handle_id, channel)).await.expect("publisher should be destroyed");
+        }
+
+        let empty_channels = service.channels.values().filter(|state| state.is_fully_empty()).count();
+
+        assert_eq!(empty_channels, 0, "empty publisher-only pubsub channel state must be removed after last local handle drops");
+    }
+
+    #[tokio::test]
+    async fn pubsub_prune_must_preserve_channels_with_remote_state() {
+        let mut service = test_service();
+        let channel = PubsubChannelId(1);
+        let remote = PeerId::from(2);
+        let handle_id = subscriber_handle(SubscriberLocalId::rand());
+        let (sub_tx, mut sub_rx) = subscriber_event_channel();
+
+        service
+            .on_internal(InternalMsg::SubscriberCreated(handle_id, channel, sub_tx))
+            .await
+            .expect("subscriber should be registered");
+        service
+            .on_service(P2pServiceEvent::Unicast(remote, encode_publisher_joined_for_test(channel)))
+            .await
+            .expect("remote publisher join should be processed");
+        assert_eq!(sub_rx.try_recv(), Ok(SubscriberEvent::PeerJoined(PeerSrc::Remote(remote))));
+
+        service.on_internal(InternalMsg::SubscriberDestroyed(handle_id, channel)).await.expect("subscriber should be destroyed");
 
         assert!(
-            empty_channels <= MAX_EMPTY_CHANNELS,
-            "empty pubsub channel state must be removed after last local handle drops, got {empty_channels}"
+            service.channels.get(&channel).is_some_and(|state| state.has_remote_publisher(remote)),
+            "destroying the last local handle must not prune retained remote publisher state"
+        );
+    }
+
+    #[tokio::test]
+    async fn pubsub_recreate_after_prune_must_use_newer_publisher_generation() {
+        let mut service = test_service();
+        let channel = PubsubChannelId(1);
+        let first_handle = publisher_handle(PublisherLocalId::rand());
+        let (first_pub_tx, _first_pub_rx) = publisher_event_channel();
+
+        service
+            .on_internal(InternalMsg::PublisherCreated(first_handle, channel, first_pub_tx))
+            .await
+            .expect("publisher should be registered");
+        let first_generation = service.channels.get(&channel).expect("channel should exist").local_publish_generation;
+
+        service
+            .on_internal(InternalMsg::PublisherDestroyed(first_handle, channel))
+            .await
+            .expect("publisher should be destroyed");
+        let leave_generation = service.local_publish_generation;
+        assert!(!service.channels.contains_key(&channel), "empty channel should be pruned after the last local publisher is destroyed");
+
+        let second_handle = publisher_handle(PublisherLocalId::rand());
+        let (second_pub_tx, _second_pub_rx) = publisher_event_channel();
+        service
+            .on_internal(InternalMsg::PublisherCreated(second_handle, channel, second_pub_tx))
+            .await
+            .expect("publisher should be recreated");
+        let recreated_generation = service.channels.get(&channel).expect("channel should exist").local_publish_generation;
+
+        assert!(leave_generation > first_generation);
+        assert!(
+            recreated_generation > leave_generation,
+            "recreated publisher join generation must be newer than the pruned channel's leave generation"
+        );
+    }
+
+    #[tokio::test]
+    async fn pubsub_recreate_after_prune_must_use_newer_subscriber_generation() {
+        let mut service = test_service();
+        let channel = PubsubChannelId(1);
+        let first_handle = subscriber_handle(SubscriberLocalId::rand());
+        let (first_sub_tx, _first_sub_rx) = subscriber_event_channel();
+
+        service
+            .on_internal(InternalMsg::SubscriberCreated(first_handle, channel, first_sub_tx))
+            .await
+            .expect("subscriber should be registered");
+        let first_generation = service.channels.get(&channel).expect("channel should exist").local_subscribe_generation;
+
+        service
+            .on_internal(InternalMsg::SubscriberDestroyed(first_handle, channel))
+            .await
+            .expect("subscriber should be destroyed");
+        let leave_generation = service.local_subscribe_generation;
+        assert!(!service.channels.contains_key(&channel), "empty channel should be pruned after the last local subscriber is destroyed");
+
+        let second_handle = subscriber_handle(SubscriberLocalId::rand());
+        let (second_sub_tx, _second_sub_rx) = subscriber_event_channel();
+        service
+            .on_internal(InternalMsg::SubscriberCreated(second_handle, channel, second_sub_tx))
+            .await
+            .expect("subscriber should be recreated");
+        let recreated_generation = service.channels.get(&channel).expect("channel should exist").local_subscribe_generation;
+
+        assert!(leave_generation > first_generation);
+        assert!(
+            recreated_generation > leave_generation,
+            "recreated subscriber join generation must be newer than the pruned channel's leave generation"
         );
     }
 

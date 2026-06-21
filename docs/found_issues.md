@@ -3098,6 +3098,21 @@ the source of truth for evidence and reviewer decisions.
   - Failure summary: after creating and destroying 1,025 distinct local
     subscriber channels, the service still retains 1,025 fully empty channel
     entries, exceeding the test cap of 1,024.
+- Fix status: empty pubsub channel entries are pruned after a valid final local
+  publisher/subscriber handle removal only when local publishers, local
+  subscribers, remote publishers, and remote subscribers are all empty. Channels
+  with retained remote state, including inactive remote tombstones, are kept.
+  Local publisher/subscriber generation allocation now uses service-level
+  monotonic counters, so recreating a pruned channel emits a join generation
+  newer than the prior leave generation without retaining an unbounded
+  per-channel generation map. Verified with
+  `cargo test empty_pubsub_channels_must_be_removed_after_last_local_handle_drops -- --nocapture`,
+  `cargo test empty_pubsub_publisher_channels_must_be_removed_after_last_local_handle_drops -- --nocapture`,
+  `cargo test pubsub_prune_must_preserve_channels_with_remote_state -- --nocapture`,
+  `cargo test pubsub_recreate_after_prune_must_use_newer_publisher_generation -- --nocapture`,
+  `cargo test pubsub_recreate_after_prune_must_use_newer_subscriber_generation -- --nocapture`,
+  and
+  `cargo test stale_pubsub_destroy_must_not_create_phantom_channel -- --nocapture`.
 
 ### ISSUE-109: Unsolicited alias `Found` messages create cache hints
 
