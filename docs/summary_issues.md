@@ -955,8 +955,8 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   `expect("service channel should work")`. Verified with
   `cargo test alias_run_loop_after_control_channel_close_must_not_panic -- --nocapture`.
 - ISSUE-204: fixed by `MetricsService::pending_scan_responses` plus bounded
-  `requester.send_unicast(...)` response tasks, so duplicate metrics scans from
-  one requester coalesce while a response is still backpressured. Verified with
+  unacked response retries, so duplicate metrics scans from one requester
+  coalesce while a response is still backpressured. Verified with
   `cargo test metrics_scan_responses_must_not_accumulate_behind_full_peer_control_queue -- --nocapture`
   and `cargo fmt -- --check`. ISSUE-202 remains separate for immediate dropped
   responses, ISSUE-203 remains separate for visualization response
