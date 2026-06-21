@@ -1334,6 +1334,11 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   `cargo test pubsub_must_remove_remote_subscriber_on_graceful_peer_stop -- --nocapture`.
 - ISSUE-186, score 54: ignored replicated-KV broadcasts refresh stale remote
   activity. Reviewer: Nietzsche the 3rd.
+  Root cause: `RemoteStore::on_broadcast` refreshed liveness before knowing
+  whether the broadcast was accepted. Fix: the accepted-event liveness refresh
+  from ISSUE-140 covers the broadcast path, so stale/equal version broadcasts no
+  longer keep inactive remotes alive. Verification:
+  `cargo test ignored_broadcast_must_not_refresh_remote_activity -- --nocapture`.
 - ISSUE-187, score 49: graceful PeerStopped is hidden from public network
   events. Reviewer: Mendel the 3rd.
 - ISSUE-188, score 51: pubsub drops early remote publisher joins before local
