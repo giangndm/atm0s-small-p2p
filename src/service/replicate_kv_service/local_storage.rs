@@ -83,10 +83,11 @@ where
     }
 
     fn changeds_from_to(&self, from: Version, count: u64) -> Result<Vec<Changed<K, V>>, FetchChangedError> {
-        let to = from + count.min(self.compose_max_pkts as u64);
+        let to = Version(from.0.checked_add(count.min(self.compose_max_pkts as u64)).ok_or(FetchChangedError::MissingData)?);
         let first = self.changeds.first_key_value().ok_or(FetchChangedError::MissingData)?.0;
         let last = self.changeds.last_key_value().ok_or(FetchChangedError::MissingData)?.0;
-        if to > *last + 1 || from < *first {
+        let after_last = Version(last.0.checked_add(1).ok_or(FetchChangedError::MissingData)?);
+        if to > after_last || from < *first {
             return Err(FetchChangedError::MissingData);
         }
         Ok(self.changeds.range(from..to).map(|(_, v)| v.clone()).collect())
@@ -268,11 +269,20 @@ mod tests {
         let mut store: LocalStore<u16, u16, u16> = LocalStore::new(10, 2);
         store.set(1, 1);
 
+        while store.pop_out().is_some() {}
+
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             store.on_rpc_req(2, RpcReq::FetchChanged { from: Version(u64::MAX), count: 1 });
         }));
 
         assert!(result.is_ok(), "untrusted FetchChanged version arithmetic must not panic or wrap");
+        assert_eq!(
+            store.pop_out(),
+            Some(Event::NetEvent(NetEvent::Unicast(
+                2,
+                RpcEvent::RpcRes(RpcRes::FetchChanged(Err(FetchChangedError::MissingData)))
+            )))
+        );
     }
 
     #[test]
