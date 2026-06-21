@@ -6071,6 +6071,10 @@ the source of truth for evidence and reviewer decisions.
 - Category: correctness, replicated-KV resync stability, bad-network ordering
 - Score: 60/100
 - Reviewer: `Fermat the 3rd`, confirmed after `Franklin the 3rd` discovery.
+- Fix status: fixed. `WorkingState` recovery full-syncs now stage replacement
+  snapshot pages separately, keep old slots visible while the snapshot is
+  incomplete, and commit the staged map only after the terminal snapshot page is
+  accepted.
 - Affected code:
   - `src/service/replicate_kv_service/remote_storage.rs`:
     `WorkingState::on_rpc_res` handles a solicited
@@ -6094,12 +6098,23 @@ the source of truth for evidence and reviewer decisions.
   full-sync result in temporary storage, then atomically diff/apply `Set` and
   `Del` events only after the terminal snapshot page is accepted. First-time
   sync can still start from empty state.
+- Root cause: `SyncFullState::init` was shared by first sync and recovery
+  resync, and always drained `ctx.slots` before the replacement snapshot had
+  proved complete.
+- Fix: add a staged full-sync mode for `WorkingState` fallback paths. Initial
+  sync still applies pages immediately from an empty state; recovery sync stores
+  pages in `staged_slots`, then commits at completion with deletes for removed
+  keys and sets only for new or value-changed keys.
 - Evidence test:
   - `cargo test solicited_full_resync_must_not_delete_existing_slots_before_snapshot_completes -- --nocapture`
   - Failure summary: after a real `FetchChanged { from: Version(3), count: 3 }`
     request, a `FetchChanged(Err(MissingData))` fallback immediately clears
     existing slots `{1, 2}`; expected the old slots to remain visible until the
     replacement full snapshot completes.
+  - Fixed verification:
+    `cargo test solicited_full_resync -- --nocapture`,
+    `cargo test service::replicate_kv_service::remote_storage::tests -- --nocapture`,
+    and `cargo fmt -- --check` pass.
 
 ### ISSUE-175: Replicated KV emits delete changes for keys that were never present
 

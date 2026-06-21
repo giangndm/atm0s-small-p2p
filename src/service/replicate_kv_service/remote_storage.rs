@@ -22,7 +22,7 @@ enum RemoteStoreState<N, K, V> {
 impl<N, K, V> State<N, K, V> for RemoteStoreState<N, K, V>
 where
     K: Debug + Hash + Ord + Eq + Clone,
-    V: Debug + Clone,
+    V: Debug + Eq + Clone,
     N: Debug + Clone,
 {
     fn init(&mut self, ctx: &mut StateCtx<N, K, V>, now: Instant) {
@@ -150,6 +150,7 @@ struct SyncFullState<N, K, V> {
     version: Option<Version>,
     biggest_key: Option<K>,
     sending_req: Option<(Instant, NetEvent<N, K, V>)>,
+    staged_slots: Option<BTreeMap<K, Slot<V>>>,
     _tmp: PhantomData<(N, K, V)>,
 }
 
@@ -159,7 +160,38 @@ impl<N, K, V> Default for SyncFullState<N, K, V> {
             version: None,
             biggest_key: None,
             sending_req: None,
+            staged_slots: None,
             _tmp: PhantomData,
+        }
+    }
+}
+
+impl<N, K, V> SyncFullState<N, K, V> {
+    fn preserve_existing_until_complete() -> Self {
+        Self {
+            staged_slots: Some(BTreeMap::new()),
+            ..Default::default()
+        }
+    }
+}
+
+impl<N, K, V> SyncFullState<N, K, V>
+where
+    K: Ord + Clone,
+    V: Eq + Clone,
+    N: Clone,
+{
+    fn commit_staged_slots(&mut self, ctx: &mut StateCtx<N, K, V>) {
+        if let Some(staged_slots) = self.staged_slots.take() {
+            for k in ctx.slots.keys().filter(|k| !staged_slots.contains_key(*k)).cloned().collect::<Vec<_>>() {
+                ctx.outs.push_back(Event::KvEvent(KvEvent::Del(Some(ctx.remote.clone()), k)));
+            }
+            for (k, slot) in staged_slots.iter() {
+                if ctx.slots.get(k).is_none_or(|current| current.value != slot.value) {
+                    ctx.outs.push_back(Event::KvEvent(KvEvent::Set(Some(ctx.remote.clone()), k.clone(), slot.value.clone())));
+                }
+            }
+            ctx.slots = staged_slots;
         }
     }
 }
@@ -167,13 +199,15 @@ impl<N, K, V> Default for SyncFullState<N, K, V> {
 impl<N, K, V> State<N, K, V> for SyncFullState<N, K, V>
 where
     K: Debug + Hash + Ord + Eq + Clone,
-    V: Debug + Clone,
+    V: Debug + Eq + Clone,
     N: Debug + Clone,
 {
     fn init(&mut self, ctx: &mut StateCtx<N, K, V>, now: Instant) {
         log::info!("[RemoteStore {:?}] switch to syncFull", ctx.remote);
-        while let Some((k, _v)) = ctx.slots.pop_first() {
-            ctx.outs.push_back(Event::KvEvent(KvEvent::Del(Some(ctx.remote.clone()), k)));
+        if self.staged_slots.is_none() {
+            while let Some((k, _v)) = ctx.slots.pop_first() {
+                ctx.outs.push_back(Event::KvEvent(KvEvent::Del(Some(ctx.remote.clone()), k)));
+            }
         }
         // first time we don't have information about data then request snapshot without from and to
         // after it response, we will request snapshot with from and to if needed
@@ -346,8 +380,12 @@ where
                     prev_key = Some(k);
                 }
                 for (k, slot) in snapshot.slots.into_iter() {
-                    ctx.outs.push_back(Event::KvEvent(KvEvent::Set(Some(ctx.remote.clone()), k.clone(), slot.value.clone())));
-                    ctx.slots.insert(k, slot);
+                    if let Some(staged_slots) = self.staged_slots.as_mut() {
+                        staged_slots.insert(k, slot);
+                    } else {
+                        ctx.outs.push_back(Event::KvEvent(KvEvent::Set(Some(ctx.remote.clone()), k.clone(), slot.value.clone())));
+                        ctx.slots.insert(k, slot);
+                    }
                 }
                 if self.version.is_none() {
                     self.version = Some(version);
@@ -373,6 +411,7 @@ where
                     ctx.outs.push_back(Event::NetEvent(req));
                 } else {
                     let version = self.version.expect("should have version");
+                    self.commit_staged_slots(ctx);
                     log::info!("[RemoteStore {:?}] switch to working with {} slots and version {version:?}", ctx.remote, ctx.slots.len());
                     self.sending_req = None;
                     ctx.next_state = Some(RemoteStoreState::Working(WorkingState::new(version)));
@@ -404,6 +443,7 @@ where
                     );
                     return false;
                 }
+                self.commit_staged_slots(ctx);
                 log::info!("[RemoteStore {:?}] switch to working with 0 slots and version {version:?}", ctx.remote);
                 self.sending_req = None;
                 ctx.next_state = Some(RemoteStoreState::Working(WorkingState::new(version)));
@@ -515,7 +555,7 @@ where
             log::warn!("[RemoteStore {:?}] pending changed cap {MAX_PENDING_CHANGEDS} exceeded => switch to full sync", ctx.remote);
             self.pendings.clear();
             self.sending_req = None;
-            ctx.next_state = Some(RemoteStoreState::SyncFull(SyncFullState::default()));
+            ctx.next_state = Some(RemoteStoreState::SyncFull(SyncFullState::preserve_existing_until_complete()));
             return true;
         }
         self.pendings.insert(changed.version, changed);
@@ -611,7 +651,7 @@ where
                 }
                 log::info!("[RemoteStore] fetch changed error: {err:?} => switch to resyncFull");
                 self.sending_req = None;
-                ctx.next_state = Some(RemoteStoreState::SyncFull(SyncFullState::default()));
+                ctx.next_state = Some(RemoteStoreState::SyncFull(SyncFullState::preserve_existing_until_complete()));
                 true
             }
             RpcRes::FetchSnapshot { .. } => {
@@ -1676,6 +1716,81 @@ mod tests {
             Some(Event::KvEvent(KvEvent::Del(Some(1), 1))),
             "a legitimate full-resync fallback must not emit false deletes before it has replacement data"
         );
+    }
+
+    #[test]
+    fn solicited_full_resync_commits_replacement_snapshot_on_completion() {
+        let now = Instant::now();
+        let mut remote: RemoteStore<u16, u16, u16> = RemoteStore {
+            ctx: StateCtx {
+                remote: 1,
+                slots: BTreeMap::from([(1, Slot::new(10, Version(1))), (2, Slot::new(20, Version(2)))]),
+                outs: VecDeque::new(),
+                next_state: None,
+            },
+            state: RemoteStoreState::Working(WorkingState::new(Version(2))),
+            last_active: now,
+        };
+
+        remote.on_broadcast(BroadcastEvent::Version(Version(5)));
+        assert!(matches!(
+            remote.pop_out(),
+            Some(Event::NetEvent(NetEvent::Unicast(1, RpcEvent::RpcReq(RpcReq::FetchChanged { from: Version(3), count: 3 }))))
+        ));
+        remote.on_rpc_res(RpcRes::FetchChanged(Err(FetchChangedError::MissingData)));
+        assert!(matches!(
+            remote.pop_out(),
+            Some(Event::NetEvent(NetEvent::Unicast(
+                1,
+                RpcEvent::RpcReq(RpcReq::FetchSnapshot {
+                    from: None,
+                    to: None,
+                    max_version: None
+                })
+            )))
+        ));
+        assert_eq!(remote.pop_out(), None);
+
+        remote.on_rpc_res(RpcRes::FetchSnapshot(
+            Some(SnapshotData {
+                slots: vec![(2, Slot::new(20, Version(4)))],
+                next_key: Some(3),
+                biggest_key: 3,
+            }),
+            Version(5),
+        ));
+        assert_eq!(
+            remote.ctx.slots,
+            BTreeMap::from([(1, Slot::new(10, Version(1))), (2, Slot::new(20, Version(2)))]),
+            "partial replacement snapshots must remain staged until full resync completes"
+        );
+        assert!(matches!(
+            remote.pop_out(),
+            Some(Event::NetEvent(NetEvent::Unicast(
+                1,
+                RpcEvent::RpcReq(RpcReq::FetchSnapshot {
+                    from: Some(3),
+                    to: Some(3),
+                    max_version: Some(Version(5))
+                })
+            )))
+        ));
+        assert_eq!(remote.pop_out(), None);
+
+        remote.on_rpc_res(RpcRes::FetchSnapshot(
+            Some(SnapshotData {
+                slots: vec![(3, Slot::new(30, Version(5)))],
+                next_key: None,
+                biggest_key: 3,
+            }),
+            Version(5),
+        ));
+
+        assert_eq!(remote.ctx.slots, BTreeMap::from([(2, Slot::new(20, Version(4))), (3, Slot::new(30, Version(5)))]));
+        assert_eq!(remote.state, RemoteStoreState::Working(WorkingState::new(Version(5))));
+        assert_eq!(remote.pop_out(), Some(Event::KvEvent(KvEvent::Del(Some(1), 1))));
+        assert_eq!(remote.pop_out(), Some(Event::KvEvent(KvEvent::Set(Some(1), 3, 30))));
+        assert_eq!(remote.pop_out(), None);
     }
 
     #[test]

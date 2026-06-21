@@ -1286,6 +1286,12 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   meshes. Reviewer: Banach the 3rd.
 - ISSUE-171, score 60: replicated KV full resync deletes visible data before
   replacement snapshot. Reviewer: Fermat the 3rd.
+  Root cause: recovery full-sync reused the first-sync init path, which drained
+  visible slots before a replacement snapshot completed. Fix: `WorkingState`
+  fallback full-syncs stage snapshot pages, keep old slots visible until the
+  terminal page, then commit deletes and value-changing sets. Verification:
+  `cargo test solicited_full_resync -- --nocapture` and
+  `cargo test service::replicate_kv_service::remote_storage::tests -- --nocapture`.
 - ISSUE-172, score 68: outbound peer setup hangs while writing `ConnectReq` to
   a stalled peer. Reviewer: James the 3rd.
 - ISSUE-173, score 68: inbound peer setup hangs while writing `ConnectRes` to
