@@ -3029,6 +3029,12 @@ the source of truth for evidence and reviewer decisions.
   - Failure summary: a single heartbeat with 1,025 channel entries updates
     1,025 channel states for one remote peer, exceeding the test cap of 1,024
     channels.
+- Fix status: fixed by enforcing `MAX_HEARTBEAT_CHANNELS_PER_BATCH = 1024` in
+  the inbound `PubsubMessage::Heartbeat` branch before building
+  `seen_channels`, mutating remote publisher/subscriber state, or emitting
+  local join/leave events. Oversized heartbeat batches are dropped instead of
+  truncated, so omitted-channel cleanup cannot accidentally treat truncated
+  rows as remote leaves.
 
 ### ISSUE-107: Pubsub RPC method names have no service-level length cap
 

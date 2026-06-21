@@ -39,6 +39,7 @@ const HEARTBEAT_INTERVAL_MS: u64 = 5_000;
 const RPC_TICK_INTERVAL_MS: u64 = 1_000;
 pub(crate) const PUBSUB_INTERNAL_CONTROL_QUEUE_SIZE: usize = 1024;
 const MAX_REMOTE_MEMBERS_PER_CHANNEL: usize = 1024;
+const MAX_HEARTBEAT_CHANNELS_PER_BATCH: usize = 1024;
 
 #[derive(Debug, Hash, PartialEq, Eq, Clone)]
 pub enum PeerSrc {
@@ -465,6 +466,11 @@ impl PubsubService {
                             }
                         }
                         PubsubMessage::Heartbeat(channels) => {
+                            if channels.len() > MAX_HEARTBEAT_CHANNELS_PER_BATCH {
+                                log::warn!("[PubsubService] heartbeat from {from_peer} has {} channels, dropping oversized batch", channels.len());
+                                return Ok(());
+                            }
+
                             let seen_channels: HashSet<_> = channels.iter().map(|heartbeat| heartbeat.channel).collect();
 
                             for heartbeat in channels {
@@ -1664,12 +1670,11 @@ mod test {
 
     #[tokio::test]
     async fn pubsub_heartbeat_channel_batches_must_be_bounded() {
-        const MAX_HEARTBEAT_CHANNELS: usize = 1024;
         let mut service = test_service();
         let from_peer = PeerId::from(2);
         let mut heartbeats = Vec::new();
 
-        for channel in 0..=MAX_HEARTBEAT_CHANNELS {
+        for channel in 0..=MAX_HEARTBEAT_CHANNELS_PER_BATCH {
             let channel = PubsubChannelId(channel as u64 + 10);
             let (sub_tx, _sub_rx) = subscriber_event_channel();
             service
@@ -1690,10 +1695,37 @@ mod test {
 
         let updated_channels = service.channels.values().filter(|state| state.has_remote_publisher(from_peer)).count();
 
-        assert!(
-            updated_channels <= MAX_HEARTBEAT_CHANNELS,
-            "pubsub heartbeat channel batches must be bounded, updated {updated_channels} channels"
-        );
+        assert_eq!(updated_channels, 0, "oversized pubsub heartbeat batches must be dropped, updated {updated_channels} channels");
+    }
+
+    #[tokio::test]
+    async fn pubsub_heartbeat_channel_batch_at_cap_must_be_accepted() {
+        let mut service = test_service();
+        let from_peer = PeerId::from(2);
+        let mut heartbeats = Vec::new();
+
+        for channel in 0..MAX_HEARTBEAT_CHANNELS_PER_BATCH {
+            let channel = PubsubChannelId(channel as u64 + 10);
+            let (sub_tx, _sub_rx) = subscriber_event_channel();
+            service
+                .on_internal(InternalMsg::SubscriberCreated(subscriber_handle(SubscriberLocalId::rand()), channel, sub_tx))
+                .await
+                .expect("subscriber should be registered");
+            heartbeats.push(ChannelHeartbeat {
+                channel,
+                publish: true,
+                publish_generation: 1,
+                subscribe: false,
+                subscribe_generation: 1,
+            });
+        }
+
+        let payload = bincode::serialize(&PubsubMessage::Heartbeat(heartbeats)).expect("test heartbeat should serialize");
+        service.on_service(P2pServiceEvent::Unicast(from_peer, payload)).await.expect("heartbeat should be processed");
+
+        let updated_channels = service.channels.values().filter(|state| state.has_remote_publisher(from_peer)).count();
+
+        assert_eq!(updated_channels, MAX_HEARTBEAT_CHANNELS_PER_BATCH, "pubsub heartbeat batches at the cap must be accepted");
     }
 
     #[tokio::test]
