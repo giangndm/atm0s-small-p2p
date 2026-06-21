@@ -3047,6 +3047,12 @@ the source of truth for evidence and reviewer decisions.
     returns `slots: []` and `next_key: None` after key `3` was updated to a
     newer version, causing the test to fail because the page appears complete
     while omitting the historical key.
+- Fix status: fixed by rejecting bounded snapshot pages when any current slot
+  in the requested range is newer than the requested `max_version`. Because the
+  local store has no historical value to return, it now returns `None` instead
+  of a terminal empty or partially incomplete page; the hardened remote
+  continuation consumer rejects that `None` response instead of converging with
+  missing data.
 
 ### ISSUE-111: Replicated KV consumer cancels FetchChanged repair on empty success
 

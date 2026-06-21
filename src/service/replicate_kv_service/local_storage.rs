@@ -105,8 +105,10 @@ where
             let mut slots = Vec::new();
             let mut next_key = None;
             let biggest_key = to.clone();
+            let mut saw_filtered_newer_slot = false;
             for (key, slot) in self.slots.range(from..=to) {
                 if slot.version > max_version {
+                    saw_filtered_newer_slot = true;
                     continue;
                 }
                 if slots.len() >= self.compose_max_pkts {
@@ -114,6 +116,9 @@ where
                     break;
                 }
                 slots.push((key.clone(), slot.clone()));
+            }
+            if saw_filtered_newer_slot {
+                return None;
             }
             Some(SnapshotData { slots, next_key, biggest_key })
         } else {
@@ -370,10 +375,10 @@ mod tests {
         store.set(1, 10);
         store.set(3, 31);
 
-        let snapshot = store.snapshot(Some(3), Some(3), Some(Version(2))).expect("snapshot should exist for requested key range");
+        let snapshot = store.snapshot(Some(3), Some(3), Some(Version(2)));
 
         assert!(
-            !snapshot.slots.is_empty() || snapshot.next_key.is_some(),
+            snapshot.as_ref().is_none_or(|snapshot| !snapshot.slots.is_empty() || snapshot.next_key.is_some()),
             "snapshot at max_version must not silently complete an empty page for a key range containing only newer current slots"
         );
     }
