@@ -2460,6 +2460,11 @@ the source of truth for evidence and reviewer decisions.
   - Failure summary: the test's panic hook observes an out-of-bounds panic at
     `src/ctx.rs` after opening a stream with service id `256`; expected the
     invalid stream request to be rejected without panicking in the accept task.
+- Fix status: fixed by the shared service-id bounds check in
+  `P2pServiceId::as_service_index` and `SharedCtxInternal::get_service`, which
+  returns `None` for ids outside the 256-slot service table before indexing.
+  The stream accept path now converts the invalid service id into the normal
+  service-not-found response and keeps accepting later valid streams.
 
 ### ISSUE-092: Discovery accepts stale advertisements over newer peer addresses
 

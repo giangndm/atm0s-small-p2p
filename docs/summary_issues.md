@@ -16,7 +16,7 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   ISSUE-131, ISSUE-132, ISSUE-133, ISSUE-134, ISSUE-135, ISSUE-136, ISSUE-137,
   ISSUE-140, ISSUE-143, ISSUE-145, ISSUE-147, ISSUE-148, ISSUE-150, ISSUE-151,
   ISSUE-152, ISSUE-153, ISSUE-154, ISSUE-155, ISSUE-156, ISSUE-157, ISSUE-158,
-  ISSUE-159, ISSUE-160, ISSUE-161, ISSUE-163, ISSUE-164, ISSUE-053, ISSUE-063, ISSUE-139, ISSUE-146, ISSUE-168, ISSUE-170,
+  ISSUE-159, ISSUE-160, ISSUE-161, ISSUE-163, ISSUE-164, ISSUE-053, ISSUE-063, ISSUE-091, ISSUE-139, ISSUE-146, ISSUE-168, ISSUE-170,
   ISSUE-149, ISSUE-169, ISSUE-174, ISSUE-176, ISSUE-181, ISSUE-189, ISSUE-190, ISSUE-191, ISSUE-192, ISSUE-193,
   ISSUE-194, ISSUE-195, ISSUE-196, ISSUE-197, ISSUE-198, ISSUE-199,
   ISSUE-200, ISSUE-201, ISSUE-202, ISSUE-203, ISSUE-204, ISSUE-205, ISSUE-206, ISSUE-207, ISSUE-097, ISSUE-098, and ISSUE-018 have focused
@@ -925,6 +925,15 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 - ISSUE-053: fixed by `648cfd0` with range-checked service table indexing.
   Verified with `cargo test ctx::tests -- --nocapture` and seed-340
   invalid-service fuzz passing without `src/ctx.rs` panics.
+- ISSUE-091: fixed by the same range-checked service table lookup. Root cause
+  was the inbound stream accept path trusting wire-decoded
+  `StreamConnectReq.service` before looking up the fixed 256-slot service
+  table. `SharedCtxInternal::get_service` now returns `None` for
+  `P2pServiceId >= 256`, so invalid stream opens receive the normal
+  service-not-found error and the accept task survives. Verification:
+  `cargo test inbound_out_of_range_stream_service_id_must_not_panic_accept_task -- --nocapture`
+  and
+  `cargo test get_service_must_reject_out_of_range_id_without_panicking -- --nocapture`.
 - ISSUE-063: fixed by `2cbf096` with stale router sync ignored after direct
   disconnect. Verified with
   `cargo test router::tests::should_ignore_stale_sync_after_direct_disconnect -- --nocapture`;
