@@ -616,6 +616,18 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   requesters now leave the pending request open for the legitimate responder or
   timeout. Verified with
   `cargo test dropped_publisher_requester_must_not_answer_feedback_rpc -- --nocapture`.
+- ISSUE-121: fixed by replacing the fixed one-second pubsub RPC sweep with a
+  deadline-driven service timer. `PubsubService::run_loop` computes the nearest
+  pending publish/feedback RPC deadline from the request maps and arms a
+  one-shot sleep only while RPCs are pending, so short caller-supplied timeouts
+  expire near their own deadline and cleanup remains service-owned. Verified
+  with
+  `cargo test pubsub_publish_rpc_must_respect_short_timeout -- --nocapture`,
+  `cargo test pubsub_publish_rpc_local -- --nocapture`,
+  `cargo test pubsub_feedback_rpc_local -- --nocapture`,
+  `cargo test pending_publish_rpc_requests_must_be_bounded -- --nocapture`,
+  and
+  `cargo test pubsub_rpc_must_return_no_destination_when_all_remote_sends_fail -- --nocapture`.
 - ISSUE-039: fixed by authorizing ordinary pubsub member traffic against
   tracked channel membership. Inbound `Publish` now requires the sender to be
   an active remote publisher for the channel, and inbound `Feedback` requires

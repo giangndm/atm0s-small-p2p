@@ -3696,6 +3696,20 @@ the source of truth for evidence and reviewer decisions.
     delivers a `PublishRpc` event that is intentionally not answered, but the
     task still has not completed after a 200 ms outer timeout because the
     service waits for its one-second RPC sweep before returning timeout.
+- Fix status: fixed by replacing the fixed one-second RPC sweep with a
+  deadline-driven service timer. `PubsubService::run_loop` now computes the
+  nearest pending publish/feedback RPC deadline from the pending request maps
+  and arms a one-shot sleep for that deadline; when no RPC is pending, no RPC
+  timeout future is armed. Timeout cleanup still runs inside the service, so
+  caller-visible timeouts and pending-state cleanup use the same source of
+  truth. Verified with
+  `cargo test pubsub_publish_rpc_must_respect_short_timeout -- --nocapture`,
+  `cargo test pubsub_publish_rpc_local -- --nocapture`,
+  `cargo test pubsub_feedback_rpc_local -- --nocapture`,
+  `cargo test pending_publish_rpc_requests_must_be_bounded -- --nocapture`,
+  `cargo test pubsub_rpc_must_return_no_destination_when_all_remote_sends_fail -- --nocapture`,
+  and
+  `cargo fmt -- --check`.
 
 ### ISSUE-122: Discovery records unbounded stop tombstones for unknown peers
 

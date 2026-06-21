@@ -22,7 +22,7 @@ use tokio::{
         mpsc::{channel, error::TrySendError, Receiver, Sender},
         oneshot,
     },
-    time::Interval,
+    time::{sleep_until, Interval},
 };
 
 use crate::{ErrorExt, PeerId};
@@ -36,7 +36,6 @@ pub use publisher::{Publisher, PublisherEvent, PublisherEventOb, PublisherReques
 pub use subscriber::{Subscriber, SubscriberEvent, SubscriberEventOb, SubscriberRequester};
 
 const HEARTBEAT_INTERVAL_MS: u64 = 5_000;
-const RPC_TICK_INTERVAL_MS: u64 = 1_000;
 pub(crate) const PUBSUB_INTERNAL_CONTROL_QUEUE_SIZE: usize = 1024;
 const MAX_REMOTE_MEMBERS_PER_CHANNEL: usize = 1024;
 const MAX_HEARTBEAT_CHANNELS_PER_BATCH: usize = 1024;
@@ -82,12 +81,24 @@ struct PublishRpcReq {
     tx: Option<oneshot::Sender<Result<Vec<u8>, PubsubRpcError>>>,
 }
 
+impl PublishRpcReq {
+    fn deadline(&self) -> Instant {
+        self.started_at + self.timeout
+    }
+}
+
 struct FeedbackRpcReq {
     started_at: Instant,
     timeout: Duration,
     expected_responders: HashSet<PeerSrc>,
     expected_local_publishers: HashSet<PublisherHandleId>,
     tx: Option<oneshot::Sender<Result<Vec<u8>, PubsubRpcError>>>,
+}
+
+impl FeedbackRpcReq {
+    fn deadline(&self) -> Instant {
+        self.started_at + self.timeout
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -330,7 +341,6 @@ pub struct PubsubService {
     local_publish_generation: u64,
     local_subscribe_generation: u64,
     heartbeat_tick: Interval,
-    rpc_tick: Interval,
 }
 
 impl PubsubService {
@@ -346,7 +356,6 @@ impl PubsubService {
             local_publish_generation: 0,
             local_subscribe_generation: 0,
             heartbeat_tick: tokio::time::interval(Duration::from_millis(HEARTBEAT_INTERVAL_MS)),
-            rpc_tick: tokio::time::interval(Duration::from_millis(RPC_TICK_INTERVAL_MS)),
         }
     }
 
@@ -376,12 +385,18 @@ impl PubsubService {
 
     pub async fn run_loop(&mut self) -> anyhow::Result<()> {
         loop {
+            let rpc_deadline = self.next_rpc_deadline();
             select! {
                 _ = self.heartbeat_tick.tick() => {
                     self.on_heartbeat_tick().await?;
                 },
-                _ = self.rpc_tick.tick() => {
-                    self.on_rpc_tick().await?;
+                _ = async {
+                    match rpc_deadline {
+                        Some(deadline) => sleep_until(deadline.into()).await,
+                        None => std::future::pending::<()>().await,
+                    }
+                } => {
+                    self.on_rpc_timeout().await?;
                 },
                 e = self.service.recv() => {
                     self.on_service(e.ok_or_else(|| anyhow!("service channel failed"))?).await?;
@@ -391,6 +406,14 @@ impl PubsubService {
                 },
             }
         }
+    }
+
+    fn next_rpc_deadline(&self) -> Option<Instant> {
+        self.publish_rpc_reqs
+            .values()
+            .map(PublishRpcReq::deadline)
+            .chain(self.feedback_rpc_reqs.values().map(FeedbackRpcReq::deadline))
+            .min()
     }
 
     async fn on_heartbeat_tick(&mut self) -> anyhow::Result<()> {
@@ -408,7 +431,7 @@ impl PubsubService {
         Ok(())
     }
 
-    async fn on_rpc_tick(&mut self) -> anyhow::Result<()> {
+    async fn on_rpc_timeout(&mut self) -> anyhow::Result<()> {
         for (_req_id, req) in self.publish_rpc_reqs.iter_mut() {
             if req.started_at.elapsed() >= req.timeout {
                 let _ = req.tx.take().expect("should have tx").send(Err(PubsubRpcError::Timeout));
