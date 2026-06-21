@@ -2326,6 +2326,10 @@ the source of truth for evidence and reviewer decisions.
   - Failure summary: after a first page with `next_key = Some(5)`, a
     continuation page containing key `4` is inserted into `ctx.slots`; expected
     slots before the requested continuation key to be rejected.
+- Fix status: fixed by `86160e9` (`fix: validate full sync snapshot
+  responses`). `SyncFullState` now rejects snapshot slot keys lower than the
+  pending continuation `FetchSnapshot { from, .. }` bound before emitting or
+  storing snapshot data.
 
 ### ISSUE-084: Replicated KV full sync accepts unsorted snapshot pages
 
