@@ -1341,6 +1341,11 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   `cargo test ignored_broadcast_must_not_refresh_remote_activity -- --nocapture`.
 - ISSUE-187, score 49: graceful PeerStopped is hidden from public network
   events. Reviewer: Mendel the 3rd.
+  Root cause: accepted graceful stops cleaned internal route state but returned
+  `Continue` to public consumers. Fix: validated `PeerStopped` handling now
+  performs cleanup, notifies services, and returns
+  `P2pNetworkEvent::PeerDisconnected(conn, peer)`. Verification:
+  `cargo test peer_stopped_must_emit_public_disconnect_event -- --nocapture`.
 - ISSUE-188, score 51: pubsub drops early remote publisher joins before local
   channel creation. Reviewer: Noether the 3rd.
 - ISSUE-189, score 72: inbound handshake accepts a remote peer claiming the

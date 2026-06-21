@@ -5109,6 +5109,12 @@ the source of truth for evidence and reviewer decisions.
     `P2pNetworkEvent::Continue`; expected a visible
     `P2pNetworkEvent::PeerDisconnected(stopped_conn, node1)` lifecycle event
     for public consumers.
+- Fix status: fixed by returning a public disconnect lifecycle event for
+  validated graceful stops. `P2pNetwork::process_internal` now rejects forged or
+  non-direct `PeerStopped` messages, performs stopped-peer cleanup, notifies
+  services, and returns `P2pNetworkEvent::PeerDisconnected(conn, peer)` for
+  accepted stops. Verification:
+  `cargo test peer_stopped_must_emit_public_disconnect_event -- --nocapture`.
 
 ### ISSUE-155: Stale pubsub leave removes membership confirmed by newer heartbeat
 
