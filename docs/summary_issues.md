@@ -11,7 +11,7 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 - Stop condition: continue until 5 consecutive cycles find no new accepted
   issue; currently 0/5 after ISSUE-207.
 - Fix phase status: ISSUE-001, ISSUE-003, ISSUE-004, ISSUE-005, ISSUE-006, ISSUE-007,
-  ISSUE-002, ISSUE-008, ISSUE-009, ISSUE-010, ISSUE-011, ISSUE-012, ISSUE-013, ISSUE-014, ISSUE-015, ISSUE-021, ISSUE-024, ISSUE-033, ISSUE-055, ISSUE-103, ISSUE-118, ISSUE-119, ISSUE-120, ISSUE-122, ISSUE-123,
+  ISSUE-002, ISSUE-008, ISSUE-009, ISSUE-010, ISSUE-011, ISSUE-012, ISSUE-013, ISSUE-014, ISSUE-015, ISSUE-020, ISSUE-021, ISSUE-024, ISSUE-033, ISSUE-055, ISSUE-103, ISSUE-118, ISSUE-119, ISSUE-120, ISSUE-122, ISSUE-123,
   ISSUE-124, ISSUE-125, ISSUE-126, ISSUE-127, ISSUE-128, ISSUE-129, ISSUE-130,
   ISSUE-131, ISSUE-132, ISSUE-133, ISSUE-134, ISSUE-135, ISSUE-136, ISSUE-137,
   ISSUE-140, ISSUE-143, ISSUE-145, ISSUE-147, ISSUE-148, ISSUE-150, ISSUE-151,
@@ -498,6 +498,18 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   `cargo test relayed_stream_source_must_be_bound_to_previous_hop_peer -- --nocapture`,
   and `cargo fmt -- --check`. ISSUE-156 remains separate for relay setup
   cancellation.
+- ISSUE-020: fixed by binding pending pubsub RPCs to the responders that
+  actually received each request. Pending publish and feedback RPC requests now
+  record `expected_responders`, inbound remote answers are accepted only when
+  `PeerSrc::Remote(from_peer)` is expected, and unexpected answers leave the
+  request pending for the legitimate responder or timeout. Verified with
+  `cargo test pubsub_publish_rpc_answer_must_be_bound_to_expected_responder -- --nocapture`,
+  `cargo test pubsub_feedback_rpc_answer_must_be_bound_to_expected_responder -- --nocapture`,
+  `cargo test pubsub_publish_rpc_remote -- --nocapture`,
+  `cargo test pubsub_publish_rpc_local -- --nocapture`,
+  `cargo test pubsub_feedback_rpc_remote -- --nocapture`, and
+  `cargo test pubsub_feedback_rpc_local -- --nocapture`. ISSUE-115 and
+  ISSUE-116 remain separate for local handle-level answer binding.
 - ISSUE-014: fixed by binding inbound unicast sender identity to the
   authenticated immediate peer before delivery or forwarding. Message-body
   `source` can no longer spoof service-visible unicast sender ids; relayed

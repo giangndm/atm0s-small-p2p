@@ -680,6 +680,23 @@ the source of truth for evidence and reviewer decisions.
   - Failure summary: node3 injects `PublishRpcAnswer(..., rpc_id)` and node1's
     `publish_rpc` completes with `forged-rpc-answer` even though node3 was not
     the subscriber handling the RPC.
+- Minimal fix proposal: store the set of responders that actually received each
+  pubsub RPC and accept answers only from those responders.
+- Fix status: fixed by adding `expected_responders` to pending publish and
+  feedback RPC requests. Local responder eligibility is recorded only after a
+  successful local queue delivery, and remote responder eligibility is recorded
+  only after a successful send to that peer. Inbound `PublishRpcAnswer` and
+  `FeedbackRpcAnswer` now validate `PeerSrc::Remote(from_peer)` before removing
+  pending state, so forged answers from unrelated peers are ignored and the
+  legitimate responder can still complete the RPC. Local-handle answer binding
+  remains tracked separately by ISSUE-115 and ISSUE-116.
+- Verification after fix:
+  - `cargo test pubsub_publish_rpc_answer_must_be_bound_to_expected_responder -- --nocapture`
+  - `cargo test pubsub_feedback_rpc_answer_must_be_bound_to_expected_responder -- --nocapture`
+  - `cargo test pubsub_publish_rpc_remote -- --nocapture`
+  - `cargo test pubsub_publish_rpc_local -- --nocapture`
+  - `cargo test pubsub_feedback_rpc_remote -- --nocapture`
+  - `cargo test pubsub_feedback_rpc_local -- --nocapture`
 
 ### ISSUE-021: Handshake timeout check overflows on maximum timestamp
 

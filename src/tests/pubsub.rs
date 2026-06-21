@@ -6,7 +6,7 @@ use tokio::time::timeout;
 use crate::{
     msg::PeerMessage,
     pubsub_service::{
-        encode_empty_heartbeat_for_test, encode_heartbeat_for_test, encode_publish_for_test, encode_publish_rpc_answer_for_test, encode_publish_rpc_for_test,
+        encode_empty_heartbeat_for_test, encode_feedback_rpc_answer_for_test, encode_heartbeat_for_test, encode_publish_for_test, encode_publish_rpc_answer_for_test, encode_publish_rpc_for_test,
         encode_publisher_joined_for_test, encode_subscriber_joined_for_test, PeerSrc, PublisherEvent, PubsubChannelId, PubsubService, RpcId, SubscriberEvent,
     },
     P2pNetworkEvent,
@@ -1109,13 +1109,93 @@ async fn pubsub_publish_rpc_answer_must_be_bound_to_expected_responder() {
     conn.try_send(PeerMessage::Unicast(addr3.peer_id(), addr1.peer_id(), 0.into(), payload))
         .expect("attacker should be able to inject a pubsub RPC answer");
 
-    if let Ok(joined) = timeout(Duration::from_millis(500), publish_task).await {
-        let result = joined.expect("publish task should not panic");
-        assert!(
-            !matches!(result, Ok(data) if data == fake_answer),
-            "publish_rpc must not complete from an answer sent by an unrelated peer"
-        );
-    }
+    let real_answer = b"real-rpc-answer".to_vec();
+    subscriber
+        .requester()
+        .answer_publish_rpc(rpc_id, PeerSrc::Remote(addr1.peer_id()), real_answer.clone())
+        .await
+        .expect("legitimate subscriber should answer");
+
+    let result = timeout(ttl, publish_task)
+        .await
+        .expect("publish RPC must complete from legitimate subscriber")
+        .expect("publish task should not panic")
+        .expect("publish RPC should succeed");
+    assert_eq!(result, real_answer, "publish_rpc must ignore forged answers from unrelated peers");
+}
+
+#[test(tokio::test)]
+async fn pubsub_feedback_rpc_answer_must_be_bound_to_expected_responder() {
+    let (mut node1, addr1) = create_node(true, 1, vec![]).await;
+    let mut service1 = PubsubService::new(node1.create_service(0.into()));
+    let service1_requester = service1.requester();
+    tokio::spawn(async move { while node1.recv().await.is_ok() {} });
+    tokio::spawn(async move { service1.run_loop().await });
+
+    let (mut node2, _addr2) = create_node(false, 2, vec![addr1.clone()]).await;
+    let mut service2 = PubsubService::new(node2.create_service(0.into()));
+    let service2_requester = service2.requester();
+    tokio::spawn(async move { while node2.recv().await.is_ok() {} });
+    tokio::spawn(async move { service2.run_loop().await });
+
+    let (mut node3, addr3) = create_node(false, 3, vec![addr1.clone()]).await;
+    let node3_ctx = node3.ctx.clone();
+    tokio::spawn(async move { while node3.recv().await.is_ok() {} });
+
+    tokio::time::sleep(Duration::from_secs(1)).await;
+    let ttl = Duration::from_secs(1);
+    let channel_id: PubsubChannelId = 1000.into();
+    let mut subscriber = service1_requester.subscriber(channel_id).await;
+    let mut publisher = service2_requester.publisher(channel_id).await;
+
+    assert_eq!(
+        timeout(ttl, subscriber.recv()).await.expect("should not timeout").expect("should recv"),
+        SubscriberEvent::PeerJoined(PeerSrc::Remote(2.into()))
+    );
+
+    let subscriber_requester = subscriber.requester().clone();
+    let feedback_task = tokio::spawn(async move { subscriber_requester.feedback_rpc("ping", vec![1, 2, 3], Duration::from_secs(2)).await });
+
+    let rpc_id = tokio::time::timeout(ttl, async {
+        loop {
+            if let PublisherEvent::FeedbackRpc(_, rpc_id, _, PeerSrc::Remote(from)) = publisher.recv().await.expect("should recv") {
+                assert_eq!(from, addr1.peer_id());
+                return rpc_id;
+            }
+        }
+    })
+    .await
+    .expect("publisher should receive feedback RPC request");
+
+    let conn = tokio::time::timeout(Duration::from_secs(3), async {
+        loop {
+            if let Some(conn) = node3_ctx.conns().into_iter().next() {
+                return conn;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .expect("node3 should connect to node1");
+
+    let fake_answer = b"forged-feedback-answer".to_vec();
+    let payload = encode_feedback_rpc_answer_for_test(fake_answer, rpc_id);
+    conn.try_send(PeerMessage::Unicast(addr3.peer_id(), addr1.peer_id(), 0.into(), payload))
+        .expect("attacker should be able to inject a pubsub feedback RPC answer");
+
+    let real_answer = b"real-feedback-answer".to_vec();
+    publisher
+        .requester()
+        .answer_feedback_rpc(rpc_id, PeerSrc::Remote(addr1.peer_id()), real_answer.clone())
+        .await
+        .expect("legitimate publisher should answer");
+
+    let result = timeout(ttl, feedback_task)
+        .await
+        .expect("feedback RPC must complete from legitimate publisher")
+        .expect("feedback task should not panic")
+        .expect("feedback RPC should succeed");
+    assert_eq!(result, real_answer, "feedback_rpc must ignore forged answers from unrelated peers");
 }
 
 #[test(tokio::test)]

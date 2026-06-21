@@ -6,7 +6,7 @@
 //! For avoiding channel state out-of-sync, we add simple heartbeat, each some seconds each node will broadcast a list of active channel with flag publish and subscribe.
 
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     time::{Duration, Instant},
 };
 
@@ -74,12 +74,14 @@ pub enum PubsubRpcError {
 struct PublishRpcReq {
     started_at: Instant,
     timeout: Duration,
+    expected_responders: HashSet<PeerSrc>,
     tx: Option<oneshot::Sender<Result<Vec<u8>, PubsubRpcError>>>,
 }
 
 struct FeedbackRpcReq {
     started_at: Instant,
     timeout: Duration,
+    expected_responders: HashSet<PeerSrc>,
     tx: Option<oneshot::Sender<Result<Vec<u8>, PubsubRpcError>>>,
 }
 
@@ -105,6 +107,11 @@ enum PubsubMessage {
 #[cfg(test)]
 pub(crate) fn encode_publish_rpc_answer_for_test(data: Vec<u8>, rpc_id: RpcId) -> Vec<u8> {
     bincode::serialize(&PubsubMessage::PublishRpcAnswer(data, rpc_id)).expect("test message should serialize")
+}
+
+#[cfg(test)]
+pub(crate) fn encode_feedback_rpc_answer_for_test(data: Vec<u8>, rpc_id: RpcId) -> Vec<u8> {
+    bincode::serialize(&PubsubMessage::FeedbackRpcAnswer(data, rpc_id)).expect("test message should serialize")
 }
 
 #[cfg(test)]
@@ -464,8 +471,12 @@ impl PubsubService {
                             }
                         }
                         PubsubMessage::PublishRpcAnswer(data, rpc_id) => {
-                            if let Some(mut req) = self.publish_rpc_reqs.remove(&rpc_id) {
+                            let responder = PeerSrc::Remote(from_peer);
+                            if self.publish_rpc_reqs.get(&rpc_id).is_some_and(|req| req.expected_responders.contains(&responder)) {
+                                let mut req = self.publish_rpc_reqs.remove(&rpc_id).expect("checked pending publish RPC");
                                 let _ = req.tx.take().expect("should have req_tx").send(Ok(data));
+                            } else if self.publish_rpc_reqs.contains_key(&rpc_id) {
+                                log::warn!("[PubsubService] got PublishRpcAnswer from unexpected responder {from_peer} for req_id {rpc_id}");
                             } else {
                                 log::warn!("[PubsubService] got PublishRpcAnswer with invalid req_id {rpc_id}");
                             }
@@ -499,8 +510,12 @@ impl PubsubService {
                             }
                         }
                         PubsubMessage::FeedbackRpcAnswer(data, rpc_id) => {
-                            if let Some(mut req) = self.feedback_rpc_reqs.remove(&rpc_id) {
+                            let responder = PeerSrc::Remote(from_peer);
+                            if self.feedback_rpc_reqs.get(&rpc_id).is_some_and(|req| req.expected_responders.contains(&responder)) {
+                                let mut req = self.feedback_rpc_reqs.remove(&rpc_id).expect("checked pending feedback RPC");
                                 let _ = req.tx.take().expect("should have req_tx").send(Ok(data));
+                            } else if self.feedback_rpc_reqs.contains_key(&rpc_id) {
+                                log::warn!("[PubsubService] got FeedbackRpcAnswer from unexpected responder {from_peer} for req_id {rpc_id}");
                             } else {
                                 log::warn!("[PubsubService] got FeedbackRpcAnswer with invalid req_id {rpc_id}");
                             }
@@ -658,14 +673,17 @@ impl PubsubService {
                         let _ = tx.send(Err(PubsubRpcError::NoDestination));
                     } else {
                         let mut delivered = 0;
+                        let mut expected_responders = HashSet::new();
                         for sub_tx in state.local_subscribers.values() {
                             if Self::try_send_subscriber_event(sub_tx, SubscriberEvent::GuestPublishRpc(data.clone(), req_id, method.clone(), PeerSrc::Local)) {
                                 delivered += 1;
+                                expected_responders.insert(PeerSrc::Local);
                             }
                         }
                         for pub_peer in state.active_remote_subscribers() {
                             if self.send_to(pub_peer, &PubsubMessage::GuestPublishRpc(channel, data.clone(), req_id, method.clone())).await {
                                 delivered += 1;
+                                expected_responders.insert(PeerSrc::Remote(pub_peer));
                             }
                         }
                         if delivered == 0 {
@@ -676,6 +694,7 @@ impl PubsubService {
                                 PublishRpcReq {
                                     started_at: Instant::now(),
                                     timeout,
+                                    expected_responders,
                                     tx: Some(tx),
                                 },
                             );
@@ -709,14 +728,17 @@ impl PubsubService {
                         let _ = tx.send(Err(PubsubRpcError::NoDestination));
                     } else {
                         let mut delivered = 0;
+                        let mut expected_responders = HashSet::new();
                         for sub_tx in state.local_subscribers.values() {
                             if Self::try_send_subscriber_event(sub_tx, SubscriberEvent::PublishRpc(data.clone(), req_id, method.clone(), PeerSrc::Local)) {
                                 delivered += 1;
+                                expected_responders.insert(PeerSrc::Local);
                             }
                         }
                         for pub_peer in state.active_remote_subscribers() {
                             if self.send_to(pub_peer, &PubsubMessage::PublishRpc(channel, data.clone(), req_id, method.clone())).await {
                                 delivered += 1;
+                                expected_responders.insert(PeerSrc::Remote(pub_peer));
                             }
                         }
                         if delivered == 0 {
@@ -727,6 +749,7 @@ impl PubsubService {
                                 PublishRpcReq {
                                     started_at: Instant::now(),
                                     timeout,
+                                    expected_responders,
                                     tx: Some(tx),
                                 },
                             );
@@ -753,14 +776,17 @@ impl PubsubService {
                         let _ = tx.send(Err(PubsubRpcError::NoDestination));
                     } else {
                         let mut delivered = 0;
+                        let mut expected_responders = HashSet::new();
                         for (_, pub_tx) in state.local_publishers.iter() {
                             if Self::try_send_publisher_event(pub_tx, PublisherEvent::GuestFeedbackRpc(data.clone(), req_id, method.clone(), PeerSrc::Local)) {
                                 delivered += 1;
+                                expected_responders.insert(PeerSrc::Local);
                             }
                         }
                         for pub_peer in state.active_remote_publishers() {
                             if self.send_to(pub_peer, &PubsubMessage::GuestFeedbackRpc(channel, data.clone(), req_id, method.clone())).await {
                                 delivered += 1;
+                                expected_responders.insert(PeerSrc::Remote(pub_peer));
                             }
                         }
                         if delivered == 0 {
@@ -771,6 +797,7 @@ impl PubsubService {
                                 FeedbackRpcReq {
                                     started_at: Instant::now(),
                                     timeout,
+                                    expected_responders,
                                     tx: Some(tx),
                                 },
                             );
@@ -804,14 +831,17 @@ impl PubsubService {
                         let _ = tx.send(Err(PubsubRpcError::NoDestination));
                     } else {
                         let mut delivered = 0;
+                        let mut expected_responders = HashSet::new();
                         for (_, pub_tx) in state.local_publishers.iter() {
                             if Self::try_send_publisher_event(pub_tx, PublisherEvent::FeedbackRpc(data.clone(), req_id, method.clone(), PeerSrc::Local)) {
                                 delivered += 1;
+                                expected_responders.insert(PeerSrc::Local);
                             }
                         }
                         for pub_peer in state.active_remote_publishers() {
                             if self.send_to(pub_peer, &PubsubMessage::FeedbackRpc(channel, data.clone(), req_id, method.clone())).await {
                                 delivered += 1;
+                                expected_responders.insert(PeerSrc::Remote(pub_peer));
                             }
                         }
                         if delivered == 0 {
@@ -822,6 +852,7 @@ impl PubsubService {
                                 FeedbackRpcReq {
                                     started_at: Instant::now(),
                                     timeout,
+                                    expected_responders,
                                     tx: Some(tx),
                                 },
                             );
@@ -835,8 +866,11 @@ impl PubsubService {
                 if let PeerSrc::Remote(peer) = peer_src {
                     self.try_send_to(peer, &PubsubMessage::PublishRpcAnswer(data, rpc_id)).await;
                 } else {
-                    if let Some(mut req) = self.publish_rpc_reqs.remove(&rpc_id) {
+                    if self.publish_rpc_reqs.get(&rpc_id).is_some_and(|req| req.expected_responders.contains(&PeerSrc::Local)) {
+                        let mut req = self.publish_rpc_reqs.remove(&rpc_id).expect("checked pending publish RPC");
                         let _ = req.tx.take().expect("should have req_tx").send(Ok(data));
+                    } else if self.publish_rpc_reqs.contains_key(&rpc_id) {
+                        log::warn!("[PubsubService] got local PublishRpcAnswer from unexpected responder for req_id {rpc_id}");
                     } else {
                         log::warn!("[PubsubService] got local PublishRpcAnswer with invalid req_id {rpc_id}");
                     }
@@ -846,8 +880,11 @@ impl PubsubService {
                 if let PeerSrc::Remote(peer) = peer_src {
                     self.try_send_to(peer, &PubsubMessage::FeedbackRpcAnswer(data, rpc_id)).await;
                 } else {
-                    if let Some(mut req) = self.feedback_rpc_reqs.remove(&rpc_id) {
+                    if self.feedback_rpc_reqs.get(&rpc_id).is_some_and(|req| req.expected_responders.contains(&PeerSrc::Local)) {
+                        let mut req = self.feedback_rpc_reqs.remove(&rpc_id).expect("checked pending feedback RPC");
                         let _ = req.tx.take().expect("should have req_tx").send(Ok(data));
+                    } else if self.feedback_rpc_reqs.contains_key(&rpc_id) {
+                        log::warn!("[PubsubService] got local FeedbackRpcAnswer from unexpected responder for req_id {rpc_id}");
                     } else {
                         log::warn!("[PubsubService] got local FeedbackRpcAnswer with invalid req_id {rpc_id}");
                     }
