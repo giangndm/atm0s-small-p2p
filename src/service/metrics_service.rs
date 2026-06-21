@@ -94,6 +94,7 @@ pub struct MetricsService {
     ticker: Interval,
     outs: VecDeque<MetricsServiceEvent>,
     pending_scan_responses: HashSet<PeerId>,
+    pending_info_responders: HashSet<PeerId>,
     scan_response_tasks: FuturesUnordered<JoinHandle<PeerId>>,
     pending_scan_broadcast: Option<JoinHandle<()>>,
 }
@@ -108,9 +109,29 @@ impl MetricsService {
             service,
             outs: VecDeque::new(),
             pending_scan_responses: HashSet::new(),
+            pending_info_responders: HashSet::new(),
             scan_response_tasks: FuturesUnordered::new(),
             pending_scan_broadcast: None,
         }
+    }
+
+    fn on_scan(&mut self, from: PeerId) {
+        if self.is_collector || !self.pending_scan_responses.insert(from) {
+            return;
+        }
+
+        let metrics = self.service.ctx.metrics();
+        let requester = self.service.requester();
+        let data = bincode::serialize(&Message::Info(metrics)).expect("should convert to buf");
+        self.scan_response_tasks.push(tokio::spawn(async move {
+            // Wait through transient peer-control backpressure, but do not keep
+            // a detached response task alive forever for a stuck peer.
+            match tokio::time::timeout(SCAN_RESPONSE_SEND_TIMEOUT, requester.send_unicast(from, data)).await {
+                Ok(result) => result.print_on_err("send metrics info to collector error"),
+                Err(_) => log::warn!("send metrics info to collector timed out"),
+            }
+            from
+        }));
     }
 
     pub async fn recv(&mut self) -> anyhow::Result<MetricsServiceEvent> {
@@ -140,6 +161,7 @@ impl MetricsService {
                 _ = self.ticker.tick() => {
                     if self.is_collector {
                         let metrics = self.service.ctx.metrics();
+                        self.pending_info_responders = self.service.ctx.conns().into_iter().map(|conn| conn.to_id()).collect();
                         self.outs.push_back(MetricsServiceEvent::OnPeerConnectionMetric(self.service.router().local_id(), metrics));
 
                         if self.pending_scan_broadcast.is_none() {
@@ -160,29 +182,21 @@ impl MetricsService {
                         if let Ok(msg) = bincode::deserialize::<Message>(&data) {
                             match msg {
                                 Message::Scan => {
-                                    if self.pending_scan_responses.insert(from) {
-                                        let metrics = self.service.ctx.metrics();
-                                        let requester = self.service.requester();
-                                        let data = bincode::serialize(&Message::Info(metrics)).expect("should convert to buf");
-                                        self.scan_response_tasks.push(tokio::spawn(async move {
-                                            // Wait through transient peer-control backpressure, but do not keep
-                                            // a detached response task alive forever for a stuck peer.
-                                            match tokio::time::timeout(SCAN_RESPONSE_SEND_TIMEOUT, requester.send_unicast(from, data)).await {
-                                                Ok(result) => result.print_on_err("send metrics info to collector error"),
-                                                Err(_) => log::warn!("send metrics info to collector timed out"),
-                                            }
-                                            from
-                                        }));
-                                    }
+                                    self.on_scan(from);
                                 }
                                 Message::Info(_) => {}
                             }
                         }
                     }
                     Some(P2pServiceEvent::Unicast(from, data)) => {
-                        if let Ok(Message::Info(peer_metrics)) = bincode::deserialize::<Message>(&data) {
-                            if self.is_collector {
-                                self.outs.push_back(MetricsServiceEvent::OnPeerConnectionMetric(from, peer_metrics));
+                        if let Ok(msg) = bincode::deserialize::<Message>(&data) {
+                            match msg {
+                                Message::Scan => {}
+                                Message::Info(peer_metrics) => {
+                                    if self.is_collector && self.pending_info_responders.remove(&from) {
+                                        self.outs.push_back(MetricsServiceEvent::OnPeerConnectionMetric(from, peer_metrics));
+                                    }
+                                }
                             }
                         }
                     }

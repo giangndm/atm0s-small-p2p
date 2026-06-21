@@ -56,8 +56,9 @@ async fn metrics_service_zero_collect_interval_must_not_panic() {
 #[test(tokio::test)]
 async fn metrics_info_must_not_be_accepted_without_scan_request() {
     let (mut node1, addr1) = create_node(true, 1, vec![]).await;
-    let mut service1 = MetricsService::new(None, node1.create_service(0.into()), false);
+    let mut service1 = MetricsService::new(Some(Duration::from_secs(60)), node1.create_service(0.into()), true);
     tokio::spawn(async move { while node1.recv().await.is_ok() {} });
+    let _ = service1.recv().await.expect("collector should emit initial local metrics");
 
     let (mut node2, addr2) = create_node(false, 2, vec![addr1.clone()]).await;
     let node2_ctx = node2.ctx.clone();

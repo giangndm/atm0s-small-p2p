@@ -16,7 +16,7 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   ISSUE-131, ISSUE-132, ISSUE-133, ISSUE-134, ISSUE-135, ISSUE-136, ISSUE-137,
   ISSUE-140, ISSUE-143, ISSUE-145, ISSUE-147, ISSUE-148, ISSUE-150, ISSUE-151,
   ISSUE-152, ISSUE-153, ISSUE-154, ISSUE-155, ISSUE-156, ISSUE-157, ISSUE-158,
-  ISSUE-159, ISSUE-160, ISSUE-161, ISSUE-163, ISSUE-164, ISSUE-053, ISSUE-063, ISSUE-086, ISSUE-087, ISSUE-091, ISSUE-139, ISSUE-146, ISSUE-168, ISSUE-170,
+  ISSUE-159, ISSUE-160, ISSUE-161, ISSUE-163, ISSUE-164, ISSUE-053, ISSUE-062, ISSUE-063, ISSUE-086, ISSUE-087, ISSUE-091, ISSUE-139, ISSUE-146, ISSUE-168, ISSUE-170,
   ISSUE-149, ISSUE-169, ISSUE-174, ISSUE-176, ISSUE-078, ISSUE-181, ISSUE-189, ISSUE-190, ISSUE-191, ISSUE-192, ISSUE-193,
   ISSUE-194, ISSUE-195, ISSUE-196, ISSUE-197, ISSUE-198, ISSUE-199,
   ISSUE-200, ISSUE-201, ISSUE-202, ISSUE-203, ISSUE-204, ISSUE-205, ISSUE-206, ISSUE-207, ISSUE-097, ISSUE-098, and ISSUE-018 have focused
@@ -186,6 +186,15 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Recently Fixed Issues
 
+- ISSUE-062: fixed by correlating collector-side metrics `Info` frames with
+  an outstanding scan window. On each collector scan tick, the service records
+  current direct peers as expected responders; unicast `Info` is accepted only
+  once from a pending responder and unsolicited forged `Info` is ignored. This
+  keeps the wire protocol unchanged and does not claim nonce protection against
+  an in-window race. Verification:
+  `cargo test metrics_info_must_not_be_accepted_without_scan_request -- --nocapture`,
+  `cargo test metrics_scan_must_not_disclose_metrics_to_non_collector -- --nocapture`,
+  and `cargo test metric_collect -- --nocapture`.
 - ISSUE-045: fixed by adding a 1,024-entry admission cap for replicated-KV
   remote stores. New remote identities first trigger the existing timeout
   cleanup path; if the cap is still full, their event is rejected before
