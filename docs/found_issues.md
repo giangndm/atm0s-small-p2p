@@ -2298,6 +2298,10 @@ the source of truth for evidence and reviewer decisions.
   - Failure summary: a snapshot response with
     `slots = [(2, Slot::new(2, Version(1)))]` and `biggest_key = 1` inserts key
     `2` into `ctx.slots`; expected out-of-range snapshot slots to be rejected.
+- Fix status: fixed by `86160e9` (`fix: validate full sync snapshot
+  responses`). `SyncFullState` now rejects any snapshot slot key greater than
+  `SnapshotData.biggest_key` before emitting or storing snapshot data, while
+  keeping continuation lower-bound validation separate from ISSUE-083.
 
 ### ISSUE-083: Replicated KV full sync accepts continuation slots before requested key
 
