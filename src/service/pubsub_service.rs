@@ -38,6 +38,7 @@ pub use subscriber::{Subscriber, SubscriberEvent, SubscriberEventOb, SubscriberR
 const HEARTBEAT_INTERVAL_MS: u64 = 5_000;
 const RPC_TICK_INTERVAL_MS: u64 = 1_000;
 pub(crate) const PUBSUB_INTERNAL_CONTROL_QUEUE_SIZE: usize = 1024;
+const MAX_REMOTE_MEMBERS_PER_CHANNEL: usize = 1024;
 
 #[derive(Debug, Hash, PartialEq, Eq, Clone)]
 pub enum PeerSrc {
@@ -264,6 +265,16 @@ impl PubsubChannelState {
         Self::apply_remote_role_heartbeat(&mut self.remote_subscribers, peer, generation, active)
     }
 
+    fn admit_remote_role(map: &mut HashMap<PeerId, RemoteRoleState>, peer: PeerId) -> bool {
+        if map.contains_key(&peer) {
+            return true;
+        }
+        if map.len() >= MAX_REMOTE_MEMBERS_PER_CHANNEL {
+            map.retain(|_, state| state.active);
+        }
+        map.len() < MAX_REMOTE_MEMBERS_PER_CHANNEL
+    }
+
     fn apply_remote_role(map: &mut HashMap<PeerId, RemoteRoleState>, peer: PeerId, generation: u64, active: bool) -> Option<(bool, bool)> {
         match map.get_mut(&peer) {
             Some(state) if generation <= state.generation => None,
@@ -274,6 +285,9 @@ impl PubsubChannelState {
                 Some((was_active, active))
             }
             None => {
+                if !Self::admit_remote_role(map, peer) {
+                    return None;
+                }
                 map.insert(peer, RemoteRoleState { generation, active });
                 Some((false, active))
             }
@@ -290,6 +304,9 @@ impl PubsubChannelState {
                 Some((was_active, active))
             }
             None => {
+                if !Self::admit_remote_role(map, peer) {
+                    return None;
+                }
                 map.insert(peer, RemoteRoleState { generation, active });
                 Some((false, active))
             }
@@ -1424,7 +1441,6 @@ mod test {
 
     #[tokio::test]
     async fn remote_publisher_memberships_must_be_bounded() {
-        const MAX_REMOTE_MEMBERS: usize = 1024;
         let mut service = test_service();
         let channel = PubsubChannelId(1);
         let (sub_tx, _sub_rx) = subscriber_event_channel();
@@ -1435,7 +1451,7 @@ mod test {
             .await
             .expect("subscriber should be registered");
 
-        for peer in 0..=MAX_REMOTE_MEMBERS {
+        for peer in 0..=MAX_REMOTE_MEMBERS_PER_CHANNEL {
             service
                 .on_service(P2pServiceEvent::Unicast(PeerId::from(peer as u64 + 10), joined.clone()))
                 .await
@@ -1443,7 +1459,92 @@ mod test {
         }
 
         let remote_publishers = service.channels.get(&channel).expect("channel should exist").active_remote_publishers_count();
-        assert!(remote_publishers <= MAX_REMOTE_MEMBERS, "remote publisher memberships must be bounded, got {remote_publishers}");
+        assert!(
+            remote_publishers <= MAX_REMOTE_MEMBERS_PER_CHANNEL,
+            "remote publisher memberships must be bounded, got {remote_publishers}"
+        );
+    }
+
+    #[tokio::test]
+    async fn remote_subscriber_memberships_must_be_bounded() {
+        let mut service = test_service();
+        let channel = PubsubChannelId(1);
+        let (pub_tx, _pub_rx) = publisher_event_channel();
+        let joined = bincode::serialize(&PubsubMessage::SubscriberJoined(channel, 1)).expect("test message should serialize");
+
+        service
+            .on_internal(InternalMsg::PublisherCreated(publisher_handle(PublisherLocalId::rand()), channel, pub_tx))
+            .await
+            .expect("publisher should be registered");
+
+        for peer in 0..=MAX_REMOTE_MEMBERS_PER_CHANNEL {
+            service
+                .on_service(P2pServiceEvent::Unicast(PeerId::from(peer as u64 + 10), joined.clone()))
+                .await
+                .expect("remote subscriber join should be processed");
+        }
+
+        let remote_subscribers = service.channels.get(&channel).expect("channel should exist").active_remote_subscribers().count();
+        assert!(
+            remote_subscribers <= MAX_REMOTE_MEMBERS_PER_CHANNEL,
+            "remote subscriber memberships must be bounded, got {remote_subscribers}"
+        );
+    }
+
+    #[test]
+    fn remote_membership_cap_must_allow_existing_peer_updates() {
+        let mut state = PubsubChannelState::default();
+
+        for peer in 0..MAX_REMOTE_MEMBERS_PER_CHANNEL {
+            assert_eq!(state.apply_remote_publisher(PeerId::from(peer as u64 + 10), 1, true), Some((false, true)));
+        }
+
+        let existing = PeerId::from(10);
+        assert_eq!(state.apply_remote_publisher(existing, 2, false), Some((true, false)));
+        assert!(!state.has_remote_publisher(existing), "existing peer leave must still apply when membership map is full");
+    }
+
+    #[test]
+    fn remote_membership_cap_must_evict_inactive_entries_before_rejecting_new_peer() {
+        let mut state = PubsubChannelState::default();
+
+        for peer in 0..MAX_REMOTE_MEMBERS_PER_CHANNEL {
+            let active = peer != 0;
+            assert_eq!(state.apply_remote_publisher(PeerId::from(peer as u64 + 10), 1, active), Some((false, active)));
+        }
+
+        let new_peer = PeerId::from(20_000);
+        assert_eq!(state.apply_remote_publisher(new_peer, 1, true), Some((false, true)));
+        assert!(state.has_remote_publisher(new_peer), "new peer should be admitted after pruning inactive entries");
+        assert!(state.remote_publishers.len() <= MAX_REMOTE_MEMBERS_PER_CHANNEL);
+    }
+
+    #[tokio::test]
+    async fn remote_heartbeat_memberships_must_be_bounded() {
+        let mut service = test_service();
+        let channel = PubsubChannelId(1);
+        let (sub_tx, _sub_rx) = subscriber_event_channel();
+
+        service
+            .on_internal(InternalMsg::SubscriberCreated(subscriber_handle(SubscriberLocalId::rand()), channel, sub_tx))
+            .await
+            .expect("subscriber should be registered");
+
+        for peer in 0..=MAX_REMOTE_MEMBERS_PER_CHANNEL {
+            service
+                .on_service(P2pServiceEvent::Unicast(
+                    PeerId::from(peer as u64 + 10),
+                    encode_heartbeat_for_test_with_generation(channel, true, 1, false, 0),
+                ))
+                .await
+                .expect("remote heartbeat should be processed");
+        }
+
+        let remote_publishers = service.channels.get(&channel).expect("channel should exist").active_remote_publishers_count();
+        assert!(
+            remote_publishers <= MAX_REMOTE_MEMBERS_PER_CHANNEL,
+            "heartbeat publisher memberships must be bounded, got {remote_publishers}"
+        );
     }
 
     #[tokio::test]

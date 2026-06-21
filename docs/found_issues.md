@@ -2826,7 +2826,8 @@ the source of truth for evidence and reviewer decisions.
     `from_peer` into `state.remote_subscribers`.
   - `src/service/pubsub_service.rs`: inbound `Heartbeat` can also insert
     remote publisher and subscriber membership for the advertised channel.
-- Impact: pubsub retains remote membership peer ids in per-channel `HashSet`s
+- Impact: pubsub retained remote membership peer ids in per-channel
+  `HashMap<PeerId, RemoteRoleState>` maps
   with no cap, eviction policy, or admission limit. High churn or malformed
   traffic can grow `remote_publishers`/`remote_subscribers` without bound and
   increase later fanout work. Lower-layer source-identity spoofing can amplify
@@ -2839,6 +2840,10 @@ the source of truth for evidence and reviewer decisions.
   - Failure summary: after 1,025 distinct `PublisherJoined` events for one
     channel, `remote_publishers.len()` is 1,025, exceeding the test cap of
     1,024.
+- Fix status: fixed by enforcing `MAX_REMOTE_MEMBERS_PER_CHANNEL = 1024`
+  separately on each channel's remote publisher and subscriber role maps.
+  Existing peers can still update generation/active state when the map is full,
+  and inactive entries are pruned before rejecting a new unknown membership.
 
 ### ISSUE-101: Alias cache peer hints are unbounded per alias
 
