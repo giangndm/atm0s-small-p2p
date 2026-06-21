@@ -603,14 +603,20 @@ the source of truth for evidence and reviewer decisions.
   - `src/peer/peer_internal.rs`: inbound broadcasts call
     `check_broadcast_msg(msg_id)` before forwarding or local delivery.
 - Impact: a malicious or buggy peer can preempt a broadcast id and suppress a
-  later broadcast using the same id from another source or service. Combined
-  with the forged-source issue, this lets an attacker impersonate and poison
-  duplicate state before a legitimate broadcast arrives.
+  later broadcast using the same id from another authenticated source or
+  service. Combined with the forged-source issue, this lets an attacker
+  impersonate and poison duplicate state before a legitimate broadcast arrives.
 - Evidence test:
-  - `cargo test broadcast_dedup_must_include_source_not_only_message_id -- --nocapture`
-  - Failure summary: after a forged first broadcast with `PeerId(99)`, the
-    later broadcast from `PeerId(1)` with the same `BroadcastMsgId` times out
-    instead of being delivered.
+  - `cargo test broadcast_dedup_must_include_authenticated_source_and_service -- --nocapture`
+  - Failure summary: broadcasts with the same `BroadcastMsgId` from distinct
+    authenticated sources, or for distinct services, are suppressed by the
+    global id-only cache instead of being delivered independently.
+- Fix status: fixed by keying broadcast duplicate suppression on the trusted
+  tuple `(authenticated/effective source, service_id, msg_id)`. Inbound
+  broadcasts use the normalized authenticated source, not the wire `source`,
+  and local broadcasts mark the local source plus service. The forged-source
+  regression is covered by
+  `cargo test broadcast_dedup_must_ignore_forged_claimed_source -- --nocapture`.
 
 ### ISSUE-018: Stream sender identity is not bound to the authenticated connection
 

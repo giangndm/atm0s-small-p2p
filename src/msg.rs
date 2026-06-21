@@ -61,16 +61,18 @@ mod tests {
     fn broadcast_replay_must_not_be_accepted_after_dedup_cache_eviction() {
         let ctx = SharedCtx::new(PeerId::from(1), SharedRouterTable::new(PeerId::from(1)));
         let replayed = BroadcastMsgId(7);
+        let source = PeerId::from(2);
+        let service_id = P2pServiceId::from(0);
 
-        assert!(ctx.check_broadcast_msg(replayed));
-        assert!(!ctx.check_broadcast_msg(replayed));
+        assert!(ctx.check_broadcast_msg(source, service_id, replayed));
+        assert!(!ctx.check_broadcast_msg(source, service_id, replayed));
 
         for id in 8..(8 + 8192) {
-            assert!(ctx.check_broadcast_msg(BroadcastMsgId(id)));
+            assert!(ctx.check_broadcast_msg(source, service_id, BroadcastMsgId(id)));
         }
 
         assert!(
-            !ctx.check_broadcast_msg(replayed),
+            !ctx.check_broadcast_msg(source, service_id, replayed),
             "an already accepted broadcast id must be rejected within the configured freshness window after cache churn"
         );
     }

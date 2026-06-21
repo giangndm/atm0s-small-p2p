@@ -227,7 +227,7 @@ impl PeerConnectionInternal {
                     log::warn!("[PeerConnectionInternal {}] normalize broadcast source {source} to authenticated peer {}", self.remote, self.to_id);
                 }
 
-                if self.ctx.check_broadcast_msg(msg_id) {
+                if self.ctx.check_broadcast_msg(effective_source, service_id, msg_id) {
                     for conn in self.ctx.conns().into_iter().filter(|p| !self.to_id.eq(&p.to_id())) {
                         conn.try_send(PeerMessage::Broadcast(effective_source, service_id, msg_id, data.clone()))
                             .print_on_err("[PeerConnectionInternal] broadcast data over peer alias");

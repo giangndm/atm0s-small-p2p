@@ -1440,6 +1440,7 @@ async fn zero_network_tick_interval_must_not_panic() {
         peer_id: PeerId::from(1),
         listen_addr: addr,
         advertise: None,
+        inbound_peer_bindings: Default::default(),
         priv_key,
         cert,
         tick_ms: 0,
@@ -1453,7 +1454,95 @@ async fn zero_network_tick_interval_must_not_panic() {
 }
 
 #[tokio::test]
-async fn broadcast_dedup_must_include_source_not_only_message_id() {
+async fn broadcast_dedup_must_include_authenticated_source_and_service() {
+    let (mut node1, addr1) = create_node(true, 1, vec![]).await;
+    let node1_ctx = node1.ctx.clone();
+    let _service1 = node1.create_service(0.into());
+    tokio::spawn(async move { while node1.recv().await.is_ok() {} });
+
+    let (mut node2, addr2) = create_node(false, 2, vec![]).await;
+    let node2_ctx = node2.ctx.clone();
+    let _service2 = node2.create_service(0.into());
+    tokio::spawn(async move { while node2.recv().await.is_ok() {} });
+
+    let (mut node3, _addr3) = create_node(false, 3, vec![addr1.clone(), addr2.clone()]).await;
+    let mut service3 = node3.create_service(0.into());
+    let mut service3_other = node3.create_service(1.into());
+    tokio::spawn(async move { while node3.recv().await.is_ok() {} });
+
+    let conn1 = tokio::time::timeout(Duration::from_secs(3), async {
+        loop {
+            if let Some(conn) = node1_ctx.conns().into_iter().next() {
+                return conn;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .expect("node1 should connect to node3");
+    let conn2 = tokio::time::timeout(Duration::from_secs(3), async {
+        loop {
+            if let Some(conn) = node2_ctx.conns().into_iter().next() {
+                return conn;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .expect("node2 should connect to node3");
+
+    let msg_id = BroadcastMsgId::rand();
+    let data1 = b"source-one-broadcast".to_vec();
+    let data2 = b"source-two-broadcast".to_vec();
+
+    conn1
+        .try_send(PeerMessage::Broadcast(addr1.peer_id(), 0.into(), msg_id, data1.clone()))
+        .expect("first authenticated source should send broadcast");
+    conn2
+        .try_send(PeerMessage::Broadcast(addr2.peer_id(), 0.into(), msg_id, data2.clone()))
+        .expect("second authenticated source should send broadcast with the same id");
+
+    assert_eq!(
+        tokio::time::timeout(Duration::from_secs(1), service3.recv())
+            .await
+            .expect("first broadcast should arrive"),
+        Some(P2pServiceEvent::Broadcast(addr1.peer_id(), data1))
+    );
+    assert_eq!(
+        tokio::time::timeout(Duration::from_secs(1), service3.recv())
+            .await
+            .expect("second broadcast should arrive"),
+        Some(P2pServiceEvent::Broadcast(addr2.peer_id(), data2)),
+        "broadcast duplicate suppression must not let one authenticated source poison the same id for another source"
+    );
+
+    let service0_data = b"service-zero-broadcast".to_vec();
+    let service1_data = b"service-one-broadcast".to_vec();
+    let service_msg_id = BroadcastMsgId::rand();
+    conn1
+        .try_send(PeerMessage::Broadcast(addr1.peer_id(), 0.into(), service_msg_id, service0_data.clone()))
+        .expect("source should send service 0 broadcast");
+    conn1
+        .try_send(PeerMessage::Broadcast(addr1.peer_id(), 1.into(), service_msg_id, service1_data.clone()))
+        .expect("source should send service 1 broadcast with the same id");
+
+    assert_eq!(
+        tokio::time::timeout(Duration::from_secs(1), service3.recv())
+            .await
+            .expect("service 0 broadcast should arrive"),
+        Some(P2pServiceEvent::Broadcast(addr1.peer_id(), service0_data))
+    );
+    assert_eq!(
+        tokio::time::timeout(Duration::from_secs(1), service3_other.recv())
+            .await
+            .expect("service 1 broadcast should arrive"),
+        Some(P2pServiceEvent::Broadcast(addr1.peer_id(), service1_data)),
+        "broadcast duplicate suppression must include the destination service id"
+    );
+}
+
+#[tokio::test]
+async fn broadcast_dedup_must_ignore_forged_claimed_source() {
     let (mut node1, addr1) = create_node(true, 1, vec![]).await;
     let node1_ctx = node1.ctx.clone();
     let _service1 = node1.create_service(0.into());
@@ -1475,24 +1564,20 @@ async fn broadcast_dedup_must_include_source_not_only_message_id() {
     .expect("node1 should connect to node2");
 
     let msg_id = BroadcastMsgId::rand();
-    let attack_data = b"poisoned-cache".to_vec();
-    let legitimate_data = b"legitimate-broadcast".to_vec();
+    let first_data = b"first-forged-source".to_vec();
+    let second_data = b"second-forged-source".to_vec();
 
-    conn.try_send(PeerMessage::Broadcast(PeerId::from(99), 0.into(), msg_id, attack_data.clone()))
-        .expect("attacker should be able to send first broadcast");
+    conn.try_send(PeerMessage::Broadcast(PeerId::from(99), 0.into(), msg_id, first_data.clone()))
+        .expect("first forged claimed source should be sent");
     assert_eq!(
         service2.recv().await,
-        Some(P2pServiceEvent::Broadcast(addr1.peer_id(), attack_data)),
-        "the first broadcast establishes the duplicate-cache entry"
+        Some(P2pServiceEvent::Broadcast(addr1.peer_id(), first_data)),
+        "the first broadcast should be normalized to the authenticated peer"
     );
 
-    conn.try_send(PeerMessage::Broadcast(addr1.peer_id(), 0.into(), msg_id, legitimate_data.clone()))
-        .expect("legitimate broadcast should be sent with the same message id");
+    conn.try_send(PeerMessage::Broadcast(PeerId::from(100), 0.into(), msg_id, second_data))
+        .expect("second forged claimed source should be sent with the same id");
 
     let second = tokio::time::timeout(Duration::from_millis(500), service2.recv()).await;
-    assert_eq!(
-        second,
-        Ok(Some(P2pServiceEvent::Broadcast(addr1.peer_id(), legitimate_data))),
-        "broadcast duplicate suppression must not let one source poison the same id for another source"
-    );
+    assert!(second.is_err(), "dedupe must use the authenticated source, not the forged claimed source");
 }

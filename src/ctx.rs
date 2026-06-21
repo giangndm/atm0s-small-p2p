@@ -16,11 +16,18 @@ use crate::{
 
 const BROADCAST_ADMISSION_TIMEOUT: Duration = Duration::from_millis(25);
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+struct BroadcastDedupKey {
+    source: PeerId,
+    service_id: P2pServiceId,
+    msg_id: BroadcastMsgId,
+}
+
 #[derive(Debug)]
 struct SharedCtxInternal {
     conns: HashMap<ConnectionId, PeerConnectionAlias>,
     conn_metrics: HashMap<ConnectionId, (PeerId, PeerConnectionMetric)>,
-    received_broadcast_msg: LruCache<BroadcastMsgId, ()>,
+    received_broadcast_msg: LruCache<BroadcastDedupKey, ()>,
     received_peer_stopped_msg: LruCache<PeerId, ()>,
     services: [Option<Sender<P2pServiceEvent>>; 256],
 }
@@ -77,9 +84,10 @@ impl SharedCtxInternal {
     /// check if we already got the message
     /// if is not, it return true and save to cache list
     /// if already it return false and do nothing
-    fn check_broadcast_msg(&mut self, id: BroadcastMsgId) -> bool {
-        if !self.received_broadcast_msg.contains(&id) {
-            self.received_broadcast_msg.get_or_insert(id, || ());
+    fn check_broadcast_msg(&mut self, source: PeerId, service_id: P2pServiceId, msg_id: BroadcastMsgId) -> bool {
+        let key = BroadcastDedupKey { source, service_id, msg_id };
+        if !self.received_broadcast_msg.contains(&key) {
+            self.received_broadcast_msg.get_or_insert(key, || ());
             true
         } else {
             false
@@ -236,8 +244,8 @@ impl SharedCtx {
     /// check if we already got the message
     /// if is not, it return true and save to cache list
     /// if already it return false and do nothing
-    pub fn check_broadcast_msg(&self, id: BroadcastMsgId) -> bool {
-        self.ctx.write().check_broadcast_msg(id)
+    pub fn check_broadcast_msg(&self, source: PeerId, service_id: P2pServiceId, msg_id: BroadcastMsgId) -> bool {
+        self.ctx.write().check_broadcast_msg(source, service_id, msg_id)
     }
 
     pub fn check_peer_stopped_msg(&self, peer_id: PeerId) -> bool {
@@ -299,7 +307,7 @@ impl SharedCtx {
             anyhow::bail!("[ShareCtx] broadcast rejected by all peer aliases");
         }
 
-        self.check_broadcast_msg(msg_id);
+        self.check_broadcast_msg(source, service_id, msg_id);
         Ok(accepted)
     }
 
@@ -325,7 +333,7 @@ impl SharedCtx {
             anyhow::bail!("[ShareCtx] broadcast rejected by all peer aliases");
         }
 
-        self.check_broadcast_msg(msg_id);
+        self.check_broadcast_msg(source, service_id, msg_id);
         Ok(accepted)
     }
 
