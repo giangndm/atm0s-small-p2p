@@ -18,7 +18,7 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   ISSUE-152, ISSUE-153, ISSUE-154, ISSUE-155, ISSUE-156, ISSUE-157, ISSUE-158,
   ISSUE-159, ISSUE-160, ISSUE-161, ISSUE-163, ISSUE-164, ISSUE-053, ISSUE-062, ISSUE-063, ISSUE-086, ISSUE-087, ISSUE-088, ISSUE-089, ISSUE-090, ISSUE-091, ISSUE-092, ISSUE-093, ISSUE-139, ISSUE-146, ISSUE-168, ISSUE-170,
   ISSUE-094, ISSUE-095, ISSUE-096,
-  ISSUE-149, ISSUE-169, ISSUE-174, ISSUE-176, ISSUE-177, ISSUE-078, ISSUE-079, ISSUE-080, ISSUE-081, ISSUE-082, ISSUE-083, ISSUE-084, ISSUE-085, ISSUE-181, ISSUE-184, ISSUE-189, ISSUE-190, ISSUE-191, ISSUE-192, ISSUE-193,
+  ISSUE-149, ISSUE-169, ISSUE-174, ISSUE-176, ISSUE-177, ISSUE-078, ISSUE-079, ISSUE-080, ISSUE-081, ISSUE-082, ISSUE-083, ISSUE-084, ISSUE-085, ISSUE-181, ISSUE-184, ISSUE-185, ISSUE-189, ISSUE-190, ISSUE-191, ISSUE-192, ISSUE-193,
   ISSUE-194, ISSUE-195, ISSUE-196, ISSUE-197, ISSUE-198, ISSUE-199,
   ISSUE-200, ISSUE-201, ISSUE-202, ISSUE-203, ISSUE-204, ISSUE-205, ISSUE-206, ISSUE-207, ISSUE-097, ISSUE-098, ISSUE-099, ISSUE-100, ISSUE-101, ISSUE-102, ISSUE-104, ISSUE-105, ISSUE-106, ISSUE-107, ISSUE-108, ISSUE-109, ISSUE-112, and ISSUE-018 have focused
   fixes committed.
@@ -1326,6 +1326,12 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   and `cargo fmt -- --check`.
 - ISSUE-185, score 56: pubsub keeps remote subscriber membership after graceful
   peer stop. Reviewer: Popper the 3rd.
+  Root cause: graceful peer-stop cleanup reached discovery/router state but did
+  not fan peer lifecycle into service-owned pubsub membership. Fix: accepted
+  `PeerStopped` and direct disconnect paths notify services with
+  `PeerDisconnected`, and pubsub removes active remote publisher/subscriber
+  roles while emitting `PeerLeaved`. Verification:
+  `cargo test pubsub_must_remove_remote_subscriber_on_graceful_peer_stop -- --nocapture`.
 - ISSUE-186, score 54: ignored replicated-KV broadcasts refresh stale remote
   activity. Reviewer: Nietzsche the 3rd.
 - ISSUE-187, score 49: graceful PeerStopped is hidden from public network

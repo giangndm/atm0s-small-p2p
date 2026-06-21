@@ -5032,6 +5032,12 @@ the source of truth for evidence and reviewer decisions.
     subscriber, but the publisher does not receive
     `PublisherEvent::PeerLeaved(PeerSrc::Remote(node2))` before the prompt
     leave timeout; expected pubsub membership to be removed immediately.
+- Fix status: fixed by the peer-disconnect service lifecycle fanout.
+  Validated `PeerStopped` and direct disconnect handling now call
+  `try_send_peer_disconnected_to_services`, and `PubsubService` removes the
+  stopped peer from active remote publisher/subscriber membership while
+  notifying local channel owners with `PeerLeaved`. Verification:
+  `cargo test pubsub_must_remove_remote_subscriber_on_graceful_peer_stop -- --nocapture`.
 
 ### ISSUE-186: Ignored replicated-KV broadcasts refresh stale remote activity
 
