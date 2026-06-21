@@ -6204,6 +6204,11 @@ the source of truth for evidence and reviewer decisions.
   the node sends `ConnectRes Ok`, registers a `PeerConnectionAlias`, or emits
   `PeerConnected`. Legacy open-cluster admission is available only through the
   explicitly named `InboundPeerBindings::insecure_open_cluster()` opt-out.
+- Fix status: fixed by `InboundPeerBindings`, whose default strict static
+  binding set rejects inbound shared-key `ConnectReq.from` claims unless the
+  claimed peer id is explicitly bound to the observed remote address. The
+  explicitly named `InboundPeerBindings::insecure_open_cluster()` remains the
+  legacy open-cluster opt-out.
 - Evidence test:
   - `cargo test inbound_handshake_must_reject_peer_claiming_third_party_id -- --nocapture`
   - Current result: passes. A raw client sends a fresh valid shared-key `ConnectReq`
