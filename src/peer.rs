@@ -295,10 +295,7 @@ async fn authenticate_peer<SECURE: HandshakeProtocol>(
         }
         PeerConnectionDirection::Incoming(inbound_peer_bindings) => {
             let req: ConnectReq = wait_object::<_, _, MAX_CONTROL_PEER_PKT>(recv).await?;
-            if let Err(e) = secure.verify_request(req.auth, req.from, req.to, now_ms()) {
-                write_object::<_, _, MAX_CONTROL_PEER_PKT>(send, &ConnectRes { result: Err(e.clone()) }).await?;
-                Err(anyhow!("destination auth failure: {e}"))
-            } else if req.to != local_id {
+            if req.to != local_id {
                 write_object::<_, _, MAX_CONTROL_PEER_PKT>(
                     send,
                     &ConnectRes {
@@ -325,6 +322,9 @@ async fn authenticate_peer<SECURE: HandshakeProtocol>(
                 )
                 .await?;
                 Err(anyhow!("source not authorized for remote address"))
+            } else if let Err(e) = secure.verify_request(req.auth, req.from, req.to, now_ms()) {
+                write_object::<_, _, MAX_CONTROL_PEER_PKT>(send, &ConnectRes { result: Err(e.clone()) }).await?;
+                Err(anyhow!("destination auth failure: {e}"))
             } else {
                 let auth = secure.create_response(req.to, req.from, now_ms());
                 write_object::<_, _, MAX_CONTROL_PEER_PKT>(send, &ConnectRes { result: Ok(auth) }).await?;

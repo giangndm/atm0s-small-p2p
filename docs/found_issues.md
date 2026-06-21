@@ -6634,6 +6634,55 @@ the source of truth for evidence and reviewer decisions.
     and `cargo test newer_notify_set_must_restore_alias_after_notify_del -- --nocapture`
     pass.
 
+### ISSUE-207: Shared-key replay cache exhaustion rejects fresh handshakes
+
+- Category: security stability, authentication availability, bad-network churn
+- Score: 58/100
+- Reviewer: `Turing the 7th`, confirmed.
+- Affected code:
+  - `src/secure.rs`: `SharedKeyHandshake` used one global replay cache for
+    all accepted request and response tokens.
+  - `src/secure.rs`: after expired-token pruning, a full replay cache returned
+    `Handshake replay cache full` for any new token, even when the token was a
+    fresh valid handshake for an unrelated peer.
+- Impact: any peer with the shared cluster key, or a sufficiently busy churn
+  window, can consume the global replay cache with unique valid tokens. Until
+  entries expire, unrelated fresh handshakes are rejected cluster-wide. This is
+  distinct from ISSUE-146 and ISSUE-176, which covered replayable request and
+  response tokens before the nonce/replay-cache fix; this issue is an
+  availability failure introduced by the global fail-closed replay cache.
+- Root cause: replay protection used one bounded cache across every
+  `(from, to, role)` verifier context, so unrelated handshake identities shared
+  one exhaustion domain.
+- Minimal fix proposal: keep one-use replay rejection, but partition replay
+  accounting by verified handshake identity and role while preserving a global
+  memory bound with oldest-token eviction.
+- Fix status: fixed by storing accepted tokens in replay scopes keyed by
+  `(from, to, is_initiator)`. Expired tokens are pruned within every scope,
+  empty scopes are removed, and duplicate tokens within the same scope are
+  still rejected while present. A global oldest-token eviction keeps the replay
+  cache bounded across many unique scopes without denying fresh unrelated
+  handshakes. Inbound setup now performs cheap local admission checks before
+  recording request tokens, so locally rejected destination/source/binding
+  claims do not consume replay-cache entries.
+- Evidence tests:
+  - Red evidence before fix:
+    `cargo test replay_cache_exhaustion_must_not_reject_fresh_valid_handshake -- --nocapture`
+    failed after filling the global replay cache; the final fresh valid request
+    from `PeerId(99999)` was rejected.
+  - Verification after fix:
+    `cargo test replay_cache_exhaustion_must_not_reject_fresh_valid_handshake -- --nocapture`
+    passes.
+  - Global bound guard:
+    `cargo test replay_cache_many_scopes_must_remain_bounded -- --nocapture`
+    passes.
+  - Replay guards:
+    `cargo test request_handshake_tokens_must_not_be_replayable -- --nocapture`
+    and `cargo test response_handshake_tokens_must_not_be_replayable -- --nocapture`
+    pass.
+  - Baseline guard:
+    `cargo test test_handshake_flow -- --nocapture` passes.
+
 ## No-New-Issue Audit Cycles
 
 ### Cycle after ISSUE-204 no-new cycle 341: valid churn stale-sync duplicate

@@ -15,6 +15,19 @@ const HANDSHAKE_TIMEOUT: u64 = 30_000;
 const HANDSHAKE_MAX_FUTURE_SKEW: u64 = 1_000;
 const HANDSHAKE_REPLAY_CACHE_MAX_ENTRIES: usize = 8192;
 
+#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
+struct ReplayScope {
+    from: PeerId,
+    to: PeerId,
+    is_initiator: bool,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct ReplayToken {
+    expires_at: u64,
+    accepted_at: u64,
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 struct HandshakeMessage {
     payload: Vec<u8>,
@@ -36,7 +49,7 @@ struct HandshakeData {
 /// at_ts timestamp is used for avoiding relay attach, if it older than HANDSHAKE_TIMEOUT then we reject
 pub struct SharedKeyHandshake {
     secure_key: String,
-    accepted_tokens: Mutex<HashMap<[u8; 32], u64>>,
+    accepted_tokens: Mutex<HashMap<ReplayScope, HashMap<[u8; 32], ReplayToken>>>,
 }
 
 impl From<&str> for SharedKeyHandshake {
@@ -112,16 +125,46 @@ impl SharedKeyHandshake {
 
         let token_id: [u8; 32] = expected_hash.as_slice().try_into().map_err(|_| "Invalid handshake hash length".to_string())?;
         let mut accepted_tokens = self.accepted_tokens.lock();
-        accepted_tokens.retain(|_, accepted_expires_at| current_ts <= *accepted_expires_at);
-        if accepted_tokens.contains_key(&token_id) {
+        let mut total_tokens = 0;
+        accepted_tokens.retain(|_, tokens| {
+            tokens.retain(|_, accepted_token| current_ts <= accepted_token.expires_at);
+            total_tokens += tokens.len();
+            !tokens.is_empty()
+        });
+        let scope = ReplayScope {
+            from: handshake_data.from,
+            to: handshake_data.to,
+            is_initiator: handshake_data.is_initiator,
+        };
+        if accepted_tokens.get(&scope).is_some_and(|tokens| tokens.contains_key(&token_id)) {
             return Err("Handshake token replayed".to_string());
         }
-        if accepted_tokens.len() >= HANDSHAKE_REPLAY_CACHE_MAX_ENTRIES {
-            return Err("Handshake replay cache full".to_string());
+
+        if total_tokens >= HANDSHAKE_REPLAY_CACHE_MAX_ENTRIES {
+            Self::evict_oldest_replay_token(&mut accepted_tokens);
         }
-        accepted_tokens.insert(token_id, expires_at);
+        accepted_tokens.entry(scope).or_default().insert(token_id, ReplayToken { expires_at, accepted_at: current_ts });
 
         Ok(())
+    }
+
+    fn evict_oldest_replay_token(accepted_tokens: &mut HashMap<ReplayScope, HashMap<[u8; 32], ReplayToken>>) {
+        let mut oldest: Option<(ReplayScope, [u8; 32], u64)> = None;
+        for (scope, tokens) in accepted_tokens.iter() {
+            for (token_id, token) in tokens.iter() {
+                if oldest.map_or(true, |(_, _, accepted_at)| token.accepted_at < accepted_at) {
+                    oldest = Some((*scope, *token_id, token.accepted_at));
+                }
+            }
+        }
+        if let Some((scope, token_id, _)) = oldest {
+            if let Some(tokens) = accepted_tokens.get_mut(&scope) {
+                tokens.remove(&token_id);
+                if tokens.is_empty() {
+                    accepted_tokens.remove(&scope);
+                }
+            }
+        }
     }
 }
 
@@ -232,6 +275,43 @@ mod tests {
             secure.verify_response(response, server, client, 1_010).is_err(),
             "the same response token must not authenticate a second outbound setup"
         );
+    }
+
+    #[test]
+    fn replay_cache_exhaustion_must_not_reject_fresh_valid_handshake() {
+        let secure = SharedKeyHandshake::from("test_key");
+        let server = PeerId::from(1);
+
+        for peer in 10..(10 + HANDSHAKE_REPLAY_CACHE_MAX_ENTRIES as u64) {
+            let peer = PeerId::from(peer);
+            let request = secure.create_request(peer, server, 1_000);
+            assert!(secure.verify_request(request, peer, server, 1_000).is_ok(), "setup token should be accepted while filling replay cache");
+        }
+
+        let fresh_peer = PeerId::from(99_999);
+        let fresh_request = secure.create_request(fresh_peer, server, 1_001);
+
+        assert!(
+            secure.verify_request(fresh_request, fresh_peer, server, 1_001).is_ok(),
+            "replay protection must not let cache exhaustion reject a fresh valid handshake from an unrelated peer"
+        );
+    }
+
+    #[test]
+    fn replay_cache_many_scopes_must_remain_bounded() {
+        let secure = SharedKeyHandshake::from("test_key");
+        let server = PeerId::from(1);
+
+        for peer_id in 10..(10 + HANDSHAKE_REPLAY_CACHE_MAX_ENTRIES as u64 + 32) {
+            let peer = PeerId::from(peer_id);
+            let now = 1_000 + peer_id;
+            let request = secure.create_request(peer, server, now);
+            assert!(secure.verify_request(request, peer, server, now).is_ok());
+        }
+
+        let accepted_tokens = secure.accepted_tokens.lock();
+        let total_tokens: usize = accepted_tokens.values().map(HashMap::len).sum();
+        assert!(total_tokens <= HANDSHAKE_REPLAY_CACHE_MAX_ENTRIES, "replay cache must stay globally bounded across many unique scopes");
     }
 
     #[test]

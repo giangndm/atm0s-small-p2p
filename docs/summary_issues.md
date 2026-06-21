@@ -5,11 +5,11 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Audit Status
 
-- Accepted issues: 206
+- Accepted issues: 207
 - Missing issue scores: 0
 - Current consecutive no-new-issue cycles: 0
 - Stop condition: continue until 5 consecutive cycles find no new accepted
-  issue; currently 0/5 after ISSUE-206.
+  issue; currently 0/5 after ISSUE-207.
 - Fix phase status: ISSUE-001, ISSUE-003, ISSUE-004, ISSUE-005, ISSUE-006, ISSUE-007,
   ISSUE-002, ISSUE-008, ISSUE-009, ISSUE-010, ISSUE-011, ISSUE-012, ISSUE-013, ISSUE-014, ISSUE-015, ISSUE-021, ISSUE-024, ISSUE-033, ISSUE-055, ISSUE-103, ISSUE-118, ISSUE-119, ISSUE-120, ISSUE-122, ISSUE-123,
   ISSUE-124, ISSUE-125, ISSUE-126, ISSUE-127, ISSUE-128, ISSUE-129, ISSUE-130,
@@ -19,7 +19,7 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   ISSUE-159, ISSUE-160, ISSUE-161, ISSUE-163, ISSUE-164, ISSUE-053, ISSUE-063, ISSUE-139, ISSUE-146, ISSUE-168, ISSUE-170,
   ISSUE-149, ISSUE-169, ISSUE-174, ISSUE-176, ISSUE-181, ISSUE-189, ISSUE-190, ISSUE-191, ISSUE-192, ISSUE-193,
   ISSUE-194, ISSUE-195, ISSUE-196, ISSUE-197, ISSUE-198, ISSUE-199,
-  ISSUE-200, ISSUE-201, ISSUE-202, ISSUE-203, ISSUE-204, ISSUE-205, ISSUE-206, ISSUE-097, ISSUE-098, and ISSUE-018 have focused
+  ISSUE-200, ISSUE-201, ISSUE-202, ISSUE-203, ISSUE-204, ISSUE-205, ISSUE-206, ISSUE-207, ISSUE-097, ISSUE-098, and ISSUE-018 have focused
   fixes committed.
   ISSUE-003 is fixed by `cfc8e57`;
   ISSUE-001 and ISSUE-004 are covered by the ISSUE-170 ownership-validation follow-up
@@ -98,7 +98,7 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Representative issues: ISSUE-002, ISSUE-009, ISSUE-021, ISSUE-036,
   ISSUE-042, ISSUE-093, ISSUE-117, ISSUE-121, ISSUE-149,
-  ISSUE-169, ISSUE-172, ISSUE-173, ISSUE-176.
+  ISSUE-169, ISSUE-172, ISSUE-173, ISSUE-176, ISSUE-207.
 - Pattern: timeouts wrap only one await point, rely on unchecked timestamp
   arithmetic, use coarse global sweeps, or complete one side of setup before
   proving the end-to-end setup is still alive. Handshake tokens also lack
@@ -821,12 +821,18 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   `cargo test test_handshake_timeout -- --nocapture`,
   `cargo test test_handshake_flow -- --nocapture`, and
   `cargo fmt -- --check`. Reviewer `Singer the 8th` accepted.
-- ISSUE-146 and ISSUE-176: fixed by adding a signed random nonce and bounded
-  replay cache to `SharedKeyHandshake`. Accepted token hashes are recorded only
-  after full validation, expired entries are pruned, duplicate request or
-  response tokens are rejected, and cache exhaustion fails closed. Verified with
+- ISSUE-146, ISSUE-176, and ISSUE-207: fixed by adding a signed random nonce
+  and scoped replay cache to `SharedKeyHandshake`. Accepted token hashes are
+  recorded only after full validation, expired entries are pruned, duplicate
+  request or response tokens are rejected within their verified
+  `(from, to, is_initiator)` scope while present, and oldest-token eviction
+  keeps the replay cache globally bounded across many unique scopes without
+  denying unrelated fresh handshakes. Inbound setup performs cheap local
+  admission checks before recording request tokens. Verified with
   `cargo test request_handshake_tokens_must_not_be_replayable -- --nocapture`,
   `cargo test response_handshake_tokens_must_not_be_replayable -- --nocapture`,
+  `cargo test replay_cache_exhaustion_must_not_reject_fresh_valid_handshake -- --nocapture`,
+  `cargo test replay_cache_many_scopes_must_remain_bounded -- --nocapture`,
   `cargo test test_handshake_flow -- --nocapture`,
   `cargo test test_invalid_handshake -- --nocapture`,
   `cargo test test_handshake_timeout -- --nocapture`,
@@ -988,6 +994,8 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 - ISSUE-206, score 60: alias lifecycle generations reset on restart, so an
   inactive alias tombstone can suppress a fresh `NotifySet` from the same peer
   id. Reviewer: Curie the 6th.
+- ISSUE-207, score 58: shared-key replay cache exhaustion can reject unrelated
+  fresh valid handshakes. Reviewer: Turing the 7th.
 
 ## Next Candidate To Validate
 
