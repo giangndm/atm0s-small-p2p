@@ -2270,6 +2270,10 @@ the source of truth for evidence and reviewer decisions.
     `RpcRes::FetchSnapshot(Some(SnapshotData { slots: vec![], next_key: None, ... }), Version(1))`
     sets `ctx.next_state` to `Working(Version(1))`; expected the invalid empty
     nonzero snapshot to be rejected.
+- Fix status: fixed by `86160e9` (`fix: validate full sync snapshot
+  responses`). `SyncFullState` now rejects unbounded initial empty
+  `FetchSnapshot(Some(snapshot), version)` pages when `version > Version(0)`,
+  while keeping empty continuation-page validation separate from ISSUE-038.
 
 ### ISSUE-082: Replicated KV full sync accepts snapshot slots beyond biggest_key
 
