@@ -44,6 +44,10 @@ impl PeerConnectionAlias {
         Ok(self.control_tx.try_send(PeerConnectionControl::Send(msg, None))?)
     }
 
+    pub(crate) fn try_close(&self) -> anyhow::Result<()> {
+        Ok(self.control_tx.try_send(PeerConnectionControl::Close)?)
+    }
+
     pub(crate) async fn send(&self, msg: PeerMessage) -> anyhow::Result<()> {
         Ok(self.control_tx.send(PeerConnectionControl::Send(msg, None)).await?)
     }

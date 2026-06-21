@@ -41,6 +41,7 @@ enum PeerConnectionControl {
     Send(PeerMessage, Option<oneshot::Sender<anyhow::Result<()>>>),
     SendUnicastWithAck(UnicastAckId, PeerId, PeerId, P2pServiceId, Vec<u8>, oneshot::Sender<anyhow::Result<()>>),
     OpenStream(P2pServiceId, PeerId, PeerId, Vec<u8>, oneshot::Sender<anyhow::Result<P2pQuicStream>>),
+    Close,
 }
 
 #[cfg(test)]

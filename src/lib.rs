@@ -333,6 +333,26 @@ impl<SECURE: HandshakeProtocol> P2pNetwork<SECURE> {
         match event {
             MainEvent::PeerConnected(conn, peer, ttl_ms) => {
                 log::info!("[P2pNetwork] connection {conn} connected to {peer}");
+                let Some(alias) = self.ctx.conn(&conn) else {
+                    log::warn!("[P2pNetwork] ignore peer connected for {peer} from unknown connection {conn}");
+                    return Ok(P2pNetworkEvent::Continue);
+                };
+                if alias.to_id() != peer {
+                    log::warn!("[P2pNetwork] ignore peer connected for {peer} from connection {conn} bound to {}", alias.to_id());
+                    return Ok(P2pNetworkEvent::Continue);
+                }
+                if self.neighbours.has_peer(&peer) {
+                    if self.router.is_direct_peer(&conn, &peer) {
+                        log::warn!("[P2pNetwork] ignore duplicate peer connected for {peer} from already-direct connection {conn}");
+                    } else {
+                        log::warn!("[P2pNetwork] reject duplicate peer connected for {peer} from connection {conn}");
+                        alias.try_close().print_on_err2("[P2pNetwork] close duplicate peer connection");
+                        self.router.del_direct(&conn);
+                        self.neighbours.remove(&conn);
+                        self.ctx.unregister_conn(&conn);
+                    }
+                    return Ok(P2pNetworkEvent::Continue);
+                }
                 self.router.set_direct(conn, peer, ttl_ms);
                 self.neighbours.mark_connected(&conn, peer);
                 Ok(P2pNetworkEvent::PeerConnected(conn, peer))

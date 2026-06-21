@@ -910,6 +910,18 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   `cargo test awaited_connect_must_error_while_same_peer_connect_is_pending -- --nocapture`,
   and
   `cargo test stale_pending_outgoing_peer_does_not_suppress_reconnect -- --nocapture`.
+- ISSUE-114: fixed by validating `MainEvent::PeerConnected` before installing
+  direct route state. The main loop ignores unknown connection ids and peer ids
+  that do not match the registered alias, rejects already-connected duplicate
+  peers, sends a nonblocking close control to rejected duplicates, deletes any
+  direct route for the rejected connection, removes the neighbour entry, and
+  unregisters the alias. The evidence test now uses independent nodes with the
+  same `PeerId` to bypass outbound coalescing and verifies both alias and route
+  counts stay bounded. Verified with
+  `cargo test inbound_duplicate_connections_from_same_peer_must_be_coalesced -- --nocapture`,
+  `cargo test stale_peer_connected_event_must_not_install_unusable_route -- --nocapture`,
+  and
+  `cargo test peer_connected_must_not_rebind_existing_connection_to_different_peer -- --nocapture`.
 - ISSUE-130: fixed by `e78c190` (`fix: return errors when alias channels
   close`), which makes `AliasService::run_loop` return `Err(_)` when the
   underlying base service channel closes instead of panicking on

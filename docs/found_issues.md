@@ -3351,6 +3351,25 @@ the source of truth for evidence and reviewer decisions.
   - Failure summary: four inbound connections from peer `2` to node `1`
     produce four `PeerConnected` events on node `1`; the test expected at most
     one connected event for that already-connected peer.
+- Fix status: fixed by validating `MainEvent::PeerConnected` before installing
+  direct route state. The main loop now ignores unknown connection ids and peer
+  ids that do not match the registered connection alias, and rejects a
+  `PeerConnected` event for a peer that already has a live direct neighbour.
+  Rejected duplicates receive a nonblocking close control, have any direct
+  route for that connection deleted, their neighbour entry removed, and their
+  context alias unregistered. The close control stops the duplicate connection
+  task, while route deletion prevents a previously installed route for that
+  connection from surviving rejection. The evidence test now creates multiple
+  independent nodes with the same `PeerId` so outbound connect coalescing
+  cannot mask duplicate authenticated inbound connections, then verifies both
+  alias and direct-route counts stay bounded. Verified with
+  `cargo test inbound_duplicate_connections_from_same_peer_must_be_coalesced -- --nocapture`,
+  `cargo test stale_peer_connected_event_must_not_install_unusable_route -- --nocapture`,
+  `cargo test peer_connected_must_not_rebind_existing_connection_to_different_peer -- --nocapture`,
+  `cargo test concurrent_connects_to_same_peer_must_be_coalesced -- --nocapture`,
+  `cargo test awaited_connect_must_error_while_same_peer_connect_is_pending -- --nocapture`,
+  and
+  `cargo test stale_pending_outgoing_peer_does_not_suppress_reconnect -- --nocapture`.
 
 ### ISSUE-177: `connect()` reports success for a different address when peer id is already connected
 

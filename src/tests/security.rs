@@ -1227,11 +1227,10 @@ async fn awaited_connect_must_error_while_same_peer_connect_is_pending() {
 async fn inbound_duplicate_connections_from_same_peer_must_be_coalesced() {
     let (mut node1, addr1) = create_node(true, 1, vec![]).await;
 
-    let (mut node2, _addr2) = create_node(false, 2, vec![]).await;
-    let requester2 = node2.requester();
-    tokio::spawn(async move { while node2.recv().await.is_ok() {} });
-
     for _ in 0..4 {
+        let (mut node2, _addr2) = create_node(false, 2, vec![]).await;
+        let requester2 = node2.requester();
+        tokio::spawn(async move { while node2.recv().await.is_ok() {} });
         requester2.try_connect(addr1.clone());
     }
 
@@ -1255,6 +1254,19 @@ async fn inbound_duplicate_connections_from_same_peer_must_be_coalesced() {
     assert!(
         connected_from_node2 <= 1,
         "inbound duplicate connections from one peer must be coalesced, got {connected_from_node2} connected events"
+    );
+
+    tokio::time::sleep(Duration::from_millis(1200)).await;
+    let registered_aliases_from_node2 = node1.ctx.conns().into_iter().filter(|conn| conn.to_id() == PeerId::from(2)).count();
+    assert!(
+        registered_aliases_from_node2 <= 1,
+        "rejected duplicate inbound connections must be closed and unregistered, got {registered_aliases_from_node2} registered aliases"
+    );
+
+    let direct_routes_from_node2 = node1.router.neighbours().into_iter().filter(|(_, peer, _)| *peer == PeerId::from(2)).count();
+    assert!(
+        direct_routes_from_node2 <= 1,
+        "rejected duplicate inbound connections must not resurrect duplicate direct routes, got {direct_routes_from_node2}"
     );
 }
 

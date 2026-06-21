@@ -15,7 +15,7 @@ use std::{
 use anyhow::anyhow;
 use futures::{SinkExt, StreamExt};
 use metrics::{counter, gauge};
-use quinn::{Connection, RecvStream, SendStream};
+use quinn::{Connection, RecvStream, SendStream, VarInt};
 use serde::{Deserialize, Serialize};
 use tokio::{
     io::copy_bidirectional,
@@ -198,6 +198,11 @@ impl PeerConnectionInternal {
                     tx.send(res).map_err(|_| "internal channel error").print_on_err("[PeerConnectionInternal] answer open_bi");
                 });
                 Ok(())
+            }
+            PeerConnectionControl::Close => {
+                log::info!("[PeerConnectionInternal {}] close requested", self.remote);
+                self.connection.close(VarInt::from_u32(0), b"duplicate peer connection");
+                Err(anyhow!("peer connection closed by control"))
             }
         }
     }
