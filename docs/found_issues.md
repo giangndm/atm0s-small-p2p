@@ -3139,6 +3139,17 @@ the source of truth for evidence and reviewer decisions.
   - Failure summary: a single unsolicited `Found(alias)` with no pending lookup
     creates a cache entry for that alias; expected unsolicited `Found` messages
     to be ignored.
+- Fix status: current `AliasMessage::Found` handling correlates the response
+  with an active find request before inserting cache hints. During
+  `FindRequestState::CheckHint`, only a `Found` from a checked hint peer can
+  insert the cache hint; unchecked peers are ignored. During an active `Scan`,
+  the responding peer is accepted by design. An unsolicited `Found` with no
+  pending lookup does not mutate the alias cache or complete a waiter. Verified
+  with
+  `cargo test unsolicited_found_must_not_create_alias_cache_hint -- --nocapture`,
+  `cargo test cached_hint_find_must_ignore_found_from_unchecked_peer -- --nocapture`,
+  `cargo test test_find_cached_alias_found -- --nocapture`, and
+  `cargo test found_response_must_not_exceed_alias_hint_cap -- --nocapture`.
 
 ### ISSUE-110: Replicated KV snapshots can terminally omit keys updated past max_version
 
