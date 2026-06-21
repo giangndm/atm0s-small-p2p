@@ -3307,6 +3307,19 @@ the source of truth for evidence and reviewer decisions.
   - Failure summary: four immediate `try_connect()` calls to the same peer
     produce four `PeerConnected` events; the test expected at most one
     connected event for that peer while duplicate attempts were in flight.
+- Fixed summary: current `P2pNetwork::process_connect` checks
+  `NetworkNeighbours::has_peer_connection_attempt` before calling
+  `endpoint.connect`, closing this issue through the shared ISSUE-153
+  duplicate-connect fix. The neighbour predicate covers connected peers and
+  pending outbound attempts for the same peer id, so best-effort duplicate
+  connects coalesce while awaited duplicates return `Err(_)` instead of
+  reporting synthetic success. Failed pending attempts are still cleared by
+  `PeerConnectError`, so stale attempts do not suppress later retries.
+  Verified with
+  `cargo test concurrent_connects_to_same_peer_must_be_coalesced -- --nocapture`,
+  `cargo test awaited_connect_must_error_while_same_peer_connect_is_pending -- --nocapture`,
+  and
+  `cargo test stale_pending_outgoing_peer_does_not_suppress_reconnect -- --nocapture`.
 
 ### ISSUE-114: Inbound duplicate connections from the same peer are not coalesced
 

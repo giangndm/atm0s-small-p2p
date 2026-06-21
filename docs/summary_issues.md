@@ -900,6 +900,16 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   `cargo test connect_must_fail_when_remote_peer_id_does_not_match_address -- --nocapture`
   still fails in current source and remains separate from this self-connect
   guard.
+- ISSUE-113: fixed by the same pending-attempt coalescing path documented for
+  ISSUE-153. `P2pNetwork::process_connect` now checks
+  `NetworkNeighbours::has_peer_connection_attempt` before `endpoint.connect`;
+  best-effort duplicate connects to a peer with a live connected or pending
+  outbound attempt no-op, awaited duplicates return `Err(_)`, and stale failed
+  attempts remain retryable after `PeerConnectError` cleanup. Verified with
+  `cargo test concurrent_connects_to_same_peer_must_be_coalesced -- --nocapture`,
+  `cargo test awaited_connect_must_error_while_same_peer_connect_is_pending -- --nocapture`,
+  and
+  `cargo test stale_pending_outgoing_peer_does_not_suppress_reconnect -- --nocapture`.
 - ISSUE-130: fixed by `e78c190` (`fix: return errors when alias channels
   close`), which makes `AliasService::run_loop` return `Err(_)` when the
   underlying base service channel closes instead of panicking on
