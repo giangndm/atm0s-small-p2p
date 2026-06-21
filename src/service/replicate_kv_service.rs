@@ -30,6 +30,7 @@ pub use messages::KvEvent;
 
 const REMOTE_TIMEOUT_MS: u128 = 10_000;
 const MAX_PENDING_OUT_EVENTS: usize = 1024;
+const MAX_REMOTE_STORES: usize = 1024;
 
 pub struct ReplicatedKvStore<N, K, V> {
     remotes: HashMap<N, RemoteStore<N, K, V>>,
@@ -56,17 +57,25 @@ where
         while let Some(event) = self.local.pop_out() {
             Self::push_out(&mut self.outs, event);
         }
+        self.cleanup_timed_out_remotes();
+        for remote in self.remotes.values_mut() {
+            remote.on_tick();
+            while let Some(event) = remote.pop_out() {
+                Self::push_out(&mut self.outs, event);
+            }
+        }
+    }
+
+    fn cleanup_timed_out_remotes(&mut self) {
         let outs = &mut self.outs;
         self.remotes.retain(|node, remote| {
             let keep = remote.last_active().elapsed().as_millis() < REMOTE_TIMEOUT_MS;
             if !keep {
                 log::info!("[ReplicatedKvService] remove remote {node:?} after timeout");
                 remote.destroy();
-            } else {
-                remote.on_tick();
-            }
-            while let Some(event) = remote.pop_out() {
-                Self::push_out(outs, event);
+                while let Some(event) = remote.pop_out() {
+                    Self::push_out(outs, event);
+                }
             }
             keep
         });
@@ -88,6 +97,14 @@ where
 
     pub fn on_remote_event(&mut self, from: N, event: NetEvent<N, K, V>) {
         if !self.remotes.contains_key(&from) {
+            if self.remotes.len() >= MAX_REMOTE_STORES {
+                self.cleanup_timed_out_remotes();
+                if self.remotes.len() >= MAX_REMOTE_STORES {
+                    log::warn!("[ReplicatedKvService] reject new remote {from:?}: remote store cap {MAX_REMOTE_STORES} reached");
+                    return;
+                }
+            }
+
             log::info!("[ReplicatedKvService] add remote {from:?}");
             let mut remote = RemoteStore::new(from.clone());
             while let Some(event) = remote.pop_out() {
@@ -251,10 +268,9 @@ mod tests {
 
     #[test]
     fn remote_store_creation_must_be_bounded() {
-        const MAX_REMOTES: usize = 1024;
         let mut store: ReplicatedKvStore<u64, u64, u64> = ReplicatedKvStore::new(10, 10);
 
-        for from in 0..=MAX_REMOTES as u64 {
+        for from in 0..=MAX_REMOTE_STORES as u64 {
             store.on_remote_event(from, NetEvent::Broadcast(BroadcastEvent::Version(Version(0))));
         }
 
@@ -262,11 +278,11 @@ mod tests {
         let queued_sync_requests = store.outs.len();
 
         assert!(
-            remote_count <= MAX_REMOTES,
+            remote_count <= MAX_REMOTE_STORES,
             "remote stores must be bounded, got {remote_count}"
         );
         assert!(
-            queued_sync_requests <= MAX_REMOTES,
+            queued_sync_requests <= MAX_REMOTE_STORES,
             "queued full-sync requests must be bounded, got {queued_sync_requests}"
         );
     }

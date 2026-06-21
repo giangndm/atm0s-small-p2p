@@ -1260,6 +1260,9 @@ the source of truth for evidence and reviewer decisions.
 - Category: high-load stability, bad-network stability
 - Score: 76/100
 - Reviewer: `Gauss`, confirmed.
+- Status: fixed. `ReplicatedKvStore` now caps tracked remote stores at 1,024,
+  runs timeout cleanup before admitting a new remote at capacity, and rejects
+  still-over-cap new identities before creating `RemoteStore` full-sync work.
 - Affected code:
   - `src/service/replicate_kv_service.rs`: `ReplicatedKvStore::on_remote_event`
     creates a `RemoteStore` for every previously unseen `from` node before
