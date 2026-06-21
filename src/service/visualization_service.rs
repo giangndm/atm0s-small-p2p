@@ -37,6 +37,7 @@ pub(crate) fn encode_scan_for_test() -> Vec<u8> {
 
 const SCAN_RESPONSE_SEND_TIMEOUT: Duration = Duration::from_secs(1);
 const SCAN_BROADCAST_SEND_TIMEOUT: Duration = Duration::from_secs(1);
+const MAX_VISUALIZATION_REMOTE_PEERS: usize = 1024;
 
 pub struct VisualizationService {
     service: P2pService,
@@ -139,13 +140,7 @@ impl VisualizationService {
                                 Message::Scan => {
                                     self.on_scan(from);
                                 }
-                                Message::Info(neighbours) => {
-                                    if self.neighbours.insert(from, now_ms()).is_none() {
-                                        self.outs.push_back(VisualizationServiceEvent::PeerJoined(from, neighbours));
-                                    } else {
-                                        self.outs.push_back(VisualizationServiceEvent::PeerUpdated(from, neighbours));
-                                    }
-                                }
+                                Message::Info(neighbours) => self.on_info(from, neighbours),
                             }
                         }
                     }
@@ -153,13 +148,7 @@ impl VisualizationService {
                         if let Ok(msg) = bincode::deserialize::<Message>(&data) {
                             match msg {
                                 Message::Scan => {}
-                                Message::Info(neighbours) => {
-                                    if self.neighbours.insert(from, now_ms()).is_none() {
-                                        self.outs.push_back(VisualizationServiceEvent::PeerJoined(from, neighbours));
-                                    } else {
-                                        self.outs.push_back(VisualizationServiceEvent::PeerUpdated(from, neighbours));
-                                    }
-                                }
+                                Message::Info(neighbours) => self.on_info(from, neighbours),
                             }
                         }
                     }
@@ -168,6 +157,20 @@ impl VisualizationService {
                 }
             }
         }
+    }
+
+    fn on_info(&mut self, from: PeerId, neighbours: Vec<(ConnectionId, PeerId, u16)>) {
+        let now = now_ms();
+        if self.neighbours.contains_key(&from) {
+            self.neighbours.insert(from, now);
+            self.outs.push_back(VisualizationServiceEvent::PeerUpdated(from, neighbours));
+            return;
+        }
+        if self.neighbours.len() >= MAX_VISUALIZATION_REMOTE_PEERS {
+            return;
+        }
+        self.neighbours.insert(from, now);
+        self.outs.push_back(VisualizationServiceEvent::PeerJoined(from, neighbours));
     }
 
     fn on_scan(&mut self, from: PeerId) {
@@ -225,13 +228,12 @@ mod test {
 
     #[tokio::test]
     async fn visualization_remote_peers_must_be_bounded() {
-        const MAX_REMOTE_PEERS: usize = 1024;
         let ctx = SharedCtx::new(PeerId::from(1), SharedRouterTable::new(PeerId::from(1)));
         let (base_service, service_tx) = P2pService::build(P2pServiceId::from(0), ctx);
         let mut service = VisualizationService::new(None, false, base_service);
         let info = encode_info_for_test(vec![]);
 
-        for peer in 0..=MAX_REMOTE_PEERS {
+        for peer in 0..MAX_VISUALIZATION_REMOTE_PEERS {
             service_tx
                 .send(P2pServiceEvent::Unicast(PeerId::from(peer as u64 + 10), info.clone()))
                 .await
@@ -239,8 +241,70 @@ mod test {
             let _ = service.recv().await.expect("visualization event should be emitted");
         }
 
+        service_tx
+            .send(P2pServiceEvent::Unicast(PeerId::from(20_000), info.clone()))
+            .await
+            .expect("visualization service channel should accept rejected test message");
+
+        assert!(
+            tokio::time::timeout(Duration::from_millis(20), service.recv()).await.is_err(),
+            "rejected new remote peers must not emit visualization events"
+        );
         let remote_peers = service.neighbours.len();
-        assert!(remote_peers <= MAX_REMOTE_PEERS, "visualization remote peer state must be bounded, got {remote_peers}");
+        assert!(remote_peers <= MAX_VISUALIZATION_REMOTE_PEERS, "visualization remote peer state must be bounded, got {remote_peers}");
+    }
+
+    #[tokio::test]
+    async fn visualization_existing_peer_update_must_work_when_remote_peer_cap_full() {
+        let ctx = SharedCtx::new(PeerId::from(1), SharedRouterTable::new(PeerId::from(1)));
+        let (base_service, service_tx) = P2pService::build(P2pServiceId::from(0), ctx);
+        let mut service = VisualizationService::new(None, false, base_service);
+        let info = encode_info_for_test(vec![]);
+
+        for peer in 0..MAX_VISUALIZATION_REMOTE_PEERS {
+            service_tx
+                .send(P2pServiceEvent::Unicast(PeerId::from(peer as u64 + 10), info.clone()))
+                .await
+                .expect("visualization service channel should accept test message");
+            let _ = service.recv().await.expect("visualization event should be emitted");
+        }
+
+        let existing = PeerId::from(10);
+        service_tx
+            .send(P2pServiceEvent::Unicast(existing, encode_info_for_test(vec![(ConnectionId::from(7), PeerId::from(8), 9)])))
+            .await
+            .expect("visualization service channel should accept update message");
+
+        let event = service.recv().await.expect("existing remote update should be emitted");
+        assert_eq!(event, VisualizationServiceEvent::PeerUpdated(existing, vec![(ConnectionId::from(7), PeerId::from(8), 9)]));
+        assert_eq!(service.neighbours.len(), MAX_VISUALIZATION_REMOTE_PEERS);
+    }
+
+    #[tokio::test]
+    async fn visualization_broadcast_remote_peers_must_be_bounded() {
+        let ctx = SharedCtx::new(PeerId::from(1), SharedRouterTable::new(PeerId::from(1)));
+        let (base_service, service_tx) = P2pService::build(P2pServiceId::from(0), ctx);
+        let mut service = VisualizationService::new(None, false, base_service);
+        let info = encode_info_for_test(vec![]);
+
+        for peer in 0..MAX_VISUALIZATION_REMOTE_PEERS {
+            service_tx
+                .send(P2pServiceEvent::Broadcast(PeerId::from(peer as u64 + 10), info.clone()))
+                .await
+                .expect("visualization service channel should accept test message");
+            let _ = service.recv().await.expect("visualization event should be emitted");
+        }
+
+        service_tx
+            .send(P2pServiceEvent::Broadcast(PeerId::from(20_000), info))
+            .await
+            .expect("visualization service channel should accept rejected test message");
+
+        assert!(
+            tokio::time::timeout(Duration::from_millis(20), service.recv()).await.is_err(),
+            "rejected broadcast remote peers must not emit visualization events"
+        );
+        assert_eq!(service.neighbours.len(), MAX_VISUALIZATION_REMOTE_PEERS);
     }
 
     #[tokio::test]

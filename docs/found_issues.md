@@ -2901,6 +2901,11 @@ the source of truth for evidence and reviewer decisions.
   - Failure summary: after 1,025 `Info` frames from distinct peer ids,
     `VisualizationService.neighbours.len()` is 1,025, exceeding the test cap of
     1,024.
+- Fix status: fixed by capping retained visualization remote peers at
+  `MAX_VISUALIZATION_REMOTE_PEERS = 1024` through a shared `on_info` admission
+  helper for broadcast and unicast `Info` frames. Existing peers still refresh
+  and emit `PeerUpdated` at capacity, while new unknown senders are ignored
+  without emitting inconsistent visualization events.
 
 ### ISSUE-103: Configured self seed is returned as a remote dial candidate
 
