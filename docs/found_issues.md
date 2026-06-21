@@ -2351,6 +2351,9 @@ the source of truth for evidence and reviewer decisions.
   - `cargo test full_sync_must_reject_unsorted_snapshot_slots -- --nocapture`
   - Failure summary: a snapshot response with slots ordered as keys `2, 1` is
     accepted and stored; expected unsorted snapshot pages to be rejected.
+- Fix status: fixed by `86160e9` (`fix: validate full sync snapshot
+  responses`). `SyncFullState` now requires snapshot slot keys to be strictly
+  increasing within each page before emitting or storing any slot data.
 
 ### ISSUE-085: Replicated KV full sync accepts duplicate keys in one snapshot page
 
