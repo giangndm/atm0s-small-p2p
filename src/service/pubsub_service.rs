@@ -40,6 +40,7 @@ const RPC_TICK_INTERVAL_MS: u64 = 1_000;
 pub(crate) const PUBSUB_INTERNAL_CONTROL_QUEUE_SIZE: usize = 1024;
 const MAX_REMOTE_MEMBERS_PER_CHANNEL: usize = 1024;
 const MAX_HEARTBEAT_CHANNELS_PER_BATCH: usize = 1024;
+const MAX_RPC_METHOD_LEN: usize = 1024;
 
 #[derive(Debug, Hash, PartialEq, Eq, Clone)]
 pub enum PeerSrc {
@@ -347,6 +348,14 @@ impl PubsubService {
         }
     }
 
+    fn rpc_method_is_allowed(from_peer: PeerId, kind: &str, method: &str) -> bool {
+        if method.len() > MAX_RPC_METHOD_LEN {
+            log::warn!("[PubsubService] {kind} from {from_peer} has {} byte method, dropping oversized RPC", method.len());
+            return false;
+        }
+        true
+    }
+
     pub async fn run_loop(&mut self) -> anyhow::Result<()> {
         loop {
             select! {
@@ -531,6 +540,9 @@ impl PubsubService {
                             }
                         }
                         PubsubMessage::GuestPublishRpc(channel, data, rpc_id, method) => {
+                            if !Self::rpc_method_is_allowed(from_peer, "GuestPublishRpc", &method) {
+                                return Ok(());
+                            }
                             if let Some(state) = self.channels.get(&channel) {
                                 for sub_tx in state.local_subscribers.values() {
                                     Self::try_send_subscriber_event(sub_tx, SubscriberEvent::GuestPublishRpc(data.clone(), rpc_id, method.clone(), PeerSrc::Remote(from_peer)));
@@ -549,6 +561,9 @@ impl PubsubService {
                             }
                         }
                         PubsubMessage::PublishRpc(channel, vec, rpc_id, method) => {
+                            if !Self::rpc_method_is_allowed(from_peer, "PublishRpc", &method) {
+                                return Ok(());
+                            }
                             if let Some(state) = self.channels.get(&channel) {
                                 if !state.has_remote_publisher(from_peer) {
                                     log::warn!("[PubsubService] drop PublishRpc from non-publisher {from_peer} on {channel}");
@@ -578,6 +593,9 @@ impl PubsubService {
                             }
                         }
                         PubsubMessage::GuestFeedbackRpc(channel, vec, rpc_id, method) => {
+                            if !Self::rpc_method_is_allowed(from_peer, "GuestFeedbackRpc", &method) {
+                                return Ok(());
+                            }
                             if let Some(state) = self.channels.get(&channel) {
                                 for (_, pub_tx) in state.local_publishers.iter() {
                                     Self::try_send_publisher_event(pub_tx, PublisherEvent::GuestFeedbackRpc(vec.clone(), rpc_id, method.clone(), PeerSrc::Remote(from_peer)));
@@ -596,6 +614,9 @@ impl PubsubService {
                             }
                         }
                         PubsubMessage::FeedbackRpc(channel, vec, rpc_id, method) => {
+                            if !Self::rpc_method_is_allowed(from_peer, "FeedbackRpc", &method) {
+                                return Ok(());
+                            }
                             if let Some(state) = self.channels.get(&channel) {
                                 if !state.has_remote_subscriber(from_peer) {
                                     log::warn!("[PubsubService] drop FeedbackRpc from non-subscriber {from_peer} on {channel}");
@@ -1994,7 +2015,6 @@ mod test {
 
     #[tokio::test]
     async fn pubsub_rpc_methods_must_be_bounded() {
-        const MAX_METHOD_LEN: usize = 1024;
         let mut service = test_service();
         let channel = PubsubChannelId(1);
         let from_peer = PeerId::from(2);
@@ -2005,16 +2025,106 @@ mod test {
             .await
             .expect("subscriber should be registered");
 
-        let oversized_method = "m".repeat(MAX_METHOD_LEN + 1);
+        service
+            .on_service(P2pServiceEvent::Unicast(from_peer, encode_publisher_joined_for_test(channel)))
+            .await
+            .expect("publisher join should be processed");
+        assert_eq!(sub_rx.try_recv(), Ok(SubscriberEvent::PeerJoined(PeerSrc::Remote(from_peer))));
+
+        let oversized_method = "m".repeat(MAX_RPC_METHOD_LEN + 1);
         let payload = bincode::serialize(&PubsubMessage::PublishRpc(channel, vec![1], RpcId::rand(), oversized_method)).expect("test RPC should serialize");
 
         service.on_service(P2pServiceEvent::Unicast(from_peer, payload)).await.expect("publish RPC should be processed");
 
-        let event = sub_rx.try_recv().expect("subscriber should receive publish RPC");
+        assert!(sub_rx.try_recv().is_err(), "oversized pubsub RPC methods must be dropped");
+    }
+
+    #[tokio::test]
+    async fn pubsub_rpc_method_at_cap_must_be_accepted() {
+        let mut service = test_service();
+        let channel = PubsubChannelId(1);
+        let from_peer = PeerId::from(2);
+        let (sub_tx, mut sub_rx) = subscriber_event_channel();
+
+        service
+            .on_internal(InternalMsg::SubscriberCreated(subscriber_handle(SubscriberLocalId::rand()), channel, sub_tx))
+            .await
+            .expect("subscriber should be registered");
+
+        service
+            .on_service(P2pServiceEvent::Unicast(from_peer, encode_publisher_joined_for_test(channel)))
+            .await
+            .expect("publisher join should be processed");
+        assert_eq!(sub_rx.try_recv(), Ok(SubscriberEvent::PeerJoined(PeerSrc::Remote(from_peer))));
+
+        let method = "m".repeat(MAX_RPC_METHOD_LEN);
+        let payload = bincode::serialize(&PubsubMessage::PublishRpc(channel, vec![1], RpcId::rand(), method)).expect("test RPC should serialize");
+
+        service.on_service(P2pServiceEvent::Unicast(from_peer, payload)).await.expect("publish RPC should be processed");
+
+        let event = sub_rx.try_recv().expect("subscriber should receive publish RPC at the cap");
         match event {
-            SubscriberEvent::PublishRpc(_, _, method, PeerSrc::Remote(_)) => assert!(method.len() <= MAX_METHOD_LEN, "pubsub RPC method names must be bounded, got {} bytes", method.len()),
+            SubscriberEvent::PublishRpc(_, _, method, PeerSrc::Remote(peer)) => {
+                assert_eq!(peer, from_peer);
+                assert_eq!(method.len(), MAX_RPC_METHOD_LEN, "pubsub RPC methods at the cap must be accepted");
+            }
             other => panic!("expected PublishRpc event, got {other:?}"),
         }
+    }
+
+    #[tokio::test]
+    async fn pubsub_other_inbound_rpc_methods_must_be_bounded() {
+        let oversized_method = "m".repeat(MAX_RPC_METHOD_LEN + 1);
+        let from_peer = PeerId::from(2);
+
+        let mut guest_publish_service = test_service();
+        let guest_publish_channel = PubsubChannelId(1);
+        let (sub_tx, mut sub_rx) = subscriber_event_channel();
+        guest_publish_service
+            .on_internal(InternalMsg::SubscriberCreated(subscriber_handle(SubscriberLocalId::rand()), guest_publish_channel, sub_tx))
+            .await
+            .expect("subscriber should be registered");
+        let guest_publish_payload =
+            bincode::serialize(&PubsubMessage::GuestPublishRpc(guest_publish_channel, vec![1], RpcId::rand(), oversized_method.clone())).expect("test guest publish RPC should serialize");
+        guest_publish_service
+            .on_service(P2pServiceEvent::Unicast(from_peer, guest_publish_payload))
+            .await
+            .expect("guest publish RPC should be processed");
+        assert!(sub_rx.try_recv().is_err(), "oversized GuestPublishRpc methods must be dropped");
+
+        let mut guest_feedback_service = test_service();
+        let guest_feedback_channel = PubsubChannelId(2);
+        let (pub_tx, mut pub_rx) = publisher_event_channel();
+        guest_feedback_service
+            .on_internal(InternalMsg::PublisherCreated(publisher_handle(PublisherLocalId::rand()), guest_feedback_channel, pub_tx))
+            .await
+            .expect("publisher should be registered");
+        let guest_feedback_payload =
+            bincode::serialize(&PubsubMessage::GuestFeedbackRpc(guest_feedback_channel, vec![1], RpcId::rand(), oversized_method.clone())).expect("test guest feedback RPC should serialize");
+        guest_feedback_service
+            .on_service(P2pServiceEvent::Unicast(from_peer, guest_feedback_payload))
+            .await
+            .expect("guest feedback RPC should be processed");
+        assert!(pub_rx.try_recv().is_err(), "oversized GuestFeedbackRpc methods must be dropped");
+
+        let mut feedback_service = test_service();
+        let feedback_channel = PubsubChannelId(3);
+        let (pub_tx, mut pub_rx) = publisher_event_channel();
+        feedback_service
+            .on_internal(InternalMsg::PublisherCreated(publisher_handle(PublisherLocalId::rand()), feedback_channel, pub_tx))
+            .await
+            .expect("publisher should be registered");
+        feedback_service
+            .on_service(P2pServiceEvent::Unicast(from_peer, encode_subscriber_joined_for_test(feedback_channel)))
+            .await
+            .expect("subscriber join should be processed");
+        assert_eq!(pub_rx.try_recv(), Ok(PublisherEvent::PeerJoined(PeerSrc::Remote(from_peer))));
+        let feedback_payload = bincode::serialize(&PubsubMessage::FeedbackRpc(feedback_channel, vec![1], RpcId::rand(), oversized_method)).expect("test feedback RPC should serialize");
+        feedback_service
+            .on_service(P2pServiceEvent::Unicast(from_peer, feedback_payload))
+            .await
+            .expect("feedback RPC should be processed");
+        assert!(pub_rx.try_recv().is_err(), "oversized FeedbackRpc methods must be dropped");
     }
 
     #[tokio::test]

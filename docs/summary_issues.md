@@ -20,7 +20,7 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   ISSUE-094, ISSUE-095, ISSUE-096,
   ISSUE-149, ISSUE-169, ISSUE-174, ISSUE-176, ISSUE-078, ISSUE-079, ISSUE-080, ISSUE-081, ISSUE-082, ISSUE-083, ISSUE-084, ISSUE-085, ISSUE-181, ISSUE-189, ISSUE-190, ISSUE-191, ISSUE-192, ISSUE-193,
   ISSUE-194, ISSUE-195, ISSUE-196, ISSUE-197, ISSUE-198, ISSUE-199,
-  ISSUE-200, ISSUE-201, ISSUE-202, ISSUE-203, ISSUE-204, ISSUE-205, ISSUE-206, ISSUE-207, ISSUE-097, ISSUE-098, ISSUE-099, ISSUE-100, ISSUE-101, ISSUE-102, ISSUE-104, ISSUE-105, ISSUE-106, and ISSUE-018 have focused
+  ISSUE-200, ISSUE-201, ISSUE-202, ISSUE-203, ISSUE-204, ISSUE-205, ISSUE-206, ISSUE-207, ISSUE-097, ISSUE-098, ISSUE-099, ISSUE-100, ISSUE-101, ISSUE-102, ISSUE-104, ISSUE-105, ISSUE-106, ISSUE-107, and ISSUE-018 have focused
   fixes committed.
   ISSUE-003 is fixed by `cfc8e57`;
   ISSUE-090 is fixed by the alias `Found` request-correlation guard.
@@ -846,6 +846,15 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   `cargo test pubsub_heartbeat_channel_batches_must_be_bounded -- --nocapture`
   and
   `cargo test pubsub_heartbeat_channel_batch_at_cap_must_be_accepted -- --nocapture`.
+- ISSUE-107: fixed by enforcing `MAX_RPC_METHOD_LEN = 1024` for inbound
+  pubsub `GuestPublishRpc`, `PublishRpc`, `GuestFeedbackRpc`, and `FeedbackRpc`
+  before channel lookup, membership authorization, or local event fanout.
+  Oversized RPC method names are dropped, not truncated, so invalid method
+  names cannot be delivered to application handlers or rerouted as shorter
+  names. Verified with `cargo test pubsub_rpc_methods_must_be_bounded --
+  --nocapture`, `cargo test pubsub_rpc_method_at_cap_must_be_accepted --
+  --nocapture`, and
+  `cargo test pubsub_other_inbound_rpc_methods_must_be_bounded -- --nocapture`.
 - ISSUE-130: fixed by `e78c190` (`fix: return errors when alias channels
   close`), which makes `AliasService::run_loop` return `Err(_)` when the
   underlying base service channel closes instead of panicking on
