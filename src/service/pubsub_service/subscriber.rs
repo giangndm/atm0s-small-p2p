@@ -199,7 +199,7 @@ impl SubscriberRequester {
     }
 
     pub async fn answer_publish_rpc(&self, rpc: RpcId, source: PeerSrc, data: Vec<u8>) -> anyhow::Result<()> {
-        try_send_internal_control(&self.control_tx, InternalMsg::PublishRpcAnswer(rpc, source, data), "subscriber answer_publish_rpc")?;
+        try_send_internal_control(&self.control_tx, InternalMsg::PublishRpcAnswer(self.handle_id, rpc, source, data), "subscriber answer_publish_rpc")?;
         Ok(())
     }
 

@@ -199,7 +199,7 @@ impl PublisherRequester {
     }
 
     pub async fn answer_feedback_rpc(&self, rpc: RpcId, source: PeerSrc, data: Vec<u8>) -> anyhow::Result<()> {
-        try_send_internal_control(&self.control_tx, InternalMsg::FeedbackRpcAnswer(rpc, source, data), "publisher answer_feedback_rpc")?;
+        try_send_internal_control(&self.control_tx, InternalMsg::FeedbackRpcAnswer(self.handle_id, rpc, source, data), "publisher answer_feedback_rpc")?;
         Ok(())
     }
 

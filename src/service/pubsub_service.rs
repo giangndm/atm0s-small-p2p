@@ -75,6 +75,7 @@ struct PublishRpcReq {
     started_at: Instant,
     timeout: Duration,
     expected_responders: HashSet<PeerSrc>,
+    expected_local_subscribers: HashSet<SubscriberHandleId>,
     tx: Option<oneshot::Sender<Result<Vec<u8>, PubsubRpcError>>>,
 }
 
@@ -82,6 +83,7 @@ struct FeedbackRpcReq {
     started_at: Instant,
     timeout: Duration,
     expected_responders: HashSet<PeerSrc>,
+    expected_local_publishers: HashSet<PublisherHandleId>,
     tx: Option<oneshot::Sender<Result<Vec<u8>, PubsubRpcError>>>,
 }
 
@@ -185,12 +187,12 @@ enum InternalMsg {
     GuestPublishRpc(PubsubChannelId, Vec<u8>, String, oneshot::Sender<Result<Vec<u8>, PubsubRpcError>>, Duration),
     Publish(PublisherHandleId, PubsubChannelId, Vec<u8>),
     PublishRpc(PublisherHandleId, PubsubChannelId, Vec<u8>, String, oneshot::Sender<Result<Vec<u8>, PubsubRpcError>>, Duration),
-    PublishRpcAnswer(RpcId, PeerSrc, Vec<u8>),
+    PublishRpcAnswer(SubscriberHandleId, RpcId, PeerSrc, Vec<u8>),
     GuestFeedback(PubsubChannelId, Vec<u8>),
     GuestFeedbackRpc(PubsubChannelId, Vec<u8>, String, oneshot::Sender<Result<Vec<u8>, PubsubRpcError>>, Duration),
     Feedback(SubscriberHandleId, PubsubChannelId, Vec<u8>),
     FeedbackRpc(SubscriberHandleId, PubsubChannelId, Vec<u8>, String, oneshot::Sender<Result<Vec<u8>, PubsubRpcError>>, Duration),
-    FeedbackRpcAnswer(RpcId, PeerSrc, Vec<u8>),
+    FeedbackRpcAnswer(PublisherHandleId, RpcId, PeerSrc, Vec<u8>),
 }
 
 #[derive(Debug, From, Display, Serialize, Deserialize, Clone, Copy, Hash, PartialEq, Eq)]
@@ -700,10 +702,12 @@ impl PubsubService {
                     } else {
                         let mut delivered = 0;
                         let mut expected_responders = HashSet::new();
-                        for sub_tx in state.local_subscribers.values() {
+                        let mut expected_local_subscribers = HashSet::new();
+                        for (subscriber_handle_id, sub_tx) in state.local_subscribers.iter() {
                             if Self::try_send_subscriber_event(sub_tx, SubscriberEvent::GuestPublishRpc(data.clone(), req_id, method.clone(), PeerSrc::Local)) {
                                 delivered += 1;
                                 expected_responders.insert(PeerSrc::Local);
+                                expected_local_subscribers.insert(*subscriber_handle_id);
                             }
                         }
                         for pub_peer in state.active_remote_subscribers() {
@@ -721,6 +725,7 @@ impl PubsubService {
                                     started_at: Instant::now(),
                                     timeout,
                                     expected_responders,
+                                    expected_local_subscribers,
                                     tx: Some(tx),
                                 },
                             );
@@ -755,10 +760,12 @@ impl PubsubService {
                     } else {
                         let mut delivered = 0;
                         let mut expected_responders = HashSet::new();
-                        for sub_tx in state.local_subscribers.values() {
+                        let mut expected_local_subscribers = HashSet::new();
+                        for (subscriber_handle_id, sub_tx) in state.local_subscribers.iter() {
                             if Self::try_send_subscriber_event(sub_tx, SubscriberEvent::PublishRpc(data.clone(), req_id, method.clone(), PeerSrc::Local)) {
                                 delivered += 1;
                                 expected_responders.insert(PeerSrc::Local);
+                                expected_local_subscribers.insert(*subscriber_handle_id);
                             }
                         }
                         for pub_peer in state.active_remote_subscribers() {
@@ -776,6 +783,7 @@ impl PubsubService {
                                     started_at: Instant::now(),
                                     timeout,
                                     expected_responders,
+                                    expected_local_subscribers,
                                     tx: Some(tx),
                                 },
                             );
@@ -803,10 +811,12 @@ impl PubsubService {
                     } else {
                         let mut delivered = 0;
                         let mut expected_responders = HashSet::new();
-                        for (_, pub_tx) in state.local_publishers.iter() {
+                        let mut expected_local_publishers = HashSet::new();
+                        for (publisher_handle_id, pub_tx) in state.local_publishers.iter() {
                             if Self::try_send_publisher_event(pub_tx, PublisherEvent::GuestFeedbackRpc(data.clone(), req_id, method.clone(), PeerSrc::Local)) {
                                 delivered += 1;
                                 expected_responders.insert(PeerSrc::Local);
+                                expected_local_publishers.insert(*publisher_handle_id);
                             }
                         }
                         for pub_peer in state.active_remote_publishers() {
@@ -824,6 +834,7 @@ impl PubsubService {
                                     started_at: Instant::now(),
                                     timeout,
                                     expected_responders,
+                                    expected_local_publishers,
                                     tx: Some(tx),
                                 },
                             );
@@ -858,10 +869,12 @@ impl PubsubService {
                     } else {
                         let mut delivered = 0;
                         let mut expected_responders = HashSet::new();
-                        for (_, pub_tx) in state.local_publishers.iter() {
+                        let mut expected_local_publishers = HashSet::new();
+                        for (publisher_handle_id, pub_tx) in state.local_publishers.iter() {
                             if Self::try_send_publisher_event(pub_tx, PublisherEvent::FeedbackRpc(data.clone(), req_id, method.clone(), PeerSrc::Local)) {
                                 delivered += 1;
                                 expected_responders.insert(PeerSrc::Local);
+                                expected_local_publishers.insert(*publisher_handle_id);
                             }
                         }
                         for pub_peer in state.active_remote_publishers() {
@@ -879,6 +892,7 @@ impl PubsubService {
                                     started_at: Instant::now(),
                                     timeout,
                                     expected_responders,
+                                    expected_local_publishers,
                                     tx: Some(tx),
                                 },
                             );
@@ -888,11 +902,15 @@ impl PubsubService {
                     let _ = tx.send(Err(PubsubRpcError::NoDestination));
                 }
             }
-            InternalMsg::PublishRpcAnswer(rpc_id, peer_src, data) => {
+            InternalMsg::PublishRpcAnswer(handle_id, rpc_id, peer_src, data) => {
                 if let PeerSrc::Remote(peer) = peer_src {
                     self.try_send_to(peer, &PubsubMessage::PublishRpcAnswer(data, rpc_id)).await;
                 } else {
-                    if self.publish_rpc_reqs.get(&rpc_id).is_some_and(|req| req.expected_responders.contains(&PeerSrc::Local)) {
+                    if self
+                        .publish_rpc_reqs
+                        .get(&rpc_id)
+                        .is_some_and(|req| req.expected_responders.contains(&PeerSrc::Local) && req.expected_local_subscribers.contains(&handle_id))
+                    {
                         let mut req = self.publish_rpc_reqs.remove(&rpc_id).expect("checked pending publish RPC");
                         let _ = req.tx.take().expect("should have req_tx").send(Ok(data));
                     } else if self.publish_rpc_reqs.contains_key(&rpc_id) {
@@ -902,11 +920,15 @@ impl PubsubService {
                     }
                 }
             }
-            InternalMsg::FeedbackRpcAnswer(rpc_id, peer_src, data) => {
+            InternalMsg::FeedbackRpcAnswer(handle_id, rpc_id, peer_src, data) => {
                 if let PeerSrc::Remote(peer) = peer_src {
                     self.try_send_to(peer, &PubsubMessage::FeedbackRpcAnswer(data, rpc_id)).await;
                 } else {
-                    if self.feedback_rpc_reqs.get(&rpc_id).is_some_and(|req| req.expected_responders.contains(&PeerSrc::Local)) {
+                    if self
+                        .feedback_rpc_reqs
+                        .get(&rpc_id)
+                        .is_some_and(|req| req.expected_responders.contains(&PeerSrc::Local) && req.expected_local_publishers.contains(&handle_id))
+                    {
                         let mut req = self.feedback_rpc_reqs.remove(&rpc_id).expect("checked pending feedback RPC");
                         let _ = req.tx.take().expect("should have req_tx").send(Ok(data));
                     } else if self.feedback_rpc_reqs.contains_key(&rpc_id) {
@@ -1342,7 +1364,12 @@ mod test {
 
         let result = tokio::time::timeout(
             Duration::from_millis(50),
-            service.on_internal(InternalMsg::PublishRpcAnswer(RpcId(7), PeerSrc::Remote(remote), b"answer".to_vec())),
+            service.on_internal(InternalMsg::PublishRpcAnswer(
+                subscriber_handle(SubscriberLocalId::rand()),
+                RpcId(7),
+                PeerSrc::Remote(remote),
+                b"answer".to_vec(),
+            )),
         )
         .await;
 

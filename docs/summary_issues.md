@@ -11,7 +11,7 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 - Stop condition: continue until 5 consecutive cycles find no new accepted
   issue; currently 0/5 after ISSUE-207.
 - Fix phase status: ISSUE-001, ISSUE-003, ISSUE-004, ISSUE-005, ISSUE-006, ISSUE-007,
-  ISSUE-002, ISSUE-008, ISSUE-009, ISSUE-010, ISSUE-011, ISSUE-012, ISSUE-013, ISSUE-014, ISSUE-015, ISSUE-020, ISSUE-021, ISSUE-024, ISSUE-033, ISSUE-034, ISSUE-039, ISSUE-048, ISSUE-055, ISSUE-103, ISSUE-118, ISSUE-119, ISSUE-120, ISSUE-122, ISSUE-123,
+  ISSUE-002, ISSUE-008, ISSUE-009, ISSUE-010, ISSUE-011, ISSUE-012, ISSUE-013, ISSUE-014, ISSUE-015, ISSUE-020, ISSUE-021, ISSUE-024, ISSUE-033, ISSUE-034, ISSUE-039, ISSUE-048, ISSUE-055, ISSUE-103, ISSUE-115, ISSUE-116, ISSUE-118, ISSUE-119, ISSUE-120, ISSUE-122, ISSUE-123,
   ISSUE-124, ISSUE-125, ISSUE-126, ISSUE-127, ISSUE-128, ISSUE-129, ISSUE-130,
   ISSUE-131, ISSUE-132, ISSUE-133, ISSUE-134, ISSUE-135, ISSUE-136, ISSUE-137,
   ISSUE-140, ISSUE-143, ISSUE-145, ISSUE-147, ISSUE-148, ISSUE-150, ISSUE-151,
@@ -508,8 +508,19 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   `cargo test pubsub_publish_rpc_remote -- --nocapture`,
   `cargo test pubsub_publish_rpc_local -- --nocapture`,
   `cargo test pubsub_feedback_rpc_remote -- --nocapture`, and
-  `cargo test pubsub_feedback_rpc_local -- --nocapture`. ISSUE-115 and
-  ISSUE-116 remain separate for local handle-level answer binding.
+  `cargo test pubsub_feedback_rpc_local -- --nocapture`.
+- ISSUE-115: fixed by carrying `SubscriberHandleId` on local
+  `PublishRpcAnswer` control messages and recording which local subscriber
+  handles actually received each publish RPC. Stale or unrelated subscriber
+  requesters now leave the pending request open for the legitimate responder or
+  timeout. Verified with
+  `cargo test dropped_subscriber_requester_must_not_answer_publish_rpc -- --nocapture`.
+- ISSUE-116: fixed by carrying `PublisherHandleId` on local
+  `FeedbackRpcAnswer` control messages and recording which local publisher
+  handles actually received each feedback RPC. Stale or unrelated publisher
+  requesters now leave the pending request open for the legitimate responder or
+  timeout. Verified with
+  `cargo test dropped_publisher_requester_must_not_answer_feedback_rpc -- --nocapture`.
 - ISSUE-039: fixed by authorizing ordinary pubsub member traffic against
   tracked channel membership. Inbound `Publish` now requires the sender to be
   an active remote publisher for the channel, and inbound `Feedback` requires

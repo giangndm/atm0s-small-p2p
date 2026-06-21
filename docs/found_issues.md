@@ -3190,6 +3190,11 @@ the source of truth for evidence and reviewer decisions.
     receives a local `PublishRpc`, the stale requester answers with the same
     `RpcId` and completes the publisher's pending RPC with
     `stale-local-answer`.
+- Fix status: fixed by binding local publish-RPC answers to the
+  `SubscriberHandleId` that actually received the `PublishRpc` event. Pending
+  publish RPCs now record delivered local subscriber handles, and a local
+  `PublishRpcAnswer` completes the request only when its handle is in that
+  per-request set.
 
 ### ISSUE-116: Local pubsub feedback RPC answers are not bound to the publisher handle
 
@@ -3223,6 +3228,11 @@ the source of truth for evidence and reviewer decisions.
     receives a local `FeedbackRpc`, the stale requester answers with the same
     `RpcId` and completes the subscriber's pending RPC with
     `stale-feedback-answer`.
+- Fix status: fixed by binding local feedback-RPC answers to the
+  `PublisherHandleId` that actually received the `FeedbackRpc` event. Pending
+  feedback RPCs now record delivered local publisher handles, and a local
+  `FeedbackRpcAnswer` completes the request only when its handle is in that
+  per-request set.
 
 ### ISSUE-117: Idle inbound stream-connect handshakes are not admission bounded
 
