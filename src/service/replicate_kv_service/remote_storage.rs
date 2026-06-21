@@ -10,6 +10,7 @@ use super::messages::{Action, BroadcastEvent, Changed, Event, KvEvent, NetEvent,
 
 const REQUEST_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(1);
 const MAX_SNAPSHOT_SLOTS_PER_PAGE: usize = 1024;
+const MAX_PENDING_CHANGEDS: usize = 1024;
 
 #[derive(Debug, PartialEq, Eq)]
 enum RemoteStoreState<N, K, V> {
@@ -464,6 +465,27 @@ where
             }
         }
     }
+
+    fn enqueue_pending_changed(&mut self, ctx: &mut StateCtx<N, K, V>, changed: Changed<K, V>) -> bool {
+        if ctx.next_state.is_some() {
+            return false;
+        }
+        if changed.version <= self.version {
+            return false;
+        }
+        if self.pendings.contains_key(&changed.version) {
+            return false;
+        }
+        if self.pendings.len() >= MAX_PENDING_CHANGEDS {
+            log::warn!("[RemoteStore {:?}] pending changed cap {MAX_PENDING_CHANGEDS} exceeded => switch to full sync", ctx.remote);
+            self.pendings.clear();
+            self.sending_req = None;
+            ctx.next_state = Some(RemoteStoreState::SyncFull(SyncFullState::default()));
+            return true;
+        }
+        self.pendings.insert(changed.version, changed);
+        true
+    }
 }
 
 impl<N, K, V> State<N, K, V> for WorkingState<N, K, V>
@@ -490,9 +512,10 @@ where
     fn on_broadcast(&mut self, ctx: &mut StateCtx<N, K, V>, now: Instant, event: BroadcastEvent<K, V>) -> bool {
         match event {
             BroadcastEvent::Changed(changed) => {
-                if self.version < changed.version {
-                    self.pendings.insert(changed.version, changed);
-                    self.apply_pendings(ctx);
+                if self.enqueue_pending_changed(ctx, changed) {
+                    if ctx.next_state.is_none() {
+                        self.apply_pendings(ctx);
+                    }
                     true
                 } else {
                     false
@@ -534,8 +557,9 @@ where
 
                 log::info!("[RemoteStore {:?}] fetch changed success with {} changeds => apply", ctx.remote, changeds.len());
                 for changed in changeds {
-                    if changed.version > self.version {
-                        self.pendings.insert(changed.version, changed);
+                    self.enqueue_pending_changed(ctx, changed);
+                    if ctx.next_state.is_some() {
+                        return true;
                     }
                 }
                 self.sending_req = None;
@@ -2044,6 +2068,9 @@ mod tests {
 
         let now = Instant::now();
         let mut state = WorkingState::new(Version(0));
+        state.on_broadcast(&mut ctx, now, BroadcastEvent::Version(Version(2_050)));
+        ctx.outs.clear();
+
         let changeds = (2..=2_050)
             .map(|version| Changed {
                 key: version as u16,

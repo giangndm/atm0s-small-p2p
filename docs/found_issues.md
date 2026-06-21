@@ -846,6 +846,11 @@ the source of truth for evidence and reviewer decisions.
   - `cargo test working_state_must_cap_pending_future_changes -- --nocapture`
   - Failure summary: 2,049 far-future changes remain pending, exceeding the
     test cap of 1,024.
+- Fix status: fixed by capping `WorkingState::pendings` at 1,024 unique future
+  changes. New future broadcasts or solicited repair responses share the same
+  pending-admission helper; duplicate pending versions are ignored without
+  overwrite, and cap overflow clears incremental repair state and falls back to
+  full sync instead of silently evicting data.
 
 ### ISSUE-028: Stale network requester panics after network drop
 
