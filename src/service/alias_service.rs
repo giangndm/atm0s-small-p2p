@@ -214,7 +214,10 @@ impl AliasService {
                             self.on_msg(from, msg).await;
                         }
                     }
-                    Some(P2pServiceEvent::Stream(..) | P2pServiceEvent::PeerDisconnected(..)) => {},
+                    Some(P2pServiceEvent::Stream(..)) => {},
+                    Some(P2pServiceEvent::PeerDisconnected(peer)) => {
+                        self.internal.on_peer_disconnected(now_ms(), peer);
+                    }
                     None => anyhow::bail!("alias base service channel closed"),
                 },
                 control = self.rx.recv() => {
@@ -395,6 +398,41 @@ impl AliasServiceInternal {
                         }
                         FindRequestState::Scan(_) => {}
                     }
+                }
+            }
+        }
+    }
+
+    fn on_peer_disconnected(&mut self, now: u64, peer: PeerId) {
+        let mut aliases = Vec::new();
+        for ((alias_id, remote_peer), _state) in &self.remote_lifecycle {
+            if *remote_peer == peer {
+                aliases.push(*alias_id);
+            }
+        }
+
+        for alias_id in aliases {
+            self.remote_lifecycle.pop(&(alias_id, peer));
+            self.remove_cache_hint(alias_id, peer);
+        }
+
+        let mut cached_aliases = Vec::new();
+        for (alias_id, peers) in &self.cache {
+            if peers.contains(&peer) {
+                cached_aliases.push(*alias_id);
+            }
+        }
+
+        for alias_id in cached_aliases {
+            self.remove_cache_hint(alias_id, peer);
+        }
+
+        for (alias_id, req) in self.find_reqs.iter_mut() {
+            if let FindRequestState::CheckHint(_, ref mut hint_peers) = req.state {
+                hint_peers.remove(&peer);
+                if hint_peers.is_empty() {
+                    req.state = FindRequestState::Scan(now);
+                    self.outs.push_back(InternalOutput::Broadcast(AliasMessage::Scan(*alias_id)));
                 }
             }
         }
@@ -895,6 +933,86 @@ mod test {
             ctx.collect_outputs(),
             vec![InternalOutput::Unicast(peer, AliasMessage::Check(alias_id))],
             "find must use the valid newer hint"
+        );
+    }
+
+    #[test]
+    fn alias_restart_with_reset_generation_must_restore_hint_after_disconnect() {
+        let mut ctx = TestContext::new();
+        let alias_id = AliasId(7);
+        let peer = PeerId(2);
+
+        ctx.internal.on_msg(ctx.now, peer, AliasMessage::NotifySet(alias_id, 2));
+        assert!(ctx.internal.cache.get(&alias_id).is_some_and(|peers| peers.contains(&peer)));
+
+        ctx.internal.on_msg(ctx.now + 1, peer, AliasMessage::NotifyDel(alias_id, 3));
+        assert!(!ctx.internal.cache.contains(&alias_id));
+
+        ctx.internal.on_peer_disconnected(ctx.now + 2, peer);
+        ctx.internal.on_msg(ctx.now + 3, peer, AliasMessage::NotifySet(alias_id, 1));
+
+        assert!(
+            ctx.internal.cache.get(&alias_id).is_some_and(|peers| peers.contains(&peer)),
+            "a restarted peer with reset alias generation must be able to restore a fresh hint"
+        );
+
+        let (tx, _rx) = oneshot::channel();
+        ctx.internal.on_control(ctx.now + 4, AliasControl::Find(alias_id, tx));
+
+        assert_eq!(
+            ctx.collect_outputs(),
+            vec![InternalOutput::Unicast(peer, AliasMessage::Check(alias_id))],
+            "find must use the fresh post-restart alias hint"
+        );
+    }
+
+    #[test]
+    fn alias_peer_disconnect_must_clear_remote_lifecycle_and_cached_hint() {
+        let mut ctx = TestContext::new();
+        let alias_id = AliasId(7);
+        let peer = PeerId(2);
+
+        ctx.internal.on_msg(ctx.now, peer, AliasMessage::NotifySet(alias_id, 2));
+        assert!(ctx.internal.cache.get(&alias_id).is_some_and(|peers| peers.contains(&peer)));
+        assert!(ctx.internal.remote_lifecycle.contains(&(alias_id, peer)));
+
+        let (tx, _rx) = oneshot::channel();
+        ctx.internal.on_control(ctx.now + 1, AliasControl::Find(alias_id, tx));
+        assert_eq!(ctx.collect_outputs(), vec![InternalOutput::Unicast(peer, AliasMessage::Check(alias_id))]);
+
+        ctx.internal.on_peer_disconnected(ctx.now + 2, peer);
+
+        assert!(!ctx.internal.cache.contains(&alias_id), "disconnect must remove cached alias hints for the peer");
+        assert!(
+            !ctx.internal.remote_lifecycle.contains(&(alias_id, peer)),
+            "disconnect must remove alias lifecycle tombstones for the peer"
+        );
+        assert_eq!(
+            ctx.collect_outputs(),
+            vec![InternalOutput::Broadcast(AliasMessage::Scan(alias_id))],
+            "pending cached-hint lookups must fail over when their checked peer disconnects"
+        );
+    }
+
+    #[test]
+    fn alias_peer_disconnect_must_clear_found_only_cached_hint() {
+        let mut ctx = TestContext::new();
+        let alias_id = AliasId(7);
+        let peer = PeerId(2);
+
+        let (tx, _rx) = oneshot::channel();
+        ctx.internal.on_control(ctx.now, AliasControl::Find(alias_id, tx));
+        assert_eq!(ctx.collect_outputs(), vec![InternalOutput::Broadcast(AliasMessage::Scan(alias_id))]);
+
+        ctx.internal.on_msg(ctx.now + 1, peer, AliasMessage::Found(alias_id));
+        assert!(ctx.internal.cache.get(&alias_id).is_some_and(|peers| peers.contains(&peer)));
+        assert!(!ctx.internal.remote_lifecycle.contains(&(alias_id, peer)), "Found-only cache hints do not create lifecycle entries");
+
+        ctx.internal.on_peer_disconnected(ctx.now + 2, peer);
+
+        assert!(
+            !ctx.internal.cache.contains(&alias_id),
+            "disconnect must remove cache hints that were learned from Found responses without lifecycle state"
         );
     }
 

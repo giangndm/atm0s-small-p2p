@@ -5,11 +5,11 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Audit Status
 
-- Accepted issues: 205
+- Accepted issues: 206
 - Missing issue scores: 0
 - Current consecutive no-new-issue cycles: 0
 - Stop condition: continue until 5 consecutive cycles find no new accepted
-  issue; currently 0/5 after ISSUE-205.
+  issue; currently 0/5 after ISSUE-206.
 - Fix phase status: ISSUE-001, ISSUE-003, ISSUE-004, ISSUE-005, ISSUE-006, ISSUE-007,
   ISSUE-002, ISSUE-008, ISSUE-009, ISSUE-010, ISSUE-011, ISSUE-012, ISSUE-013, ISSUE-014, ISSUE-015, ISSUE-021, ISSUE-024, ISSUE-033, ISSUE-055, ISSUE-103, ISSUE-118, ISSUE-119, ISSUE-120, ISSUE-122, ISSUE-123,
   ISSUE-124, ISSUE-125, ISSUE-126, ISSUE-127, ISSUE-128, ISSUE-129, ISSUE-130,
@@ -19,7 +19,7 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   ISSUE-159, ISSUE-160, ISSUE-161, ISSUE-163, ISSUE-164, ISSUE-053, ISSUE-063, ISSUE-139, ISSUE-146, ISSUE-168, ISSUE-170,
   ISSUE-149, ISSUE-169, ISSUE-174, ISSUE-176, ISSUE-181, ISSUE-189, ISSUE-190, ISSUE-191, ISSUE-192, ISSUE-193,
   ISSUE-194, ISSUE-195, ISSUE-196, ISSUE-197, ISSUE-198, ISSUE-199,
-  ISSUE-200, ISSUE-201, ISSUE-202, ISSUE-203, ISSUE-204, ISSUE-205, ISSUE-097, ISSUE-098, and ISSUE-018 have focused
+  ISSUE-200, ISSUE-201, ISSUE-202, ISSUE-203, ISSUE-204, ISSUE-205, ISSUE-206, ISSUE-097, ISSUE-098, and ISSUE-018 have focused
   fixes committed.
   ISSUE-003 is fixed by `cfc8e57`;
   ISSUE-001 and ISSUE-004 are covered by the ISSUE-170 ownership-validation follow-up
@@ -51,7 +51,7 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   ISSUE-059, ISSUE-071, ISSUE-081 through ISSUE-089, ISSUE-095, ISSUE-099,
   ISSUE-110, ISSUE-111, ISSUE-143,
   ISSUE-166, ISSUE-171, ISSUE-175,
-  ISSUE-186, ISSUE-205.
+  ISSUE-186, ISSUE-205, ISSUE-206.
 - Pattern: replicated-KV, alias, metrics, visualization, and pubsub flows accept
   stale, unsolicited, reordered, or mismatched responses or broadcasts because
   handlers do not verify request shape, bounds, version, continuation key,
@@ -985,6 +985,9 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 - ISSUE-205, score 62: pubsub membership generations reset on restart, so an
   old inactive tombstone can suppress a fresh publisher/subscriber join from
   the same peer id. Reviewer: Noether the 5th.
+- ISSUE-206, score 60: alias lifecycle generations reset on restart, so an
+  inactive alias tombstone can suppress a fresh `NotifySet` from the same peer
+  id. Reviewer: Curie the 6th.
 
 ## Next Candidate To Validate
 

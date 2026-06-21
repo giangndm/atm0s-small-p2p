@@ -6578,6 +6578,62 @@ the source of truth for evidence and reviewer decisions.
     `cargo test stale_pubsub_leave_must_not_remove_membership_after_newer_heartbeat -- --nocapture`
     passes.
 
+### ISSUE-206: Alias lifecycle generations reset on restart
+
+- Category: bad-network correctness, restart recovery, alias lifecycle
+- Score: 60/100
+- Reviewer: `Curie the 6th`, confirmed.
+- Affected code:
+  - `src/service/alias_service.rs`: remote alias lifecycle state is keyed by
+    `(AliasId, PeerId)` and stores only a process-local generation.
+  - `src/service/alias_service.rs`: `accept_remote_lifecycle` rejects
+    `generation <= state.generation`, including fresh post-restart
+    `NotifySet(alias, 1)` messages after an older inactive tombstone.
+  - `src/service/alias_service.rs`: `AliasService` previously ignored
+    `P2pServiceEvent::PeerDisconnected(..)`, so disconnect did not clear alias
+    lifecycle tombstones for a restarted peer.
+- Impact: if peer B observes peer A delete an alias at generation `3`, B keeps
+  an inactive lifecycle tombstone for `(alias, A)`. If A restarts with the same
+  `PeerId`, its alias generation starts from `1`; B rejects the fresh
+  `NotifySet(alias, 1)` and never restores the alias hint. Later alias lookups
+  miss a live restarted peer until lifecycle state is evicted or another
+  higher-generation update appears. This is distinct from ISSUE-158, which
+  covered stale same-process `NotifySet` ordering, and ISSUE-205, which covered
+  the same restart pattern in pubsub membership rather than alias hints.
+- Root cause: alias lifecycle freshness compared only a volatile local
+  generation, then retained remote lifecycle tombstones across authenticated
+  peer disconnect/restart boundaries.
+- Minimal fix proposal: keep same-process generation checks for reordered
+  alias lifecycle broadcasts, but treat authenticated `PeerDisconnected(peer)`
+  as the remote incarnation boundary. On disconnect, remove that peer's alias
+  lifecycle records and cached hints; if a pending cached-hint lookup was
+  checking only that peer, move it to scan state.
+- Fix status: fixed by handling `P2pServiceEvent::PeerDisconnected(peer)` in
+  `AliasService`, removing remote lifecycle entries and cached hints for the
+  disconnected peer, including hints learned from `Found` responses without
+  lifecycle state, and advancing pending cached-hint lookups to scan when their
+  checked peer disappears.
+- Evidence tests:
+  - Red evidence before fix:
+    `cargo test alias_restart_with_reset_generation_must_restore_hint_after_disconnect -- --nocapture`
+    failed at `src/service/alias_service.rs` because
+    `accept_remote_lifecycle` rejected the fresh reset generation.
+  - Verification after fix:
+    `cargo test alias_restart_with_reset_generation_must_restore_hint_after_disconnect -- --nocapture`
+    passes.
+  - Disconnect cleanup guard:
+    `cargo test alias_peer_disconnect_must_clear_remote_lifecycle_and_cached_hint -- --nocapture`
+    passes and ensures disconnect removes alias lifecycle/cache state and
+    moves pending cached-hint lookup to scan.
+  - Found-only cache guard:
+    `cargo test alias_peer_disconnect_must_clear_found_only_cached_hint -- --nocapture`
+    passes and ensures disconnect removes hints learned from `Found` responses
+    that have no corresponding lifecycle entry.
+  - Existing same-process stale-ordering guards:
+    `cargo test stale_notify_set_must_not_resurrect_alias_after_newer_notify_del -- --nocapture`
+    and `cargo test newer_notify_set_must_restore_alias_after_notify_del -- --nocapture`
+    pass.
+
 ## No-New-Issue Audit Cycles
 
 ### Cycle after ISSUE-204 no-new cycle 341: valid churn stale-sync duplicate
