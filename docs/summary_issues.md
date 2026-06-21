@@ -20,7 +20,7 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   ISSUE-094, ISSUE-095, ISSUE-096,
   ISSUE-149, ISSUE-169, ISSUE-174, ISSUE-176, ISSUE-078, ISSUE-079, ISSUE-080, ISSUE-081, ISSUE-082, ISSUE-083, ISSUE-084, ISSUE-085, ISSUE-181, ISSUE-189, ISSUE-190, ISSUE-191, ISSUE-192, ISSUE-193,
   ISSUE-194, ISSUE-195, ISSUE-196, ISSUE-197, ISSUE-198, ISSUE-199,
-  ISSUE-200, ISSUE-201, ISSUE-202, ISSUE-203, ISSUE-204, ISSUE-205, ISSUE-206, ISSUE-207, ISSUE-097, ISSUE-098, ISSUE-099, ISSUE-100, and ISSUE-018 have focused
+  ISSUE-200, ISSUE-201, ISSUE-202, ISSUE-203, ISSUE-204, ISSUE-205, ISSUE-206, ISSUE-207, ISSUE-097, ISSUE-098, ISSUE-099, ISSUE-100, ISSUE-101, and ISSUE-018 have focused
   fixes committed.
   ISSUE-003 is fixed by `cfc8e57`;
   ISSUE-090 is fixed by the alias `Found` request-correlation guard.
@@ -814,6 +814,12 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   entries are pruned before admitting a new unknown remote member. Verified
   with
   `cargo test remote_publisher_memberships_must_be_bounded -- --nocapture`.
+- ISSUE-101: fixed by capping each alias cache hint set at
+  `MAX_ALIAS_HINT_PEERS = 1024` in the shared `insert_cache_hint` path used by
+  `NotifySet` and accepted `Found` responses. Existing peers can refresh at
+  capacity, while new unknown hints are not retained once the per-alias set is
+  full. Verified with
+  `cargo test cached_alias_peer_hints_must_be_bounded -- --nocapture`.
 - ISSUE-130: fixed by `e78c190` (`fix: return errors when alias channels
   close`), which makes `AliasService::run_loop` return `Err(_)` when the
   underlying base service channel closes instead of panicking on

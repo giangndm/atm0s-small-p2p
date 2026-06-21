@@ -2872,6 +2872,11 @@ the source of truth for evidence and reviewer decisions.
   - Failure summary: after 1,025 `NotifySet` messages for one alias from
     distinct peer ids, the cached peer-hint set length is 1,025, exceeding the
     test cap of 1,024.
+- Fix status: fixed by capping each alias cache hint set at
+  `MAX_ALIAS_HINT_PEERS = 1024` in the shared `insert_cache_hint` path used by
+  `NotifySet` and accepted `Found` responses. Existing peers can refresh their
+  lifecycle state at capacity; new unknown hints are not retained once the
+  per-alias set is full.
 
 ### ISSUE-102: Visualization remote peer state is unbounded
 

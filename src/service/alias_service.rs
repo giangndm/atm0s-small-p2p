@@ -29,6 +29,7 @@ use super::{P2pService, P2pServiceEvent, P2pServiceRequester};
 const LRU_CACHE_SIZE: usize = 1_000_000;
 const ALIAS_LIFECYCLE_CACHE_SIZE: usize = 1_000_000;
 pub(crate) const ALIAS_CONTROL_QUEUE_SIZE: usize = 1024;
+const MAX_ALIAS_HINT_PEERS: usize = 1024;
 const HINT_TIMEOUT_MS: u64 = 500;
 const SCAN_TIMEOUT_MS: u64 = 1000;
 
@@ -525,6 +526,9 @@ impl AliasServiceInternal {
                 self.cache.get_or_insert_mut(alias_id, HashSet::new)
             }
         };
+        if !slot.contains(&from) && slot.len() >= MAX_ALIAS_HINT_PEERS {
+            return;
+        }
         slot.insert(from);
     }
 
@@ -1014,17 +1018,66 @@ mod test {
 
     #[test]
     fn cached_alias_peer_hints_must_be_bounded() {
-        const MAX_PEERS_PER_ALIAS: usize = 1024;
         let mut ctx = TestContext::new();
         let alias_id = AliasId(1);
 
-        for peer in 0..=MAX_PEERS_PER_ALIAS {
+        for peer in 0..=MAX_ALIAS_HINT_PEERS {
             ctx.internal.on_msg(ctx.now, PeerId::from(peer as u64 + 10), AliasMessage::NotifySet(alias_id, 1));
         }
 
         let cached_peers = ctx.internal.cache.get(&alias_id).expect("alias should be cached").len();
 
-        assert!(cached_peers <= MAX_PEERS_PER_ALIAS, "cached peer hints for one alias must be bounded, got {cached_peers}");
+        assert!(cached_peers <= MAX_ALIAS_HINT_PEERS, "cached peer hints for one alias must be bounded, got {cached_peers}");
+    }
+
+    #[test]
+    fn cached_alias_existing_peer_refresh_must_work_when_hint_set_full() {
+        let mut ctx = TestContext::new();
+        let alias_id = AliasId(1);
+
+        for peer in 0..MAX_ALIAS_HINT_PEERS {
+            ctx.internal.on_msg(ctx.now, PeerId::from(peer as u64 + 10), AliasMessage::NotifySet(alias_id, 1));
+        }
+
+        let existing = PeerId::from(10);
+        ctx.internal.on_msg(ctx.now + 1, existing, AliasMessage::NotifySet(alias_id, 2));
+
+        let cached_peers = ctx.internal.cache.get(&alias_id).expect("alias should be cached");
+        assert_eq!(cached_peers.len(), MAX_ALIAS_HINT_PEERS);
+        assert!(cached_peers.contains(&existing), "existing cached peer must stay admitted at capacity");
+        assert_eq!(
+            ctx.internal.remote_lifecycle.get(&(alias_id, existing)),
+            Some(&RemoteAliasState { generation: 2, active: true }),
+            "existing peer lifecycle must refresh even when the hint set is full"
+        );
+    }
+
+    #[test]
+    fn found_response_must_not_exceed_alias_hint_cap() {
+        let mut ctx = TestContext::new();
+        let alias_id = AliasId(1);
+
+        for peer in 0..MAX_ALIAS_HINT_PEERS {
+            ctx.internal.on_msg(ctx.now, PeerId::from(peer as u64 + 10), AliasMessage::NotifySet(alias_id, 1));
+        }
+
+        let (tx, mut rx) = oneshot::channel();
+        ctx.internal.find_reqs.insert(
+            alias_id,
+            FindRequest {
+                state: FindRequestState::Scan(ctx.now),
+                waits: vec![tx],
+            },
+        );
+        gauge!(P2P_ALIAS_LIVE_FIND_REQUEST).increment(1);
+
+        let found_peer = PeerId::from(20_000);
+        ctx.internal.on_msg(ctx.now, found_peer, AliasMessage::Found(alias_id));
+
+        assert_eq!(rx.try_recv().expect("scan lookup should complete"), Some(AliasFoundLocation::Scan(found_peer)));
+        let cached_peers = ctx.internal.cache.get(&alias_id).expect("alias should be cached");
+        assert_eq!(cached_peers.len(), MAX_ALIAS_HINT_PEERS, "accepted Found must not grow a full alias hint set");
+        assert!(!cached_peers.contains(&found_peer), "new Found peer must not be retained when the hint set is full");
     }
 
     #[test]
