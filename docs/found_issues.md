@@ -5621,6 +5621,10 @@ the source of truth for evidence and reviewer decisions.
 - Category: lifecycle stability, graceful shutdown, alias authority
 - Score: 53/100
 - Reviewer: `Newton the 3rd`, confirmed after `Cicero the 3rd` discovery.
+- Fix status: fixed. Local alias shutdown now enters a terminal
+  `shutting_down` state, clears local alias ownership, rejects later local
+  `Register` controls, and makes later local `Find` controls return `None`
+  immediately.
 - Affected code:
   - `src/service/alias_service.rs`: `AliasControl::Shutdown` only queues
     `Broadcast(AliasMessage::Shutdown)`.
@@ -5641,12 +5645,21 @@ the source of truth for evidence and reviewer decisions.
   pending finds with `None`, and set a `shutting_down` flag. Later `Register`
   should no-op or fail, and later `Find` should immediately return `None`,
   while preserving a single shutdown broadcast.
+- Root cause: local shutdown announced terminal state to peers but left the
+  in-process alias authority map live and allowed later controls to recreate
+  local ownership.
+- Fix: latch local shutdown in `AliasServiceInternal`, clear `local`, ignore
+  later `Register`, answer later `Find` with `None`, and keep repeated shutdown
+  from broadcasting again.
 - Evidence test:
   - `cargo test local_shutdown_must_stop_serving_local_aliases -- --nocapture`
   - Failure summary: after registering an alias and processing
     `AliasControl::Shutdown`, a later `Find` returns `Ok(Some(Local))` and
     `self.local` still contains the alias; expected `Ok(None)` and cleared
     local ownership.
+  - Fixed verification:
+    `cargo test local_shutdown_must_stop_serving_local_aliases -- --nocapture`
+    passes.
 
 ### ISSUE-180: Relay stream setup can forward back to the ingress peer
 

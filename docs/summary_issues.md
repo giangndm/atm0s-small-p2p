@@ -1320,6 +1320,11 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   `cargo test unused_unidirectional_streams_must_not_be_admitted -- --nocapture`.
 - ISSUE-183, score 53: local alias shutdown keeps serving local aliases.
   Reviewer: Newton the 3rd.
+  Root cause: local shutdown broadcast stopped authority to peers but kept local
+  alias ownership live and accepted later registrations. Fix: latch shutdown,
+  clear local aliases, reject later `Register`, answer later `Find` with `None`,
+  and suppress duplicate shutdown broadcasts. Verification:
+  `cargo test local_shutdown_must_stop_serving_local_aliases -- --nocapture`.
 - ISSUE-184, score 57: replicated KV duplicates in-flight FetchChanged repairs
   for the same gap. Reviewer: Poincare the 3rd.
   Root cause: `WorkingState::apply_pendings` rescheduled the same missing range

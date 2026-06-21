@@ -161,6 +161,7 @@ enum InternalOutput {
 struct AliasServiceInternal {
     local: HashMap<AliasId, u8>,
     local_generations: HashMap<AliasId, u64>,
+    shutting_down: bool,
     cache: LruCache<AliasId, HashSet<PeerId>>,
     remote_lifecycle: LruCache<(AliasId, PeerId), RemoteAliasState>,
     find_reqs: HashMap<AliasId, FindRequest>,
@@ -189,6 +190,7 @@ impl AliasService {
                 outs: VecDeque::new(),
                 local: HashMap::new(),
                 local_generations: HashMap::new(),
+                shutting_down: false,
             },
             interval: tokio::time::interval(Duration::from_secs(1)),
         }
@@ -438,6 +440,9 @@ impl AliasServiceInternal {
     fn on_control(&mut self, now: u64, control: AliasControl) {
         match control {
             AliasControl::Register(alias_id) => {
+                if self.shutting_down {
+                    return;
+                }
                 let was_active = self.local.contains_key(&alias_id);
                 let generation = if was_active {
                     *self.local_generations.entry(alias_id).or_default()
@@ -465,6 +470,11 @@ impl AliasServiceInternal {
                 }
             }
             AliasControl::Find(alias_id, sender) => {
+                if self.shutting_down {
+                    sender.send(None).print_on_err2("[AliasServiceInternal] send shutdown find response");
+                    return;
+                }
+
                 if let Some(req) = self.find_reqs.get_mut(&alias_id) {
                     req.waits.push(sender);
                     return;
@@ -499,6 +509,11 @@ impl AliasServiceInternal {
                 }
             }
             AliasControl::Shutdown => {
+                if self.shutting_down {
+                    return;
+                }
+                self.shutting_down = true;
+                self.local.clear();
                 for (_alias_id, req) in self.find_reqs.drain() {
                     gauge!(P2P_ALIAS_LIVE_FIND_REQUEST).decrement(1);
                     for tx in req.waits {
@@ -581,6 +596,7 @@ mod test {
                     remote_lifecycle: LruCache::new(ALIAS_LIFECYCLE_CACHE_SIZE.try_into().expect("should create NoneZeroUsize")),
                     find_reqs: HashMap::new(),
                     outs: VecDeque::new(),
+                    shutting_down: false,
                 },
                 now: 1000,
             }
@@ -1292,6 +1308,10 @@ mod test {
 
         assert_eq!(rx.try_recv(), Ok(None), "after local shutdown, alias service must not keep resolving aliases as local");
         assert!(!ctx.internal.local.contains_key(&alias_id), "local alias shutdown must clear local alias ownership");
+
+        ctx.internal.on_control(ctx.now + 3, AliasControl::Register(alias_id));
+        assert!(!ctx.internal.local.contains_key(&alias_id), "local alias shutdown must reject later local registrations");
+        assert!(ctx.collect_outputs().is_empty(), "post-shutdown register must not broadcast NotifySet");
     }
 
     #[test]
@@ -1311,6 +1331,9 @@ mod test {
         // Verify broadcast shutdown message
         let outputs = ctx.collect_outputs();
         assert_eq!(outputs, vec![InternalOutput::Broadcast(AliasMessage::Shutdown)]);
+
+        ctx.internal.on_control(ctx.now + 1, AliasControl::Shutdown);
+        assert!(ctx.collect_outputs().is_empty(), "repeated local shutdown must not broadcast again");
 
         // Simulate receiving shutdown message
         ctx.internal.on_msg(ctx.now, peer_addr, AliasMessage::Shutdown);
