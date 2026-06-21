@@ -1353,11 +1353,14 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   Fix: active remote joins now create bounded channel state and reuse the local
   handle replay path; leave/heartbeat messages still do not create missing
   channels, empty remote-only channels are pruned after remote cleanup, and
-  reclaimed inactive roles keep generation tombstones to reject stale joins.
+  reclaimed inactive roles keep generation tombstones to reject stale joins. If
+  tombstone capacity would be exceeded, inactive channel state is retained
+  instead.
   Verification: `cargo test early_remote -- --nocapture`,
   `cargo test remote_created_channel_cap_must_recover -- --nocapture`,
   `cargo test reclaimed_remote -- --nocapture`,
   `cargo test tombstone_must_survive_newer_join_dropped_by_channel_cap -- --nocapture`,
+  `cargo test inactive_channel_must_not_be_reclaimed_when_tombstone_cap_would_drop_generations -- --nocapture`,
   `cargo test remote_publisher_memberships_must_be_bounded -- --nocapture`,
   `cargo test remote_subscriber_memberships_must_be_bounded -- --nocapture`,
   and `cargo fmt -- --check`.

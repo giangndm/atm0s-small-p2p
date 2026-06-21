@@ -390,6 +390,13 @@ impl PubsubService {
                 .filter_map(|(channel, state)| state.is_inactive_remote_only().then_some(*channel))
                 .collect::<Vec<_>>();
             for inactive_channel in inactive_channels {
+                let Some(state) = self.channels.get(&inactive_channel) else {
+                    continue;
+                };
+                let slots_needed = self.remote_role_tombstone_slots_needed(inactive_channel, state);
+                if self.remote_role_tombstones.len() + slots_needed > MAX_REMOTE_ROLE_TOMBSTONES {
+                    continue;
+                }
                 if let Some(state) = self.channels.remove(&inactive_channel) {
                     self.remember_remote_role_tombstones(inactive_channel, state);
                 }
@@ -400,6 +407,21 @@ impl PubsubService {
             }
         }
         Some(self.channels.entry(channel).or_default())
+    }
+
+    fn remote_role_tombstone_slots_needed(&self, channel: PubsubChannelId, state: &PubsubChannelState) -> usize {
+        let mut peers = HashSet::new();
+        for (peer, role) in &state.remote_publishers {
+            if !role.active && !self.remote_role_tombstones.contains_key(&(channel, *peer)) {
+                peers.insert(*peer);
+            }
+        }
+        for (peer, role) in &state.remote_subscribers {
+            if !role.active && !self.remote_role_tombstones.contains_key(&(channel, *peer)) {
+                peers.insert(*peer);
+            }
+        }
+        peers.len()
     }
 
     fn remember_remote_role_tombstones(&mut self, channel: PubsubChannelId, state: PubsubChannelState) {
@@ -2138,6 +2160,69 @@ mod test {
         assert!(
             !service.channels.get(&stale_channel).expect("subscriber should create channel").has_remote_publisher(remote),
             "dropped newer join must not clear tombstone and allow stale publisher resurrection"
+        );
+        assert!(sub_rx.try_recv().is_err(), "stale publisher join must not notify a later local subscriber");
+    }
+
+    #[tokio::test]
+    async fn inactive_channel_must_not_be_reclaimed_when_tombstone_cap_would_drop_generations() {
+        let mut service = test_service();
+        let inactive_channels = [PubsubChannelId(10), PubsubChannelId(11), PubsubChannelId(12)];
+
+        for channel in inactive_channels {
+            for peer in 0..MAX_REMOTE_MEMBERS_PER_CHANNEL {
+                let peer = PeerId::from(peer as u64 + channel.0 * 10_000 + 1);
+                service
+                    .on_service(P2pServiceEvent::Unicast(peer, encode_publisher_joined_for_test(channel)))
+                    .await
+                    .expect("early remote publisher join should be processed");
+                service
+                    .on_service(P2pServiceEvent::Unicast(peer, encode_publisher_leaved_for_test(channel, 2)))
+                    .await
+                    .expect("remote publisher leave should be processed");
+            }
+        }
+
+        for channel in 0..(MAX_REMOTE_CREATED_CHANNELS - 3) {
+            let (sub_tx, _sub_rx) = subscriber_event_channel();
+            service
+                .on_internal(InternalMsg::SubscriberCreated(
+                    subscriber_handle(SubscriberLocalId::rand()),
+                    PubsubChannelId(channel as u64 + 100_000),
+                    sub_tx,
+                ))
+                .await
+                .expect("local subscriber should make channel non-reclaimable");
+        }
+        assert_eq!(service.channels.len(), MAX_REMOTE_CREATED_CHANNELS);
+
+        service
+            .on_service(P2pServiceEvent::Unicast(PeerId::from(99_999), encode_publisher_joined_for_test(PubsubChannelId(999_999))))
+            .await
+            .expect("cap pressure should reclaim only channels whose tombstones fit");
+
+        let protected_channel = inactive_channels
+            .into_iter()
+            .find(|channel| service.channels.contains_key(channel))
+            .expect("at least one inactive channel should remain when tombstone cap would overflow");
+        let protected_peer = PeerId::from(protected_channel.0 * 10_000 + 1);
+        assert!(
+            service.channels.contains_key(&protected_channel),
+            "inactive channel must stay resident when reclaiming it would drop stale-generation tombstones"
+        );
+        service
+            .on_service(P2pServiceEvent::Unicast(protected_peer, encode_publisher_joined_for_test(protected_channel)))
+            .await
+            .expect("stale publisher join should be rejected by retained channel state");
+        let (sub_tx, mut sub_rx) = subscriber_event_channel();
+        service
+            .on_internal(InternalMsg::SubscriberCreated(subscriber_handle(SubscriberLocalId::rand()), protected_channel, sub_tx))
+            .await
+            .expect("subscriber should be registered");
+
+        assert!(
+            !service.channels.get(&protected_channel).expect("protected channel should remain").has_remote_publisher(protected_peer),
+            "retained inactive channel must continue rejecting delayed stale joins after tombstone cap pressure"
         );
         assert!(sub_rx.try_recv().is_err(), "stale publisher join must not notify a later local subscriber");
     }

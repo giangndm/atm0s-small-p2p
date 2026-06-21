@@ -6234,11 +6234,14 @@ the source of truth for evidence and reviewer decisions.
   unbounded remote-only channels; disconnect and heartbeat-omission cleanup prune
   remote-only channels once they become empty. Inactive remote-only channel
   reclamation preserves per-role generation tombstones so delayed older joins
-  cannot resurrect removed membership. Verification:
+  cannot resurrect removed membership; if tombstone capacity would be exceeded,
+  the inactive channel remains resident and continues rejecting stale joins.
+  Verification:
   `cargo test early_remote -- --nocapture`,
   `cargo test remote_created_channel_cap_must_recover -- --nocapture`,
   `cargo test reclaimed_remote -- --nocapture`,
   `cargo test tombstone_must_survive_newer_join_dropped_by_channel_cap -- --nocapture`,
+  `cargo test inactive_channel_must_not_be_reclaimed_when_tombstone_cap_would_drop_generations -- --nocapture`,
   `cargo test remote_publisher_memberships_must_be_bounded -- --nocapture`,
   `cargo test remote_subscriber_memberships_must_be_bounded -- --nocapture`,
   and `cargo fmt -- --check`.
