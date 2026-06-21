@@ -16,7 +16,7 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   ISSUE-131, ISSUE-132, ISSUE-133, ISSUE-134, ISSUE-135, ISSUE-136, ISSUE-137,
   ISSUE-140, ISSUE-143, ISSUE-145, ISSUE-147, ISSUE-148, ISSUE-150, ISSUE-151,
   ISSUE-152, ISSUE-153, ISSUE-154, ISSUE-155, ISSUE-156, ISSUE-157, ISSUE-158,
-  ISSUE-159, ISSUE-160, ISSUE-161, ISSUE-163, ISSUE-164, ISSUE-053, ISSUE-063, ISSUE-091, ISSUE-139, ISSUE-146, ISSUE-168, ISSUE-170,
+  ISSUE-159, ISSUE-160, ISSUE-161, ISSUE-163, ISSUE-164, ISSUE-053, ISSUE-063, ISSUE-086, ISSUE-091, ISSUE-139, ISSUE-146, ISSUE-168, ISSUE-170,
   ISSUE-149, ISSUE-169, ISSUE-174, ISSUE-176, ISSUE-181, ISSUE-189, ISSUE-190, ISSUE-191, ISSUE-192, ISSUE-193,
   ISSUE-194, ISSUE-195, ISSUE-196, ISSUE-197, ISSUE-198, ISSUE-199,
   ISSUE-200, ISSUE-201, ISSUE-202, ISSUE-203, ISSUE-204, ISSUE-205, ISSUE-206, ISSUE-207, ISSUE-097, ISSUE-098, and ISSUE-018 have focused
@@ -265,8 +265,10 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   only for an active pending `FetchChanged { from, count }`, validates returned
   versions against the pending range, rejects duplicates and zero-count pending
   repairs, and sends a follow-up request for the remaining range after a valid
-  partial response. This makes a delayed narrow response to an older repair
-  continue, rather than cancel, the newer wider repair. Verification:
+  partial response. This also closes ISSUE-086 because unsolicited
+  `FetchChanged` success responses are rejected before slot/version mutation or
+  event emission. Verification:
+  `cargo test working_state_must_reject_unsolicited_fetch_changed_success -- --nocapture`,
   `cargo test working_state_must_not_let_stale_fetch_changed_response_cancel_newer_repair -- --nocapture`
   and
   `cargo test working_state_must_continue_repair_after_partial_fetch_changed_success -- --nocapture`.

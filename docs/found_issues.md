@@ -2356,6 +2356,12 @@ the source of truth for evidence and reviewer decisions.
     response containing `Changed { version: Version(1), ... }` advances
     `state.version` from `Version(0)` to `Version(1)`; expected it to be
     rejected.
+- Fix status: fixed by the `WorkingState::on_rpc_res` request-correlation
+  guard from the partial-repair validation work. `FetchChanged(Ok(_))` is
+  accepted only when `self.sending_req` is an active pending
+  `RpcReq::FetchChanged { from, count }`; otherwise it returns before applying
+  changes, advancing versions, mutating slots, clearing pending state, or
+  emitting local events.
 
 ### ISSUE-087: Replicated KV accepts unsolicited FetchChanged errors as forced resyncs
 
