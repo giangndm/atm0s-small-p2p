@@ -156,7 +156,7 @@ impl PeerConnectionInternal {
             return Ok(());
         };
         let stream = P2pQuicStream::new(recv, send);
-        tokio::spawn(accept_bi(self.to_id, stream, self.ctx.clone(), permit));
+        tokio::spawn(accept_bi(self.conn_id, self.to_id, stream, self.ctx.clone(), permit));
         Ok(())
     }
 
@@ -398,7 +398,7 @@ async fn open_bi(connection: Connection, source: PeerId, dest: PeerId, service: 
     .map_err(|_| anyhow!("open_bi stream setup timed out"))?
 }
 
-async fn accept_bi(authenticated_ingress_peer: PeerId, mut stream: P2pQuicStream, ctx: SharedCtx, _permit: OwnedSemaphorePermit) -> anyhow::Result<()> {
+async fn accept_bi(ingress: ConnectionId, authenticated_ingress_peer: PeerId, mut stream: P2pQuicStream, ctx: SharedCtx, _permit: OwnedSemaphorePermit) -> anyhow::Result<()> {
     let req = tokio::time::timeout(ACCEPT_BI_INITIAL_REQ_TIMEOUT, wait_object::<_, StreamConnectReq, MAX_CONTROL_STREAM_PKT>(&mut stream))
         .await
         .map_err(|_| anyhow!("stream connect request timed out"))??;
@@ -433,6 +433,11 @@ async fn accept_bi(authenticated_ingress_peer: PeerId, mut stream: P2pQuicStream
                 write_object::<_, _, MAX_CONTROL_STREAM_PKT>(&mut stream, &Err::<(), _>("service not found".to_string())).await?;
                 Err(anyhow!("service not found"))
             }
+        }
+        Some(RouteAction::Next(next)) if next == ingress => {
+            log::warn!("[PeerConnectionInternal {authenticated_ingress_peer}] reject stream relay to {dest}: next hop {next} is ingress connection");
+            write_object::<_, _, MAX_CONTROL_STREAM_PKT>(&mut stream, &Err::<(), _>("route loop".to_string())).await?;
+            Err(anyhow!("route loop"))
         }
         Some(RouteAction::Next(next)) => {
             if let Some(alias) = ctx.conn(&next) {

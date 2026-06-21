@@ -5666,6 +5666,9 @@ the source of truth for evidence and reviewer decisions.
 - Category: correctness, stream relay stability, route-loop handling
 - Score: 64/100
 - Reviewer: `Carver the 3rd`, confirmed after `Heisenberg the 3rd` discovery.
+- Fix status: fixed. Inbound stream handling now carries the ingress
+  `ConnectionId` into `accept_bi` and rejects relay decisions whose next hop is
+  that same ingress connection before opening another stream.
 - Affected code:
   - `src/peer/peer_internal.rs`: `PeerConnectionInternal::on_accept_bi`
     spawns `accept_bi` without passing the ingress `ConnectionId`.
@@ -5687,12 +5690,22 @@ the source of truth for evidence and reviewer decisions.
   `RouteAction::Next(next)` equals that ingress connection, write
   `Err("route loop")` to the upstream stream and return. A broader hardening
   can add a hop limit or visited-path token to `StreamConnectReq`.
+- Root cause: accepted stream setup tasks knew the authenticated previous-hop
+  peer id but not the connection id that delivered the stream, so they could not
+  reject a relay decision pointing back to ingress.
+- Fix: pass `self.conn_id` from `on_accept_bi` into `accept_bi`, and return a
+  prompt `route loop` stream-connect error when `RouteAction::Next(next)` equals
+  that ingress connection. Valid local delivery and relay to different
+  connections remain unchanged.
 - Evidence test:
   - `cargo test relay_stream_must_not_forward_back_to_ingress_peer -- --nocapture`
   - Failure summary: node1 and node2 are given route state where `PeerId(99)`
     routes through each other. `service1.open_stream(PeerId(99), ...)` does not
     return an error within 500 ms and the test fails with `Elapsed(())`;
     expected prompt rejection instead of recursive relay setup.
+  - Fixed verification:
+    `cargo test relay_stream_must_not_forward_back_to_ingress_peer -- --nocapture`
+    passes.
 
 ### ISSUE-181: Local advertise config can gossip unroutable wildcard addresses
 

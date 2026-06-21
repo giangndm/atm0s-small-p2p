@@ -1317,6 +1317,12 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   `cargo test local_shutdown_must_fail_pending_alias_finds -- --nocapture`.
 - ISSUE-180, score 64: relay stream setup can forward back to the ingress peer.
   Reviewer: Carver the 3rd.
+  Root cause: accepted stream relay tasks lacked the ingress `ConnectionId`, so
+  they could not reject `RouteAction::Next(next)` when `next` was the connection
+  that delivered the stream request. Fix: pass the ingress id into `accept_bi`
+  and return a prompt `route loop` stream-connect error for ingress-loop relay
+  decisions. Verification:
+  `cargo test relay_stream_must_not_forward_back_to_ingress_peer -- --nocapture`.
 - ISSUE-181, score 45: local advertise config can gossip unroutable wildcard
   addresses. Reviewer: Nash the 3rd.
 - ISSUE-182, score 52: QUIC admits unused unidirectional streams. Reviewer:
