@@ -7,7 +7,7 @@ use futures::{stream::FuturesUnordered, FutureExt, StreamExt};
 use serde::{Deserialize, Serialize};
 use tokio::{select, task::JoinHandle, time::Interval};
 
-use crate::{peer::PeerConnectionMetric, ConnectionId, ErrorExt, P2pServiceEvent, PeerId};
+use crate::{peer::PeerConnectionMetric, ConnectionId, P2pServiceEvent, PeerId};
 
 use super::P2pService;
 
@@ -123,6 +123,7 @@ pub(crate) fn encode_scan_for_test() -> Vec<u8> {
 
 const DEFAULT_COLLECTOR_INTERVAL: u64 = 1;
 const SCAN_RESPONSE_SEND_TIMEOUT: Duration = Duration::from_secs(1);
+const SCAN_RESPONSE_RETRY_DELAY: Duration = Duration::from_millis(5);
 const SCAN_BROADCAST_SEND_TIMEOUT: Duration = Duration::from_secs(1);
 const MAX_METRICS_PER_INFO: usize = 1024;
 
@@ -162,11 +163,27 @@ impl MetricsService {
         let requester = self.service.requester();
         let data = bincode::serialize(&Message::Info(metrics)).expect("should convert to buf");
         self.scan_response_tasks.push(tokio::spawn(async move {
-            // Wait through transient peer-control backpressure, but do not keep
-            // a detached response task alive forever for a stuck peer.
-            match tokio::time::timeout(SCAN_RESPONSE_SEND_TIMEOUT, requester.send_unicast(from, data)).await {
-                Ok(result) => result.print_on_err("send metrics info to collector error"),
-                Err(_) => log::warn!("send metrics info to collector timed out"),
+            let deadline = tokio::time::Instant::now() + SCAN_RESPONSE_SEND_TIMEOUT;
+            loop {
+                let now = tokio::time::Instant::now();
+                if now >= deadline {
+                    log::warn!("send metrics info to collector timed out");
+                    break;
+                }
+
+                let remaining = deadline.saturating_duration_since(now);
+                match tokio::time::timeout(remaining, requester.send_unicast_unacked(from, data.clone())).await {
+                    Ok(Ok(())) => break,
+                    Ok(Err(err)) if tokio::time::Instant::now() >= deadline => {
+                        log::warn!("send metrics info to collector timed out: {err}");
+                        break;
+                    }
+                    Ok(Err(_)) => tokio::time::sleep(SCAN_RESPONSE_RETRY_DELAY).await,
+                    Err(_) => {
+                        log::warn!("send metrics info to collector timed out");
+                        break;
+                    }
+                }
             }
             from
         }));

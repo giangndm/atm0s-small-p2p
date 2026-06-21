@@ -83,6 +83,10 @@ impl P2pServiceRequester {
         self.ctx.send_unicast(self.service, dest, data).await
     }
 
+    pub(crate) async fn send_unicast_unacked(&self, dest: PeerId, data: Vec<u8>) -> anyhow::Result<()> {
+        self.ctx.send_unicast_unacked(self.service, dest, data).await
+    }
+
     pub async fn send_broadcast(&self, data: Vec<u8>) -> anyhow::Result<usize> {
         self.ctx.send_broadcast(self.service, data).await
     }

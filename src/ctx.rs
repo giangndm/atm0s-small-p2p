@@ -287,6 +287,22 @@ impl SharedCtx {
         }
     }
 
+    pub(crate) async fn send_unicast_unacked(&self, service_id: P2pServiceId, dest: PeerId, data: Vec<u8>) -> anyhow::Result<()> {
+        let next = self.router.action(&dest).ok_or(anyhow!("route not found"))?;
+        match next {
+            RouteAction::Local => {
+                anyhow::bail!("unsupported send to local node")
+            }
+            RouteAction::Next(next) => {
+                let source = self.router.local_id();
+                self.conn(&next)
+                    .ok_or(anyhow!("peer not found {next}"))?
+                    .send(PeerMessage::Unicast(source, dest, service_id, data))
+                    .await
+            }
+        }
+    }
+
     pub fn try_send_broadcast(&self, service_id: P2pServiceId, data: Vec<u8>) -> anyhow::Result<usize> {
         let msg_id = BroadcastMsgId::rand();
         let source = self.router.local_id();

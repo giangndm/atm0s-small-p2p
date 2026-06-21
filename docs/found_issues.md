@@ -6784,18 +6784,18 @@ the source of truth for evidence and reviewer decisions.
   backpressure
 - Score: 55/100
 - Reviewer: `Ramanujan the 3rd`, confirmed after `Aquinas the 3rd` discovery.
-- Fix status: fixed by awaiting `requester.send_unicast(...)` with
-  `SCAN_RESPONSE_SEND_TIMEOUT` and tracking `pending_scan_responses` so one
-  response per scanned peer can remain in flight through transient
-  peer-control backpressure.
+- Fix status: fixed by routing metrics scan replies through a bounded unacked
+  response path and retrying until `SCAN_RESPONSE_SEND_TIMEOUT`, while tracking
+  `pending_scan_responses` so one response per scanned peer can remain in flight
+  through transient peer-control backpressure.
 - Affected code:
   - `src/service/metrics_service.rs`: when a `Message::Scan` arrives, the
     service gathers metrics, inserts the source peer into
     `pending_scan_responses`, and spawns one bounded response task for that
     peer.
-  - `src/service/metrics_service.rs`: that task awaits
-    `requester.send_unicast(...)` under `SCAN_RESPONSE_SEND_TIMEOUT`, then
-    returns the peer id so the pending-response set can be cleared.
+  - `src/service/metrics_service.rs`: that task retries
+    `requester.send_unicast_unacked(...)` under `SCAN_RESPONSE_SEND_TIMEOUT`,
+    then returns the peer id so the pending-response set can be cleared.
 - Impact: after a metrics `Scan` is accepted, a transiently full next-hop
   peer-control queue no longer drops the `Info` response immediately; the
   response task waits through temporary backpressure and is bounded by a

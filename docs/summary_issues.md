@@ -972,10 +972,10 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   visualization scan-broadcast coalescing, ISSUE-204 remains separate for
   metrics response accumulation, and ISSUE-079/related issues remain separate
   for unauthorized topology disclosure.
-- ISSUE-202: fixed by awaiting `requester.send_unicast(...)` with
-  `SCAN_RESPONSE_SEND_TIMEOUT` and tracking `pending_scan_responses`, so a
-  metrics scan response waits through transient peer-control backpressure
-  instead of being dropped immediately. Verified with
+- ISSUE-202: fixed by retrying metrics scan replies through a bounded unacked
+  response path until `SCAN_RESPONSE_SEND_TIMEOUT`, while tracking
+  `pending_scan_responses`, so a metrics scan response waits through transient
+  peer-control backpressure instead of being dropped immediately. Verified with
   `cargo test metrics_scan_response_must_not_be_dropped_when_peer_control_queue_is_full -- --nocapture`
   and `cargo fmt -- --check`. ISSUE-204 remains separate for duplicate
   response-task accumulation under sustained backpressure, and broad metrics

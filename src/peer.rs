@@ -1115,7 +1115,7 @@ mod tests {
         let (base_service, service_tx) = P2pService::build(P2pServiceId::from(9), ctx);
         let mut metrics = MetricsService::new(None, base_service, false);
         service_tx
-            .send(P2pServiceEvent::Unicast(peer, encode_metrics_scan_for_test()))
+            .send(P2pServiceEvent::Broadcast(peer, encode_metrics_scan_for_test()))
             .await
             .expect("test service queue should accept scan");
 
@@ -1203,7 +1203,7 @@ mod tests {
         let mut metrics = MetricsService::new(None, base_service, false);
         for _ in 0..8 {
             service_tx
-                .send(P2pServiceEvent::Unicast(peer, encode_metrics_scan_for_test()))
+                .send(P2pServiceEvent::Broadcast(peer, encode_metrics_scan_for_test()))
                 .await
                 .expect("test service queue should accept scan");
             let _ = tokio::time::timeout(Duration::from_millis(20), metrics.recv()).await;
