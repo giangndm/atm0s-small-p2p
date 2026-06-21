@@ -1073,6 +1073,28 @@ async fn connect_to_own_peer_address_must_fail() {
 }
 
 #[tokio::test]
+async fn best_effort_connect_to_own_peer_address_must_not_create_neighbour() {
+    let (mut node, addr) = create_node(false, 1, vec![]).await;
+
+    let event = node.process_connect(addr, None).expect("best-effort self-connect should process");
+
+    assert_eq!(event, P2pNetworkEvent::Continue);
+    assert_eq!(node.neighbours.len(), 0, "best-effort self-connect must not insert a neighbour or start a dial");
+}
+
+#[tokio::test]
+async fn awaited_connect_to_own_peer_address_must_error_without_neighbour() {
+    let (mut node, addr) = create_node(false, 1, vec![]).await;
+    let (tx, rx) = tokio::sync::oneshot::channel();
+
+    let event = node.process_connect(addr, Some(tx)).expect("awaited self-connect should process");
+
+    assert_eq!(event, P2pNetworkEvent::Continue);
+    assert!(rx.await.expect("connect response should be sent").is_err(), "awaited self-connect must return Err");
+    assert_eq!(node.neighbours.len(), 0, "awaited self-connect must not insert a neighbour or start a dial");
+}
+
+#[tokio::test]
 async fn concurrent_connects_to_same_peer_must_be_coalesced() {
     let (mut node1, addr1) = create_node(true, 1, vec![]).await;
     tokio::spawn(async move { while node1.recv().await.is_ok() {} });

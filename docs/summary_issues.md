@@ -20,7 +20,7 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   ISSUE-094, ISSUE-095, ISSUE-096,
   ISSUE-149, ISSUE-169, ISSUE-174, ISSUE-176, ISSUE-078, ISSUE-079, ISSUE-080, ISSUE-081, ISSUE-082, ISSUE-083, ISSUE-084, ISSUE-085, ISSUE-181, ISSUE-189, ISSUE-190, ISSUE-191, ISSUE-192, ISSUE-193,
   ISSUE-194, ISSUE-195, ISSUE-196, ISSUE-197, ISSUE-198, ISSUE-199,
-  ISSUE-200, ISSUE-201, ISSUE-202, ISSUE-203, ISSUE-204, ISSUE-205, ISSUE-206, ISSUE-207, ISSUE-097, ISSUE-098, ISSUE-099, ISSUE-100, ISSUE-101, ISSUE-102, ISSUE-104, ISSUE-105, ISSUE-106, ISSUE-107, ISSUE-108, ISSUE-109, and ISSUE-018 have focused
+  ISSUE-200, ISSUE-201, ISSUE-202, ISSUE-203, ISSUE-204, ISSUE-205, ISSUE-206, ISSUE-207, ISSUE-097, ISSUE-098, ISSUE-099, ISSUE-100, ISSUE-101, ISSUE-102, ISSUE-104, ISSUE-105, ISSUE-106, ISSUE-107, ISSUE-108, ISSUE-109, ISSUE-112, and ISSUE-018 have focused
   fixes committed.
   ISSUE-003 is fixed by `cfc8e57`;
   ISSUE-090 is fixed by the alias `Found` request-correlation guard.
@@ -886,6 +886,20 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   `cargo test cached_hint_find_must_ignore_found_from_unchecked_peer -- --nocapture`,
   `cargo test test_find_cached_alias_found -- --nocapture`, and
   `cargo test found_response_must_not_exceed_alias_hint_cap -- --nocapture`.
+- ISSUE-112: fixed by rejecting `addr.peer_id() == self.local_id` at the start
+  of `P2pNetwork::process_connect`, before duplicate suppression or QUIC
+  dialing. Awaited self-connects return `Err(_)` through the oneshot, while
+  best-effort self-connects no-op without inserting neighbours or starting a
+  dial. Verified with
+  `cargo test connect_to_own_peer_address_must_fail -- --nocapture`,
+  `cargo test best_effort_connect_to_own_peer_address_must_not_create_neighbour -- --nocapture`,
+  `cargo test awaited_connect_to_own_peer_address_must_error_without_neighbour -- --nocapture`,
+  `cargo test awaited_connect_must_error_while_same_peer_connect_is_pending -- --nocapture`,
+  and
+  `cargo test concurrent_connects_to_same_peer_must_be_coalesced -- --nocapture`.
+  `cargo test connect_must_fail_when_remote_peer_id_does_not_match_address -- --nocapture`
+  still fails in current source and remains separate from this self-connect
+  guard.
 - ISSUE-130: fixed by `e78c190` (`fix: return errors when alias channels
   close`), which makes `AliasService::run_loop` return `Err(_)` when the
   underlying base service channel closes instead of panicking on

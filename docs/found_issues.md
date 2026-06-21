@@ -3258,6 +3258,20 @@ the source of truth for evidence and reviewer decisions.
   - `cargo test connect_to_own_peer_address_must_fail -- --nocapture`
   - Failure summary: `connect()` to the node's own advertised `PeerAddress`
     returns `Ok(())`; expected the self-connect target to be rejected.
+- Fix status: fixed by rejecting `addr.peer_id() == self.local_id` at the
+  start of `P2pNetwork::process_connect`, before duplicate suppression or QUIC
+  dialing. Awaited self-connect requests receive `Err(_)` through the response
+  oneshot; best-effort self-connect requests become a no-op and do not insert a
+  neighbour or start a dial. Verified with
+  `cargo test connect_to_own_peer_address_must_fail -- --nocapture`,
+  `cargo test best_effort_connect_to_own_peer_address_must_not_create_neighbour -- --nocapture`,
+  `cargo test awaited_connect_to_own_peer_address_must_error_without_neighbour -- --nocapture`,
+  `cargo test awaited_connect_must_error_while_same_peer_connect_is_pending -- --nocapture`,
+  and
+  `cargo test concurrent_connects_to_same_peer_must_be_coalesced -- --nocapture`.
+  `cargo test connect_must_fail_when_remote_peer_id_does_not_match_address -- --nocapture`
+  still fails in current source and remains separate from this self-connect
+  guard.
 
 ### ISSUE-113: concurrent `connect()` calls to the same peer are not coalesced
 

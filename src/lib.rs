@@ -411,6 +411,14 @@ impl<SECURE: HandshakeProtocol> P2pNetwork<SECURE> {
     }
 
     fn process_connect(&mut self, addr: PeerAddress, tx: Option<oneshot::Sender<anyhow::Result<()>>>) -> anyhow::Result<P2pNetworkEvent> {
+        if addr.peer_id() == self.local_id {
+            let res = Err(anyhow!("refuse to connect to local peer {}", self.local_id));
+            if let Some(tx) = tx {
+                tx.send(res).print_on_err2("[P2pNetwork] send connect answer");
+            }
+            return Ok(P2pNetworkEvent::Continue);
+        }
+
         let res = if self.neighbours.has_peer_connection_attempt(&addr.peer_id()) {
             if tx.is_some() {
                 Err(anyhow!("connection attempt to peer {} already exists", addr.peer_id()))
