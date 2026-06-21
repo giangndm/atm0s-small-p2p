@@ -1294,6 +1294,14 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   non-deterministic serialization. Reviewer: Hypatia the 3rd.
 - ISSUE-175, score 42: replicated KV emits delete changes for keys that were
   never present. Reviewer: Volta the 3rd.
+  Root cause: local and remote delete paths emitted visible delete events before
+  checking whether the key existed in current state. Fix: make local absent
+  deletes no-op before version/changelog mutation, and make ordered remote
+  deletes advance protocol version while emitting `KvEvent::Del` only after an
+  actual slot removal. Verification:
+  `cargo test deleting_absent_key_must_not_emit_delete_event -- --nocapture`
+  and
+  `cargo test remote_delete_for_absent_key_must_not_emit_delete_event -- --nocapture`.
 - ISSUE-176, score 66: shared-key handshake response tokens are replayable.
   Reviewer: Harvey the 3rd.
 - ISSUE-177, score 38: `connect()` reports success for a different address

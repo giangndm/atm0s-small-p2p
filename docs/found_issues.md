@@ -6093,6 +6093,10 @@ the source of truth for evidence and reviewer decisions.
 - Category: correctness, replicated-KV API semantics, noisy state changes
 - Score: 42/100
 - Reviewer: `Volta the 3rd`, confirmed after `Gibbs the 3rd` discovery.
+- Fix status: fixed. Local deletes now no-op before version/changelog/event
+  mutation when the key is absent, and ordered remote deletes still advance the
+  replicated protocol version but emit a visible `KvEvent::Del` only if the
+  consumer actually had the key.
 - Affected code:
   - `src/service/replicate_kv_service/local_storage.rs`: `LocalStore::del`
     increments the local version, records and broadcasts
@@ -6115,12 +6119,27 @@ the source of truth for evidence and reviewer decisions.
   still advance protocol version for valid ordered deletes, but emit
   `KvEvent::Del(Some(remote), key)` only when `ctx.slots.remove(&key)` returns
   `Some(_)`.
+- Root cause: delete handling emitted visible delete events before proving that
+  the local or replicated state contained the key.
+- Fix: check/remove the slot first. Local absent deletes return before creating a
+  replicated mutation; remote ordered deletes keep version progress but suppress
+  the public delete event when there was no visible slot.
 - Evidence test:
   - `cargo test deleting_absent_key_must_not_emit_delete_event -- --nocapture`
   - Failure summary: calling `LocalStore::del(99)` on an empty store queues
     `NetEvent::Broadcast(Changed { key: 99, version: Version(1), action: Del })`
     and advances version; expected no output and version `0` because the key
     was never present.
+  - `cargo test remote_delete_for_absent_key_must_not_emit_delete_event -- --nocapture`
+  - Failure summary: a valid ordered remote `Changed { key: 7, version:
+    Version(1), action: Del }` advances the remote working version but emits
+    `KvEvent::Del(Some(1), 7)` even though the consumer has no slot for key `7`;
+    expected version progress with no visible delete event.
+  - Fixed verification:
+    `cargo test deleting_absent_key_must_not_emit_delete_event -- --nocapture`
+    and
+    `cargo test remote_delete_for_absent_key_must_not_emit_delete_event -- --nocapture`
+    pass.
 
 ### ISSUE-172: Outbound peer setup hangs while writing ConnectReq to stalled peer
 

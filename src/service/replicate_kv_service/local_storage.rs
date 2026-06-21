@@ -52,6 +52,9 @@ where
     }
 
     pub fn del(&mut self, key: K) {
+        if self.slots.remove(&key).is_none() {
+            return;
+        }
         self.version = self.version + 1;
         let version = self.version;
         let changed = Changed {
@@ -65,7 +68,6 @@ where
         while self.changeds.len() > self.max_changeds {
             self.changeds.pop_first();
         }
-        self.slots.remove(&key);
     }
 
     pub fn on_rpc_req(&mut self, from_node: N, req: RpcReq<K>) {

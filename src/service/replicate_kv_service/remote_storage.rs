@@ -485,8 +485,9 @@ where
                     }
                     Action::Del => {
                         log::debug!("[RemoteStore {:?}] apply del k {:?} => version {:?}", ctx.remote, data.key, data.version);
-                        ctx.outs.push_back(Event::KvEvent(KvEvent::Del(Some(ctx.remote.clone()), data.key.clone())));
-                        ctx.slots.remove(&data.key);
+                        if ctx.slots.remove(&data.key).is_some() {
+                            ctx.outs.push_back(Event::KvEvent(KvEvent::Del(Some(ctx.remote.clone()), data.key.clone())));
+                        }
                     }
                 }
                 self.clear_satisfied_fetch_changed();
@@ -1353,6 +1354,33 @@ mod tests {
         assert_eq!(ctx.next_state, None);
         assert_eq!(ctx.outs.pop_front(), Some(Event::KvEvent(KvEvent::Set(Some(1), 1, 1))));
         assert_eq!(ctx.outs.pop_front(), None);
+    }
+
+    #[test]
+    fn remote_delete_for_absent_key_must_not_emit_delete_event() {
+        let mut ctx: StateCtx<u16, u16, u16> = StateCtx {
+            remote: 1,
+            slots: BTreeMap::new(),
+            outs: VecDeque::new(),
+            next_state: None,
+        };
+
+        let now = Instant::now();
+        let mut state = WorkingState::new(Version(0));
+
+        state.on_broadcast(
+            &mut ctx,
+            now,
+            BroadcastEvent::Changed(Changed {
+                key: 7,
+                version: Version(1),
+                action: Action::Del,
+            }),
+        );
+
+        assert_eq!(state.version, Version(1), "a valid ordered remote delete must still advance protocol version");
+        assert_eq!(ctx.slots, BTreeMap::new());
+        assert_eq!(ctx.outs.pop_front(), None, "remote delete for an absent key must not emit a visible delete event");
     }
 
     /// start with zero but got out of sync
