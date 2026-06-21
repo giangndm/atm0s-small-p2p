@@ -2998,6 +2998,10 @@ the source of truth for evidence and reviewer decisions.
   - Failure summary: a single visualization `Info` frame with 1,025 topology
     rows is delivered as one `PeerJoined` event, exceeding the test cap of
     1,024 rows.
+- Fix status: fixed by enforcing `MAX_TOPOLOGY_ROWS_PER_INFO = 1024` in
+  `VisualizationService::on_info` before mutating retained peer state or
+  emitting `PeerJoined` / `PeerUpdated`. Oversized visualization `Info` batches
+  are dropped instead of forwarded as partial or oversized topology events.
 
 ### ISSUE-106: Pubsub heartbeat channel batches have no service-level row cap
 

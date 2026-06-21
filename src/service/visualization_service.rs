@@ -38,6 +38,7 @@ pub(crate) fn encode_scan_for_test() -> Vec<u8> {
 const SCAN_RESPONSE_SEND_TIMEOUT: Duration = Duration::from_secs(1);
 const SCAN_BROADCAST_SEND_TIMEOUT: Duration = Duration::from_secs(1);
 const MAX_VISUALIZATION_REMOTE_PEERS: usize = 1024;
+const MAX_TOPOLOGY_ROWS_PER_INFO: usize = 1024;
 
 pub struct VisualizationService {
     service: P2pService,
@@ -160,6 +161,11 @@ impl VisualizationService {
     }
 
     fn on_info(&mut self, from: PeerId, neighbours: Vec<(ConnectionId, PeerId, u16)>) {
+        if neighbours.len() > MAX_TOPOLOGY_ROWS_PER_INFO {
+            log::warn!("visualization info from {from} has {} rows, dropping oversized batch", neighbours.len());
+            return;
+        }
+
         let now = now_ms();
         if self.neighbours.contains_key(&from) {
             self.neighbours.insert(from, now);
@@ -309,11 +315,30 @@ mod test {
 
     #[tokio::test]
     async fn visualization_info_batches_must_be_bounded() {
-        const MAX_TOPOLOGY_ROWS_PER_INFO: usize = 1024;
         let ctx = SharedCtx::new(PeerId::from(1), SharedRouterTable::new(PeerId::from(1)));
         let (base_service, service_tx) = P2pService::build(P2pServiceId::from(0), ctx);
         let mut service = VisualizationService::new(None, false, base_service);
         let neighbours = (0..=MAX_TOPOLOGY_ROWS_PER_INFO)
+            .map(|idx| (ConnectionId::from(idx as u64 + 10), PeerId::from(idx as u64 + 100), idx as u16))
+            .collect::<Vec<_>>();
+
+        service_tx
+            .send(P2pServiceEvent::Unicast(PeerId::from(2), encode_info_for_test(neighbours)))
+            .await
+            .expect("visualization service channel should accept test message");
+
+        assert!(
+            tokio::time::timeout(Duration::from_millis(20), service.recv()).await.is_err(),
+            "oversized visualization Info batches must be dropped"
+        );
+    }
+
+    #[tokio::test]
+    async fn visualization_info_batch_at_cap_must_be_accepted() {
+        let ctx = SharedCtx::new(PeerId::from(1), SharedRouterTable::new(PeerId::from(1)));
+        let (base_service, service_tx) = P2pService::build(P2pServiceId::from(0), ctx);
+        let mut service = VisualizationService::new(None, false, base_service);
+        let neighbours = (0..MAX_TOPOLOGY_ROWS_PER_INFO)
             .map(|idx| (ConnectionId::from(idx as u64 + 10), PeerId::from(idx as u64 + 100), idx as u16))
             .collect::<Vec<_>>();
 
@@ -327,10 +352,6 @@ mod test {
             panic!("expected PeerJoined event, got {event:?}");
         };
 
-        assert!(
-            delivered.len() <= MAX_TOPOLOGY_ROWS_PER_INFO,
-            "visualization Info batches must be bounded, got {} rows",
-            delivered.len()
-        );
+        assert_eq!(delivered.len(), MAX_TOPOLOGY_ROWS_PER_INFO);
     }
 }
