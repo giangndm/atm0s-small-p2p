@@ -1642,6 +1642,10 @@ the source of truth for evidence and reviewer decisions.
     continuation response of `RpcRes::FetchSnapshot(None, Version(1))` sets
     `ctx.next_state` to `Some(Working(...))`; expected the partial sync to stay
     incomplete and reject the fake continuation.
+- Fix status: fixed by rejecting `FetchSnapshot(None, version)` responses when
+  the pending full-sync request is a continuation with `from`, `to`, or
+  `max_version` set. The rejection keeps the pending request intact so timeout
+  retry can continue instead of transitioning to `WorkingState`.
 
 ### ISSUE-060: Dropped services leave their service id permanently reserved
 
