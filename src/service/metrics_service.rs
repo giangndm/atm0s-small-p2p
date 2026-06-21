@@ -156,7 +156,7 @@ impl MetricsService {
                     }
                 }
                 event = self.service.recv() => match event {
-                    Some(P2pServiceEvent::Unicast(from, data) | P2pServiceEvent::Broadcast(from, data)) => {
+                    Some(P2pServiceEvent::Broadcast(from, data)) => {
                         if let Ok(msg) = bincode::deserialize::<Message>(&data) {
                             match msg {
                                 Message::Scan => {
@@ -175,9 +175,14 @@ impl MetricsService {
                                         }));
                                     }
                                 }
-                                Message::Info(peer_metrics) => {
-                                    self.outs.push_back(MetricsServiceEvent::OnPeerConnectionMetric(from, peer_metrics));
-                                }
+                                Message::Info(_) => {}
+                            }
+                        }
+                    }
+                    Some(P2pServiceEvent::Unicast(from, data)) => {
+                        if let Ok(Message::Info(peer_metrics)) = bincode::deserialize::<Message>(&data) {
+                            if self.is_collector {
+                                self.outs.push_back(MetricsServiceEvent::OnPeerConnectionMetric(from, peer_metrics));
                             }
                         }
                     }

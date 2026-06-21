@@ -2167,6 +2167,9 @@ the source of truth for evidence and reviewer decisions.
   - Failure summary: node2 injects a metrics `Scan` into node1's metrics
     service, and node2's base service receives a unicast response from node1
     containing a metrics `Info` frame.
+- Fix status: fixed by treating metrics `Scan` as a broadcast-only protocol
+  message. `MetricsService` now ignores unicast `Scan` frames, while broadcast
+  `Scan` still triggers the existing bounded response path used by collectors.
 
 ### ISSUE-079: Visualization service discloses topology to arbitrary scan requests
 
