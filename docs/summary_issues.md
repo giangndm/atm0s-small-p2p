@@ -17,6 +17,7 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   ISSUE-140, ISSUE-143, ISSUE-145, ISSUE-147, ISSUE-148, ISSUE-150, ISSUE-151,
   ISSUE-152, ISSUE-153, ISSUE-154, ISSUE-155, ISSUE-156, ISSUE-157, ISSUE-158,
   ISSUE-159, ISSUE-160, ISSUE-161, ISSUE-163, ISSUE-164, ISSUE-053, ISSUE-062, ISSUE-063, ISSUE-086, ISSUE-087, ISSUE-088, ISSUE-089, ISSUE-090, ISSUE-091, ISSUE-092, ISSUE-093, ISSUE-139, ISSUE-146, ISSUE-168, ISSUE-170,
+  ISSUE-094,
   ISSUE-149, ISSUE-169, ISSUE-174, ISSUE-176, ISSUE-078, ISSUE-079, ISSUE-080, ISSUE-081, ISSUE-082, ISSUE-083, ISSUE-084, ISSUE-085, ISSUE-181, ISSUE-189, ISSUE-190, ISSUE-191, ISSUE-192, ISSUE-193,
   ISSUE-194, ISSUE-195, ISSUE-196, ISSUE-197, ISSUE-198, ISSUE-199,
   ISSUE-200, ISSUE-201, ISSUE-202, ISSUE-203, ISSUE-204, ISSUE-205, ISSUE-206, ISSUE-207, ISSUE-097, ISSUE-098, and ISSUE-018 have focused
@@ -784,6 +785,12 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   which ignores only advertisements at or before a live stop tombstone and
   allows fresher restart advertisements to clear the tombstone. Verified with
   `cargo test graceful_stop_tombstone_must_allow_fresh_restart_advertise -- --nocapture`.
+- ISSUE-094: fixed by returning user serialization errors from public pubsub
+  object helpers instead of panicking on caller-provided `Serialize` values.
+  Guest, publisher, and subscriber object helpers now use `?` around
+  `bincode::serialize(...)`; internal wire-message serialization is unchanged.
+  Verified with
+  `cargo test pubsub_guest_object_publish_must_return_error_on_serialize_failure -- --nocapture`.
 - ISSUE-130: fixed by `e78c190` (`fix: return errors when alias channels
   close`), which makes `AliasService::run_loop` return `Err(_)` when the
   underlying base service channel closes instead of panicking on

@@ -1052,7 +1052,7 @@ impl PubsubServiceRequester {
     }
 
     pub async fn publish_as_guest_ob<Ob: Serialize>(&self, channel: PubsubChannelId, ob: Ob) -> anyhow::Result<()> {
-        let data = bincode::serialize(&ob).expect("should serialize");
+        let data = bincode::serialize(&ob)?;
         self.publish_as_guest(channel, data).await
     }
 
@@ -1064,7 +1064,7 @@ impl PubsubServiceRequester {
     }
 
     pub async fn publish_rpc_as_guest_ob<REQ: Serialize, RES: DeserializeOwned>(&self, channel: PubsubChannelId, method: &str, req: REQ, timeout: Duration) -> anyhow::Result<RES> {
-        let data = bincode::serialize(&req).expect("should serialize");
+        let data = bincode::serialize(&req)?;
         let res = self.publish_rpc_as_guest(channel, method, data, timeout).await?;
         Ok(bincode::deserialize(&res)?)
     }
@@ -1075,7 +1075,7 @@ impl PubsubServiceRequester {
     }
 
     pub async fn feedback_as_guest_ob<Ob: Serialize>(&self, channel: PubsubChannelId, ob: Ob) -> anyhow::Result<()> {
-        let data = bincode::serialize(&ob).expect("should serialize");
+        let data = bincode::serialize(&ob)?;
         self.feedback_as_guest(channel, data).await
     }
 
@@ -1087,7 +1087,7 @@ impl PubsubServiceRequester {
     }
 
     pub async fn feedback_rpc_as_guest_ob<REQ: Serialize, RES: DeserializeOwned>(&self, channel: PubsubChannelId, method: &str, req: REQ, timeout: Duration) -> anyhow::Result<RES> {
-        let data = bincode::serialize(&req).expect("should serialize");
+        let data = bincode::serialize(&req)?;
         let res = self.feedback_rpc_as_guest(channel, method, data, timeout).await?;
         Ok(bincode::deserialize(&res)?)
     }

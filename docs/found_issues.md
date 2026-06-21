@@ -2640,9 +2640,13 @@ the source of truth for evidence and reviewer decisions.
   as recoverable `Result` APIs.
 - Evidence test:
   - `cargo test pubsub_guest_object_publish_must_return_error_on_serialize_failure -- --nocapture`
-  - Failure summary: `publish_as_guest_ob(...)` unwinds at
-    `src/service/pubsub_service.rs:658` when serialization returns a custom
-    error; expected the helper to return `Ok(Err(_))` rather than panic.
+  - Failure summary: `publish_as_guest_ob(...)` unwinds at the object
+    serialization site when serialization returns a custom error; expected the
+    helper to return `Ok(Err(_))` rather than panic.
+- Fix status: fixed by returning `bincode::serialize(...)` errors from public
+  pubsub object helpers instead of panicking. Caller-provided object
+  serialization now uses `?` in guest, publisher, and subscriber helpers, while
+  internal wire-message serialization remains unchanged.
 
 ### ISSUE-095: Replicated KV duplicate future broadcasts overwrite pending changes
 

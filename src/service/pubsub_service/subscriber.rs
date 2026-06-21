@@ -177,7 +177,7 @@ impl SubscriberRequester {
     }
 
     pub async fn feedback_ob<Ob: Serialize>(&self, ob: &Ob) -> anyhow::Result<()> {
-        let data = bincode::serialize(ob).expect("should serialize");
+        let data = bincode::serialize(ob)?;
         self.feedback(data).await
     }
 
@@ -193,7 +193,7 @@ impl SubscriberRequester {
     }
 
     pub async fn feedback_rpc_ob<REQ: Serialize, RES: DeserializeOwned>(&self, method: &str, req: &REQ, timeout: Duration) -> anyhow::Result<RES> {
-        let data = bincode::serialize(req).expect("should convert to buffer");
+        let data = bincode::serialize(req)?;
         let res = self.feedback_rpc(method, data, timeout).await?;
         Ok(bincode::deserialize(&res)?)
     }
@@ -204,6 +204,6 @@ impl SubscriberRequester {
     }
 
     pub async fn answer_publish_rpc_ob<RES: Serialize>(&self, rpc: RpcId, source: PeerSrc, res: &RES) -> anyhow::Result<()> {
-        self.answer_publish_rpc(rpc, source, bincode::serialize(res).expect("should serialize")).await
+        self.answer_publish_rpc(rpc, source, bincode::serialize(res)?).await
     }
 }
