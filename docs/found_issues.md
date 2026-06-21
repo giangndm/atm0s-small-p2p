@@ -810,6 +810,11 @@ the source of truth for evidence and reviewer decisions.
   - `cargo test fetch_snapshot_with_reversed_bounds_must_not_panic -- --nocapture`
   - Failure summary: `BTreeMap::range` panics with
     `range start is greater than range end`.
+- Fix status: fixed by rejecting reversed resolved snapshot bounds in
+  `LocalStore::snapshot` before calling `BTreeMap::range`. Invalid
+  `FetchSnapshot { from: Some(high), to: Some(low), .. }` requests now return
+  `None` instead of panicking; normal bounded and paginated snapshots keep their
+  existing behavior.
 
 ### ISSUE-026: Pubsub heartbeat does not remove stale remote subscribers
 

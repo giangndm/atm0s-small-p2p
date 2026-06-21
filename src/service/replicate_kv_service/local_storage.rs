@@ -99,6 +99,9 @@ where
             let from = from.unwrap_or(first);
             let to = to.unwrap_or(last);
             let max_version = max_version.unwrap_or(self.version);
+            if from > to {
+                return None;
+            }
             let mut slots = Vec::new();
             let mut next_key = None;
             let biggest_key = to.clone();
