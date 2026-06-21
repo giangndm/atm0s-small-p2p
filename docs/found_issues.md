@@ -2403,6 +2403,11 @@ the source of truth for evidence and reviewer decisions.
   - Failure summary: with no outstanding `FetchChanged` request, an unsolicited
     `FetchChanged(Err(MissingData))` clears existing slot key `7`; expected the
     remote store to remain in working state with its slots intact.
+- Fix status: fixed by rejecting `FetchChanged(Err(_))` responses when
+  `WorkingState` has no active pending repair request. Unsolicited error
+  responses now return before scheduling full sync, clearing slots, or emitting
+  local delete events; solicited full-resync fallback visibility remains tracked
+  separately by ISSUE-171.
 
 ### ISSUE-088: Replicated KV accepts duplicate versions in FetchChanged responses
 
