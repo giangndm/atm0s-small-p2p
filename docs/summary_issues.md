@@ -1348,6 +1348,19 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   `cargo test peer_stopped_must_emit_public_disconnect_event -- --nocapture`.
 - ISSUE-188, score 51: pubsub drops early remote publisher joins before local
   channel creation. Reviewer: Noether the 3rd.
+  Root cause: `PublisherJoined`/`SubscriberJoined` only updated existing channel
+  state, so joins that arrived before local handle creation were discarded.
+  Fix: active remote joins now create bounded channel state and reuse the local
+  handle replay path; leave/heartbeat messages still do not create missing
+  channels, empty remote-only channels are pruned after remote cleanup, and
+  reclaimed inactive roles keep generation tombstones to reject stale joins.
+  Verification: `cargo test early_remote -- --nocapture`,
+  `cargo test remote_created_channel_cap_must_recover -- --nocapture`,
+  `cargo test reclaimed_remote -- --nocapture`,
+  `cargo test tombstone_must_survive_newer_join_dropped_by_channel_cap -- --nocapture`,
+  `cargo test remote_publisher_memberships_must_be_bounded -- --nocapture`,
+  `cargo test remote_subscriber_memberships_must_be_bounded -- --nocapture`,
+  and `cargo fmt -- --check`.
 - ISSUE-189, score 72: inbound handshake accepts a remote peer claiming the
   local peer id. Reviewer: Zeno the 3rd.
 - ISSUE-190, score 43: duplicate route-sync destinations silently keep the

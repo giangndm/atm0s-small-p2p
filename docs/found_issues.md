@@ -6226,6 +6226,22 @@ the source of truth for evidence and reviewer decisions.
     before local channel creation, a later `SubscriberCreated` creates the
     channel with no retained `remote_publishers` entry and emits no
     `SubscriberEvent::PeerJoined(PeerSrc::Remote(PeerId(2)))`.
+- Fix status: fixed by retaining active remote publisher/subscriber joins in
+  bounded channel state even when no local handle exists yet. Later local handle
+  creation reuses the existing replay path and emits `PeerJoined(Remote(...))`.
+  Leave and heartbeat messages still do not create missing channel state, so
+  inactive tombstones and rotating heartbeat channel IDs cannot allocate
+  unbounded remote-only channels; disconnect and heartbeat-omission cleanup prune
+  remote-only channels once they become empty. Inactive remote-only channel
+  reclamation preserves per-role generation tombstones so delayed older joins
+  cannot resurrect removed membership. Verification:
+  `cargo test early_remote -- --nocapture`,
+  `cargo test remote_created_channel_cap_must_recover -- --nocapture`,
+  `cargo test reclaimed_remote -- --nocapture`,
+  `cargo test tombstone_must_survive_newer_join_dropped_by_channel_cap -- --nocapture`,
+  `cargo test remote_publisher_memberships_must_be_bounded -- --nocapture`,
+  `cargo test remote_subscriber_memberships_must_be_bounded -- --nocapture`,
+  and `cargo fmt -- --check`.
 
 ### ISSUE-189: Inbound handshake accepts a remote peer claiming the local peer id
 

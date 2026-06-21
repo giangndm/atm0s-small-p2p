@@ -37,6 +37,8 @@ pub use subscriber::{Subscriber, SubscriberEvent, SubscriberEventOb, SubscriberR
 
 const HEARTBEAT_INTERVAL_MS: u64 = 5_000;
 pub(crate) const PUBSUB_INTERNAL_CONTROL_QUEUE_SIZE: usize = 1024;
+const MAX_REMOTE_CREATED_CHANNELS: usize = 1024;
+const MAX_REMOTE_ROLE_TOMBSTONES: usize = MAX_REMOTE_CREATED_CHANNELS * 2;
 const MAX_REMOTE_MEMBERS_PER_CHANNEL: usize = 1024;
 const MAX_HEARTBEAT_CHANNELS_PER_BATCH: usize = 1024;
 const MAX_RPC_METHOD_LEN: usize = 1024;
@@ -224,6 +226,12 @@ struct RemoteRoleState {
 }
 
 #[derive(Debug, Default)]
+struct RemoteRoleTombstone {
+    publish_generation: u64,
+    subscribe_generation: u64,
+}
+
+#[derive(Debug, Default)]
 struct PubsubChannelState {
     remote_publishers: HashMap<PeerId, RemoteRoleState>,
     remote_subscribers: HashMap<PeerId, RemoteRoleState>,
@@ -236,6 +244,10 @@ struct PubsubChannelState {
 impl PubsubChannelState {
     fn is_fully_empty(&self) -> bool {
         self.local_publishers.is_empty() && self.local_subscribers.is_empty() && self.remote_publishers.is_empty() && self.remote_subscribers.is_empty()
+    }
+
+    fn is_inactive_remote_only(&self) -> bool {
+        self.local_publishers.is_empty() && self.local_subscribers.is_empty() && !self.has_active_remote_publishers() && !self.has_active_remote_subscribers()
     }
 
     fn active_remote_publishers(&self) -> impl Iterator<Item = PeerId> + '_ {
@@ -336,6 +348,7 @@ pub struct PubsubService {
     internal_tx: Sender<InternalMsg>,
     internal_rx: Receiver<InternalMsg>,
     channels: HashMap<PubsubChannelId, PubsubChannelState>,
+    remote_role_tombstones: HashMap<(PubsubChannelId, PeerId), RemoteRoleTombstone>,
     publish_rpc_reqs: HashMap<RpcId, PublishRpcReq>,
     feedback_rpc_reqs: HashMap<RpcId, FeedbackRpcReq>,
     local_publish_generation: u64,
@@ -351,6 +364,7 @@ impl PubsubService {
             internal_rx,
             internal_tx,
             channels: HashMap::new(),
+            remote_role_tombstones: HashMap::new(),
             publish_rpc_reqs: HashMap::new(),
             feedback_rpc_reqs: HashMap::new(),
             local_publish_generation: 0,
@@ -362,6 +376,82 @@ impl PubsubService {
     pub fn requester(&self) -> PubsubServiceRequester {
         PubsubServiceRequester {
             internal_tx: self.internal_tx.clone(),
+        }
+    }
+
+    fn channel_for_remote_join(&mut self, channel: PubsubChannelId) -> Option<&mut PubsubChannelState> {
+        if self.channels.contains_key(&channel) {
+            return self.channels.get_mut(&channel);
+        }
+        if self.channels.len() >= MAX_REMOTE_CREATED_CHANNELS {
+            let inactive_channels = self
+                .channels
+                .iter()
+                .filter_map(|(channel, state)| state.is_inactive_remote_only().then_some(*channel))
+                .collect::<Vec<_>>();
+            for inactive_channel in inactive_channels {
+                if let Some(state) = self.channels.remove(&inactive_channel) {
+                    self.remember_remote_role_tombstones(inactive_channel, state);
+                }
+            }
+            if self.channels.len() >= MAX_REMOTE_CREATED_CHANNELS {
+                log::warn!("[PubsubService] drop remote join for {channel}: channel cap {MAX_REMOTE_CREATED_CHANNELS} reached");
+                return None;
+            }
+        }
+        Some(self.channels.entry(channel).or_default())
+    }
+
+    fn remember_remote_role_tombstones(&mut self, channel: PubsubChannelId, state: PubsubChannelState) {
+        for (peer, role) in state.remote_publishers {
+            if !role.active {
+                self.remember_remote_role_tombstone(channel, peer, Some(role.generation), None);
+            }
+        }
+        for (peer, role) in state.remote_subscribers {
+            if !role.active {
+                self.remember_remote_role_tombstone(channel, peer, None, Some(role.generation));
+            }
+        }
+    }
+
+    fn remember_remote_role_tombstone(&mut self, channel: PubsubChannelId, peer: PeerId, publish_generation: Option<u64>, subscribe_generation: Option<u64>) {
+        if !self.remote_role_tombstones.contains_key(&(channel, peer)) && self.remote_role_tombstones.len() >= MAX_REMOTE_ROLE_TOMBSTONES {
+            log::warn!("[PubsubService] drop remote role tombstone for {channel}/{peer}: tombstone cap {MAX_REMOTE_ROLE_TOMBSTONES} reached");
+            return;
+        }
+        let tombstone = self.remote_role_tombstones.entry((channel, peer)).or_default();
+        if let Some(generation) = publish_generation {
+            tombstone.publish_generation = tombstone.publish_generation.max(generation);
+        }
+        if let Some(generation) = subscribe_generation {
+            tombstone.subscribe_generation = tombstone.subscribe_generation.max(generation);
+        }
+    }
+
+    fn remote_publisher_join_is_stale(&self, channel: PubsubChannelId, peer: PeerId, generation: u64) -> bool {
+        self.remote_role_tombstones.get(&(channel, peer)).is_some_and(|tombstone| tombstone.publish_generation >= generation)
+    }
+
+    fn remote_subscriber_join_is_stale(&self, channel: PubsubChannelId, peer: PeerId, generation: u64) -> bool {
+        self.remote_role_tombstones.get(&(channel, peer)).is_some_and(|tombstone| tombstone.subscribe_generation >= generation)
+    }
+
+    fn clear_remote_publisher_tombstone(&mut self, channel: PubsubChannelId, peer: PeerId) {
+        if let Some(tombstone) = self.remote_role_tombstones.get_mut(&(channel, peer)) {
+            tombstone.publish_generation = 0;
+            if tombstone.subscribe_generation == 0 {
+                self.remote_role_tombstones.remove(&(channel, peer));
+            }
+        }
+    }
+
+    fn clear_remote_subscriber_tombstone(&mut self, channel: PubsubChannelId, peer: PeerId) {
+        if let Some(tombstone) = self.remote_role_tombstones.get_mut(&(channel, peer)) {
+            tombstone.subscribe_generation = 0;
+            if tombstone.publish_generation == 0 {
+                self.remote_role_tombstones.remove(&(channel, peer));
+            }
         }
     }
 
@@ -457,17 +547,26 @@ impl PubsubService {
                     match msg {
                         PubsubMessage::PublisherJoined(channel, generation) => {
                             let mut reply = None;
-                            if let Some(state) = self.channels.get_mut(&channel) {
-                                if matches!(state.apply_remote_publisher(from_peer, generation, true), Some((false, true))) {
-                                    log::info!("[PubsubService] remote peer {from_peer} joined to {channel} as publisher");
-                                    // we have new remote publisher then we fire event to local
-                                    for sub_tx in state.local_subscribers.values() {
-                                        Self::try_send_subscriber_event(sub_tx, SubscriberEvent::PeerJoined(PeerSrc::Remote(from_peer)));
+                            let mut admitted = false;
+                            if self.remote_publisher_join_is_stale(channel, from_peer, generation) {
+                                log::debug!("[PubsubService] ignore stale publisher join from {from_peer} for {channel} generation {generation}");
+                            } else {
+                                if let Some(state) = self.channel_for_remote_join(channel) {
+                                    if matches!(state.apply_remote_publisher(from_peer, generation, true), Some((false, true))) {
+                                        admitted = true;
+                                        log::info!("[PubsubService] remote peer {from_peer} joined to {channel} as publisher");
+                                        // we have new remote publisher then we fire event to local
+                                        for sub_tx in state.local_subscribers.values() {
+                                            Self::try_send_subscriber_event(sub_tx, SubscriberEvent::PeerJoined(PeerSrc::Remote(from_peer)));
+                                        }
+                                        // we also send subscribe state it remote, as publisher it only care about wherever this node is a subscriber
+                                        if !state.local_subscribers.is_empty() {
+                                            reply = Some(PubsubMessage::SubscriberJoined(channel, state.local_subscribe_generation));
+                                        }
                                     }
-                                    // we also send subscribe state it remote, as publisher it only care about wherever this node is a subscriber
-                                    if !state.local_subscribers.is_empty() {
-                                        reply = Some(PubsubMessage::SubscriberJoined(channel, state.local_subscribe_generation));
-                                    }
+                                }
+                                if admitted {
+                                    self.clear_remote_publisher_tombstone(channel, from_peer);
                                 }
                             }
                             if let Some(reply) = reply {
@@ -487,17 +586,26 @@ impl PubsubService {
                         }
                         PubsubMessage::SubscriberJoined(channel, generation) => {
                             let mut reply = None;
-                            if let Some(state) = self.channels.get_mut(&channel) {
-                                if matches!(state.apply_remote_subscriber(from_peer, generation, true), Some((false, true))) {
-                                    log::info!("[PubsubService] remote peer {from_peer} joined to {channel} as subscriber");
-                                    // we have new remote publisher then we fire event to local
-                                    for (_, pub_tx) in state.local_publishers.iter() {
-                                        Self::try_send_publisher_event(pub_tx, PublisherEvent::PeerJoined(PeerSrc::Remote(from_peer)));
+                            let mut admitted = false;
+                            if self.remote_subscriber_join_is_stale(channel, from_peer, generation) {
+                                log::debug!("[PubsubService] ignore stale subscriber join from {from_peer} for {channel} generation {generation}");
+                            } else {
+                                if let Some(state) = self.channel_for_remote_join(channel) {
+                                    if matches!(state.apply_remote_subscriber(from_peer, generation, true), Some((false, true))) {
+                                        admitted = true;
+                                        log::info!("[PubsubService] remote peer {from_peer} joined to {channel} as subscriber");
+                                        // we have new remote publisher then we fire event to local
+                                        for (_, pub_tx) in state.local_publishers.iter() {
+                                            Self::try_send_publisher_event(pub_tx, PublisherEvent::PeerJoined(PeerSrc::Remote(from_peer)));
+                                        }
+                                        // we also send publisher state it remote, as subscriber it only care about wherever this node is a publisher
+                                        if !state.local_publishers.is_empty() {
+                                            reply = Some(PubsubMessage::PublisherJoined(channel, state.local_publish_generation));
+                                        }
                                     }
-                                    // we also send publisher state it remote, as subscriber it only care about wherever this node is a publisher
-                                    if !state.local_publishers.is_empty() {
-                                        reply = Some(PubsubMessage::PublisherJoined(channel, state.local_publish_generation));
-                                    }
+                                }
+                                if admitted {
+                                    self.clear_remote_subscriber_tombstone(channel, from_peer);
                                 }
                             }
                             if let Some(reply) = reply {
@@ -553,6 +661,7 @@ impl PubsubService {
                                 }
                             }
 
+                            let mut empty_channels = Vec::new();
                             for (channel, state) in self.channels.iter_mut() {
                                 if seen_channels.contains(channel) {
                                     continue;
@@ -571,6 +680,13 @@ impl PubsubService {
                                         Self::try_send_publisher_event(pub_tx, PublisherEvent::PeerLeaved(PeerSrc::Remote(from_peer)));
                                     }
                                 }
+
+                                if state.is_fully_empty() {
+                                    empty_channels.push(*channel);
+                                }
+                            }
+                            for channel in empty_channels {
+                                self.channels.remove(&channel);
                             }
                         }
                         PubsubMessage::GuestPublish(channel, data) => {
@@ -692,6 +808,8 @@ impl PubsubService {
     }
 
     fn on_peer_disconnected(&mut self, peer: PeerId) {
+        self.remote_role_tombstones.retain(|(_, tombstone_peer), _| tombstone_peer != &peer);
+        let mut empty_channels = Vec::new();
         for (channel, state) in self.channels.iter_mut() {
             if state.remote_publishers.remove(&peer).is_some_and(|role| role.active) {
                 log::info!("[PubsubService] remote peer {peer} disconnected from {channel} as publisher");
@@ -706,6 +824,13 @@ impl PubsubService {
                     Self::try_send_publisher_event(pub_tx, PublisherEvent::PeerLeaved(PeerSrc::Remote(peer)));
                 }
             }
+
+            if state.is_fully_empty() {
+                empty_channels.push(*channel);
+            }
+        }
+        for channel in empty_channels {
+            self.channels.remove(&channel);
         }
     }
 
@@ -1750,6 +1875,271 @@ mod test {
             Ok(SubscriberEvent::PeerJoined(PeerSrc::Remote(remote))),
             "late local subscriber must observe the already-joined remote publisher"
         );
+    }
+
+    #[tokio::test]
+    async fn early_remote_subscriber_join_must_survive_late_local_publisher_creation() {
+        let mut service = test_service();
+        let channel = PubsubChannelId(1);
+        let remote = PeerId::from(2);
+
+        service
+            .on_service(P2pServiceEvent::Unicast(remote, encode_subscriber_joined_for_test(channel)))
+            .await
+            .expect("early remote subscriber join should be processed");
+
+        let (pub_tx, mut pub_rx) = publisher_event_channel();
+        service
+            .on_internal(InternalMsg::PublisherCreated(publisher_handle(PublisherLocalId::rand()), channel, pub_tx))
+            .await
+            .expect("late publisher should be registered");
+
+        assert!(
+            service.channels.get(&channel).expect("channel should exist after publisher creation").has_remote_subscriber(remote),
+            "remote subscriber join received before local channel creation must be retained"
+        );
+        assert_eq!(
+            pub_rx.try_recv(),
+            Ok(PublisherEvent::PeerJoined(PeerSrc::Remote(remote))),
+            "late local publisher must observe the already-joined remote subscriber"
+        );
+    }
+
+    #[tokio::test]
+    async fn remote_created_channel_cap_must_recover_after_disconnect_prunes_empty_channels() {
+        let mut service = test_service();
+        let remote = PeerId::from(2);
+
+        for channel in 0..MAX_REMOTE_CREATED_CHANNELS {
+            service
+                .on_service(P2pServiceEvent::Unicast(remote, encode_publisher_joined_for_test(PubsubChannelId(channel as u64 + 10))))
+                .await
+                .expect("early remote publisher join should be processed");
+        }
+        assert_eq!(service.channels.len(), MAX_REMOTE_CREATED_CHANNELS);
+
+        service
+            .on_service(P2pServiceEvent::PeerDisconnected(remote))
+            .await
+            .expect("disconnect should prune remote-only channels");
+        assert_eq!(service.channels.len(), 0, "remote-only channel state must be reclaimed after disconnect");
+
+        let channel = PubsubChannelId(999_999);
+        service
+            .on_service(P2pServiceEvent::Unicast(remote, encode_publisher_joined_for_test(channel)))
+            .await
+            .expect("new early remote publisher join should be processed after pruning");
+
+        assert!(
+            service.channels.get(&channel).expect("new channel should be retained").has_remote_publisher(remote),
+            "remote-created channel cap must not stay exhausted after disconnect cleanup"
+        );
+    }
+
+    #[tokio::test]
+    async fn remote_created_channel_cap_must_recover_after_remote_leaves_make_channels_inactive() {
+        let mut service = test_service();
+        let remote = PeerId::from(2);
+
+        for channel in 0..MAX_REMOTE_CREATED_CHANNELS {
+            let channel = PubsubChannelId(channel as u64 + 10);
+            service
+                .on_service(P2pServiceEvent::Unicast(remote, encode_publisher_joined_for_test(channel)))
+                .await
+                .expect("early remote publisher join should be processed");
+            service
+                .on_service(P2pServiceEvent::Unicast(remote, encode_publisher_leaved_for_test(channel, 2)))
+                .await
+                .expect("remote publisher leave should be processed");
+        }
+        assert_eq!(service.channels.len(), MAX_REMOTE_CREATED_CHANNELS);
+
+        let channel = PubsubChannelId(999_999);
+        service
+            .on_service(P2pServiceEvent::Unicast(remote, encode_publisher_joined_for_test(channel)))
+            .await
+            .expect("new early remote publisher join should be processed after inactive-channel reclamation");
+
+        assert!(
+            service.channels.get(&channel).expect("new channel should be retained").has_remote_publisher(remote),
+            "remote-created channel cap must reclaim inactive remote-only channels under pressure"
+        );
+        assert!(service.channels.len() <= MAX_REMOTE_CREATED_CHANNELS);
+    }
+
+    #[tokio::test]
+    async fn remote_created_channel_cap_must_recover_after_inactive_heartbeats() {
+        let mut service = test_service();
+        let remote = PeerId::from(2);
+        let mut inactive_heartbeats = Vec::new();
+
+        for channel in 0..MAX_REMOTE_CREATED_CHANNELS {
+            let channel = PubsubChannelId(channel as u64 + 10);
+            service
+                .on_service(P2pServiceEvent::Unicast(remote, encode_publisher_joined_for_test(channel)))
+                .await
+                .expect("early remote publisher join should be processed");
+            inactive_heartbeats.push(ChannelHeartbeat {
+                channel,
+                publish: false,
+                publish_generation: 2,
+                subscribe: false,
+                subscribe_generation: 1,
+            });
+        }
+        let inactive = bincode::serialize(&PubsubMessage::Heartbeat(inactive_heartbeats)).expect("heartbeat should serialize");
+        service.on_service(P2pServiceEvent::Unicast(remote, inactive)).await.expect("inactive heartbeat should be processed");
+        assert_eq!(service.channels.len(), MAX_REMOTE_CREATED_CHANNELS);
+
+        let channel = PubsubChannelId(999_999);
+        service
+            .on_service(P2pServiceEvent::Unicast(remote, encode_publisher_joined_for_test(channel)))
+            .await
+            .expect("new early remote publisher join should be processed after inactive-channel reclamation");
+
+        assert!(
+            service.channels.get(&channel).expect("new channel should be retained").has_remote_publisher(remote),
+            "remote-created channel cap must reclaim heartbeat-inactivated remote-only channels under pressure"
+        );
+        assert!(service.channels.len() <= MAX_REMOTE_CREATED_CHANNELS);
+    }
+
+    #[tokio::test]
+    async fn reclaimed_remote_publisher_tombstone_must_reject_stale_join() {
+        let mut service = test_service();
+        let remote = PeerId::from(2);
+        let stale_channel = PubsubChannelId(10);
+
+        for channel in 0..MAX_REMOTE_CREATED_CHANNELS {
+            let channel = PubsubChannelId(channel as u64 + 10);
+            service
+                .on_service(P2pServiceEvent::Unicast(remote, encode_publisher_joined_for_test(channel)))
+                .await
+                .expect("early remote publisher join should be processed");
+            service
+                .on_service(P2pServiceEvent::Unicast(remote, encode_publisher_leaved_for_test(channel, 2)))
+                .await
+                .expect("remote publisher leave should be processed");
+        }
+
+        service
+            .on_service(P2pServiceEvent::Unicast(remote, encode_publisher_joined_for_test(PubsubChannelId(999_999))))
+            .await
+            .expect("cap pressure should reclaim inactive remote-only channels");
+        service
+            .on_service(P2pServiceEvent::Unicast(remote, encode_publisher_joined_for_test(stale_channel)))
+            .await
+            .expect("stale publisher join should be ignored");
+
+        let (sub_tx, mut sub_rx) = subscriber_event_channel();
+        service
+            .on_internal(InternalMsg::SubscriberCreated(subscriber_handle(SubscriberLocalId::rand()), stale_channel, sub_tx))
+            .await
+            .expect("subscriber should be registered");
+
+        assert!(
+            !service.channels.get(&stale_channel).expect("subscriber should create channel").has_remote_publisher(remote),
+            "stale publisher join must not resurrect after inactive tombstone reclamation"
+        );
+        assert!(sub_rx.try_recv().is_err(), "stale publisher join must not notify a later local subscriber");
+    }
+
+    #[tokio::test]
+    async fn reclaimed_remote_subscriber_tombstone_must_reject_stale_join() {
+        let mut service = test_service();
+        let remote = PeerId::from(2);
+        let stale_channel = PubsubChannelId(10);
+
+        for channel in 0..MAX_REMOTE_CREATED_CHANNELS {
+            let channel = PubsubChannelId(channel as u64 + 10);
+            service
+                .on_service(P2pServiceEvent::Unicast(remote, encode_subscriber_joined_for_test(channel)))
+                .await
+                .expect("early remote subscriber join should be processed");
+            service
+                .on_service(P2pServiceEvent::Unicast(remote, encode_subscriber_leaved_for_test(channel, 2)))
+                .await
+                .expect("remote subscriber leave should be processed");
+        }
+
+        service
+            .on_service(P2pServiceEvent::Unicast(remote, encode_subscriber_joined_for_test(PubsubChannelId(999_999))))
+            .await
+            .expect("cap pressure should reclaim inactive remote-only channels");
+        service
+            .on_service(P2pServiceEvent::Unicast(remote, encode_subscriber_joined_for_test(stale_channel)))
+            .await
+            .expect("stale subscriber join should be ignored");
+
+        let (pub_tx, mut pub_rx) = publisher_event_channel();
+        service
+            .on_internal(InternalMsg::PublisherCreated(publisher_handle(PublisherLocalId::rand()), stale_channel, pub_tx))
+            .await
+            .expect("publisher should be registered");
+
+        assert!(
+            !service.channels.get(&stale_channel).expect("publisher should create channel").has_remote_subscriber(remote),
+            "stale subscriber join must not resurrect after inactive tombstone reclamation"
+        );
+        assert!(pub_rx.try_recv().is_err(), "stale subscriber join must not notify a later local publisher");
+    }
+
+    #[tokio::test]
+    async fn tombstone_must_survive_newer_join_dropped_by_channel_cap() {
+        let mut service = test_service();
+        let remote = PeerId::from(2);
+        let stale_channel = PubsubChannelId(10);
+
+        service
+            .on_service(P2pServiceEvent::Unicast(remote, encode_publisher_joined_for_test(stale_channel)))
+            .await
+            .expect("early remote publisher join should be processed");
+        service
+            .on_service(P2pServiceEvent::Unicast(remote, encode_publisher_leaved_for_test(stale_channel, 2)))
+            .await
+            .expect("remote publisher leave should be processed");
+        for channel in 0..MAX_REMOTE_CREATED_CHANNELS {
+            let handle = subscriber_handle(SubscriberLocalId::rand());
+            let (sub_tx, _sub_rx) = subscriber_event_channel();
+            service
+                .on_internal(InternalMsg::SubscriberCreated(handle, PubsubChannelId(channel as u64 + 10_000), sub_tx))
+                .await
+                .expect("local subscriber should make channel non-reclaimable");
+        }
+        assert!(service.channels.len() > MAX_REMOTE_CREATED_CHANNELS);
+
+        service
+            .on_service(P2pServiceEvent::Unicast(remote, encode_publisher_joined_for_test(PubsubChannelId(888_888))))
+            .await
+            .expect("cap pressure should reclaim stale inactive channel");
+        assert!(
+            !service.channels.contains_key(&stale_channel),
+            "cap pressure should reclaim the inactive remote-only channel into a tombstone"
+        );
+
+        let newer_join = bincode::serialize(&PubsubMessage::PublisherJoined(stale_channel, 3)).expect("publisher join should serialize");
+        service
+            .on_service(P2pServiceEvent::Unicast(remote, newer_join))
+            .await
+            .expect("newer join should be dropped but not clear tombstone");
+
+        let removable = service.channels.keys().copied().find(|channel| *channel != stale_channel).expect("local channels should exist");
+        service.channels.remove(&removable);
+
+        service
+            .on_service(P2pServiceEvent::Unicast(remote, encode_publisher_joined_for_test(stale_channel)))
+            .await
+            .expect("stale publisher join should be ignored after dropped newer join");
+        let (sub_tx, mut sub_rx) = subscriber_event_channel();
+        service
+            .on_internal(InternalMsg::SubscriberCreated(subscriber_handle(SubscriberLocalId::rand()), stale_channel, sub_tx))
+            .await
+            .expect("subscriber should be registered");
+        assert!(
+            !service.channels.get(&stale_channel).expect("subscriber should create channel").has_remote_publisher(remote),
+            "dropped newer join must not clear tombstone and allow stale publisher resurrection"
+        );
+        assert!(sub_rx.try_recv().is_err(), "stale publisher join must not notify a later local subscriber");
     }
 
     #[tokio::test]
