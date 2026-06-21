@@ -2655,9 +2655,8 @@ the source of truth for evidence and reviewer decisions.
 - Reviewer: `Pauli`, confirmed.
 - Affected code:
   - `src/service/replicate_kv_service/remote_storage.rs`:
-    `WorkingState::on_broadcast` accepts future `BroadcastEvent::Changed`
-    values and stores them with
-    `self.pendings.insert(changed.version, changed)`.
+    `WorkingState::on_broadcast` accepted future `BroadcastEvent::Changed`
+    values and stored them by version without rejecting duplicates.
 - Impact: a malicious or malformed peer can send two conflicting future
   `Changed` broadcasts for the same version before the missing gap is filled.
   The later duplicate silently overwrites the first pending value, and the
@@ -2671,6 +2670,10 @@ the source of truth for evidence and reviewer decisions.
     `20` with `99`; after `Version(1)` fills the gap, the slot contains
     `Some(Slot { value: 99, version: Version(2) })` instead of preserving or
     rejecting the first accepted version.
+- Fix status: fixed by routing future `Changed` broadcasts through
+  `WorkingState::enqueue_pending_changed`, which rejects a duplicate pending
+  `changed.version` before insertion. The first accepted pending value is
+  preserved until the missing gap is filled.
 
 ### ISSUE-096: Replicated KV recv panics on user value serialization failure
 
