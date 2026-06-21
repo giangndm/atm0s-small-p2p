@@ -2529,6 +2529,10 @@ the source of truth for evidence and reviewer decisions.
   - Failure summary: after a cached lookup checks only `PeerId(1)`, a
     `Found(alias)` from `PeerId(2)` completes the lookup; expected unchecked
     peers to be ignored during `CheckHint`.
+- Fix status: fixed by correlating `Found` replies with the active pending
+  lookup before mutating cache or completing waiters. `CheckHint` now accepts
+  `Found` only from peers that were actually checked, while scan lookups still
+  accept scan responses.
 
 ### ISSUE-091: Inbound out-of-range stream service ids panic accept tasks
 

@@ -325,22 +325,18 @@ impl AliasServiceInternal {
                 }
             }
             AliasMessage::Found(alias_id) => {
-                let slot = match self.cache.get_mut(&alias_id) {
-                    Some(slot) => slot,
-                    None => {
-                        counter!(P2P_ALIAS_CACHE_UPSERT).increment(1);
-                        self.cache.get_or_insert_mut(alias_id, HashSet::new)
-                    }
+                let found = match self.find_reqs.get(&alias_id).map(|req| &req.state) {
+                    Some(FindRequestState::CheckHint(_, hint_peers)) if hint_peers.contains(&from) => Some(AliasFoundLocation::Hint(from)),
+                    Some(FindRequestState::Scan(_)) => Some(AliasFoundLocation::Scan(from)),
+                    _ => None,
                 };
-                slot.insert(from);
 
-                if let Some(req) = self.find_reqs.remove(&alias_id) {
-                    gauge!(P2P_ALIAS_LIVE_FIND_REQUEST).decrement(1);
-                    let found = if matches!(req.state, FindRequestState::Scan(_)) {
-                        AliasFoundLocation::Scan(from)
-                    } else {
-                        AliasFoundLocation::Hint(from)
+                if let Some(found) = found {
+                    self.insert_cache_hint(alias_id, from);
+                    let Some(req) = self.find_reqs.remove(&alias_id) else {
+                        return;
                     };
+                    gauge!(P2P_ALIAS_LIVE_FIND_REQUEST).decrement(1);
                     for tx in req.waits {
                         tx.send(Some(found)).print_on_err2("[AliasServiceInternal] send query response");
                     }
