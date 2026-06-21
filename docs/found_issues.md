@@ -1114,6 +1114,18 @@ the source of truth for evidence and reviewer decisions.
   - `cargo test pubsub_publish_must_require_remote_publisher_membership -- --nocapture`
   - Failure summary: node2 injects `PubsubMessage::Publish` into node1's
     subscriber without ever joining the channel as a publisher.
+- Minimal fix proposal: authorize ordinary member data against the already
+  tracked channel membership before delivering it locally.
+- Fix status: fixed by requiring inbound `Publish` frames to come from an
+  active remote publisher for the channel, and inbound `Feedback` frames to
+  come from an active remote subscriber for the channel. Guest traffic remains
+  non-member traffic, and RPC member traffic remains tracked separately by
+  ISSUE-048.
+- Verification after fix:
+  - `cargo test pubsub_publish_must_require_remote_publisher_membership -- --nocapture`
+  - `cargo test pubsub_feedback_must_require_remote_subscriber_membership -- --nocapture`
+  - `cargo test pubsub_remote_single_pair_pub_first -- --nocapture`
+  - `cargo test pubsub_remote_single_pair_sub_first -- --nocapture`
 
 ### ISSUE-040: Metrics and visualization services panic on zero collection interval
 

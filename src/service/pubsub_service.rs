@@ -130,6 +130,11 @@ pub(crate) fn encode_publish_for_test(channel: PubsubChannelId, data: Vec<u8>) -
 }
 
 #[cfg(test)]
+pub(crate) fn encode_feedback_for_test(channel: PubsubChannelId, data: Vec<u8>) -> Vec<u8> {
+    bincode::serialize(&PubsubMessage::Feedback(channel, data)).expect("test message should serialize")
+}
+
+#[cfg(test)]
 pub(crate) fn encode_publish_rpc_for_test(channel: PubsubChannelId, data: Vec<u8>, rpc_id: RpcId, method: String) -> Vec<u8> {
     bincode::serialize(&PubsubMessage::PublishRpc(channel, data, rpc_id, method)).expect("test message should serialize")
 }
@@ -458,6 +463,10 @@ impl PubsubService {
                         }
                         PubsubMessage::Publish(channel, vec) => {
                             if let Some(state) = self.channels.get(&channel) {
+                                if !state.has_remote_publisher(from_peer) {
+                                    log::warn!("[PubsubService] drop Publish from non-publisher {from_peer} on {channel}");
+                                    return Ok(());
+                                }
                                 for sub_tx in state.local_subscribers.values() {
                                     Self::try_send_subscriber_event(sub_tx, SubscriberEvent::Publish(vec.clone()));
                                 }
@@ -497,6 +506,10 @@ impl PubsubService {
                         }
                         PubsubMessage::Feedback(channel, vec) => {
                             if let Some(state) = self.channels.get(&channel) {
+                                if !state.has_remote_subscriber(from_peer) {
+                                    log::warn!("[PubsubService] drop Feedback from non-subscriber {from_peer} on {channel}");
+                                    return Ok(());
+                                }
                                 for (_, pub_tx) in state.local_publishers.iter() {
                                     Self::try_send_publisher_event(pub_tx, PublisherEvent::Feedback(vec.clone()));
                                 }
