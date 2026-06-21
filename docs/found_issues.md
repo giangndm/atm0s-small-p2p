@@ -2501,6 +2501,10 @@ the source of truth for evidence and reviewer decisions.
   - Failure summary: after requesting one missing change, a response containing
     versions `1` and `2` is accepted and advances `state.version` to
     `Version(2)`; expected versions beyond the requested count to be rejected.
+- Fix status: fixed by `55b79e5` (`fix: continue partial kv repair
+  responses`). `WorkingState` now validates every `FetchChanged(Ok(_))` version
+  against the active pending request's inclusive `[from, from + count - 1]`
+  range before applying any changes.
 
 ### ISSUE-090: Alias cached hint lookup accepts Found from unchecked peers
 
