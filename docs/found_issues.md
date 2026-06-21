@@ -1324,6 +1324,20 @@ the source of truth for evidence and reviewer decisions.
   - `cargo test pubsub_publish_rpc_must_require_remote_publisher_membership -- --nocapture`
   - Failure summary: node2 injects `PubsubMessage::PublishRpc` into node1's
     subscriber without ever joining the channel as a publisher.
+- Minimal fix proposal: authorize member RPC request frames against the already
+  tracked channel membership before invoking local handlers.
+- Fix status: fixed by requiring inbound `PublishRpc` frames to come from an
+  active remote publisher for the channel, and inbound `FeedbackRpc` frames to
+  come from an active remote subscriber for the channel. Guest RPC traffic
+  remains intentionally non-member traffic, and RPC answer validation remains
+  handled by ISSUE-020's expected-responder binding.
+- Verification after fix:
+  - `cargo test pubsub_publish_rpc_must_require_remote_publisher_membership -- --nocapture`
+  - `cargo test pubsub_feedback_rpc_must_require_remote_subscriber_membership -- --nocapture`
+  - `cargo test pubsub_publish_must_require_remote_publisher_membership -- --nocapture`
+  - `cargo test pubsub_feedback_must_require_remote_subscriber_membership -- --nocapture`
+  - `cargo test pubsub_publish_rpc_remote -- --nocapture`
+  - `cargo test pubsub_feedback_rpc_remote -- --nocapture`
 
 ### ISSUE-049: Broadcast fanout can block on one congested peer control queue
 

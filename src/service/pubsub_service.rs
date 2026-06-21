@@ -140,6 +140,11 @@ pub(crate) fn encode_publish_rpc_for_test(channel: PubsubChannelId, data: Vec<u8
 }
 
 #[cfg(test)]
+pub(crate) fn encode_feedback_rpc_for_test(channel: PubsubChannelId, data: Vec<u8>, rpc_id: RpcId, method: String) -> Vec<u8> {
+    bincode::serialize(&PubsubMessage::FeedbackRpc(channel, data, rpc_id, method)).expect("test message should serialize")
+}
+
+#[cfg(test)]
 pub(crate) fn encode_heartbeat_for_test(channel: PubsubChannelId, publish: bool, subscribe: bool) -> Vec<u8> {
     encode_heartbeat_for_test_with_generation(channel, publish, 1, subscribe, 1)
 }
@@ -474,6 +479,10 @@ impl PubsubService {
                         }
                         PubsubMessage::PublishRpc(channel, vec, rpc_id, method) => {
                             if let Some(state) = self.channels.get(&channel) {
+                                if !state.has_remote_publisher(from_peer) {
+                                    log::warn!("[PubsubService] drop PublishRpc from non-publisher {from_peer} on {channel}");
+                                    return Ok(());
+                                }
                                 for sub_tx in state.local_subscribers.values() {
                                     Self::try_send_subscriber_event(sub_tx, SubscriberEvent::PublishRpc(vec.clone(), rpc_id, method.clone(), PeerSrc::Remote(from_peer)));
                                 }
@@ -517,6 +526,10 @@ impl PubsubService {
                         }
                         PubsubMessage::FeedbackRpc(channel, vec, rpc_id, method) => {
                             if let Some(state) = self.channels.get(&channel) {
+                                if !state.has_remote_subscriber(from_peer) {
+                                    log::warn!("[PubsubService] drop FeedbackRpc from non-subscriber {from_peer} on {channel}");
+                                    return Ok(());
+                                }
                                 for (_, pub_tx) in state.local_publishers.iter() {
                                     Self::try_send_publisher_event(pub_tx, PublisherEvent::FeedbackRpc(vec.clone(), rpc_id, method.clone(), PeerSrc::Remote(from_peer)));
                                 }
