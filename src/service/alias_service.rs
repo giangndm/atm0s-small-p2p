@@ -499,6 +499,12 @@ impl AliasServiceInternal {
                 }
             }
             AliasControl::Shutdown => {
+                for (_alias_id, req) in self.find_reqs.drain() {
+                    gauge!(P2P_ALIAS_LIVE_FIND_REQUEST).decrement(1);
+                    for tx in req.waits {
+                        tx.send(None).print_on_err2("[AliasServiceInternal] send shutdown find response");
+                    }
+                }
                 self.outs.push_back(InternalOutput::Broadcast(AliasMessage::Shutdown));
             }
         }

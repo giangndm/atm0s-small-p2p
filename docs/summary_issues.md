@@ -1302,6 +1302,11 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   destinations. Reviewer: Russell the 3rd.
 - ISSUE-179, score 49: local alias shutdown leaves pending find waiters alive.
   Reviewer: Socrates the 3rd.
+  Root cause: local alias shutdown only broadcast `AliasMessage::Shutdown` and
+  left in-flight local `find_reqs` waiters parked until scan timeout. Fix: drain
+  pending finds on shutdown, complete waiters with `None`, and decrement the live
+  find gauge once per drained request. Verification:
+  `cargo test local_shutdown_must_fail_pending_alias_finds -- --nocapture`.
 - ISSUE-180, score 64: relay stream setup can forward back to the ingress peer.
   Reviewer: Carver the 3rd.
 - ISSUE-181, score 45: local advertise config can gossip unroutable wildcard

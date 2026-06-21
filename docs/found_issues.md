@@ -5574,6 +5574,10 @@ the source of truth for evidence and reviewer decisions.
 - Category: lifecycle stability, graceful shutdown, alias lookup
 - Score: 49/100
 - Reviewer: `Socrates the 3rd`, confirmed after `Ampere the 3rd` discovery.
+- Fix status: fixed. Local `AliasControl::Shutdown` now drains
+  `find_reqs`, sends `None` to all pending find waiters, decrements the live
+  find-request gauge once per drained request, and then preserves the existing
+  `AliasMessage::Shutdown` broadcast.
 - Affected code:
   - `src/service/alias_service.rs`: `AliasControl::Find` inserts missing-alias
     lookups into `AliasServiceInternal::find_reqs` and parks caller waiters
@@ -5596,12 +5600,21 @@ the source of truth for evidence and reviewer decisions.
   `None` to every waiter, decrement `P2P_ALIAS_LIVE_FIND_REQUEST` for each
   removed request, then broadcast `AliasMessage::Shutdown`. Optionally add a
   local `shutting_down` flag so later `Find` controls fail immediately.
+- Root cause: local shutdown announced only to peers and did not transition
+  local pending lookup state, so waiters remained parked behind the normal scan
+  timeout.
+- Fix: drain pending local finds during shutdown and complete their waiters with
+  `None`; later local alias ownership and post-shutdown request behavior remains
+  tracked separately by ISSUE-183.
 - Evidence test:
   - `cargo test service::alias_service::test::local_shutdown_must_fail_pending_alias_finds -- --nocapture`
   - Failure summary: after a missing-alias `Find` creates a pending scan,
     `AliasControl::Shutdown` broadcasts `Shutdown` but `rx.try_recv()` remains
     `Err(Empty)` and `find_reqs` still contains the alias; expected immediate
     `Ok(None)` and cleared pending state.
+  - Fixed verification:
+    `cargo test local_shutdown_must_fail_pending_alias_finds -- --nocapture`
+    passes.
 
 ### ISSUE-183: Local alias shutdown keeps serving local aliases
 
