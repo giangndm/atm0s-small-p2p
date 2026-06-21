@@ -1002,6 +1002,10 @@ the source of truth for evidence and reviewer decisions.
   - Failure summary: a snapshot response declaring `Version(1)` but containing
     `Slot::new(..., Version(99))` is accepted, stored, and emitted instead of
     being rejected.
+- Fix status: fixed by full-sync snapshot validation in
+  `SyncFullState::on_rpc_res`. Snapshot slots are checked before mutation, and
+  any slot with `slot.version > version` rejects the page before inserting into
+  `ctx.slots`, emitting `KvEvent::Set`, or transitioning to `WorkingState`.
 
 ### ISSUE-035: Alias lookup stores unbounded duplicate waiters
 

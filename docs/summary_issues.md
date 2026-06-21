@@ -11,7 +11,7 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 - Stop condition: continue until 5 consecutive cycles find no new accepted
   issue; currently 0/5 after ISSUE-207.
 - Fix phase status: ISSUE-001, ISSUE-003, ISSUE-004, ISSUE-005, ISSUE-006, ISSUE-007,
-  ISSUE-002, ISSUE-008, ISSUE-009, ISSUE-010, ISSUE-011, ISSUE-012, ISSUE-013, ISSUE-014, ISSUE-015, ISSUE-020, ISSUE-021, ISSUE-024, ISSUE-033, ISSUE-039, ISSUE-048, ISSUE-055, ISSUE-103, ISSUE-118, ISSUE-119, ISSUE-120, ISSUE-122, ISSUE-123,
+  ISSUE-002, ISSUE-008, ISSUE-009, ISSUE-010, ISSUE-011, ISSUE-012, ISSUE-013, ISSUE-014, ISSUE-015, ISSUE-020, ISSUE-021, ISSUE-024, ISSUE-033, ISSUE-034, ISSUE-039, ISSUE-048, ISSUE-055, ISSUE-103, ISSUE-118, ISSUE-119, ISSUE-120, ISSUE-122, ISSUE-123,
   ISSUE-124, ISSUE-125, ISSUE-126, ISSUE-127, ISSUE-128, ISSUE-129, ISSUE-130,
   ISSUE-131, ISSUE-132, ISSUE-133, ISSUE-134, ISSUE-135, ISSUE-136, ISSUE-137,
   ISSUE-140, ISSUE-143, ISSUE-145, ISSUE-147, ISSUE-148, ISSUE-150, ISSUE-151,
@@ -886,6 +886,11 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   `cargo test apply_correct_direct_sync -- --nocapture`,
   `cargo test create_correct_direct_sync -- --nocapture`,
   and `cargo fmt -- --check`. Reviewer accepted.
+- ISSUE-034: fixed by full-sync snapshot validation in
+  `SyncFullState::on_rpc_res`. Snapshot pages now reject any
+  `slot.version > version` before inserting into `ctx.slots`, emitting
+  `KvEvent::Set`, or transitioning to `WorkingState(version)`. Verified with
+  `cargo test full_sync_must_reject_snapshot_slot_newer_than_declared_version -- --nocapture`.
 - ISSUE-055: fixed by rejecting discovery sync rows whose peer id is already
   configured as a seed, preserving static seed addresses as authoritative.
   Verified with
