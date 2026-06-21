@@ -8,6 +8,7 @@
 use std::{
     collections::HashMap,
     net::SocketAddr,
+    sync::Arc,
     time::{Duration, Instant},
 };
 
@@ -19,7 +20,10 @@ use serde::{Deserialize, Serialize};
 use tokio::{
     io::copy_bidirectional,
     select,
-    sync::mpsc::{Receiver, Sender},
+    sync::{
+        mpsc::{Receiver, Sender},
+        OwnedSemaphorePermit, Semaphore,
+    },
     time::Interval,
 };
 use tokio_util::codec::Framed;
@@ -37,6 +41,8 @@ use crate::{
 use super::PeerConnectionControl;
 
 const OPEN_BI_TIMEOUT: Duration = Duration::from_secs(2);
+const ACCEPT_BI_INITIAL_REQ_TIMEOUT: Duration = Duration::from_secs(1);
+const MAX_PENDING_ACCEPT_BI: usize = 16;
 const LOCAL_SERVICE_DELIVERY_TIMEOUT: Duration = Duration::from_secs(1);
 const UNICAST_ACK_TIMEOUT: Duration = Duration::from_secs(1);
 const MAX_CONTROL_STREAM_PKT: usize = 60000;
@@ -64,6 +70,7 @@ pub struct PeerConnectionInternal {
     main_tx: Sender<MainEvent>,
     control_rx: Receiver<PeerConnectionControl>,
     pending_unicast_acks: HashMap<UnicastAckId, (tokio::sync::oneshot::Sender<anyhow::Result<()>>, Instant)>,
+    pending_accept_bi: Arc<Semaphore>,
     ticker: Interval,
     started: Instant,
 }
@@ -92,6 +99,7 @@ impl PeerConnectionInternal {
             main_tx,
             control_rx,
             pending_unicast_acks: HashMap::new(),
+            pending_accept_bi: Arc::new(Semaphore::new(MAX_PENDING_ACCEPT_BI)),
             ticker: tokio::time::interval(Duration::from_secs(1)),
             started: Instant::now(),
         }
@@ -143,8 +151,12 @@ impl PeerConnectionInternal {
 
     async fn on_accept_bi(&mut self, send: SendStream, recv: RecvStream) -> anyhow::Result<()> {
         log::info!("[PeerConnectionInternal {}] on new bi", self.remote);
+        let Ok(permit) = self.pending_accept_bi.clone().try_acquire_owned() else {
+            log::warn!("[PeerConnectionInternal {}] too many pending inbound stream-connect handshakes", self.remote);
+            return Ok(());
+        };
         let stream = P2pQuicStream::new(recv, send);
-        tokio::spawn(accept_bi(self.to_id, stream, self.ctx.clone()));
+        tokio::spawn(accept_bi(self.to_id, stream, self.ctx.clone(), permit));
         Ok(())
     }
 
@@ -381,8 +393,10 @@ async fn open_bi(connection: Connection, source: PeerId, dest: PeerId, service: 
     .map_err(|_| anyhow!("open_bi stream setup timed out"))?
 }
 
-async fn accept_bi(authenticated_ingress_peer: PeerId, mut stream: P2pQuicStream, ctx: SharedCtx) -> anyhow::Result<()> {
-    let req = wait_object::<_, StreamConnectReq, MAX_CONTROL_STREAM_PKT>(&mut stream).await?;
+async fn accept_bi(authenticated_ingress_peer: PeerId, mut stream: P2pQuicStream, ctx: SharedCtx, _permit: OwnedSemaphorePermit) -> anyhow::Result<()> {
+    let req = tokio::time::timeout(ACCEPT_BI_INITIAL_REQ_TIMEOUT, wait_object::<_, StreamConnectReq, MAX_CONTROL_STREAM_PKT>(&mut stream))
+        .await
+        .map_err(|_| anyhow!("stream connect request timed out"))??;
     let StreamConnectReq { dest, source, service, meta } = req;
     let effective_source = authenticated_ingress_peer;
     if source != effective_source {

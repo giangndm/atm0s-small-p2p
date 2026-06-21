@@ -3291,6 +3291,11 @@ the source of truth for evidence and reviewer decisions.
   conditions
 - Score: 78/100
 - Reviewer: `Plato the 2nd`, confirmed.
+- Status: fixed. `src/quic.rs` now caps bidirectional stream admission at one
+  main control stream plus 16 application streams, and
+  `src/peer/peer_internal.rs` gates pending inbound stream-connect setup tasks
+  with a 16-per-connection semaphore plus an initial `StreamConnectReq`
+  timeout.
 - Affected code:
   - `src/peer/peer_internal.rs`: `PeerConnectionInternal::on_accept_bi`
     spawns one `accept_bi` task for every inbound bidirectional stream.

@@ -674,18 +674,21 @@ async fn idle_inbound_stream_connects_must_be_admission_bounded() {
         .expect("raw client should verify connect response");
 
     let mut idle_streams = Vec::new();
-    for _ in 0..ATTEMPTED_IDLE_STREAMS {
-        let stream = tokio::time::timeout(Duration::from_secs(1), connection.open_bi())
+    for _ in 0..ACCEPTABLE_IDLE_STREAMS {
+        let stream = tokio::time::timeout(Duration::from_millis(500), connection.open_bi())
             .await
-            .expect("idle stream open should not hang")
-            .expect("idle stream open should be transport-accepted");
+            .expect("idle stream open within the admission cap should not hang")
+            .expect("idle stream open within the admission cap should be transport-accepted");
         idle_streams.push(stream);
     }
 
-    assert!(
-        idle_streams.len() <= ACCEPTABLE_IDLE_STREAMS,
-        "inbound stream-connect attempts that never send StreamConnectReq must be capped or timed out before more than {ACCEPTABLE_IDLE_STREAMS} idle accept tasks can accumulate"
+    let rejected_or_timed_out = matches!(
+        tokio::time::timeout(Duration::from_millis(500), connection.open_bi()).await,
+        Ok(Err(_)) | Err(_)
     );
+
+    assert_eq!(idle_streams.len(), ACCEPTABLE_IDLE_STREAMS, "the stream cap should allow exactly {ACCEPTABLE_IDLE_STREAMS} idle stream-connect attempts after the main control stream");
+    assert!(rejected_or_timed_out, "the {ATTEMPTED_IDLE_STREAMS}th idle inbound stream-connect attempt must be rejected or time out once the stream cap is reached");
 }
 
 #[tokio::test]

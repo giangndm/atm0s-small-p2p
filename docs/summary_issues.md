@@ -11,7 +11,7 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 - Stop condition: continue until 5 consecutive cycles find no new accepted
   issue; currently 0/5 after ISSUE-207.
 - Fix phase status: ISSUE-001, ISSUE-003, ISSUE-004, ISSUE-005, ISSUE-006, ISSUE-007,
-  ISSUE-002, ISSUE-008, ISSUE-009, ISSUE-010, ISSUE-011, ISSUE-012, ISSUE-013, ISSUE-014, ISSUE-015, ISSUE-017, ISSUE-020, ISSUE-021, ISSUE-024, ISSUE-025, ISSUE-027, ISSUE-033, ISSUE-034, ISSUE-039, ISSUE-046, ISSUE-047, ISSUE-048, ISSUE-055, ISSUE-059, ISSUE-103, ISSUE-110, ISSUE-115, ISSUE-116, ISSUE-118, ISSUE-119, ISSUE-120, ISSUE-122, ISSUE-123,
+  ISSUE-002, ISSUE-008, ISSUE-009, ISSUE-010, ISSUE-011, ISSUE-012, ISSUE-013, ISSUE-014, ISSUE-015, ISSUE-017, ISSUE-020, ISSUE-021, ISSUE-024, ISSUE-025, ISSUE-027, ISSUE-033, ISSUE-034, ISSUE-039, ISSUE-046, ISSUE-047, ISSUE-048, ISSUE-055, ISSUE-059, ISSUE-103, ISSUE-110, ISSUE-115, ISSUE-116, ISSUE-117, ISSUE-118, ISSUE-119, ISSUE-120, ISSUE-122, ISSUE-123,
   ISSUE-124, ISSUE-125, ISSUE-126, ISSUE-127, ISSUE-128, ISSUE-129, ISSUE-130,
   ISSUE-131, ISSUE-132, ISSUE-133, ISSUE-134, ISSUE-135, ISSUE-136, ISSUE-137,
   ISSUE-140, ISSUE-143, ISSUE-145, ISSUE-147, ISSUE-148, ISSUE-150, ISSUE-151,
@@ -186,6 +186,15 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Recently Fixed Issues
 
+- ISSUE-117: fixed by bounding inbound stream-connect setup at both transport
+  and application layers. QUIC now admits at most one main control stream plus
+  16 application bidirectional streams per peer direction, while
+  `PeerConnectionInternal` also keeps only 16 pending inbound stream-connect
+  setup tasks and times out peers that never send the initial
+  `StreamConnectReq`. Root cause was a 10,000-stream transport cap combined
+  with one unbounded spawned task per idle accepted stream. Verification:
+  `cargo test idle_inbound_stream_connects_must_be_admission_bounded -- --nocapture`
+  and `cargo test test_open_stream -- --nocapture`.
 - ISSUE-118: fixed by making `P2pNetwork::shutdown_gracefully` attempt
   peer-stopped notifications concurrently with `futures::future::join_all`
   under one outer one-second timeout. Root cause was a sequential per-peer
