@@ -1308,6 +1308,11 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   addresses. Reviewer: Nash the 3rd.
 - ISSUE-182, score 52: QUIC admits unused unidirectional streams. Reviewer:
   Pascal the 3rd.
+  Root cause: production QUIC server/client config allowed 10,000 concurrent
+  unidirectional streams, but the P2P protocol never calls `accept_uni`.
+  Fix: set production server and client `max_concurrent_uni_streams` to zero,
+  leaving test-only raw endpoint configs unchanged. Verification:
+  `cargo test unused_unidirectional_streams_must_not_be_admitted -- --nocapture`.
 - ISSUE-183, score 53: local alias shutdown keeps serving local aliases.
   Reviewer: Newton the 3rd.
 - ISSUE-184, score 57: replicated KV duplicates in-flight FetchChanged repairs
@@ -3291,7 +3296,8 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   failed with duplicate evidence for ISSUE-182. Reviewer `Hegel the 4th`
   confirmed QUIC still admits unused uni streams because transport config
   allows `max_concurrent_uni_streams(10_000)` while the P2P protocol has no
-  `accept_uni` path.
+  `accept_uni` path. Fixed by setting production server and client
+  `max_concurrent_uni_streams` to zero; the focused test now passes.
 - Focused idle inbound stream admission review:
   `cargo test idle_inbound_stream_connects_must_be_admission_bounded -- --nocapture`
   failed with duplicate evidence for ISSUE-117. Reviewer `Avicenna the 4th`

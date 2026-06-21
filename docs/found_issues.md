@@ -5707,11 +5707,14 @@ the source of truth for evidence and reviewer decisions.
 - Category: high-load stability, transport admission, resource exhaustion
 - Score: 52/100
 - Reviewer: `Pascal the 3rd`, confirmed after `Ohm the 3rd` discovery.
+- Status: fixed. Production server and client QUIC transport config now set
+  `max_concurrent_uni_streams(0_u32.into())`, so raw peers cannot open an
+  unused stream class that the P2P protocol never accepts or drains.
 - Affected code:
   - `src/quic.rs`: `configure_server` sets
-    `max_concurrent_uni_streams(10_000_u32.into())`.
+    `max_concurrent_uni_streams(0_u32.into())`.
   - `src/quic.rs`: `configure_client` sets
-    `max_concurrent_uni_streams(10_000_u32.into())`.
+    `max_concurrent_uni_streams(0_u32.into())`.
   - Production peer code uses only bidirectional streams and never calls
     `accept_uni`.
 - Impact: a raw QUIC peer can open many unidirectional streams that the P2P
@@ -5726,11 +5729,20 @@ the source of truth for evidence and reviewer decisions.
   server and client transport config. If future protocol features need
   unidirectional streams, introduce a small explicit cap plus an application
   accept/reject/drain path.
+- Root cause: production transport config allowed a high unidirectional stream
+  admission window even though the application protocol has no unidirectional
+  stream handler.
+- Fix: disable production unidirectional stream admission by setting both
+  `configure_server` and `configure_client` limits to zero; leave test-specific
+  raw endpoint configs unchanged.
 - Evidence test:
   - `cargo test unused_unidirectional_streams_must_not_be_admitted -- --nocapture`
   - Failure summary: a raw client opens 17 unidirectional QUIC streams against
     the endpoint while the protocol has no `accept_uni` path; expected zero
     admitted unused unidirectional streams.
+  - Fixed verification:
+    `cargo test unused_unidirectional_streams_must_not_be_admitted -- --nocapture`
+    passes.
 
 ### ISSUE-164: Tick route/discovery sync is dropped when peer control queue is full
 

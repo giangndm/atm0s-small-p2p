@@ -21,7 +21,7 @@ fn configure_server(priv_key: PrivatePkcs8KeyDer<'static>, cert: CertificateDer<
 
     let mut server_config = ServerConfig::with_single_cert(cert_chain, priv_key.into())?;
     let transport_config = Arc::get_mut(&mut server_config.transport).expect("should get mut");
-    transport_config.max_concurrent_uni_streams(10_000_u32.into());
+    transport_config.max_concurrent_uni_streams(0_u32.into());
     transport_config.max_concurrent_bidi_streams(MAX_CONCURRENT_BIDI_STREAMS.into());
     transport_config.max_idle_timeout(Some(Duration::from_secs(5).try_into().expect("Should config timeout")));
 
@@ -39,7 +39,7 @@ fn configure_client(server_certs: &[CertificateDer]) -> anyhow::Result<ClientCon
     transport.keep_alive_interval(Some(Duration::from_secs(1)));
     transport.max_idle_timeout(Some(Duration::from_secs(5).try_into().expect("Should config timeout")));
     transport.max_concurrent_bidi_streams(MAX_CONCURRENT_BIDI_STREAMS.into());
-    transport.max_concurrent_uni_streams(10_000_u32.into());
+    transport.max_concurrent_uni_streams(0_u32.into());
     config.transport_config(Arc::new(transport));
     Ok(config)
 }
