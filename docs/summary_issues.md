@@ -20,7 +20,7 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   ISSUE-094, ISSUE-095, ISSUE-096,
   ISSUE-149, ISSUE-169, ISSUE-174, ISSUE-176, ISSUE-078, ISSUE-079, ISSUE-080, ISSUE-081, ISSUE-082, ISSUE-083, ISSUE-084, ISSUE-085, ISSUE-181, ISSUE-189, ISSUE-190, ISSUE-191, ISSUE-192, ISSUE-193,
   ISSUE-194, ISSUE-195, ISSUE-196, ISSUE-197, ISSUE-198, ISSUE-199,
-  ISSUE-200, ISSUE-201, ISSUE-202, ISSUE-203, ISSUE-204, ISSUE-205, ISSUE-206, ISSUE-207, ISSUE-097, ISSUE-098, and ISSUE-018 have focused
+  ISSUE-200, ISSUE-201, ISSUE-202, ISSUE-203, ISSUE-204, ISSUE-205, ISSUE-206, ISSUE-207, ISSUE-097, ISSUE-098, ISSUE-099, and ISSUE-018 have focused
   fixes committed.
   ISSUE-003 is fixed by `cfc8e57`;
   ISSUE-090 is fixed by the alias `Found` request-correlation guard.
@@ -802,6 +802,12 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   longer unwind the `recv()` event loop or require a public API change.
   Verified with
   `cargo test replicated_kv_recv_must_not_panic_on_value_serialize_failure -- --nocapture`.
+- ISSUE-099: fixed by rejecting zero effective replicated-KV `FetchChanged`
+  windows in `LocalStore::changeds_from_to` before building the response range.
+  Remote `count = 0` and effective zero windows now return
+  `FetchChangedError::MissingData` instead of successful empty repair batches.
+  Verified with
+  `cargo test fetch_changed_with_zero_count_must_not_return_empty_success -- --nocapture`.
 - ISSUE-130: fixed by `e78c190` (`fix: return errors when alias channels
   close`), which makes `AliasService::run_loop` return `Err(_)` when the
   underlying base service channel closes instead of panicking on

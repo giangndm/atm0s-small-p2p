@@ -2791,12 +2791,13 @@ the source of truth for evidence and reviewer decisions.
 - Reviewer: `Laplace the 2nd`, confirmed.
 - Affected code:
   - `src/service/replicate_kv_service/local_storage.rs`:
-    `LocalStore::on_rpc_req` passes remote `RpcReq::FetchChanged { from,
+    `LocalStore::on_rpc_req` passed remote `RpcReq::FetchChanged { from,
     count }` directly to `changeds_from_to`.
   - `src/service/replicate_kv_service/local_storage.rs`:
-    `changeds_from_to` computes `to = from + count.min(compose_max_pkts)`.
-    With a remote-supplied `count = 0`, `to == from`; if `from` is retained,
-    the range checks pass and the empty range returns `Ok(vec![])`.
+    `changeds_from_to` computed `to = from + count.min(compose_max_pkts)`
+    without first rejecting a zero effective count. With a remote-supplied
+    `count = 0`, `to == from`; if `from` was retained, the range checks passed
+    and the empty range returned `Ok(vec![])`.
 - Impact: a malformed or malicious peer can make a node answer a repair request
   with a successful empty `FetchChanged` response that makes no version
   progress. This is distinct from ISSUE-077, which covers the local
@@ -2808,6 +2809,10 @@ the source of truth for evidence and reviewer decisions.
     `FetchChanged { from: Version(1), count: 0 }` returns
     `RpcRes::FetchChanged(Ok(vec![]))` instead of rejecting the no-progress
     request.
+- Fix status: fixed by rejecting zero effective `FetchChanged` windows in
+  `LocalStore::changeds_from_to` before range construction. The effective
+  count is now `count.min(compose_max_pkts)`, and a zero result returns
+  `FetchChangedError::MissingData` instead of a successful empty batch.
 
 ### ISSUE-100: Pubsub remote membership sets are unbounded per channel
 

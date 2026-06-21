@@ -83,7 +83,11 @@ where
     }
 
     fn changeds_from_to(&self, from: Version, count: u64) -> Result<Vec<Changed<K, V>>, FetchChangedError> {
-        let to = Version(from.0.checked_add(count.min(self.compose_max_pkts as u64)).ok_or(FetchChangedError::MissingData)?);
+        let count = count.min(self.compose_max_pkts as u64);
+        if count == 0 {
+            return Err(FetchChangedError::MissingData);
+        }
+        let to = Version(from.0.checked_add(count).ok_or(FetchChangedError::MissingData)?);
         let first = self.changeds.first_key_value().ok_or(FetchChangedError::MissingData)?.0;
         let last = self.changeds.last_key_value().ok_or(FetchChangedError::MissingData)?.0;
         let after_last = Version(last.0.checked_add(1).ok_or(FetchChangedError::MissingData)?);
