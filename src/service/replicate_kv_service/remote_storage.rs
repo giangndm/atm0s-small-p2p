@@ -437,7 +437,42 @@ where
         }
     }
 
-    fn apply_pendings(&mut self, ctx: &mut StateCtx<N, K, V>) {
+    fn in_flight_fetch_changed(&self) -> Option<(Version, u64)> {
+        let Some((_, NetEvent::Unicast(_, RpcEvent::RpcReq(RpcReq::FetchChanged { from, count })))) = self.sending_req.as_ref() else {
+            return None;
+        };
+        Some((*from, *count))
+    }
+
+    fn clear_satisfied_fetch_changed(&mut self) {
+        let Some((from, count)) = self.in_flight_fetch_changed() else {
+            return;
+        };
+        if count > 0 && self.version >= from + count.saturating_sub(1) {
+            self.sending_req = None;
+        }
+    }
+
+    fn request_fetch_changed(&mut self, ctx: &mut StateCtx<N, K, V>, now: Instant, from: Version, count: u64) {
+        if count == 0 {
+            return;
+        }
+
+        let requested_to = from + count.saturating_sub(1);
+        if let Some((current_from, current_count)) = self.in_flight_fetch_changed() {
+            let current_to = current_from + current_count.saturating_sub(1);
+            if current_count > 0 && current_from <= from && current_to >= requested_to {
+                log::debug!("[RemoteStore {:?}] fetch changed from {from:?} count {count} already covered by in-flight request", ctx.remote);
+                return;
+            }
+        }
+
+        let req = NetEvent::Unicast(ctx.remote.clone(), RpcEvent::RpcReq(RpcReq::FetchChanged { from, count }));
+        self.sending_req = Some((now, req.clone()));
+        ctx.outs.push_back(Event::NetEvent(req));
+    }
+
+    fn apply_pendings(&mut self, ctx: &mut StateCtx<N, K, V>, now: Instant) {
         while let Some(entry) = self.pendings.first_entry() {
             if *entry.key() == self.version + 1 {
                 self.version = self.version + 1;
@@ -454,13 +489,12 @@ where
                         ctx.slots.remove(&data.key);
                     }
                 }
+                self.clear_satisfied_fetch_changed();
             } else {
                 let from = self.version + 1;
                 let count = *entry.key() - self.version - 1;
                 log::warn!("[RemoteStore {:?}] apply pendings discontinuity => request fetch changed from {from:?} count {count}", ctx.remote);
-                let req = NetEvent::Unicast(ctx.remote.clone(), RpcEvent::RpcReq(RpcReq::FetchChanged { from, count }));
-                self.sending_req = Some((Instant::now(), req.clone()));
-                ctx.outs.push_back(Event::NetEvent(req));
+                self.request_fetch_changed(ctx, now, from, count);
                 break;
             }
         }
@@ -514,7 +548,7 @@ where
             BroadcastEvent::Changed(changed) => {
                 if self.enqueue_pending_changed(ctx, changed) {
                     if ctx.next_state.is_none() {
-                        self.apply_pendings(ctx);
+                        self.apply_pendings(ctx, now);
                     }
                     true
                 } else {
@@ -527,9 +561,7 @@ where
                     let from = self.version + 1;
                     let count = version - self.version;
                     log::warn!("[RemoteStore {:?}] received discontinuity version => request fetch changed from {from:?} count {count}", ctx.remote);
-                    let req = NetEvent::Unicast(ctx.remote.clone(), RpcEvent::RpcReq(RpcReq::FetchChanged { from, count }));
-                    self.sending_req = Some((now, req.clone()));
-                    ctx.outs.push_back(Event::NetEvent(req));
+                    self.request_fetch_changed(ctx, now, from, count);
                     true
                 } else {
                     false
@@ -563,17 +595,12 @@ where
                     }
                 }
                 self.sending_req = None;
-                self.apply_pendings(ctx);
+                self.apply_pendings(ctx, now);
                 if self.sending_req.is_none() && self.version < requested_to {
                     let from = self.version + 1;
                     let count = requested_to - self.version;
-                    log::warn!(
-                        "[RemoteStore {:?}] partial fetch changed response => request remaining changed from {from:?} count {count}",
-                        ctx.remote
-                    );
-                    let req = NetEvent::Unicast(ctx.remote.clone(), RpcEvent::RpcReq(RpcReq::FetchChanged { from, count }));
-                    self.sending_req = Some((now, req.clone()));
-                    ctx.outs.push_back(Event::NetEvent(req));
+                    log::warn!("[RemoteStore {:?}] partial fetch changed response => request remaining changed from {from:?} count {count}", ctx.remote);
+                    self.request_fetch_changed(ctx, now, from, count);
                 }
                 true
             }

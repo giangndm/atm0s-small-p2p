@@ -4982,6 +4982,17 @@ the source of truth for evidence and reviewer decisions.
     `Changed(version=11)` before timeout/response queues the same
     `FetchChanged { from: Version(1), count: 9 }` again; expected no duplicate
     in-flight repair request.
+- Fix status: fixed by routing all working-state `FetchChanged` scheduling
+  through a range-aware helper. Equivalent or already-covered in-flight repairs
+  are suppressed until `on_tick` retries them, wider repairs still replace
+  narrower ones, and requests already satisfied by later broadcasts are cleared
+  before they can retry. Verification:
+  `cargo test working_state_must_not_duplicate_inflight_fetch_changed_for_same_gap -- --nocapture`,
+  `cargo test working_state_must_cancel_fetch_changed_when_broadcast_fills_gap -- --nocapture`,
+  `cargo test test_working_state_resend_timeout_fetch_changed -- --nocapture`,
+  `cargo test working_state_must_continue_repair_after_partial_fetch_changed_success -- --nocapture`,
+  `cargo test working_state_must_not_let_stale_fetch_changed_response_cancel_newer_repair -- --nocapture`,
+  and `cargo fmt -- --check`.
 
 ### ISSUE-185: Pubsub keeps remote subscriber membership after graceful peer stop
 
