@@ -2377,6 +2377,10 @@ the source of truth for evidence and reviewer decisions.
   - Failure summary: a snapshot response with duplicate key `1` is accepted;
     the second value overwrites the first in `ctx.slots`; expected duplicate-key
     snapshot pages to be rejected.
+- Fix status: fixed by `86160e9` (`fix: validate full sync snapshot
+  responses`). `SyncFullState` now requires snapshot slot keys to be strictly
+  increasing within each page, so duplicate keys are rejected before any slot is
+  emitted or stored.
 
 ### ISSUE-086: Replicated KV applies unsolicited FetchChanged success responses
 
