@@ -2682,7 +2682,7 @@ the source of truth for evidence and reviewer decisions.
 - Reviewer: `Meitner`, confirmed.
 - Affected code:
   - `src/service/replicate_kv_service.rs`: `ReplicatedKvService::recv`
-    serializes outbound `BroadcastEvent` and `RpcEvent` with
+    serialized outbound `BroadcastEvent` and `RpcEvent` with
     `bincode::serialize(...).expect("should serialize")`.
 - Impact: caller-provided replicated-KV key/value types can implement
   `Serialize` and legitimately return an error. A local `set` can then make
@@ -2691,9 +2691,14 @@ the source of truth for evidence and reviewer decisions.
   distinct from ISSUE-094, which covers pubsub object helper serialization.
 - Evidence test:
   - `cargo test replicated_kv_recv_must_not_panic_on_value_serialize_failure -- --nocapture`
-  - Failure summary: `service.recv()` panics at
-    `src/service/replicate_kv_service.rs:163` when serializing a value whose
-    `Serialize` implementation returns a custom error.
+  - Failure summary: `service.recv()` panics at the outbound broadcast
+    serialization site when serializing a value whose `Serialize`
+    implementation returns a custom error.
+- Fix status: fixed by replacing outbound replicated-KV wire-event
+  serialization `expect(...)` calls in `ReplicatedKvService::recv` with
+  explicit error handling. Broadcast and unicast serialization failures are
+  logged and skipped so `recv()` keeps draining without unwinding or changing
+  its public `Option<KvEvent<...>>` API.
 
 ### ISSUE-097: QUIC object writer panics on serialization failure
 

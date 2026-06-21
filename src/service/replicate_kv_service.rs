@@ -196,11 +196,21 @@ where
                 match event {
                     Event::NetEvent(net_event) => match net_event {
                         NetEvent::Broadcast(broadcast_event) => {
-                            let _ = self.service.try_send_broadcast(bincode::serialize(&broadcast_event).expect("should serialize")).await;
+                            match bincode::serialize(&broadcast_event) {
+                                Ok(data) => {
+                                    let _ = self.service.try_send_broadcast(data).await;
+                                }
+                                Err(err) => log::error!("[ReplicatedKvService] serialize broadcast error {err}"),
+                            }
                             continue;
                         }
                         NetEvent::Unicast(to_node, rpc_event) => {
-                            let _ = self.service.try_send_unicast(to_node, bincode::serialize(&rpc_event).expect("should serialize")).await;
+                            match bincode::serialize(&rpc_event) {
+                                Ok(data) => {
+                                    let _ = self.service.try_send_unicast(to_node, data).await;
+                                }
+                                Err(err) => log::error!("[ReplicatedKvService] serialize unicast error {err}"),
+                            }
                             continue;
                         }
                     },
