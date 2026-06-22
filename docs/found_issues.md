@@ -4338,6 +4338,8 @@ the source of truth for evidence and reviewer decisions.
   `MainEvent::PeerStopped(self.conn_id, peer_id)` with `try_send`, so a full
   bounded main event queue cannot park the peer connection task during
   `PeerStopped` handling.
+- Fix status: fixed by reporting inbound `PeerStopped` to the main loop with
+  best-effort `try_send` instead of awaiting the bounded main event queue.
 - Affected code:
   - `src/peer/peer_internal.rs`: `PeerConnectionInternal::on_msg` handles
     `PeerMessage::PeerStopped(peer_id)`.
