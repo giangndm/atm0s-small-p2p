@@ -5769,6 +5769,9 @@ the source of truth for evidence and reviewer decisions.
   cleanup. Verified with the evidence test below, plus
   `cargo test single_node -- --nocapture` and
   `cargo test peer_stopped_must_emit_public_disconnect_event -- --nocapture`.
+- Fix status: fixed by fanning accepted peer disconnect lifecycle events to
+  services and having replicated KV destroy the matching remote store on
+  `P2pServiceEvent::PeerDisconnected(peer)`.
 - Reviewer: `Franklin the 2nd`, confirmed after `Noether the 2nd` discovery.
 - Affected code:
   - `src/service/replicate_kv_service.rs`: remote KV data is deleted only when
