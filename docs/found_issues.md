@@ -11,9 +11,10 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 10
-- Current audit continuation: Fuzz phase no-new cycle 5 ran high-load configured
-  node-count randomized fuzzing without a distinct reviewed failure.
+- Current consecutive no-new-issue cycles: 11
+- Current audit continuation: Focused source-review no-new cycle 1 reviewed
+  lifecycle/discovery/router graceful-stop and route-stability behavior without
+  a distinct reviewed failure.
 
 ## Root Cause Summary
 
@@ -19683,6 +19684,61 @@ the source of truth for evidence and reviewer decisions.
     malformed-input and ownership families, including ISSUE-053, ISSUE-060,
     ISSUE-091, and ISSUE-234.
 - Current consecutive no-new cycles after ISSUE-238: 10.
+- Current fuzz-phase no-new cycles after transition: 5.
+
+### Focused source-review no-new cycle 1: lifecycle, discovery, graceful-stop, and route stability
+
+- Scope: after five fuzz-phase no-new cycles, returned to source/spec review
+  for the highest-priority user hints: non-seed peers must be removable after
+  timeout or graceful stop, configured seeds must remain retryable, graceful
+  shutdown must notify neighbours without long serial waits, active paths must
+  not jump under equal cost or tiny RTT jitter, direct routes must not be
+  replaced by relayed paths, and service consumers must observe graceful-stop
+  cleanup. Reviewed `src/lib.rs`, `src/discovery.rs`, `src/router.rs`, and
+  existing security/discovery/pubsub/replicated-KV/visualization regression
+  tests.
+- Reviewer: `Nietzsche the 2nd` (forked RED-team reviewer), rejected new issue
+  acceptance because no distinct failing test evidence was found and
+  recommended documenting this as a no-new source-review cycle.
+- Verification:
+  - `RUST_LOG=error cargo test peer_stopped_ --lib -- --nocapture --test-threads=1`: passed 15/15.
+  - `RUST_LOG=error cargo test active_path --lib -- --nocapture`: passed.
+  - `RUST_LOG=error cargo test direct_peer_route --lib -- --nocapture`: passed.
+  - `RUST_LOG=error cargo test create_sync_must_prioritize --lib -- --nocapture`: passed.
+  - `RUST_LOG=error cargo test should_keep_existing_best_path --lib -- --nocapture`: passed.
+  - `RUST_LOG=error cargo test non_seed_discovered_peer_ages_out_but_seed_remains_retryable --lib -- --nocapture`: passed.
+  - `RUST_LOG=error cargo test graceful_stop_tombstone --lib -- --nocapture`: passed 6/6.
+  - `RUST_LOG=error cargo test discovery_timeout_must_remove_route_to_expired_non_seed --lib -- --nocapture`: passed.
+  - `RUST_LOG=error cargo test graceful_shutdown_removes_stopped_non_seed --lib -- --nocapture`: passed.
+  - `RUST_LOG=error cargo test shutdown_gracefully_must_not_wait_one_second_per_congested_peer --lib -- --nocapture`: passed.
+  - `RUST_LOG=error cargo test pubsub_must_remove_remote_subscriber_on_graceful_peer_stop --lib -- --nocapture`: passed.
+  - `RUST_LOG=error cargo test replicated_kv_must_delete_remote_data_when_peer_gracefully_stops --lib -- --nocapture`: passed.
+  - `RUST_LOG=error cargo test visualization_must_emit_peer_leaved_on_graceful_peer_stop --lib -- --nocapture`: passed.
+- Reviewer cross-check:
+  - `RUST_LOG=error cargo test active_path --lib -- --nocapture`: passed.
+  - `RUST_LOG=error cargo test non_seed_discovered_peer_ages_out_but_seed_remains_retryable --lib -- --nocapture`: passed.
+  - `RUST_LOG=error cargo test pubsub_must_remove_remote_subscriber_on_graceful_peer_stop --lib -- --nocapture`: passed.
+  - `RUST_LOG=error cargo test direct_peer_route_must_not_be_replaced_by_relayed_path --lib -- --nocapture`: passed.
+  - `RUST_LOG=error cargo test graceful_shutdown_removes_stopped_non_seed --lib -- --nocapture`: passed.
+  - `RUST_LOG=error cargo test replicated_kv_must_delete_remote_data_when_peer_gracefully_stops --lib -- --nocapture`: passed.
+  - `RUST_LOG=error cargo test visualization_must_emit_peer_leaved_on_graceful_peer_stop --lib -- --nocapture`: passed.
+- Duplicate mapping:
+  - Active path jumping and noisy route selection maps to ISSUE-003 and RC-7.
+  - Seed `PeerStopped` route deletion and seed retryability maps to ISSUE-004
+    plus ISSUE-170.
+  - Non-seed expiry and graceful-stop tombstone cleanup maps to existing
+    lifecycle/discovery families, including ISSUE-051, ISSUE-063, ISSUE-167,
+    and RC-6.
+  - Pubsub, replicated-KV, and visualization graceful-stop propagation maps to
+    existing service lifecycle cleanup coverage, including ISSUE-215 through
+    ISSUE-225 and ISSUE-231.
+  - Pipe, stream, and route reliability noise maps to existing stream and route
+    families, especially ISSUE-156, ISSUE-180, ISSUE-217, ISSUE-220,
+    ISSUE-238, RC-3, and RC-7.
+- Test note: two initial grouped `cargo test` commands used invalid multiple
+  filters and failed before running tests; exact individual filters were rerun
+  successfully and are listed above.
+- Current consecutive no-new cycles after ISSUE-238: 11.
 - Current fuzz-phase no-new cycles after transition: 5.
 
 ### Cycle after ISSUE-235 no-new cycle 1: transport, auth, and peer setup review
