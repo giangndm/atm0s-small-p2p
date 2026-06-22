@@ -1560,6 +1560,9 @@ the source of truth for evidence and reviewer decisions.
   - Failure summary: a full synthetic peer control channel makes
     `SharedCtx::send_broadcast` exceed the 50 ms timeout instead of completing
     without blocking on that peer.
+- Fix status: fixed by bounding each awaited peer-alias broadcast admission
+  with `BROADCAST_ADMISSION_TIMEOUT`, so one congested peer cannot block the
+  whole broadcast fanout.
 
 ### ISSUE-050: Unicast send can block on a congested peer control queue
 

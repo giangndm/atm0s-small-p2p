@@ -1105,6 +1105,10 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   `cargo test try_send_broadcast_must_report_when_all_peer_queues_reject -- --nocapture`
   and `cargo test broadcast_direct -- --nocapture`. ISSUE-049 and ISSUE-199
   remain separate.
+- ISSUE-049: fixed by wrapping each awaited peer-alias broadcast admission in
+  `BROADCAST_ADMISSION_TIMEOUT`, allowing fanout to continue past congested
+  peer control queues. Verified with
+  `cargo test send_broadcast_must_not_block_on_full_peer_control_queue -- --nocapture`.
 - ISSUE-199: fixed by changing `send_broadcast` to return
   `anyhow::Result<usize>` and report zero accepted awaited peer-control
   admissions as an error. Verified with
