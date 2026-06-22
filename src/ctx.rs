@@ -3,15 +3,15 @@ use std::{collections::HashMap, sync::Arc, time::Duration};
 use anyhow::anyhow;
 use lru::LruCache;
 use parking_lot::RwLock;
-use tokio::sync::mpsc::{error::TrySendError, Sender};
+use tokio::sync::mpsc::{Sender, error::TrySendError};
 
 use crate::{
+    ConnectionId, PeerId,
     msg::{BroadcastMsgId, P2pServiceId, PeerMessage},
     peer::{PeerConnectionAlias, PeerConnectionMetric},
     router::{RouteAction, SharedRouterTable},
     service::P2pServiceEvent,
     stream::P2pQuicStream,
-    ConnectionId, PeerId,
 };
 
 const BROADCAST_ADMISSION_TIMEOUT: Duration = Duration::from_millis(25);
@@ -124,9 +124,14 @@ impl SharedCtxInternal {
         self.received_broadcast_msg.check(BroadcastDedupKey { source, service_id, msg_id })
     }
 
-    fn check_peer_stopped_msg(&mut self, peer_id: PeerId) -> bool {
-        if !self.received_peer_stopped_msg.contains(&peer_id) {
-            self.received_peer_stopped_msg.get_or_insert(peer_id, || ());
+    fn try_mark_peer_stopped_msg_after<F>(&mut self, peer_id: PeerId, admit: F) -> bool
+    where
+        F: FnOnce() -> bool,
+    {
+        if self.received_peer_stopped_msg.contains(&peer_id) {
+            false
+        } else if admit() {
+            self.received_peer_stopped_msg.put(peer_id, ());
             true
         } else {
             false
@@ -162,9 +167,24 @@ mod tests {
         let ctx = SharedCtx::new(PeerId::from(1), SharedRouterTable::new(PeerId::from(1)));
         let stopped = PeerId::from(2);
 
-        assert!(ctx.check_peer_stopped_msg(stopped));
-        assert!(!ctx.check_peer_stopped_msg(stopped));
-        assert!(ctx.check_peer_stopped_msg(PeerId::from(3)));
+        assert!(ctx.try_mark_peer_stopped_msg_after(stopped, || true));
+        assert!(!ctx.try_mark_peer_stopped_msg_after(stopped, || true));
+        assert!(ctx.try_mark_peer_stopped_msg_after(PeerId::from(3), || true));
+    }
+
+    #[test]
+    fn peer_stopped_admission_must_not_mark_failed_admit() {
+        let ctx = SharedCtx::new(PeerId::from(1), SharedRouterTable::new(PeerId::from(1)));
+        let stopped = PeerId::from(2);
+        let mut duplicate_admit_calls = 0;
+
+        assert!(!ctx.try_mark_peer_stopped_msg_after(stopped, || false));
+        assert!(ctx.try_mark_peer_stopped_msg_after(stopped, || true));
+        assert!(!ctx.try_mark_peer_stopped_msg_after(stopped, || {
+            duplicate_admit_calls += 1;
+            true
+        }));
+        assert_eq!(duplicate_admit_calls, 0, "duplicate PeerStopped messages must not run admission again");
     }
 
     #[tokio::test]
@@ -278,8 +298,11 @@ impl SharedCtx {
         self.ctx.write().check_broadcast_msg(source, service_id, msg_id)
     }
 
-    pub fn check_peer_stopped_msg(&self, peer_id: PeerId) -> bool {
-        self.ctx.write().check_peer_stopped_msg(peer_id)
+    pub fn try_mark_peer_stopped_msg_after<F>(&self, peer_id: PeerId, admit: F) -> bool
+    where
+        F: FnOnce() -> bool,
+    {
+        self.ctx.write().try_mark_peer_stopped_msg_after(peer_id, admit)
     }
 
     pub fn try_send_unicast(&self, service_id: P2pServiceId, dest: PeerId, data: Vec<u8>) -> anyhow::Result<()> {

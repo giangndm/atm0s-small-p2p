@@ -11,10 +11,9 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 1
+- Current consecutive no-new-issue cycles: 0
 - Stop condition requested by user: continue until 5 consecutive cycles find no
-  new accepted issue. Not satisfied after ISSUE-214 no-new cycle 1; continue
-  auditing.
+  new accepted issue. Not satisfied after ISSUE-215; continue auditing.
 
 ## Root Cause Summary
 
@@ -17913,3 +17912,47 @@ the source of truth for evidence and reviewer decisions.
   connection-lost logs, and graceful shutdown close logs remained present.
 - Root-cause summary impact: no new root cause; observed noise maps to existing
   churn/teardown classifications unless a focused invariant fails.
+
+### ISSUE-215: PeerStopped dedup suppresses retry after main queue backpressure
+
+- Score: 66
+- Category: correctness / graceful shutdown stability under load
+- Status: fixed by pending commit.
+- Reviewer: `Erdos` (forked RED-team reviewer), accepted.
+- Affected code:
+  - `src/peer/peer_internal.rs`
+  - `src/ctx.rs`
+  - `src/tests/security.rs`
+- Impact: a legitimate graceful-stop notification can be lost when the bounded
+  main event queue is full. The peer task marks the stopped peer as already
+  delivered before it attempts to enqueue `MainEvent::PeerStopped`; if that
+  best-effort send fails, later retry notifications are suppressed by the
+  dedup cache. The stopped non-seed peer can remain routable until a later
+  disconnect or timeout instead of being removed promptly under load.
+- Distinctness: ISSUE-133 made peer-stop forwarding nonblocking with
+  `try_send`; this issue is the follow-on correctness loss when that
+  best-effort send fails after dedup state is already recorded. ISSUE-170
+  covers forwarding storm amplification, while this is local retry
+  suppression. ISSUE-187 covers public disconnect emission after an accepted
+  `PeerStopped`; this issue prevents the event from being admitted.
+- Failing evidence:
+  - `RUST_LOG=error cargo test peer_stopped_dedup_must_not_suppress_retry_after_main_queue_backpressure --lib -- --nocapture`
+  - Failure before fix:
+    - `a PeerStopped retry after main-queue backpressure must not be suppressed by dedup state`
+- Root cause: `PeerConnectionInternal::on_msg` calls
+  `SharedCtx::check_peer_stopped_msg(peer_id)` before attempting
+  `main_tx.try_send(MainEvent::PeerStopped(...))`. `check_peer_stopped_msg`
+  both checks and mutates the dedup cache, so a failed local admission still
+  records the peer id as delivered.
+- Minimal fix proposal: mark a stopped peer as delivered only after local
+  `MainEvent::PeerStopped` admission succeeds, while preserving authenticated
+  direct-peer validation, nonblocking forwarding, and mesh dedup behavior.
+- Fix status: fixed by making the peer-stop dedup mark conditional on
+  successful local `MainEvent::PeerStopped` admission. Failed full/closed
+  main-queue sends leave the dedup cache unmarked so later retries can be
+  accepted, and mesh forwarding happens only after local admission succeeds.
+- Verification:
+  - `RUST_LOG=error cargo test peer_stopped_dedup_must_not_suppress_retry_after_main_queue_backpressure --lib -- --nocapture`
+  - `RUST_LOG=error cargo test peer_stopped_ --lib -- --nocapture`
+  - `RUST_LOG=error cargo test security:: --lib -- --nocapture`
+  - `rustfmt --edition 2024 --check src/ctx.rs src/peer/peer_internal.rs src/tests/security.rs`

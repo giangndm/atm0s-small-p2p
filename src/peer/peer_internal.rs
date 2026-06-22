@@ -22,7 +22,7 @@ use tokio::{
     select,
     sync::{
         OwnedSemaphorePermit, Semaphore,
-        mpsc::{Receiver, Sender},
+        mpsc::{Receiver, Sender, error::TrySendError},
     },
     time::Interval,
 };
@@ -220,18 +220,29 @@ impl PeerConnectionInternal {
                     return Ok(());
                 }
 
-                if !self.ctx.check_peer_stopped_msg(peer_id) {
-                    log::debug!("[PeerConnectionInternal {}] peer stopped {peer_id} already delivered", self.remote);
+                let mut send_err = None;
+                let admitted = self
+                    .ctx
+                    .try_mark_peer_stopped_msg_after(peer_id, || match self.main_tx.try_send(MainEvent::PeerStopped(self.conn_id, peer_id)) {
+                        Ok(()) => true,
+                        Err(err) => {
+                            send_err = Some(err);
+                            false
+                        }
+                    });
+
+                if !admitted {
+                    match send_err {
+                        Some(TrySendError::Full(_)) => log::warn!("[PeerConnectionInternal {}] queue main loop full", self.remote),
+                        Some(TrySendError::Closed(_)) => log::warn!("[PeerConnectionInternal {}] main loop closed", self.remote),
+                        None => log::debug!("[PeerConnectionInternal {}] peer stopped {peer_id} already delivered", self.remote),
+                    }
                     return Ok(());
                 }
 
                 for conn in self.ctx.conns().into_iter().filter(|p| !self.to_id.eq(&p.to_id())) {
                     conn.try_send(PeerMessage::PeerStopped(peer_id))
                         .print_on_err("[PeerConnectionInternal] forward peer stopped over peer alias");
-                }
-
-                if let Err(_e) = self.main_tx.try_send(MainEvent::PeerStopped(self.conn_id, peer_id)) {
-                    log::warn!("[PeerConnectionInternal {}] queue main loop full", self.remote);
                 }
             }
             PeerMessage::Broadcast(source, service_id, msg_id, data) => {
