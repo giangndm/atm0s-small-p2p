@@ -6115,7 +6115,7 @@ the source of truth for evidence and reviewer decisions.
 - Category: high-load stability, transport admission, resource exhaustion
 - Score: 52/100
 - Reviewer: `Pascal the 3rd`, confirmed after `Ohm the 3rd` discovery.
-- Status: fixed. Production server and client QUIC transport config now set
+- Fix status: fixed. Production server and client QUIC transport config now set
   `max_concurrent_uni_streams(0_u32.into())`, so raw peers cannot open an
   unused stream class that the P2P protocol never accepts or drains.
 - Affected code:
