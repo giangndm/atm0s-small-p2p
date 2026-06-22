@@ -11,12 +11,12 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 13
-- Current audit continuation: critical-only adversarial fuzz/harness no-new
-  cycle 15 found no new score-80+ issue across configured-node steady fuzz,
-  valid churn fuzz, malformed churn fuzz, fuzz-harness source review, route
-  stability scan, stream/pipe setup scan, backpressure scan, graceful-stop
-  scan, and reviewer targeted stopped/forged/stream regression checks.
+- Current consecutive no-new-issue cycles: 14
+- Current audit continuation: critical-only protocol/service-boundary no-new
+  cycle 16 found no new score-80+ issue across peer frame bounds, stream object
+  length bounds, service-id validation, stale/dropped service requesters,
+  stalled stream setup, malformed high-node fuzz, and reviewer protocol/service
+  regression checks.
 
 ## Root Cause Summary
 
@@ -21255,6 +21255,61 @@ the source of truth for evidence and reviewer decisions.
 - Ledger check: 21 score-80+ issues found and all are fixed.
 - Current consecutive no-new cycles after ISSUE-238: 25.
 - Current fuzz-phase no-new cycles after transition: 15.
+- Current focused source-review no-new cycles after fuzz phase: 10.
+
+### Fuzz phase no-new cycle 16: protocol framing and service-boundary review
+
+- Scope: continued critical-only review after cycle 15, focusing on protocol
+  framing, message-size boundaries, stalled object reads/writes, QUIC stream
+  setup admission, public service request paths, out-of-range service ids,
+  stale handles, local-vs-remote destination handling, route decisions during
+  setup, queue-full behavior, and graceful shutdown notification delivery.
+- Reviewer: `Dirac the 2nd` (forked RED-team reviewer), returned
+  `NO_NEW_CRITICAL`.
+- Verification:
+  - `RUST_LOG=error cargo test peer_message_codec --lib`: passed 3 tests.
+  - `RUST_LOG=error cargo test write_object_must --lib`: passed 3 tests.
+  - `RUST_LOG=error cargo test out_of_range_service_id --lib`: passed 1 test.
+  - `RUST_LOG=error cargo test dropped_service_requester --lib`: passed 3
+    tests.
+  - `RUST_LOG=error cargo test open_stream_must_timeout --lib`: passed 2
+    tests.
+  - `RUST_LOG=error P2P_FUZZ_NODES=36 P2P_FUZZ_STEPS=1250 P2P_FUZZ_SEED=37001 cargo test fuzz_random_node_actions_must_not_panic_connection_tasks --lib`:
+    passed.
+- Reviewer cross-check:
+  - `RUST_LOG=error cargo test stream::tests --lib`: passed 6 tests.
+  - `RUST_LOG=error cargo test out_of_range_service_id --lib`: passed 1 test.
+  - `RUST_LOG=error cargo test stale --lib`: passed 25 tests.
+  - `RUST_LOG=error cargo test inbound_out_of_range --lib`: passed 2 tests.
+  - `RUST_LOG=error cargo test forged --lib`: passed 4 tests.
+  - `RUST_LOG=error cargo test peer_stopped --lib`: passed 15 tests.
+  - `RUST_LOG=error cargo test open_stream --lib`: passed 10 tests.
+  - `RUST_LOG=error cargo test full --lib`: passed 57 tests.
+- Duplicate mapping:
+  - Oversized peer frames and oversized object writes are bounded by the stream
+    codec/object helpers and covered by existing `stream::tests`.
+  - Out-of-range service ids map to ISSUE-052, ISSUE-060, ISSUE-091,
+    ISSUE-234, and RC-6.
+  - Forged unicast, broadcast, and stream source claims map to ISSUE-014,
+    ISSUE-015, ISSUE-018, and RC-1.
+  - Stale requester and dropped service handles map to ISSUE-072, ISSUE-073,
+    ISSUE-076, ISSUE-234, and RC-6.
+  - Queue-full, stalled stream setup, and request timeout paths map to RC-3,
+    RC-4, ISSUE-156, ISSUE-217, ISSUE-220, ISSUE-224, ISSUE-225, and
+    ISSUE-238.
+  - Graceful shutdown and `PeerStopped` delivery/forwarding map to ISSUE-215
+    through ISSUE-225 and RC-6.
+  - Route decisions during unicast and stream setup map to ISSUE-003,
+    ISSUE-180, ISSUE-197, and RC-7.
+  - No reproducible protocol/service-boundary failure supported a distinct
+    score-80+ issue.
+- Test note: `RUST_LOG=error cargo test stale_requester --lib` matched zero
+  tests because current stale-handle tests use more specific names; the
+  `dropped_service_requester`, reviewer `stale`, and related public API slices
+  covered that behavior.
+- Ledger check: 21 score-80+ issues found and all are fixed.
+- Current consecutive no-new cycles after ISSUE-238: 26.
+- Current fuzz-phase no-new cycles after transition: 16.
 - Current focused source-review no-new cycles after fuzz phase: 10.
 
 ### Cycle after ISSUE-235 no-new cycle 1: transport, auth, and peer setup review

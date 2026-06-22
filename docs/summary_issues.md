@@ -7,12 +7,12 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Accepted issues: 246
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 13
-- Current audit continuation: critical-only adversarial fuzz/harness no-new
-  cycle 15 found no new score-80+ issue across configured-node steady fuzz,
-  valid churn fuzz, malformed churn fuzz, fuzz-harness source review, route
-  stability scan, stream/pipe setup scan, backpressure scan, graceful-stop
-  scan, and reviewer targeted stopped/forged/stream regression checks.
+- Current consecutive no-new-issue cycles: 14
+- Current audit continuation: critical-only protocol/service-boundary no-new
+  cycle 16 found no new score-80+ issue across peer frame bounds, stream object
+  length bounds, service-id validation, stale/dropped service requesters,
+  stalled stream setup, malformed high-node fuzz, and reviewer protocol/service
+  regression checks.
 - Fix phase status: ISSUE-001, ISSUE-003, ISSUE-004, ISSUE-005, ISSUE-006, ISSUE-007,
   ISSUE-002, ISSUE-008, ISSUE-009, ISSUE-010, ISSUE-011, ISSUE-012, ISSUE-013, ISSUE-014, ISSUE-015, ISSUE-017, ISSUE-020, ISSUE-021, ISSUE-023, ISSUE-024, ISSUE-025, ISSUE-027, ISSUE-033, ISSUE-034, ISSUE-039, ISSUE-045, ISSUE-046, ISSUE-047, ISSUE-048, ISSUE-055, ISSUE-059, ISSUE-103, ISSUE-110, ISSUE-111, ISSUE-115, ISSUE-116, ISSUE-117, ISSUE-118, ISSUE-119, ISSUE-120, ISSUE-122, ISSUE-123,
   ISSUE-124, ISSUE-125, ISSUE-126, ISSUE-127, ISSUE-128, ISSUE-129, ISSUE-130,
@@ -701,6 +701,22 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   admission, ISSUE-003/RC-7 for route flapping, and RC-3 plus ISSUE-218 through
   ISSUE-230 for bounded backpressure. Ledger check found 21 score-80+ issues
   and all are fixed; no reproducible fuzz/source-boundary failure supported a
+  distinct score-80+ issue.
+- Fuzz phase no-new cycle 16 reviewed protocol framing, message-size bounds,
+  QUIC stream setup, and public service request boundaries with forked reviewer
+  `Dirac the 2nd`. Local peer-frame, `write_object`, out-of-range service-id,
+  dropped-service-requester, stream-timeout, and 36-node malformed fuzz checks
+  passed. The reviewer passed `stream::tests`, out-of-range, stale-handle,
+  inbound-out-of-range, forged-source, peer-stopped, open-stream, and full-sync
+  focused slices. Rejected candidates mapped to existing stream codec/object
+  bounds, ISSUE-052/ISSUE-060/ISSUE-091/ISSUE-234 and RC-6 for service ids,
+  ISSUE-014/ISSUE-015/ISSUE-018 and RC-1 for forged source identity,
+  ISSUE-072/ISSUE-073/ISSUE-076/ISSUE-234 and RC-6 for stale/dropped handles,
+  RC-3/RC-4 plus ISSUE-156/ISSUE-217/ISSUE-220/ISSUE-224/ISSUE-225/ISSUE-238
+  for queue-full and stalled stream setup, ISSUE-215 through ISSUE-225 and RC-6
+  for graceful shutdown, and ISSUE-003/ISSUE-180/ISSUE-197/RC-7 for route
+  decisions during setup. Ledger check found 21 score-80+ issues and all are
+  fixed; no reproducible protocol/service-boundary failure supported a
   distinct score-80+ issue.
 - Cycle after ISSUE-231 no-new cycle 1 reviewed routing/discovery/path
   stability and stream/pipe lifecycle integration with forked reviewer
