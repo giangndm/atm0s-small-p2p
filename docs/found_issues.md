@@ -62,7 +62,7 @@ the source of truth for evidence and reviewer decisions.
 - Representative issues: ISSUE-049, ISSUE-050, ISSUE-056, ISSUE-123,
   ISSUE-124, ISSUE-125, ISSUE-126,
   ISSUE-127, ISSUE-136, ISSUE-147, ISSUE-153, ISSUE-157,
-  ISSUE-178, ISSUE-182, ISSUE-184, ISSUE-198, ISSUE-199.
+  ISSUE-178, ISSUE-182, ISSUE-184, ISSUE-198, ISSUE-199, ISSUE-224.
 - Pattern: some paths use bounded channels and drop on `try_send`, some await
   bounded sends from critical tasks, and others use unbounded queues or produce
   duplicate internal control work. Under load this causes silent data loss,
@@ -18321,3 +18321,56 @@ the source of truth for evidence and reviewer decisions.
   - `cargo test authenticated_inbound_peers_must_not_exhaust_unauthenticated_admission_cap --lib -- --nocapture`
   - `cargo test peer_connected_must_not_block_authenticated_connection_run_loop_on_full_main_queue --lib -- --nocapture`
   - `cargo test tests::security:: --lib -- --nocapture`
+
+### ISSUE-224: Full local service queue delays graceful stop processing
+
+- Score: 70
+- Category: high-load stability / peer read-loop head-of-line blocking
+- Status: fixed by commit `c893230` (`fix: offload fire-and-forget service delivery`).
+- Reviewers:
+  - `Leibniz` (forked RED-team reviewer), found.
+  - `Singer` (forked candidate reviewer), accepted.
+- Affected code:
+  - `src/peer/peer_internal.rs`
+  - `src/service.rs`
+  - `src/tests/security.rs`
+- Impact: if a local service queue is full, an inbound fire-and-forget
+  `Broadcast` or `Unicast` can park the peer connection read loop inside
+  `send_local_service_event(...)` for up to `LOCAL_SERVICE_DELIVERY_TIMEOUT`.
+  Later frames already sent on the same connection, including a legitimate
+  `PeerStopped`, are not read until the service-send wait completes. This
+  delays graceful-stop cleanup under local service backpressure.
+- Distinctness: ISSUE-119 and ISSUE-120 fixed silent local-service drops by
+  using awaited bounded service delivery. ISSUE-224 is the follow-on
+  head-of-line blocking side effect of awaiting those fire-and-forget local
+  deliveries inside the peer read loop. ISSUE-218 covers inbound `Sync`
+  blocking on the main queue, ISSUE-219 covers outbound control-frame writes,
+  and ISSUE-215 through ISSUE-223 cover `PeerStopped` behavior after the stop
+  frame is read/admitted.
+- Failing evidence:
+  - `cargo test peer_stopped_must_not_wait_behind_full_local_service_queue --lib -- --nocapture`
+  - Failure before fix:
+    - `PeerStopped must not wait behind a full local service queue on the same connection`
+- Root cause: `PeerConnectionInternal::run_loop` awaits `on_msg` serially for
+  each main-stream frame. The local `Broadcast` and non-acked `Unicast` paths
+  call `send_local_service_event(...).await`, which awaits a bounded
+  `service.send(event)` timeout when the `P2pService` queue is full. While that
+  await is pending, the read loop cannot read the following lifecycle frame.
+- Minimal fix proposal: decouple local service delivery for fire-and-forget
+  inbound `Broadcast` and non-acked `Unicast` from the peer read loop with a
+  bounded per-connection delivery worker. Keep `UnicastWithAck` awaited so its
+  ack still reflects destination service admission.
+- Fix: added a bounded per-connection local service delivery queue and worker.
+  Fire-and-forget local `Broadcast` and non-acked `Unicast` enqueue into that
+  worker instead of awaiting service queue capacity in the peer read loop.
+  `UnicastWithAck` remains awaited for sender-visible delivery semantics. If
+  the per-connection local delivery queue is full or closed, the connection
+  returns an error instead of accumulating unbounded work.
+- Verification after fix:
+  - `cargo test peer_stopped_must_not_wait_behind_full_local_service_queue --lib -- --nocapture`
+  - `cargo test inbound_unicast_must_not_drop_when_service_queue_is_full --lib -- --nocapture`
+  - `cargo test inbound_broadcast_must_not_drop_when_service_queue_is_full --lib -- --nocapture`
+  - `cargo test unicast_must_not_report_success_when_destination_service_receiver_is_closed --lib -- --nocapture`
+  - `cargo test peer_stopped_ --lib -- --nocapture`
+  - `cargo test tests::security:: --lib -- --nocapture`
+  - `rustfmt --edition 2024 --check src/peer/peer_internal.rs src/tests/security.rs`
