@@ -19348,6 +19348,56 @@ the source of truth for evidence and reviewer decisions.
     `rustfmt --edition 2021 --check src/service/alias_service.rs` passed, and
     `git diff --check` passed.
 
+### Cycle after ISSUE-239 no-new cycle 1: route, lifecycle, service, pubsub, and replicated-KV review
+
+- Scope: reviewed `docs/found_issues.md` and `docs/summary_issues.md`, then
+  audited `src/msg.rs`, `src/neighbours.rs`, `src/requester.rs`,
+  `src/stream.rs`, `src/service.rs`, `src/ctx.rs`, `src/lib.rs`,
+  `src/peer.rs`, `src/peer/peer_alias.rs`, `src/peer/peer_internal.rs`,
+  `src/discovery.rs`, `src/router.rs`, `src/service/pubsub_service.rs`,
+  `src/service/pubsub_service/publisher.rs`,
+  `src/service/replicate_kv_service.rs`, and
+  `src/service/replicate_kv_service/remote_storage.rs` for distinct
+  correctness, security, and stability issues around route/path selection,
+  seed versus non-seed lifecycle cleanup, graceful stop, service/requester
+  admission, unicast/stream delivery, pubsub state, and replicated-KV
+  request/resource bounds.
+- Reviewer: `Descartes the 2nd` (forked RED-team reviewer), rejected new issue
+  acceptance and returned `PASS_NO_NEW`.
+- Verification:
+  - `RUST_LOG=error cargo test route --lib -- --nocapture`
+  - `RUST_LOG=error cargo test discovery --lib -- --nocapture`
+  - `RUST_LOG=error cargo test unicast --lib -- --nocapture`
+  - `RUST_LOG=error cargo test stale_pubsub --lib -- --nocapture`
+  - `RUST_LOG=error cargo test full_sync --lib -- --nocapture`
+  - `RUST_LOG=error cargo test fetch_changed --lib -- --nocapture`
+  - `RUST_LOG=error cargo test pending --lib -- --nocapture`
+- Duplicate mapping:
+  - Route/path jumping, stale sync, and route loops map to ISSUE-003,
+    ISSUE-063, ISSUE-180, ISSUE-197, and RC-7.
+  - Seed/non-seed cleanup, graceful stop, tombstones, and stale lifecycle map
+    to ISSUE-001, ISSUE-004, ISSUE-051, ISSUE-167, ISSUE-170, ISSUE-215
+    through ISSUE-225, and RC-6.
+  - Stream/unicast false success, queue pressure, acknowledgement caps, relay
+    final-hop delivery, and forged-source handling map to ISSUE-011,
+    ISSUE-012, ISSUE-018, ISSUE-056, ISSUE-119, ISSUE-156, ISSUE-217,
+    ISSUE-220, ISSUE-224, ISSUE-225, ISSUE-229, ISSUE-230, ISSUE-238, RC-3,
+    and RC-4.
+  - Discovery/router sync caps, duplicate entries, metric overflow, and
+    local/self advertisements map to ISSUE-005, ISSUE-006, ISSUE-007,
+    ISSUE-008, ISSUE-010, ISSUE-033, and ISSUE-190 through ISSUE-214.
+  - Pubsub stale role/RPC and pending-resource behavior maps to ISSUE-020,
+    ISSUE-043, ISSUE-074, ISSUE-075, ISSUE-080, ISSUE-115, ISSUE-116,
+    ISSUE-121, ISSUE-155, ISSUE-205, ISSUE-206, ISSUE-228, ISSUE-231, RC-1,
+    RC-2, and RC-3.
+  - Replicated-KV snapshot, fetch, pending, remote-store, and lifecycle
+    candidates map to ISSUE-023, ISSUE-025, ISSUE-027, ISSUE-034, ISSUE-037,
+    ISSUE-038, ISSUE-047, ISSUE-059, ISSUE-081 through ISSUE-089, ISSUE-095,
+    ISSUE-099, ISSUE-110, ISSUE-111, ISSUE-131, ISSUE-143, ISSUE-171,
+    ISSUE-184, ISSUE-196, ISSUE-233, ISSUE-237, RC-2, and RC-3.
+- Root-cause summary impact: no new root cause and no summary proposal change.
+- Current consecutive no-new cycles after ISSUE-239: 1.
+
 ### Cycle after ISSUE-238 no-new cycle 1: route/discovery lifecycle and path stability review
 
 - Scope: reviewed `docs/found_issues.md` and `docs/summary_issues.md`, then
