@@ -17721,7 +17721,7 @@ the source of truth for evidence and reviewer decisions.
 
 - Score: 82
 - Category: correctness / discovery bootstrap stability
-- Status: fixed by pending commit.
+- Status: fixed by commit `7810481`.
 - Reviewer: `Lorentz` (forked RED-team reviewer), accepted.
 - Affected code:
   - `src/discovery.rs`
@@ -17772,7 +17772,7 @@ the source of truth for evidence and reviewer decisions.
 
 - Score: 64
 - Category: correctness / discovery bootstrap stability
-- Status: fixed by pending commit.
+- Status: fixed by commit `f4b6727`.
 - Reviewer: `Volta` (forked RED-team reviewer), accepted.
 - Affected code:
   - `src/discovery.rs`
