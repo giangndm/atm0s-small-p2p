@@ -3963,6 +3963,8 @@ the source of truth for evidence and reviewer decisions.
 
 ### ISSUE-122: Discovery records unbounded stop tombstones for unknown peers
 
+- Fix status: fixed by bounding `PeerDiscovery::stopped` with
+  `MAX_STOPPED_TOMBSTONES` and deterministic oldest-entry eviction.
 - Status: fixed by bounding `PeerDiscovery::stopped` at 1,024 entries and
   deterministically evicting the oldest stopped tombstone after non-seed
   insertion, with peer-id tie-breaking. Seed stop behavior remains unchanged:
