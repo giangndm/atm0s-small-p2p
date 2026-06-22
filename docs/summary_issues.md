@@ -7,9 +7,9 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Accepted issues: 207
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 0
+- Current consecutive no-new-issue cycles: 342
 - Stop condition: continue until 5 consecutive cycles find no new accepted
-  issue; currently 0/5 after ISSUE-207.
+  issue; currently beyond 5/5 and continuing fuzz/audit passes.
 - Fix phase status: ISSUE-001, ISSUE-003, ISSUE-004, ISSUE-005, ISSUE-006, ISSUE-007,
   ISSUE-002, ISSUE-008, ISSUE-009, ISSUE-010, ISSUE-011, ISSUE-012, ISSUE-013, ISSUE-014, ISSUE-015, ISSUE-017, ISSUE-020, ISSUE-021, ISSUE-023, ISSUE-024, ISSUE-025, ISSUE-027, ISSUE-033, ISSUE-034, ISSUE-039, ISSUE-045, ISSUE-046, ISSUE-047, ISSUE-048, ISSUE-055, ISSUE-059, ISSUE-103, ISSUE-110, ISSUE-111, ISSUE-115, ISSUE-116, ISSUE-117, ISSUE-118, ISSUE-119, ISSUE-120, ISSUE-122, ISSUE-123,
   ISSUE-124, ISSUE-125, ISSUE-126, ISSUE-127, ISSUE-128, ISSUE-129, ISSUE-130,
@@ -3663,6 +3663,17 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Recent No-New Audit
 
+- Cycle after ISSUE-204 no-new cycle 342 reviewed route/service delivery,
+  pubsub lifecycle, and replicated-KV state machines, then ran two fresh fuzz
+  passes: `P2P_FUZZ_SEED=342001 P2P_FUZZ_NODES=8 P2P_FUZZ_STEPS=2200` steady
+  valid actions and `P2P_FUZZ_SEED=342101 P2P_FUZZ_NODES=8 P2P_FUZZ_STEPS=1800`
+  sanitized churn actions. Both passed with no panic, failed assertion, or new
+  invariant. Candidates mapped to ISSUE-058, ISSUE-069, ISSUE-070, ISSUE-074,
+  ISSUE-075, ISSUE-115, ISSUE-116, ISSUE-142, ISSUE-117, ISSUE-149,
+  ISSUE-156, ISSUE-180, and replicated-KV ISSUE-034, ISSUE-047, ISSUE-081
+  through ISSUE-089, ISSUE-110, ISSUE-138, ISSUE-141, ISSUE-143, ISSUE-154,
+  ISSUE-171, ISSUE-175, ISSUE-184, and ISSUE-186. No new root cause was
+  recorded.
 - Cycle after ISSUE-204 no-new cycle 341 ran a valid node-churn fuzz pass with
   forked reviewer `Avicenna the 7th`. The run failed with exit code 101 and
   assertion `seed=341, nodes=8, steps=5200`. The hard failure was duplicate

@@ -11,7 +11,7 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 341
+- Current consecutive no-new-issue cycles: 342
 - Stop condition requested by user: continue until 5 consecutive cycles find no
   new accepted issue.
 
@@ -7262,6 +7262,48 @@ the source of truth for evidence and reviewer decisions.
     `cargo test test_handshake_flow -- --nocapture` passes.
 
 ## No-New-Issue Audit Cycles
+
+### Cycle after ISSUE-204 no-new cycle 342: post-fix route service fuzz pass
+
+- Result: no accepted non-duplicate issue.
+- Reviewer: `Aquinas the 12th`, forked subagent review, confirmed
+  duplicate/no-new.
+- Source and test evidence reviewed:
+  - `src/router.rs`
+  - `src/msg.rs`
+  - `src/peer/peer_internal.rs`
+  - `src/ctx.rs`
+  - `src/service.rs`
+  - `src/service/pubsub_service.rs`
+  - `src/service/pubsub_service/publisher.rs`
+  - `src/service/pubsub_service/subscriber.rs`
+  - `src/service/replicate_kv_service.rs`
+  - `src/service/replicate_kv_service/local_storage.rs`
+  - `src/service/replicate_kv_service/remote_storage.rs`
+  - `RUST_LOG=error P2P_FUZZ_SEED=342001 P2P_FUZZ_NODES=8 P2P_FUZZ_STEPS=2200 cargo test fuzz_random_steady_valid_node_actions_must_not_panic_connection_tasks -- --nocapture`
+    passed.
+  - `RUST_LOG=error P2P_FUZZ_SEED=342101 P2P_FUZZ_NODES=8 P2P_FUZZ_STEPS=1800 cargo test fuzz_random_sanitized_node_churn_actions_must_not_panic_connection_tasks -- --nocapture`
+    passed.
+- Evidence summary:
+  - the steady-valid fuzz run completed with no panic, failed assertion, or
+    background connection/task failure.
+  - the sanitized churn fuzz run completed with no panic, failed assertion, or
+    background connection/task failure; shutdown, refused-connect,
+    deadline, and closed-channel logs were reviewed as expected churn context.
+- Duplicate mapping:
+  - relay stream upstream/downstream setup candidates map to ISSUE-156 and the
+    related stream lifecycle entries ISSUE-117, ISSUE-149, and ISSUE-180.
+  - pubsub stale requesters, dead handles, and local-id collision candidates map
+    to ISSUE-058, ISSUE-069, ISSUE-070, ISSUE-074, ISSUE-075, ISSUE-115,
+    ISSUE-116, and ISSUE-142.
+  - replicated-KV malformed or stale snapshot/change candidates map to
+    ISSUE-034, ISSUE-047, ISSUE-081 through ISSUE-089, ISSUE-110, ISSUE-138,
+    ISSUE-141, ISSUE-143, ISSUE-154, ISSUE-171, ISSUE-175, ISSUE-184, and
+    ISSUE-186.
+- Root-cause summary impact: no new root cause; reviewed candidates map to
+  existing RC-2, RC-3, RC-4, RC-5, RC-6, and RC-7.
+- Smallest fix proposal: no new summary fix change; keep the mapped issue fix
+  proposals as the smallest scoped fixes.
 
 ### Cycle after ISSUE-204 no-new cycle 341: valid churn stale-sync duplicate
 
