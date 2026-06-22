@@ -266,8 +266,16 @@ impl PeerConnectionInternal {
                 if !admitted {
                     match send_err {
                         Some(TrySendError::Full(_)) => log::warn!("[PeerConnectionInternal {}] queue main loop full", self.remote),
-                        Some(TrySendError::Closed(_)) => log::warn!("[PeerConnectionInternal {}] main loop closed", self.remote),
-                        None => log::debug!("[PeerConnectionInternal {}] peer stopped {peer_id} already delivered", self.remote),
+                        Some(TrySendError::Closed(_)) => {
+                            log::warn!("[PeerConnectionInternal {}] main loop closed", self.remote);
+                            self.connection.close(VarInt::from_u32(0), b"peer stopped");
+                            return Err(anyhow!("main loop closed after peer stopped"));
+                        }
+                        None => {
+                            log::debug!("[PeerConnectionInternal {}] peer stopped {peer_id} already delivered", self.remote);
+                            self.connection.close(VarInt::from_u32(0), b"peer stopped");
+                            return Err(anyhow!("peer stopped already delivered"));
+                        }
                     }
                     return Ok(());
                 }
@@ -276,6 +284,8 @@ impl PeerConnectionInternal {
                     conn.try_send(PeerMessage::PeerStopped(peer_id))
                         .print_on_err("[PeerConnectionInternal] forward peer stopped over peer alias");
                 }
+                self.connection.close(VarInt::from_u32(0), b"peer stopped");
+                return Err(anyhow!("peer stopped"));
             }
             PeerMessage::Broadcast(source, service_id, msg_id, data) => {
                 let effective_source = if source == self.to_id {

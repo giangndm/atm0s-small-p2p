@@ -181,6 +181,70 @@ async fn peer_stopped_route_must_not_be_resurrected_by_connection_ticker() {
 }
 
 #[tokio::test]
+async fn stopped_peer_must_not_deliver_broadcast_after_stop_is_accepted() {
+    let (mut node1, addr1) = create_node(true, 1, vec![]).await;
+    let mut service1 = node1.create_service(0.into());
+    let (mut node2, addr2) = create_node(false, 2, vec![addr1]).await;
+
+    let stopped_conn = tokio::time::timeout(Duration::from_secs(3), async {
+        let mut node1_conn = None;
+        loop {
+            tokio::select! {
+                event = node1.recv() => {
+                    if let Ok(P2pNetworkEvent::PeerConnected(conn, peer)) = event {
+                        if peer == addr2.peer_id() {
+                            node1_conn = Some(conn);
+                        }
+                    }
+                }
+                _ = node2.recv() => {}
+            }
+            if let Some(conn) = node1_conn {
+                if !node2.ctx.conns().is_empty() {
+                    return conn;
+                }
+            }
+        }
+    })
+    .await
+    .expect("node1 should accept node2");
+
+    let node2_to_node1 = node2.ctx.conns().into_iter().next().expect("node2 should have a connection to node1");
+
+    node2_to_node1.try_send(PeerMessage::PeerStopped(addr2.peer_id())).expect("stop notification should enqueue");
+
+    tokio::time::timeout(Duration::from_secs(3), async {
+        loop {
+            if matches!(
+                node1.recv().await.expect("node1 should keep running"),
+                P2pNetworkEvent::PeerDisconnected(conn, peer) if conn == stopped_conn && peer == addr2.peer_id()
+            ) {
+                break;
+            }
+        }
+    })
+    .await
+    .expect("node1 should accept the graceful stop");
+
+    node2_to_node1
+        .try_send(PeerMessage::Broadcast(addr2.peer_id(), P2pServiceId::from(0), BroadcastMsgId::rand(), b"after-stop".to_vec()))
+        .expect("post-stop broadcast should enqueue");
+
+    let observed_broadcast = tokio::time::timeout(Duration::from_millis(500), async {
+        loop {
+            if let Some(P2pServiceEvent::Broadcast(peer, data)) = service1.recv().await {
+                break Some((peer, data));
+            }
+        }
+    })
+    .await;
+    assert!(
+        observed_broadcast.is_err(),
+        "a peer whose graceful stop was accepted must not continue delivering broadcast traffic over the still-open connection: {observed_broadcast:?}"
+    );
+}
+
+#[tokio::test]
 async fn stopped_peer_route_must_not_be_resurrected_by_third_party_sync() {
     let (mut node, _addr) = create_node(false, 1, vec![]).await;
     let stopped = PeerId::from(2);
