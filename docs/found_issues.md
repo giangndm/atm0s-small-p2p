@@ -11,12 +11,13 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 22
-- Current audit continuation: critical-only shutdown/task no-new cycle 24
-  found no new score-80+ issue across graceful stop ordering, drop paths,
-  task cancellation, bounded channel shutdown, QUIC close behavior,
-  `PeerStopped`/`PeerDisconnected` emission, stale requester/service behavior,
-  and churn under bad-network/high-load conditions.
+- Current consecutive no-new-issue cycles: 23
+- Current audit continuation: critical-only observability/admin no-new cycle
+  25 found no new score-80+ issue across metrics and visualization scan
+  collectors, scan response trust, trusted collector configuration, pending
+  responder state, `PeerDisconnected` cleanup, resource caps, high-load scan
+  broadcasts/responses, stale or forged `Info`, and service behavior after
+  shutdown/drop.
 
 ## Root Cause Summary
 
@@ -21800,6 +21801,52 @@ the source of truth for evidence and reviewer decisions.
 - Current consecutive no-new cycles after ISSUE-238: 34.
 - Current fuzz-phase no-new cycles after transition: 24.
 - Current focused source-review no-new cycles after fuzz phase: 10.
+
+### Fuzz phase no-new cycle 25: observability and admin surface review
+
+- Scope: continued critical-only review after cycle 24, focusing on
+  `MetricsService`, `VisualizationService`, scan collectors, scan response
+  trust, `trusted_scan_collectors`, pending scan/info responder state,
+  `PeerDisconnected` cleanup, resource caps, high-load scan broadcasts and
+  responses, stale or forged `Info`, and service behavior after shutdown/drop.
+- Reviewer: read-only RED-team reviewer pass, returned `NO_NEW_CRITICAL`.
+- Verification:
+  - `cargo test --lib -- --list | rg -i "metrics|visual|scan|info|collector|responder|disconnect|stale|forg|shutdown|drop|bounded|resource"`:
+    reviewed focused coverage.
+  - `RUST_LOG=error cargo test metrics --lib -- --nocapture`: passed 14 tests.
+  - `RUST_LOG=error cargo test visualization --lib -- --nocapture`: passed 19
+    tests.
+  - `RUST_LOG=error cargo test scan --lib -- --nocapture`: passed 16 tests.
+  - `RUST_LOG=error cargo test stale_peer_stats_event_must_not_publish_metrics_for_unknown_connection --lib -- --nocapture`:
+    passed 1 test.
+  - `RUST_LOG=error cargo test pending --lib -- --nocapture`: passed 17 tests.
+  - `RUST_LOG=error cargo test disconnect --lib -- --nocapture`: passed 16
+    tests.
+  - `RUST_LOG=error cargo test dropped_service --lib -- --nocapture`: passed 4
+    tests.
+  - `RUST_LOG=error cargo test bounded --lib -- --nocapture`: passed 30 tests.
+  - `RUST_LOG=error P2P_FUZZ_NODES=24 P2P_FUZZ_STEPS=900 P2P_FUZZ_SEED=66001 cargo test fuzz_random_valid_node_actions_must_not_panic_connection_tasks --lib -- --nocapture`:
+    passed.
+- Duplicate mapping:
+  - Metrics and visualization unauthorized scan disclosure maps to ISSUE-078,
+    ISSUE-079, ISSUE-226, and RC-1/RC-2.
+  - Unsolicited or stale forged `Info` maps to ISSUE-061, ISSUE-062,
+    ISSUE-232, RC-2, and RC-6.
+  - Pending scan responder backpressure, duplicate response tasks, and
+    high-load scan broadcast coalescing map to ISSUE-200 through ISSUE-204 and
+    RC-3.
+  - Metrics and visualization row, retained-peer, and resource caps map to
+    ISSUE-102, ISSUE-104, ISSUE-105, RC-5, and existing bounded tests.
+  - `PeerDisconnected`, graceful-stop visualization leaves, stale peer stats,
+    and base-service closure behavior map to ISSUE-064, ISSUE-068, ISSUE-128,
+    ISSUE-129, ISSUE-165, ISSUE-232, and RC-6.
+  - Shutdown/drop and stale service/requester behavior maps to ISSUE-072,
+    ISSUE-073, ISSUE-076, ISSUE-234, ISSUE-235, and the cycle 24 shutdown
+    review.
+- Ledger check: 19 score-80+ issue entries found and all are fixed.
+- Current consecutive no-new cycles after ISSUE-238: 35.
+- Current fuzz-phase no-new cycles after transition: 25.
+- Current focused source-review no-new cycles after fuzz phase: 11.
 
 ### Cycle after ISSUE-235 no-new cycle 1: transport, auth, and peer setup review
 

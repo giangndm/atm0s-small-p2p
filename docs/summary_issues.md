@@ -7,12 +7,13 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Accepted issues: 246
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 22
-- Current audit continuation: critical-only shutdown/task no-new cycle 24
-  found no new score-80+ issue across graceful stop ordering, drop paths,
-  task cancellation, bounded channel shutdown, QUIC close behavior,
-  `PeerStopped`/`PeerDisconnected` emission, stale requester/service behavior,
-  and churn under bad-network/high-load conditions.
+- Current consecutive no-new-issue cycles: 23
+- Current audit continuation: critical-only observability/admin no-new cycle
+  25 found no new score-80+ issue across metrics and visualization scan
+  collectors, scan response trust, trusted collector configuration, pending
+  responder state, `PeerDisconnected` cleanup, resource caps, high-load scan
+  broadcasts/responses, stale or forged `Info`, and service behavior after
+  shutdown/drop.
 - Fix phase status: ISSUE-001, ISSUE-003, ISSUE-004, ISSUE-005, ISSUE-006, ISSUE-007,
   ISSUE-002, ISSUE-008, ISSUE-009, ISSUE-010, ISSUE-011, ISSUE-012, ISSUE-013, ISSUE-014, ISSUE-015, ISSUE-017, ISSUE-020, ISSUE-021, ISSUE-023, ISSUE-024, ISSUE-025, ISSUE-027, ISSUE-033, ISSUE-034, ISSUE-039, ISSUE-045, ISSUE-046, ISSUE-047, ISSUE-048, ISSUE-055, ISSUE-059, ISSUE-103, ISSUE-110, ISSUE-111, ISSUE-115, ISSUE-116, ISSUE-117, ISSUE-118, ISSUE-119, ISSUE-120, ISSUE-122, ISSUE-123,
   ISSUE-124, ISSUE-125, ISSUE-126, ISSUE-127, ISSUE-128, ISSUE-129, ISSUE-130,
@@ -845,6 +846,20 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   removal. Direct issue-entry ledger check found 19 score-80+ entries and all
   are fixed; no reproducible shutdown/drop/task-cancellation failure supported
   a distinct score-80+ issue.
+- Fuzz phase no-new cycle 25 reviewed observability/admin surfaces. Local
+  source inspection and focused `metrics`, `visualization`, `scan`,
+  stale-peer-stats, `pending`, `disconnect`, `dropped_service`, `bounded`, and
+  24-node valid fuzz checks passed. Rejected candidates mapped to ISSUE-078,
+  ISSUE-079, ISSUE-226, and RC-1/RC-2 for scan authorization; ISSUE-061,
+  ISSUE-062, ISSUE-232, RC-2, and RC-6 for unsolicited or stale forged
+  `Info`; ISSUE-200 through ISSUE-204 and RC-3 for scan broadcast/response
+  backpressure and duplicate response tasks; ISSUE-102, ISSUE-104, ISSUE-105,
+  and RC-5 for resource caps; ISSUE-064, ISSUE-068, ISSUE-128, ISSUE-129,
+  ISSUE-165, ISSUE-232, and RC-6 for disconnect, stale metrics, graceful
+  leaves, and base-service closure behavior; and ISSUE-072/073/076/234/235
+  for shutdown/drop stale service/requester behavior. Direct issue-entry
+  ledger check found 19 score-80+ entries and all are fixed; no reproducible
+  observability/admin failure supported a distinct score-80+ issue.
 - Cycle after ISSUE-231 no-new cycle 1 reviewed routing/discovery/path
   stability and stream/pipe lifecycle integration with forked reviewer
   `Carver`. Focused route, discovery, stream-relay, peer-stopped, and pubsub
