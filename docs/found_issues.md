@@ -11,11 +11,11 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 1
-- Current audit continuation: critical-only post-ISSUE-246 review found no
-  new score-80+ issue across handshake/auth binding, inbound message trust,
-  stream admission, service-id bounds, routing/relay loops, and high-load
-  backpressure.
+- Current consecutive no-new-issue cycles: 2
+- Current audit continuation: critical-only post-ISSUE-246 pubsub and
+  replicated-KV review found no new score-80+ issue across RPC responder
+  binding, membership churn, heartbeat state, full-sync validation,
+  fetch-changed repair correlation, pending caps, and remote liveness.
 
 ## Root Cause Summary
 
@@ -19776,6 +19776,46 @@ the source of truth for evidence and reviewer decisions.
   - Route and relay loop handling maps to ISSUE-003, ISSUE-160, ISSUE-180,
     ISSUE-197, and RC-7.
 - Current consecutive no-new cycles after ISSUE-246: 1.
+
+### Cycle after ISSUE-246 no-new critical cycle 2: pubsub and replicated-KV state-machine review
+
+- Scope: critical-only pass over pubsub and replicated-KV state machines after
+  the user narrowed the fix phase to score-80+ issues. Reviewed
+  `src/service/pubsub_service.rs`,
+  `src/service/pubsub_service/publisher.rs`,
+  `src/service/pubsub_service/subscriber.rs`,
+  `src/service/replicate_kv_service.rs`,
+  `src/service/replicate_kv_service/messages.rs`,
+  `src/service/replicate_kv_service/local_storage.rs`, and
+  `src/service/replicate_kv_service/remote_storage.rs` for new critical
+  correctness, security, or stability issues around RPC responder binding,
+  pending request caps, zero-delivery behavior, remote membership churn,
+  channel/member caps, heartbeat chunk state, full-sync validation,
+  fetch-changed correlation, pending future changes, and remote liveness
+  refresh.
+- Reviewer: `Russell the 2nd` (forked RED-team reviewer), returned
+  `NO_NEW_CRITICAL`.
+- Verification:
+  - `RUST_LOG=error cargo test pubsub --lib` passed, 92/92.
+  - `RUST_LOG=error cargo test replicate_kv --lib` passed, 64/64.
+  - `RUST_LOG=error cargo test full_sync --lib` passed, 16/16.
+  - `RUST_LOG=error cargo test rpc --lib` passed, 32/32.
+  - Ledger check found 21 score-80+ issues and all 21 are marked fixed.
+- Duplicate mapping:
+  - Pubsub RPC responder binding, pending caps, timeout arithmetic, local
+    handle admission, and zero-delivery behavior map to ISSUE-043,
+    ISSUE-178, ISSUE-236, ISSUE-246, RC-2, and RC-3.
+  - Pubsub remote membership churn, stale join/leave, tombstones,
+    channel/member caps, and chunked heartbeat state map to ISSUE-155,
+    ISSUE-228, ISSUE-231, ISSUE-240 through ISSUE-243, RC-2, RC-5, and RC-6.
+  - Replicated-KV unsolicited responses, full-sync validation, snapshot
+    paging, fetch-changed correlation, pending caps, and liveness refresh map
+    to ISSUE-023, ISSUE-045, ISSUE-081 through ISSUE-089, ISSUE-110,
+    ISSUE-111, ISSUE-131, ISSUE-140, ISSUE-143, ISSUE-171, ISSUE-233,
+    ISSUE-237, ISSUE-245, RC-2, RC-3, and RC-5.
+  - High-version arithmetic did not survive as a distinct score-80+ issue;
+    existing overflow/local producer cases map to ISSUE-023 and ISSUE-031.
+- Current consecutive no-new cycles after ISSUE-246: 2.
 
 ### Cycle after ISSUE-245 no-new cycle 1: transport, stream, requester, and service admission review
 
