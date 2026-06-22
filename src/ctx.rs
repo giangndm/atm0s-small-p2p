@@ -38,7 +38,10 @@ impl SharedCtxInternal {
             log::warn!("[SharedCtx] reject out-of-range service id {service_id}");
             return;
         };
-        assert!(self.services[index].is_none(), "Service ID already used");
+        if self.services[index].is_some() {
+            log::warn!("[SharedCtx] reject duplicate live service id {service_id}");
+            return;
+        }
         self.services[index] = Some(tx);
     }
 

@@ -925,6 +925,8 @@ the source of truth for evidence and reviewer decisions.
 
 ### ISSUE-030: Duplicate service creation panics instead of returning an error
 
+- Status: fixed by rejecting duplicate live service registrations without
+  asserting inside `SharedCtxInternal::set_service`.
 - Category: correctness, API stability
 - Score: 52/100
 - Reviewer: `Fermat`, confirmed.
@@ -937,8 +939,8 @@ the source of truth for evidence and reviewer decisions.
   unwinds the caller instead of returning `Err` or `None`.
 - Evidence test:
   - `cargo test duplicate_service_creation_must_not_panic -- --nocapture`
-  - Failure summary: the second `create_service(0.into())` panics at
-    `src/ctx.rs:28` with `Service ID already used`.
+  - Fixed summary: the second `create_service(0.into())` no longer unwinds the
+    caller when the service id is already live.
 
 ### ISSUE-031: Replicated KV local version increment overflows
 
