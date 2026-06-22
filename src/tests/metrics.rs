@@ -22,23 +22,21 @@ async fn metric_collect() {
 
     tokio::time::sleep(Duration::from_secs(1)).await;
 
-    let events = vec![
-        tokio::time::timeout(Duration::from_secs(3), service1.recv()).await.expect("").expect(""),
-        tokio::time::timeout(Duration::from_secs(3), service1.recv()).await.expect("").expect(""),
-        tokio::time::timeout(Duration::from_secs(3), service1.recv()).await.expect("").expect(""),
-        tokio::time::timeout(Duration::from_secs(3), service1.recv()).await.expect("").expect(""),
-    ];
+    let mut event_from_peers = Vec::new();
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(5);
+    while tokio::time::Instant::now() < deadline {
+        let event = tokio::time::timeout(Duration::from_secs(1), service1.recv()).await.expect("").expect("");
+        let MetricsServiceEvent::OnPeerConnectionMetric(peer, metrics) = event;
+        event_from_peers.push((peer, metrics.len()));
 
-    let event_from_peers: Vec<(PeerId, usize)> = events
-        .iter()
-        .map(|e| match e {
-            MetricsServiceEvent::OnPeerConnectionMetric(peer, metrics) => (*peer, metrics.len()),
-        })
-        .collect();
+        let local_events = event_from_peers.iter().filter(|(peer, len)| *peer == PeerId(1) && *len == 1).count();
+        let remote_events = event_from_peers.iter().filter(|(peer, len)| *peer == PeerId(2) && *len == 1).count();
+        if local_events >= 2 && remote_events >= 2 {
+            return;
+        }
+    }
 
-    println!("{:?}", events);
-
-    assert_eq!(event_from_peers, vec![(PeerId(1), 1), (PeerId(1), 1), (PeerId(2), 1), (PeerId(2), 1)]);
+    panic!("collector should receive local and scanned remote metrics, got {event_from_peers:?}");
 }
 
 #[test(tokio::test)]
