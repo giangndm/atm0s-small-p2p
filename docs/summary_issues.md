@@ -7,12 +7,12 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Accepted issues: 246
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 8
-- Current audit continuation: critical-only transport/auth/config-resource
-  no-new cycle 10 found no new score-80+ issue across shared-key handshake
-  replay/freshness, inbound identity binding, QUIC stream admission, route and
-  discovery sync caps, seed and tombstone lifecycle, malformed message bounds,
-  README/example API paths, and configured-node malformed churn fuzz.
+- Current consecutive no-new-issue cycles: 9
+- Current audit continuation: critical-only service-layer no-new cycle 11
+  found no new score-80+ issue across pubsub membership/RPC/heartbeat state,
+  replicated-KV snapshot/repair/resource state, metrics and visualization scan
+  correlation, alias lifecycle/cache state, base requester liveness, and
+  configured-node valid churn fuzz.
 - Fix phase status: ISSUE-001, ISSUE-003, ISSUE-004, ISSUE-005, ISSUE-006, ISSUE-007,
   ISSUE-002, ISSUE-008, ISSUE-009, ISSUE-010, ISSUE-011, ISSUE-012, ISSUE-013, ISSUE-014, ISSUE-015, ISSUE-017, ISSUE-020, ISSUE-021, ISSUE-023, ISSUE-024, ISSUE-025, ISSUE-027, ISSUE-033, ISSUE-034, ISSUE-039, ISSUE-045, ISSUE-046, ISSUE-047, ISSUE-048, ISSUE-055, ISSUE-059, ISSUE-103, ISSUE-110, ISSUE-111, ISSUE-115, ISSUE-116, ISSUE-117, ISSUE-118, ISSUE-119, ISSUE-120, ISSUE-122, ISSUE-123,
   ISSUE-124, ISSUE-125, ISSUE-126, ISSUE-127, ISSUE-128, ISSUE-129, ISSUE-130,
@@ -622,6 +622,23 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   ISSUE-215 through ISSUE-225, RC-6. Ledger check found 21 score-80+ issues
   and all are fixed; no reproducible transport/auth/config-resource boundary
   failure supported a distinct score-80+ issue.
+- Fuzz phase no-new cycle 11 reviewed service-layer resource and lifecycle
+  state with forked reviewer `Banach the 2nd`. Local checks passed pubsub,
+  replicated KV, metrics, visualization, alias, and a 24-node valid churn fuzz
+  seed. Reviewer cross-checks also passed `service`, `requester`, and
+  `dropped_` slices. Rejected candidates mapped to pubsub heartbeat and
+  lifecycle families ISSUE-228, ISSUE-231, ISSUE-240 through ISSUE-243,
+  ISSUE-246, pubsub RPC families ISSUE-020, ISSUE-043, ISSUE-074,
+  ISSUE-075, ISSUE-115, ISSUE-116, ISSUE-123 through ISSUE-126, ISSUE-236,
+  replicated-KV families ISSUE-023, ISSUE-025, ISSUE-034, ISSUE-037,
+  ISSUE-038, ISSUE-047, ISSUE-059, ISSUE-081 through ISSUE-089, ISSUE-110,
+  ISSUE-111, ISSUE-131, ISSUE-143, ISSUE-171, ISSUE-233, ISSUE-237,
+  ISSUE-245, telemetry families ISSUE-064, ISSUE-068, ISSUE-165, ISSUE-226,
+  ISSUE-232, alias families ISSUE-028, ISSUE-090, ISSUE-125, ISSUE-208,
+  ISSUE-235, ISSUE-239, and base service/requester families ISSUE-052,
+  ISSUE-060, ISSUE-072, ISSUE-073, ISSUE-076, ISSUE-234. Ledger check found
+  21 score-80+ issues and all are fixed; no reproducible service-layer
+  resource/lifecycle failure supported a distinct score-80+ issue.
 - Cycle after ISSUE-231 no-new cycle 1 reviewed routing/discovery/path
   stability and stream/pipe lifecycle integration with forked reviewer
   `Carver`. Focused route, discovery, stream-relay, peer-stopped, and pubsub

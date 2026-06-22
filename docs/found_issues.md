@@ -11,12 +11,12 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 8
-- Current audit continuation: critical-only transport/auth/config-resource
-  no-new cycle 10 found no new score-80+ issue across shared-key handshake
-  replay/freshness, inbound identity binding, QUIC stream admission, route and
-  discovery sync caps, seed and tombstone lifecycle, malformed message bounds,
-  README/example API paths, and configured-node malformed churn fuzz.
+- Current consecutive no-new-issue cycles: 9
+- Current audit continuation: critical-only service-layer no-new cycle 11
+  found no new score-80+ issue across pubsub membership/RPC/heartbeat state,
+  replicated-KV snapshot/repair/resource state, metrics and visualization scan
+  correlation, alias lifecycle/cache state, base requester liveness, and
+  configured-node valid churn fuzz.
 
 ## Root Cause Summary
 
@@ -20985,6 +20985,70 @@ the source of truth for evidence and reviewer decisions.
 - Current consecutive no-new cycles after ISSUE-238: 20.
 - Current fuzz-phase no-new cycles after transition: 10.
 - Current focused source-review no-new cycles after fuzz phase: 6.
+
+### Fuzz phase no-new cycle 11: service-layer resource and lifecycle review
+
+- Scope: continued critical-only review after cycle 10, focusing on
+  service-layer state machines and resource/lifecycle boundaries:
+  `src/service/pubsub_service.rs`, `src/service/pubsub_service/publisher.rs`,
+  `src/service/pubsub_service/subscriber.rs`,
+  `src/service/replicate_kv_service.rs`,
+  `src/service/replicate_kv_service/local_storage.rs`,
+  `src/service/replicate_kv_service/remote_storage.rs`,
+  `src/service/replicate_kv_service/messages.rs`,
+  `src/service/metrics_service.rs`, `src/service/visualization_service.rs`,
+  `src/service/alias_service.rs`, `src/service.rs`, `src/requester.rs`, and
+  relevant service tests.
+- Reviewer: `Banach the 2nd` (forked RED-team reviewer), returned
+  `NO_NEW_CRITICAL`.
+- Verification:
+  - `RUST_LOG=error cargo test pubsub --lib`: passed, 92/92.
+  - `RUST_LOG=error cargo test replicate_kv --lib`: passed, 64/64.
+  - `RUST_LOG=error cargo test metrics --lib`: passed, 14/14.
+  - `RUST_LOG=error cargo test visualization --lib`: passed, 19/19.
+  - `RUST_LOG=error cargo test alias --lib`: passed, 47/47.
+  - `RUST_LOG=error P2P_FUZZ_NODES=24 P2P_FUZZ_STEPS=900 P2P_FUZZ_SEED=33001 cargo test fuzz_random_valid_node_churn_actions_must_not_panic_connection_tasks --lib`: passed.
+- Reviewer cross-check:
+  - `RUST_LOG=error cargo test pubsub --lib`: passed, 92/92.
+  - `RUST_LOG=error cargo test replicate_kv --lib`: passed, 64/64.
+  - `RUST_LOG=error cargo test metrics --lib`: passed, 14/14.
+  - `RUST_LOG=error cargo test visualization --lib`: passed, 19/19.
+  - `RUST_LOG=error cargo test alias --lib`: passed, 47/47.
+  - `RUST_LOG=error cargo test service --lib`: passed, 198/198.
+  - `RUST_LOG=error cargo test requester --lib`: passed, 13/13.
+  - `RUST_LOG=error cargo test dropped_ --lib`: passed, 13/13.
+- Duplicate mapping:
+  - Pubsub heartbeat chunk sequencing, stale joins/leaves, tombstones,
+    membership caps, and lifecycle cleanup map to ISSUE-228, ISSUE-231,
+    ISSUE-240, ISSUE-241, ISSUE-242, ISSUE-243, ISSUE-246, RC-2, RC-3, and
+    RC-6.
+  - Pubsub RPC responder binding, local handle binding, pending request caps,
+    all-failed delivery, and huge timeout arithmetic map to ISSUE-020,
+    ISSUE-043, ISSUE-074, ISSUE-075, ISSUE-115, ISSUE-116, ISSUE-123 through
+    ISSUE-126, ISSUE-236, RC-2, RC-3, and RC-4.
+  - Replicated-KV unsolicited responses, full-sync staging, snapshot bounds,
+    continuation validation, version arithmetic, remote caps, repair dedupe,
+    and stale activity refresh map to ISSUE-023, ISSUE-025, ISSUE-034,
+    ISSUE-037, ISSUE-038, ISSUE-047, ISSUE-059, ISSUE-081 through ISSUE-089,
+    ISSUE-110, ISSUE-111, ISSUE-131, ISSUE-143, ISSUE-171, ISSUE-233,
+    ISSUE-237, ISSUE-245, RC-2, RC-3, RC-5, and RC-6.
+  - Metrics and visualization scan trust, pending responder correlation, stale
+    disconnect cleanup, bounded info batches, scan backpressure, and
+    base-service closure map to ISSUE-064, ISSUE-068, ISSUE-165, ISSUE-226,
+    ISSUE-232, RC-1, RC-2, RC-3, and RC-6.
+  - Alias control admission, stale hints, scan `Found` proof, lifecycle
+    generation, shutdown, pending-find caps, peer-disconnect cleanup, and
+    refcount behavior map to ISSUE-028, ISSUE-090, ISSUE-125, ISSUE-208,
+    ISSUE-235, ISSUE-239, RC-2, RC-3, and RC-6.
+  - Base service/requester stale liveness, duplicate service handles,
+    service-id bounds, and dropped requesters map to ISSUE-052, ISSUE-060,
+    ISSUE-072, ISSUE-073, ISSUE-076, ISSUE-234, RC-3, and RC-6.
+  - No reproducible service-layer resource/lifecycle failure supported a
+    distinct score-80+ issue.
+- Ledger check: 21 score-80+ issues found and all are fixed.
+- Current consecutive no-new cycles after ISSUE-238: 21.
+- Current fuzz-phase no-new cycles after transition: 11.
+- Current focused source-review no-new cycles after fuzz phase: 7.
 
 ### Cycle after ISSUE-235 no-new cycle 1: transport, auth, and peer setup review
 
