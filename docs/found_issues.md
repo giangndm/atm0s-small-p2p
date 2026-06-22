@@ -827,6 +827,8 @@ the source of truth for evidence and reviewer decisions.
 - Evidence test:
   - `cargo test peer_message_codec_must_reject_oversized_service_payloads -- --nocapture`
   - Fixed summary: a 70 KB unicast service payload is rejected before framing.
+- Fix status: fixed by constructing peer main-stream `BincodeCodec` with the
+  60 KB `MAX_PEER_MESSAGE_FRAME` cap.
 
 ### ISSUE-025: Replicated KV `FetchSnapshot` reversed bounds panic
 

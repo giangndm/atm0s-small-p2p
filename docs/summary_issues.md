@@ -621,7 +621,7 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 - ISSUE-024: fixed by using a 60 KB max-frame `BincodeCodec` for peer
   main-stream messages. Oversized `PeerMessage` frames are rejected before
   framing or inbound allocation. Verified with
-  `cargo test peer_message_codec -- --nocapture`.
+  `cargo test peer_message_codec_must_reject_oversized_service_payloads -- --nocapture`.
 - ISSUE-174: fixed by the serialize-once validation in `write_object`. The
   actual encoded buffer is now checked against `MAX_SIZE` before any frame
   bytes are written, so non-deterministic serialization cannot bypass the cap.
