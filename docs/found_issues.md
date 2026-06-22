@@ -11,9 +11,10 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 0
-- Current audit continuation: ISSUE-231 accepted and fixed; next review starts
-  a fresh post-ISSUE-231 cycle.
+- Current consecutive no-new-issue cycles: 1
+- Current audit continuation: post-ISSUE-231 no-new cycle 1 reviewed
+  routing/discovery/path stability and stream/pipe lifecycle integration
+  without accepting a distinct new issue.
 
 ## Root Cause Summary
 
@@ -18875,6 +18876,52 @@ the source of truth for evidence and reviewer decisions.
     `cargo test tombstone_must_survive_newer_join_dropped_by_channel_cap -- --nocapture`,
     `cargo test inactive_channel_must_not_be_reclaimed_when_tombstone_cap_would_drop_generations -- --nocapture`,
     and `git diff --check`.
+
+### Cycle after ISSUE-231 no-new cycle 1: route, discovery, stream, and graceful-stop integration review
+
+- Scope: reviewed the current issue ledgers, then audited
+  `src/router.rs`, `src/discovery.rs`, `src/lib.rs`, `src/tests/stream.rs`,
+  and the peer-stop/security test coverage for route selection, route sync
+  caps, discovery seed/tombstone behavior, graceful-stop/disconnect
+  integration, and stream/pipe relay setup.
+- Reviewer: `Carver` (forked RED-team reviewer), rejected new issue
+  acceptance and recommended documenting a no-new cycle.
+- Verification:
+  - `cargo test active_path_should_not_jump_for_tiny_rtt_jitter -- --nocapture`
+  - `cargo test create_sync_must_prioritize_direct_routes_under_cap -- --nocapture`
+  - `cargo test discovery::test:: --lib -- --nocapture`
+  - `cargo test relayed_open_stream_must_not_succeed_before_downstream_accepts -- --nocapture`
+  - `cargo test relay_must_not_deliver_downstream_stream_after_upstream_setup_closes -- --nocapture`
+  - `cargo test peer_stopped_must_not_wait_behind_full_local_service_queue -- --nocapture`
+  - `cargo test peer_stopped_ -- --nocapture`
+  - `cargo test pubsub_must_remove_remote_subscriber_on_graceful_peer_stop -- --nocapture`
+- Reviewer cross-check:
+  - `cargo test active_path_should_not_jump_for_tiny_rtt_jitter -- --nocapture`
+  - `cargo test direct_peer_route_must_not_be_replaced_by_relayed_path -- --nocapture`
+  - `cargo test peer_stopped_for_seed_must_not_remove_active_seed_route -- --nocapture`
+  - `cargo test graceful_stop_tombstone_ignores_stale_non_seed_advertise -- --nocapture`
+  - `cargo test relayed_open_stream_must_not_succeed_before_downstream_accepts -- --nocapture`
+  - `cargo test relay_must_not_deliver_downstream_stream_after_upstream_setup_closes -- --nocapture`
+  - `cargo test peer_stopped_route_must_not_be_resurrected_by_connection_ticker -- --nocapture`
+- Duplicate mapping:
+  - Path jumping and noisy active route selection map to ISSUE-003 and RC-7;
+    current route selection keeps equal-cost paths stable, applies a switch
+    margin, and prefers direct routes.
+  - Seed `PeerStopped` route deletion maps to ISSUE-004 plus ISSUE-170
+    ownership validation.
+  - Non-seed graceful stop, stopped tombstones, reconnect, and discovery
+    cleanup map to ISSUE-051, ISSUE-167, and ISSUE-215 through ISSUE-222.
+  - Stale route/discovery sync and main-loop backpressure map to ISSUE-063,
+    ISSUE-164, ISSUE-218, and ISSUE-219.
+  - Stream setup, relay setup, orphan downstream streams, and accept-side
+    response blocking map to ISSUE-117, ISSUE-149, ISSUE-156, ISSUE-217, and
+    ISSUE-220.
+  - Relayed delivery/reporting maps to ISSUE-229 and ISSUE-230.
+- Test note: `cargo test peer_stopped_must_not_wait_behind_service_backpressured_acked_unicast -- --nocapture`
+  matched zero tests because the current guard is named
+  `peer_stopped_must_not_wait_behind_full_acked_unicast_queue`; the broader
+  `cargo test peer_stopped_ -- --nocapture` slice covered it and passed 15/15.
+- Current consecutive no-new cycles after ISSUE-231: 1.
 
 ### Cycle after ISSUE-230 no-new cycle 1: requester, relay, stream setup, and steady fuzz review
 
