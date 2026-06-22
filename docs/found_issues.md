@@ -2083,6 +2083,9 @@ the source of truth for evidence and reviewer decisions.
     processing `MainEvent::PeerConnected(ConnectionId(88), PeerId(99), 10)`
     emits `PeerConnected(ConnectionId(88), PeerId(99))`; expected the peer
     mismatch to be ignored as `Continue`.
+- Fix status: fixed by validating `MainEvent::PeerConnected` against the
+  connection alias owner before installing direct route state or emitting a
+  public connection event.
 
 ### ISSUE-068: PeerStats can relabel a known connection to the wrong peer
 
