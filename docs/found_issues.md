@@ -5724,6 +5724,9 @@ the source of truth for evidence and reviewer decisions.
   tombstone before route sync is applied. Verified with the evidence test
   below, plus `cargo test graceful_stop_tombstone -- --nocapture` and
   `cargo test router -- --nocapture`.
+- Fix status: fixed by filtering route-sync destinations through
+  `PeerDiscovery::is_stopped` after applying discovery sync and before applying
+  router sync.
 - Reviewer: `Epicurus the 2nd`, confirmed after `Locke the 2nd` discovery.
 - Affected code:
   - `src/lib.rs`: `PeerData::Sync` applies router sync unconditionally before
