@@ -3051,7 +3051,7 @@ the source of truth for evidence and reviewer decisions.
 
 ### ISSUE-174: QUIC object writer can bypass `MAX_SIZE` with non-deterministic serialization
 
-- Status: fixed by the `write_object` serialize-once validation in `9b331cd`
+- Fix status: fixed by the `write_object` serialize-once validation in `9b331cd`
   (`fix: return stream serialization errors`). `write_object` now validates the
   actual serialized buffer length against `MAX_SIZE` before writing, so
   non-deterministic serialization can no longer bypass the configured cap.
