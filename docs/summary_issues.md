@@ -866,6 +866,11 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   `cargo test alias_guard_drop_when_control_queue_full_must_not_panic -- --nocapture`,
   `cargo test alias_find_after_service_drop_returns_none_not_panic -- --nocapture`,
   and `cargo fmt -- --check`.
+- ISSUE-029: fixed by the same `try_send_alias_control` fail-closed requester
+  path. Stale alias requesters and guards no longer panic after `AliasService`
+  is dropped; `find` returns `None`, and non-`Result` operations log/drop failed
+  control admission. Verification:
+  `cargo test alias_find_after_service_drop_returns_none_not_panic -- --nocapture`.
 - ISSUE-128: fixed by `c83321c`, which makes `MetricsService::recv` return
   `Err(_)` when the underlying base service channel closes instead of panicking
   on `expect("should work")`. Verified with

@@ -942,6 +942,10 @@ the source of truth for evidence and reviewer decisions.
     service control channel to remain open.
 - Impact: alias requester or guard handles can outlive `AliasService`; using or
   dropping them after the service is gone panics through the public service API.
+- Fix status: fixed by routing requester and guard control admission through
+  `try_send_alias_control`. `find` now returns `None` when the alias control
+  channel is full or closed, while `register`, `shutdown`, and
+  `AliasGuard::drop` fail closed with debug logging instead of panicking.
 - Evidence test:
   - `cargo test alias_find_after_service_drop_returns_none_not_panic -- --nocapture`
   - Failure summary: after dropping `AliasService`, `requester.find(...)`
