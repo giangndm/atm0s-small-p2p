@@ -11,7 +11,7 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 3
+- Current consecutive no-new-issue cycles: 4
 - Stop condition requested by user: continue until 5 consecutive cycles find no
   new accepted issue. Not satisfied after ISSUE-225; continue auditing.
 
@@ -18523,3 +18523,37 @@ the source of truth for evidence and reviewer decisions.
   backpressure policy, RC-4 stream setup hardening, RC-6 lifecycle cleanup, and
   RC-7 route stability. Continue auditing; consecutive no-new cycles after
   ISSUE-225: 3.
+
+### Cycle after ISSUE-225 no-new cycle 4: seed lifecycle and cleanup review
+
+- Scope: forked RED-team reviewer `Lagrange` reviewed seed/non-seed discovery
+  lifecycle and stopped tombstones, graceful shutdown notification and
+  `send_wait` behavior, `PeerConnected` backpressure versus later traffic/stop
+  handling, `PeerStopped` admission/dedup/main-loop validation, stream/pipe
+  setup surfaces, and route/path stability. Main-agent local review checked
+  discovery tombstone tests, neighbour cleanup, pending sync retry cleanup, and
+  graceful-shutdown timing coverage.
+- Result: no new accepted issue.
+- Rejected candidate:
+  - Delayed `PeerConnected` versus fast `PeerStopped` ordering looked possible
+    but was scheduler-sensitive and overlapped ISSUE-157, ISSUE-215, and
+    ISSUE-223. No deterministic current-HEAD failing test was identified.
+- Duplicate or reviewed mappings:
+  - Ack/local-service backpressure maps to ISSUE-224 and ISSUE-225.
+  - `PeerConnected` backpressure/admission maps to ISSUE-157 and ISSUE-223.
+  - Graceful stop retry/dedup/lifecycle maps to ISSUE-215 through ISSUE-222.
+  - Outbound control stalls map to ISSUE-219 and ISSUE-164.
+  - Stream setup reliability maps to ISSUE-117, ISSUE-156, ISSUE-217, and
+    ISSUE-220.
+  - Route/path jumping maps to ISSUE-003 and RC-7.
+  - Discovery seed/non-seed lifecycle maps to existing discovery stopped and
+    timeout fixes.
+- Evidence:
+  - `cargo test peer_connected_must_not_block_authenticated_connection_run_loop_on_full_main_queue --lib -- --nocapture`
+  - `cargo test authenticated_inbound_peers_must_not_exhaust_unauthenticated_admission_cap --lib -- --nocapture`
+  - `P2P_FUZZ_NODES=12 P2P_FUZZ_STEPS=800 P2P_FUZZ_SEED=22504 cargo test fuzz_random_steady_valid_node_actions_must_not_panic_connection_tasks --lib -- --nocapture`
+  - Result: passed.
+- Summary/root cause review: no new root cause beyond RC-3 bounded
+  backpressure policy, RC-4 stream setup hardening, RC-6 lifecycle cleanup, and
+  RC-7 route stability. Continue auditing; consecutive no-new cycles after
+  ISSUE-225: 4.

@@ -7,7 +7,7 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Accepted issues: 225
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 3
+- Current consecutive no-new-issue cycles: 4
 - Stop condition: not satisfied; continue auditing after ISSUE-225 fix commit.
 - Fix phase status: ISSUE-001, ISSUE-003, ISSUE-004, ISSUE-005, ISSUE-006, ISSUE-007,
   ISSUE-002, ISSUE-008, ISSUE-009, ISSUE-010, ISSUE-011, ISSUE-012, ISSUE-013, ISSUE-014, ISSUE-015, ISSUE-017, ISSUE-020, ISSUE-021, ISSUE-023, ISSUE-024, ISSUE-025, ISSUE-027, ISSUE-033, ISSUE-034, ISSUE-039, ISSUE-045, ISSUE-046, ISSUE-047, ISSUE-048, ISSUE-055, ISSUE-059, ISSUE-103, ISSUE-110, ISSUE-111, ISSUE-115, ISSUE-116, ISSUE-117, ISSUE-118, ISSUE-119, ISSUE-120, ISSUE-122, ISSUE-123,
@@ -177,6 +177,14 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   passed. Shutdown/refused-connection and teardown logs mapped to existing
   lifecycle or bounded-backpressure fallout. No new root cause beyond RC-3,
   RC-4, RC-6, and RC-7.
+- Cycle after ISSUE-225 no-new cycle 4: forked reviewer `Lagrange` reviewed
+  seed/non-seed discovery lifecycle, stopped tombstones, graceful shutdown,
+  `PeerConnected` and `PeerStopped` ordering/backpressure, stream/pipe setup,
+  and route/path stability. Focused `PeerConnected`/admission tests and a
+  12-node, 800-step steady fuzz run with seed 22504 passed. A possible
+  delayed-`PeerConnected` versus fast-`PeerStopped` ordering candidate was
+  rejected as scheduler-sensitive and overlapping existing issues. No new root
+  cause beyond RC-3, RC-4, RC-6, and RC-7.
 - Pattern: some paths drop on `try_send`, some await bounded sends from
   critical tasks, and others use unbounded queues or duplicate internal control
   work. Under load this causes silent loss, head-of-line blocking, unreported
