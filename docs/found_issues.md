@@ -1090,6 +1090,9 @@ the source of truth for evidence and reviewer decisions.
 - Category: long-running stability, correctness
 - Score: 55/100
 - Reviewer: `Aristotle`, confirmed.
+- Fix status: fixed. Alias find timeout checks now use checked deadline
+  arithmetic; if a deadline cannot be represented in `u64`, the request stays
+  pending instead of wrapping or expiring early.
 - Affected code:
   - `src/service/alias_service.rs`: `AliasServiceInternal::on_tick` checks
     hint timeouts with `requested_at + HINT_TIMEOUT_MS <= now`.
@@ -1105,6 +1108,15 @@ the source of truth for evidence and reviewer decisions.
   - Failure summary: ticking a pending alias find created at `u64::MAX - 10`
     panics at `src/service/alias_service.rs:244` with
     `attempt to add with overflow`.
+- Root cause: hint and scan timeout checks used unchecked addition on raw
+  millisecond timestamps.
+- Fix: route both timeout checks through `deadline_expired`, which uses
+  `checked_add` and treats overflowed deadlines as not expired.
+- Fixed verification:
+  `cargo test find_timeout_at_max_timestamp_must_not_overflow -- --nocapture`,
+  `cargo test find_hint_timeout_at_max_timestamp_must_not_overflow -- --nocapture`,
+  `cargo test alias_service::test::test_find -- --nocapture`, and
+  `cargo fmt -- --check` pass.
 
 ### ISSUE-037: Replicated KV full-sync consumer emits reversed snapshot bounds
 

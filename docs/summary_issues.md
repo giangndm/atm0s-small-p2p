@@ -109,6 +109,10 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   protocol phase in an end-to-end timeout, and tie relay downstream setup to
   upstream cancellation. Bind handshake responses to fresh request nonces and
   reject recently accepted tokens until expiry.
+- ISSUE-036: fixed by routing alias find hint and scan timeout checks through
+  checked deadline arithmetic. Deadlines that overflow `u64` remain pending
+  instead of panicking or wrapping into early expiry. Verification:
+  `cargo test find_timeout_at_max_timestamp_must_not_overflow -- --nocapture`.
 
 ### RC-5: Application-level resource limits are missing
 

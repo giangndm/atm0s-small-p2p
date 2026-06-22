@@ -35,6 +35,12 @@ const MAX_PENDING_FIND_REQUESTS: usize = 1024;
 const HINT_TIMEOUT_MS: u64 = 500;
 const SCAN_TIMEOUT_MS: u64 = 1000;
 
+// If the deadline cannot be represented, keep the request alive instead of
+// wrapping and expiring it early.
+fn deadline_expired(requested_at: u64, timeout_ms: u64, now: u64) -> bool {
+    requested_at.checked_add(timeout_ms).is_some_and(|deadline| deadline <= now)
+}
+
 #[derive(Debug, From, Display, Serialize, Deserialize, Hash, PartialEq, Eq, Clone, Copy)]
 pub struct AliasId(u64);
 
@@ -277,14 +283,14 @@ impl AliasServiceInternal {
         for (alias_id, req) in self.find_reqs.iter_mut() {
             match req.state {
                 FindRequestState::CheckHint(requested_at, ref mut _hash_set) => {
-                    if requested_at + HINT_TIMEOUT_MS <= now {
+                    if deadline_expired(requested_at, HINT_TIMEOUT_MS, now) {
                         log::info!("[AliasServiceInternal] check hint timeout {alias_id} => switch to scan");
                         self.outs.push_back(InternalOutput::Broadcast(AliasMessage::Scan(*alias_id)));
                         req.state = FindRequestState::Scan(now);
                     }
                 }
                 FindRequestState::Scan(requested_at) => {
-                    if requested_at + SCAN_TIMEOUT_MS <= now {
+                    if deadline_expired(requested_at, SCAN_TIMEOUT_MS, now) {
                         log::info!("[AliasServiceInternal] find scan timeout {alias_id}");
                         timeout_reqs.push(*alias_id);
                         while let Some(tx) = req.waits.pop() {
@@ -1288,7 +1294,7 @@ mod test {
     fn find_timeout_at_max_timestamp_must_not_overflow() {
         let mut ctx = TestContext::new();
         let alias_id = AliasId(1);
-        let (tx, _rx) = oneshot::channel();
+        let (tx, mut rx) = oneshot::channel();
 
         ctx.internal.on_control(u64::MAX - 10, AliasControl::Find(alias_id, tx));
 
@@ -1297,6 +1303,35 @@ mod test {
         }));
 
         assert!(result.is_ok(), "alias find timeout arithmetic must not panic or wrap near u64::MAX");
+        assert!(matches!(rx.try_recv(), Err(oneshot::error::TryRecvError::Empty)), "overflowed scan deadline must not expire early");
+        assert!(ctx.internal.find_reqs.contains_key(&alias_id), "overflowed scan deadline must keep the pending find alive");
+    }
+
+    #[test]
+    fn find_hint_timeout_at_max_timestamp_must_not_overflow() {
+        let mut ctx = TestContext::new();
+        let alias_id = AliasId(1);
+        let hinted_peer = PeerId(2);
+        ctx.internal.on_msg(u64::MAX - 20, hinted_peer, AliasMessage::NotifySet(alias_id, 1));
+        let (tx, mut rx) = oneshot::channel();
+
+        ctx.internal.on_control(u64::MAX - 10, AliasControl::Find(alias_id, tx));
+        assert_eq!(ctx.internal.outs.pop_front(), Some(InternalOutput::Unicast(hinted_peer, AliasMessage::Check(alias_id))));
+
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            ctx.internal.on_tick(u64::MAX);
+        }));
+
+        assert!(result.is_ok(), "alias hint timeout arithmetic must not panic or wrap near u64::MAX");
+        assert_eq!(ctx.internal.outs.pop_front(), None, "overflowed hint deadline must not switch to scan early");
+        assert!(
+            matches!(rx.try_recv(), Err(oneshot::error::TryRecvError::Empty)),
+            "overflowed hint deadline must keep the waiter pending"
+        );
+        assert!(
+            matches!(ctx.internal.find_reqs.get(&alias_id).map(|req| &req.state), Some(FindRequestState::CheckHint(_, _))),
+            "overflowed hint deadline must keep the request in CheckHint state"
+        );
     }
 
     #[test]
