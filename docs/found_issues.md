@@ -17624,3 +17624,35 @@ the source of truth for evidence and reviewer decisions.
     passed with no new issue.
 - Root-cause summary impact: no new root cause; candidates map to existing
   RC-3, RC-4, RC-6, and RC-7 patterns.
+
+### ISSUE-209: Fuzz node-count configuration silently caps high-load runs
+
+- Score: 86
+- Category: stability / high-load test coverage correctness
+- Status: fixed by pending commit.
+- Reviewer: `Bacon the 13th` (forked RED-team reviewer), accepted.
+- Affected code:
+  - `src/tests/fuzz.rs`
+- Impact: the randomized node-action fuzz harness ignores requested
+  high-load `P2P_FUZZ_NODES` values above 8. Runs intended to cover 12-15
+  nodes execute with only 8 nodes, reducing topology churn, route/path
+  contention, shutdown pressure, and fanout/backpressure coverage while
+  reporting a passing fuzz cycle.
+- Failing evidence:
+  - `cargo test fuzz_node_count_must_honor_high_load_configuration -- --nocapture`
+  - Failure before fix:
+    - `left: 8`
+    - `right: 12`
+- Root cause: each fuzz entrypoint used
+  `env_usize("P2P_FUZZ_NODES", 5).clamp(2, 8)`. This lower-and-upper clamp
+  was hidden inside the harness, so the caller could provide a larger node
+  count without any rejection, warning, or visible configuration error.
+- Minimal fix proposal: keep the lower bound at two nodes, but remove the
+  silent upper cap by changing the helper to `configured.max(2)`. If a future
+  resource safety cap is needed, make it explicit via a separately named env
+  var and log/report when it is applied.
+- Fix status: fixed by changing fuzz node-count parsing to preserve the
+  two-node minimum without silently capping larger requested high-load runs.
+- Verification:
+  - `cargo test fuzz_node_count_must_honor_high_load_configuration -- --nocapture`
+  - `P2P_FUZZ_NODES=12 P2P_FUZZ_STEPS=1 cargo test fuzz_random_steady_valid_node_actions_must_not_panic_connection_tasks -- --nocapture`

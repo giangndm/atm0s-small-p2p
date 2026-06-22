@@ -26,6 +26,19 @@ fn env_u64(name: &str, default: u64) -> u64 {
     env::var(name).ok().and_then(|value| value.parse().ok()).unwrap_or(default)
 }
 
+fn fuzz_node_count(configured: usize) -> usize {
+    configured.max(2)
+}
+
+#[test]
+fn fuzz_node_count_must_honor_high_load_configuration() {
+    assert_eq!(
+        fuzz_node_count(12),
+        12,
+        "high-load fuzzing must honor P2P_FUZZ_NODES values above the small default cap"
+    );
+}
+
 #[test(tokio::test(flavor = "multi_thread", worker_threads = 4))]
 async fn fuzz_random_node_actions_must_not_panic_connection_tasks() {
     run_random_node_action_fuzz(true, 120).await;
@@ -57,7 +70,7 @@ async fn fuzz_random_steady_valid_node_actions_must_not_panic_connection_tasks()
 }
 
 async fn run_random_node_action_fuzz(include_known_invalid_service: bool, default_steps: usize) {
-    let node_count = env_usize("P2P_FUZZ_NODES", 5).clamp(2, 8);
+    let node_count = fuzz_node_count(env_usize("P2P_FUZZ_NODES", 5));
     let steps = env_usize("P2P_FUZZ_STEPS", default_steps);
     let seed = env_u64("P2P_FUZZ_SEED", 0x5eed);
     let mut rng = StdRng::seed_from_u64(seed);
@@ -243,7 +256,7 @@ async fn spawn_fuzz_node(peer_id: u64) -> RunningFuzzNode {
 }
 
 async fn run_random_node_churn_fuzz(include_known_invalid_service: bool, include_forged_peer_stopped: bool, default_steps: usize) {
-    let node_count = env_usize("P2P_FUZZ_NODES", 5).clamp(2, 8);
+    let node_count = fuzz_node_count(env_usize("P2P_FUZZ_NODES", 5));
     let steps = env_usize("P2P_FUZZ_STEPS", default_steps);
     let seed = env_u64("P2P_FUZZ_SEED", 0x51a7e);
     let mut rng = StdRng::seed_from_u64(seed);
@@ -376,7 +389,7 @@ async fn run_random_node_churn_fuzz(include_known_invalid_service: bool, include
 }
 
 async fn run_random_steady_valid_node_fuzz() {
-    let node_count = env_usize("P2P_FUZZ_NODES", 5).clamp(2, 8);
+    let node_count = fuzz_node_count(env_usize("P2P_FUZZ_NODES", 5));
     let steps = env_usize("P2P_FUZZ_STEPS", 500);
     let seed = env_u64("P2P_FUZZ_SEED", 0x57ead);
     let mut rng = StdRng::seed_from_u64(seed);

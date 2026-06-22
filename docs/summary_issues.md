@@ -5,11 +5,10 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Audit Status
 
-- Accepted issues: 208
+- Accepted issues: 209
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 5
-- Stop condition: satisfied after 5 consecutive no-new cycles following
-  ISSUE-208.
+- Current consecutive no-new-issue cycles: 0
+- Stop condition: not satisfied; discovery should continue after ISSUE-209 fix.
 - Fix phase status: ISSUE-001, ISSUE-003, ISSUE-004, ISSUE-005, ISSUE-006, ISSUE-007,
   ISSUE-002, ISSUE-008, ISSUE-009, ISSUE-010, ISSUE-011, ISSUE-012, ISSUE-013, ISSUE-014, ISSUE-015, ISSUE-017, ISSUE-020, ISSUE-021, ISSUE-023, ISSUE-024, ISSUE-025, ISSUE-027, ISSUE-033, ISSUE-034, ISSUE-039, ISSUE-045, ISSUE-046, ISSUE-047, ISSUE-048, ISSUE-055, ISSUE-059, ISSUE-103, ISSUE-110, ISSUE-111, ISSUE-115, ISSUE-116, ISSUE-117, ISSUE-118, ISSUE-119, ISSUE-120, ISSUE-122, ISSUE-123,
   ISSUE-124, ISSUE-125, ISSUE-126, ISSUE-127, ISSUE-128, ISSUE-129, ISSUE-130,
@@ -86,7 +85,14 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   ISSUE-124, ISSUE-125, ISSUE-126,
   ISSUE-127, ISSUE-136, ISSUE-153,
   ISSUE-178, ISSUE-182, ISSUE-184, ISSUE-198, ISSUE-199,
-  ISSUE-200, ISSUE-201, ISSUE-202, ISSUE-203, ISSUE-204.
+  ISSUE-200, ISSUE-201, ISSUE-202, ISSUE-203, ISSUE-204, ISSUE-209.
+- ISSUE-209: fixed high-load fuzz coverage issue. The fuzz harness silently
+  capped `P2P_FUZZ_NODES` values above 8, so intended 12-15 node fuzz cycles
+  executed with only 8 nodes. The fix keeps the lower bound at two nodes while
+  removing the hidden upper cap. Verification:
+  `cargo test fuzz_node_count_must_honor_high_load_configuration -- --nocapture`
+  and
+  `P2P_FUZZ_NODES=12 P2P_FUZZ_STEPS=1 cargo test fuzz_random_steady_valid_node_actions_must_not_panic_connection_tasks -- --nocapture`.
 - Pattern: some paths drop on `try_send`, some await bounded sends from
   critical tasks, and others use unbounded queues or duplicate internal control
   work. Under load this causes silent loss, head-of-line blocking, unreported
