@@ -2245,6 +2245,9 @@ the source of truth for evidence and reviewer decisions.
     `Changed(version=1)` fills the gap and advances the state to `Version(2)`,
     but ticking after `REQUEST_TIMEOUT` still emits the obsolete
     `FetchChanged { from: Version(1), count: 1 }` instead of no retry.
+- Fix status: fixed by clearing an in-flight `FetchChanged` request when
+  `apply_pendings` advances the working version far enough to satisfy the
+  requested range.
 
 ### ISSUE-072: Dropped service requesters can still send unicast
 
