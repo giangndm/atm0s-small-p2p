@@ -11,7 +11,7 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 1
+- Current consecutive no-new-issue cycles: 2
 - Stop condition requested by user: continue until 5 consecutive cycles find no
   new accepted issue. Not satisfied after ISSUE-225; continue auditing.
 
@@ -18460,3 +18460,33 @@ the source of truth for evidence and reviewer decisions.
   backpressure policy, RC-4 stream setup hardening, RC-6 lifecycle cleanup, and
   RC-7 route stability. Continue auditing; consecutive no-new cycles after
   ISSUE-225: 1.
+
+### Cycle after ISSUE-225 no-new cycle 2: ack-worker, stream, route, and shutdown review
+
+- Scope: forked RED-team reviewer `Maxwell` reviewed the issue ledger after
+  ISSUE-225, then audited `PeerConnectionInternal` ack-worker/control-frame
+  paths, stream accept/relay/open behavior, route stability and sync retry
+  paths, graceful shutdown and `PeerStopped` lifecycle, and broadcast/unicast
+  control-queue backpressure.
+- Result: no new accepted issue.
+- Duplicate or reviewed mappings:
+  - Ack/local-service backpressure maps to ISSUE-224 and ISSUE-225.
+  - Inbound sync/main-queue blocking maps to ISSUE-218.
+  - Outbound framed write/control stalls map to ISSUE-219 and ISSUE-164.
+  - Stream setup reliability maps to ISSUE-117, ISSUE-156, ISSUE-217, and
+    ISSUE-220.
+  - Broadcast/control queue behavior maps to ISSUE-049, ISSUE-198, and
+    ISSUE-199.
+  - Graceful shutdown/lifecycle behavior maps to ISSUE-118 and ISSUE-215
+    through ISSUE-223.
+  - Path jumping/noisy route churn maps to ISSUE-003 and RC-7.
+- Evidence:
+  - `RUST_LOG=error P2P_FUZZ_NODES=12 P2P_FUZZ_STEPS=400 P2P_FUZZ_SEED=22501 cargo test fuzz_random_steady_valid_node_actions_must_not_panic_connection_tasks --lib -- --nocapture`
+  - Result: passed. Duplicate-connection closes, connection-lost logs, and
+    endpoint teardown messages were reviewed as existing churn,
+    lifecycle-cleanup, or bounded-backpressure fallout rather than a distinct
+    failing invariant.
+- Summary/root cause review: no new root cause beyond RC-3 bounded
+  backpressure policy, RC-4 stream setup hardening, RC-6 lifecycle cleanup, and
+  RC-7 route stability. Continue auditing; consecutive no-new cycles after
+  ISSUE-225: 2.
