@@ -4639,6 +4639,13 @@ the source of truth for evidence and reviewer decisions.
   - `cargo test full_sync_must_reject_continuation -- --nocapture`
   - `cargo test full_sync_must_reject_none_continuation_after_partial_snapshot -- --nocapture`
   - `cargo test full_sync_must_reject_snapshot -- --nocapture`
+- Fix status: fixed by existing full-sync snapshot response validation in
+  `SyncFullState::on_rpc_res`. The receiver correlates accepted
+  `RpcRes::FetchSnapshot(Some(...))` pages with the pending
+  `FetchSnapshot { from, to, max_version }` request and rejects stale terminal
+  pages whose version, `biggest_key`, `next_key`, or slot keys do not fit the
+  pending continuation bounds. Engineer proposal: `Linnaeus the 12th`; coder
+  review: `Rawls the 12th`; reviewer: `Boyle the 12th`, accepted.
 
 ### ISSUE-144: Peer alias leaks if main loop closes before PeerConnected delivery
 
