@@ -11,11 +11,12 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 19
-- Current audit continuation: critical-only serialization/framing no-new cycle
-  21 found no new score-80+ issue across bincode framing, object length
-  prefixes, malformed input, service-id parsing, stream setup frames,
-  handshake frames, public API panic paths, and frame allocation bounds.
+- Current consecutive no-new-issue cycles: 20
+- Current audit continuation: critical-only time/order lifecycle no-new cycle
+  22 found no new score-80+ issue across timestamp arithmetic, stale event
+  ordering, reconnect after stop/disconnect, seed vs non-seed lifecycle,
+  route/discovery tombstone freshness, metrics/liveness cleanup, delayed
+  internal events, shutdown notification ordering, and active-path stability.
 
 ## Root Cause Summary
 
@@ -21602,6 +21603,70 @@ the source of truth for evidence and reviewer decisions.
 - Ledger check: 19 score-80+ issue entries found and all are fixed.
 - Current consecutive no-new cycles after ISSUE-238: 31.
 - Current fuzz-phase no-new cycles after transition: 21.
+- Current focused source-review no-new cycles after fuzz phase: 10.
+
+### Fuzz phase no-new cycle 22: time, ordering, and lifecycle review
+
+- Scope: continued critical-only review after cycle 21, focusing on timestamp
+  arithmetic, stale event ordering, reconnect after stop/disconnect, seed vs
+  non-seed lifecycle, metrics/liveness cleanup, route/discovery tombstone
+  freshness, delayed internal events, shutdown notification ordering, and
+  active-path stability in `src/lib.rs`, `src/discovery.rs`, `src/router.rs`,
+  `src/neighbours.rs`, `src/peer.rs`, `src/ctx.rs`, metrics/visualization
+  services, pubsub lifecycle state, alias lifecycle state, and replicated-KV
+  remote liveness.
+- Reviewer: `Fermat the 2nd` (forked RED-team reviewer), returned
+  `NO_NEW_CRITICAL`.
+- Verification:
+  - `RUST_LOG=error cargo test stale --lib`: passed 25 tests.
+  - `RUST_LOG=error cargo test stopped --lib`: passed 19 tests.
+  - `RUST_LOG=error cargo test tombstone --lib`: passed 12 tests.
+  - `RUST_LOG=error cargo test timeout --lib`: passed 19 tests.
+  - `RUST_LOG=error cargo test route --lib`: passed 27 tests.
+  - `RUST_LOG=error cargo test discovery --lib`: passed 37 tests.
+  - `RUST_LOG=error cargo test metrics --lib`: passed 14 tests.
+  - `RUST_LOG=error cargo test visualization --lib`: passed 19 tests.
+  - `RUST_LOG=error P2P_FUZZ_NODES=34 P2P_FUZZ_STEPS=1100 P2P_FUZZ_SEED=43001 cargo test fuzz_random_valid_node_churn_actions_must_not_panic_connection_tasks --lib`:
+    passed.
+- Reviewer cross-check:
+  - `cargo test --lib -- --list | rg -i "stale|tombstone|shutdown|disconnect|stopped|seed|route|metric|liveness|timeout|delay|tick|reconnect|peer_stopped|discovery|heartbeat|active_path"`
+  - `RUST_LOG=error cargo test discovery::test --lib`: passed.
+  - `RUST_LOG=error cargo test router::tests --lib`: passed.
+  - `RUST_LOG=error cargo test peer_stopped --lib`: passed.
+  - `RUST_LOG=error cargo test stale_peer --lib`: passed.
+  - `RUST_LOG=error cargo test metrics --lib`: passed.
+  - `RUST_LOG=error cargo test visualization --lib`: passed.
+  - `RUST_LOG=error cargo test shutdown --lib`: passed.
+  - `RUST_LOG=error cargo test reconnect --lib`: passed.
+  - `RUST_LOG=error cargo test active_path --lib`: passed.
+  - `RUST_LOG=error cargo test timestamp --lib`: passed.
+  - `RUST_LOG=error cargo test tombstone --lib`: passed.
+  - `RUST_LOG=error P2P_FUZZ_NODES=34 P2P_FUZZ_STEPS=1000 P2P_FUZZ_SEED=43001 cargo test fuzz_random_valid_node_actions_must_not_panic_connection_tasks --lib`:
+    passed.
+  - `cargo test delayed --lib` matched zero tests and was not counted as
+    evidence.
+- Duplicate mapping:
+  - Timestamp arithmetic and overflow candidates map to fixed handshake,
+    discovery, alias, pubsub RPC, and visualization timeout coverage.
+  - Stale event ordering maps to RC-6 and fixed stale peer connected, data,
+    disconnected, stats, and connect-error tests.
+  - Reconnect after failed or stale outgoing attempts maps to the fixed stale
+    pending outgoing reconnect case.
+  - Seed vs non-seed lifecycle maps to ISSUE-004, ISSUE-167, ISSUE-211 through
+    ISSUE-213, and existing seed-retention, non-seed-expiry, and graceful-stop
+    tombstone tests.
+  - Route/discovery tombstone freshness maps to ISSUE-215 through ISSUE-225,
+    ISSUE-231, and route/discovery stale sync and tombstone tests.
+  - Metrics and liveness cleanup maps to ISSUE-232 plus metrics/visualization
+    stale-info, disconnect cleanup, responder correlation, and bounded scan
+    response tests.
+  - Shutdown notification ordering and backpressure maps to graceful shutdown,
+    `PeerStopped` delivery/dedup/retry, and stopped-neighbour cleanup tests.
+  - Active path jumping maps to ISSUE-003/RC-7 and direct-route/hysteresis
+    tests.
+- Ledger check: 19 score-80+ issue entries found and all are fixed.
+- Current consecutive no-new cycles after ISSUE-238: 32.
+- Current fuzz-phase no-new cycles after transition: 22.
 - Current focused source-review no-new cycles after fuzz phase: 10.
 
 ### Cycle after ISSUE-235 no-new cycle 1: transport, auth, and peer setup review

@@ -7,11 +7,12 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Accepted issues: 246
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 19
-- Current audit continuation: critical-only serialization/framing no-new cycle
-  21 found no new score-80+ issue across bincode framing, object length
-  prefixes, malformed input, service-id parsing, stream setup frames,
-  handshake frames, public API panic paths, and frame allocation bounds.
+- Current consecutive no-new-issue cycles: 20
+- Current audit continuation: critical-only time/order lifecycle no-new cycle
+  22 found no new score-80+ issue across timestamp arithmetic, stale event
+  ordering, reconnect after stop/disconnect, seed vs non-seed lifecycle,
+  route/discovery tombstone freshness, metrics/liveness cleanup, delayed
+  internal events, shutdown notification ordering, and active-path stability.
 - Fix phase status: ISSUE-001, ISSUE-003, ISSUE-004, ISSUE-005, ISSUE-006, ISSUE-007,
   ISSUE-002, ISSUE-008, ISSUE-009, ISSUE-010, ISSUE-011, ISSUE-012, ISSUE-013, ISSUE-014, ISSUE-015, ISSUE-017, ISSUE-020, ISSUE-021, ISSUE-023, ISSUE-024, ISSUE-025, ISSUE-027, ISSUE-033, ISSUE-034, ISSUE-039, ISSUE-045, ISSUE-046, ISSUE-047, ISSUE-048, ISSUE-055, ISSUE-059, ISSUE-103, ISSUE-110, ISSUE-111, ISSUE-115, ISSUE-116, ISSUE-117, ISSUE-118, ISSUE-119, ISSUE-120, ISSUE-122, ISSUE-123,
   ISSUE-124, ISSUE-125, ISSUE-126, ISSUE-127, ISSUE-128, ISSUE-129, ISSUE-130,
@@ -793,6 +794,22 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   pubsub heartbeat enum/chunking issues for compatibility concerns. Direct
   issue-entry ledger check found 19 score-80+ entries and all are fixed; no
   reproducible serialization/framing failure supported a distinct score-80+
+  issue.
+- Fuzz phase no-new cycle 22 reviewed time, ordering, and lifecycle behavior
+  with forked reviewer `Fermat the 2nd`. Local `stale`, `stopped`,
+  `tombstone`, `timeout`, `route`, `discovery`, `metrics`, `visualization`,
+  and 34-node valid churn fuzz checks passed. The reviewer passed discovery,
+  router, peer-stopped, stale-peer, metrics, visualization, shutdown,
+  reconnect, active-path, timestamp, tombstone, and 34-node valid-action fuzz
+  checks; `delayed` matched zero tests and was not counted. Rejected
+  candidates mapped to fixed timestamp/timeout coverage, RC-6 stale-event
+  ordering, the stale pending outgoing reconnect fix, ISSUE-004/ISSUE-167/
+  ISSUE-211 through ISSUE-213 for seed/non-seed lifecycle, ISSUE-215 through
+  ISSUE-225 and ISSUE-231 for tombstone freshness, ISSUE-232 for metrics and
+  liveness cleanup, graceful-shutdown and `PeerStopped` backpressure tests for
+  shutdown ordering, and ISSUE-003/RC-7 for active-path stability. Direct
+  issue-entry ledger check found 19 score-80+ entries and all are fixed; no
+  reproducible time/order/lifecycle failure supported a distinct score-80+
   issue.
 - Cycle after ISSUE-231 no-new cycle 1 reviewed routing/discovery/path
   stability and stream/pipe lifecycle integration with forked reviewer
