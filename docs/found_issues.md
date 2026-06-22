@@ -1177,6 +1177,9 @@ the source of truth for evidence and reviewer decisions.
   - `cargo test full_sync_must_reject_snapshot_next_key_past_biggest_key -- --nocapture`
   - Failure summary: a response with `next_key = 2` and `biggest_key = 1`
     makes the receiver emit `FetchSnapshot { from: Some(2), to: Some(1), ... }`.
+- Fix status: fixed by rejecting full-sync snapshot pages whose continuation
+  `next_key` is greater than the page `biggest_key` before emitting a follow-up
+  `FetchSnapshot`.
 
 ### ISSUE-038: Replicated KV full-sync consumer accepts empty continuation pages
 
