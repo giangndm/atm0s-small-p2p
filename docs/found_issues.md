@@ -1842,6 +1842,10 @@ the source of truth for evidence and reviewer decisions.
     returns a `Publisher`, but `publisher.recv()` returns immediately instead
     of waiting for events; expected handle creation to fail or avoid returning
     an already-closed publisher.
+- Fix status: fixed by keeping a local event-sender guard inside returned
+  `Publisher` and `Subscriber` handles. Registration failures can still leave
+  unregistered handles because the direct handle API has no error return, but
+  the returned event receiver is no longer immediately closed/dead-on-arrival.
 
 ### ISSUE-059: Replicated KV full sync accepts `None` as a fake continuation
 

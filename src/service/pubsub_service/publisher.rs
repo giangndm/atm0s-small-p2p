@@ -83,6 +83,7 @@ pub struct Publisher {
     control_tx: Sender<InternalMsg>,
     requester: PublisherRequester,
     pub_rx: Receiver<PublisherEvent>,
+    _pub_tx_guard: Sender<PublisherEvent>,
 }
 
 impl Publisher {
@@ -91,7 +92,7 @@ impl Publisher {
         let local_id = PublisherLocalId::rand();
         let handle_id = PublisherHandleId::new(local_id);
         log::info!("[Publisher {channel_id}/{local_id}] created");
-        if let Err(err) = try_send_internal_control(&control_tx, InternalMsg::PublisherCreated(handle_id, channel_id, pub_tx), "publisher registration") {
+        if let Err(err) = try_send_internal_control(&control_tx, InternalMsg::PublisherCreated(handle_id, channel_id, pub_tx.clone()), "publisher registration") {
             log::debug!("[Publisher {channel_id}/{local_id}] registration dropped: {err}");
         }
 
@@ -102,6 +103,7 @@ impl Publisher {
             control_tx: control_tx.clone(),
             requester: PublisherRequester { handle_id, channel_id, control_tx },
             pub_rx,
+            _pub_tx_guard: pub_tx,
         }
     }
 

@@ -83,6 +83,7 @@ pub struct Subscriber {
     control_tx: Sender<InternalMsg>,
     requester: SubscriberRequester,
     sub_rx: Receiver<SubscriberEvent>,
+    _sub_tx_guard: Sender<SubscriberEvent>,
 }
 
 impl Subscriber {
@@ -91,7 +92,7 @@ impl Subscriber {
         let local_id = SubscriberLocalId::rand();
         let handle_id = SubscriberHandleId::new(local_id);
         log::info!("[Subscriber {channel_id}/{local_id}] created");
-        if let Err(err) = try_send_internal_control(&control_tx, InternalMsg::SubscriberCreated(handle_id, channel_id, sub_tx), "subscriber registration") {
+        if let Err(err) = try_send_internal_control(&control_tx, InternalMsg::SubscriberCreated(handle_id, channel_id, sub_tx.clone()), "subscriber registration") {
             log::debug!("[Subscriber {channel_id}/{local_id}] registration dropped: {err}");
         }
 
@@ -102,6 +103,7 @@ impl Subscriber {
             control_tx: control_tx.clone(),
             requester: SubscriberRequester { handle_id, channel_id, control_tx },
             sub_rx,
+            _sub_tx_guard: sub_tx,
         }
     }
 

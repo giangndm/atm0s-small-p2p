@@ -849,6 +849,11 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   `cargo test pubsub_guest_feedback_returns_error_when_internal_queue_full -- --nocapture`,
   `cargo test pubsub_guest_feedback_rpc_returns_error_when_internal_queue_full -- --nocapture`,
   and `cargo fmt -- --check`.
+- ISSUE-058: fixed by keeping local event-sender guards inside returned
+  `Publisher` and `Subscriber` handles. Registration failures can still produce
+  unregistered handles under the current direct-handle API, but those handles
+  no longer expose an immediately closed event receiver. Verified with
+  `cargo test pubsub_publisher_after_service_drop_must_not_be_dead_on_arrival -- --nocapture`.
 - ISSUE-127: fixed by replacing the alias internal control inbox with bounded
   `ALIAS_CONTROL_QUEUE_SIZE = 1024` admission. `find` now returns `None` when
   the queue is full or closed, and `register`, `shutdown`, and
