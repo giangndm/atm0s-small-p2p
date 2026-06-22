@@ -11,10 +11,9 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 2
-- Current audit continuation: post-ISSUE-230 no-new cycle 2 reviewed
-  shared-key/authentication, base service context behavior, and replicated-KV
-  state/resource/lifecycle logic without accepting a distinct new issue.
+- Current consecutive no-new-issue cycles: 0
+- Current audit continuation: ISSUE-231 accepted and fixed; next review starts
+  a fresh post-ISSUE-231 cycle.
 
 ## Root Cause Summary
 
@@ -45,7 +44,7 @@ the source of truth for evidence and reviewer decisions.
   ISSUE-059, ISSUE-071, ISSUE-081 through ISSUE-089, ISSUE-095, ISSUE-099,
   ISSUE-110, ISSUE-111, ISSUE-143, ISSUE-152,
   ISSUE-154, ISSUE-155, ISSUE-158, ISSUE-166, ISSUE-171, ISSUE-175,
-  ISSUE-186.
+  ISSUE-186, ISSUE-231.
 - Pattern: replicated-KV full sync, changed repair, alias lookup, metrics,
   visualization, and pubsub flows accept stale, unsolicited, reordered, or
   mismatched responses or broadcasts because handlers do not verify
@@ -18821,6 +18820,61 @@ the source of truth for evidence and reviewer decisions.
   - `RUST_LOG=error cargo test peer::tests:: --lib -- --nocapture`
   - `rustfmt --edition 2021 --check src/peer/peer_internal.rs`
   - `git diff --check`
+
+### ISSUE-231: Pubsub drops unknown-channel leaves and later accepts stale joins
+
+- Score: 57
+- Category: bad-network correctness / pubsub membership ordering
+- Status: fixed by `ed8f4fb` (`fix: tombstone unknown pubsub leaves`).
+- Reviewer:
+  - `Pauli` (forked RED-team reviewer), confirmed the pre-fix failing
+    baseline is distinct from ISSUE-155, ISSUE-188, and ISSUE-205.
+- Affected code:
+  - `src/service/pubsub_service.rs`: `PublisherLeaved` and
+    `SubscriberLeaved` only recorded generation state when the channel row
+    already existed.
+  - `src/service/pubsub_service.rs`: active `PublisherJoined` and
+    `SubscriberJoined` may create bounded remote-owned channel state for early
+    joins.
+- Impact: if a higher-generation leave arrives before any local or retained
+  channel state exists, the receiver used to drop it completely. A delayed
+  older generation-1 join from the same peer could then create active remote
+  membership and notify a later local subscriber or publisher, resurrecting a
+  role that the remote had already left. This is distinct from ISSUE-155,
+  which covers stale leaves overriding already-known newer heartbeat state;
+  ISSUE-188, which covers early active joins; and ISSUE-205, which covers
+  restart/disconnect generation reset.
+- Root cause: pubsub freshness was only retained inside `PubsubChannelState` or
+  during inactive-channel reclamation. The absent-channel leave path did not
+  write the existing bounded remote-role tombstone map, so out-of-order
+  leave-before-join delivery had no monotonicity memory.
+- Minimal fix proposal: when `PublisherLeaved` or `SubscriberLeaved` arrives
+  for an absent channel, record a bounded remote-role tombstone for
+  `(channel, peer, role, generation)` without creating channel state. Keep
+  existing channel-cap and early-join behavior unchanged.
+- Fix: absent-channel publisher/subscriber leaves now call
+  `remember_remote_role_tombstone(...)`. Later older joins consult the
+  tombstone and are ignored, while fresh higher-generation joins can still
+  clear the tombstone and create remote-owned state.
+- Evidence tests:
+  - Red evidence before fix:
+    `cargo test unknown_publisher_leave_must_tombstone_stale_join -- --nocapture`
+    failed at `src/service/pubsub_service.rs` because the stale publisher join
+    became active after a newer unknown-channel leave was dropped.
+  - Red evidence before fix:
+    `cargo test unknown_subscriber_leave_must_tombstone_stale_join -- --nocapture`
+    failed at `src/service/pubsub_service.rs` because the stale subscriber join
+    became active after a newer unknown-channel leave was dropped.
+  - Verification after fix:
+    `cargo test unknown_publisher_leave_must_tombstone_stale_join -- --nocapture`
+  - Verification after fix:
+    `cargo test unknown_subscriber_leave_must_tombstone_stale_join -- --nocapture`
+  - Regression guards:
+    `cargo test reclaimed_remote -- --nocapture`,
+    `cargo test stale_pubsub_leave_must_not_remove_membership_after_newer_heartbeat -- --nocapture`,
+    `cargo test tombstone_must_survive_newer_join_dropped_by_channel_cap -- --nocapture`,
+    `cargo test inactive_channel_must_not_be_reclaimed_when_tombstone_cap_would_drop_generations -- --nocapture`,
+    and `git diff --check`.
 
 ### Cycle after ISSUE-230 no-new cycle 1: requester, relay, stream setup, and steady fuzz review
 
