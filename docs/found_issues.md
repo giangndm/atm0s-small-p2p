@@ -11,12 +11,12 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 9
-- Current audit continuation: critical-only service-layer no-new cycle 11
-  found no new score-80+ issue across pubsub membership/RPC/heartbeat state,
-  replicated-KV snapshot/repair/resource state, metrics and visualization scan
-  correlation, alias lifecycle/cache state, base requester liveness, and
-  configured-node valid churn fuzz.
+- Current consecutive no-new-issue cycles: 10
+- Current audit continuation: critical-only integration/backpressure no-new
+  cycle 12 found no new score-80+ issue across main-loop stale-event
+  ownership, peer/source binding, stream relay setup, unicast ack semantics,
+  queue backpressure, graceful shutdown/stopped-peer propagation, requester
+  liveness, cross-node delivery, and configured-node steady fuzz.
 
 ## Root Cause Summary
 
@@ -21049,6 +21049,62 @@ the source of truth for evidence and reviewer decisions.
 - Current consecutive no-new cycles after ISSUE-238: 21.
 - Current fuzz-phase no-new cycles after transition: 11.
 - Current focused source-review no-new cycles after fuzz phase: 7.
+
+### Fuzz phase no-new cycle 12: integration and backpressure boundary review
+
+- Scope: continued critical-only review after cycle 11, focusing on
+  integration/backpressure boundaries in `src/lib.rs`, `src/ctx.rs`,
+  `src/requester.rs`, `src/service.rs`, `src/peer.rs`,
+  `src/peer/peer_internal.rs`, `src/peer/peer_alias.rs`, `src/stream.rs`, and
+  relevant `security`, `stream`, `cross_nodes`, and `fuzz` tests. Reviewed
+  stale main-loop events, duplicate connects, forged message source binding,
+  route resurrection, queue stalls, stream false success, relayed pipe orphan
+  delivery, graceful shutdown, stopped-peer fanout, and panic paths.
+- Reviewer: `Epicurus the 2nd` (forked RED-team reviewer), returned
+  `NO_NEW_CRITICAL`.
+- Verification:
+  - `RUST_LOG=error cargo test security --lib`: passed, 55/55.
+  - `RUST_LOG=error cargo test stream --lib`: passed, 30/30.
+  - `RUST_LOG=error cargo test cross_nodes --lib`: passed, 9/9.
+  - `RUST_LOG=error cargo test requester --lib`: passed, 13/13.
+  - `RUST_LOG=error cargo test peer_stopped --lib`: passed, 15/15.
+  - `RUST_LOG=error P2P_FUZZ_NODES=30 P2P_FUZZ_STEPS=1050 P2P_FUZZ_SEED=34001 cargo test fuzz_random_steady_valid_node_actions_must_not_panic_connection_tasks --lib`: passed.
+- Reviewer cross-check:
+  - `RUST_LOG=error cargo test security --lib`: passed, 55/55.
+  - `RUST_LOG=error cargo test stream --lib`: passed, 30/30.
+  - `RUST_LOG=error cargo test cross_nodes --lib`: passed, 9/9.
+  - `RUST_LOG=error P2P_FUZZ_NODES=18 P2P_FUZZ_STEPS=420 P2P_FUZZ_SEED=41001 cargo test fuzz_random_steady_valid_node_actions_must_not_panic_connection_tasks --lib`: passed.
+  - `RUST_LOG=error P2P_FUZZ_NODES=16 P2P_FUZZ_STEPS=360 P2P_FUZZ_SEED=41002 cargo test fuzz_random_node_churn_actions_must_not_panic_connection_tasks --lib`: passed.
+- Duplicate mapping:
+  - False stream success, orphan relayed pipe delivery, upstream/downstream
+    setup cancellation, and stream queue saturation map to ISSUE-156,
+    ISSUE-217, ISSUE-220, ISSUE-238, RC-3, and RC-4.
+  - Direct and relayed unicast false success, ack timeout/count bounds, and
+    local service queue stalls map to ISSUE-119, ISSUE-224, ISSUE-225,
+    ISSUE-229, ISSUE-230, and RC-3.
+  - Dropped graceful-shutdown notifications, stopped-peer propagation, stale
+    alias cleanup, and lifecycle fanout map to ISSUE-215 through ISSUE-225 and
+    RC-6.
+  - Stale connection events, duplicate connects, stale connect errors, and
+    route resurrection map to ISSUE-153, ISSUE-189, ISSUE-194, ISSUE-215,
+    ISSUE-216, ISSUE-221, ISSUE-222, ISSUE-223, and RC-7.
+  - Forged unicast, broadcast, stream setup, and third-party `PeerStopped`
+    source binding map to ISSUE-001, ISSUE-014, ISSUE-018, ISSUE-053,
+    ISSUE-091, RC-1, RC-6, and RC-7.
+  - Queue stalls around sync, service delivery, peer control, requester
+    control, and inbound admission map to ISSUE-117, ISSUE-172, ISSUE-173,
+    ISSUE-218, ISSUE-219, ISSUE-223, ISSUE-224, ISSUE-227, ISSUE-235, and
+    RC-3.
+  - Panic paths for local sends, service ids, stale requesters, duplicate
+    services, stream codec serialization/size, and zero tick interval map to
+    ISSUE-060, ISSUE-072, ISSUE-073, ISSUE-076, ISSUE-191, ISSUE-234, RC-6,
+    and existing stream/security codec tests.
+  - No reproducible integration/backpressure failure supported a distinct
+    score-80+ issue.
+- Ledger check: 21 score-80+ issues found and all are fixed.
+- Current consecutive no-new cycles after ISSUE-238: 22.
+- Current fuzz-phase no-new cycles after transition: 12.
+- Current focused source-review no-new cycles after fuzz phase: 8.
 
 ### Cycle after ISSUE-235 no-new cycle 1: transport, auth, and peer setup review
 

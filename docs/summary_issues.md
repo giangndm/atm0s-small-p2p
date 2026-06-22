@@ -7,12 +7,12 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Accepted issues: 246
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 9
-- Current audit continuation: critical-only service-layer no-new cycle 11
-  found no new score-80+ issue across pubsub membership/RPC/heartbeat state,
-  replicated-KV snapshot/repair/resource state, metrics and visualization scan
-  correlation, alias lifecycle/cache state, base requester liveness, and
-  configured-node valid churn fuzz.
+- Current consecutive no-new-issue cycles: 10
+- Current audit continuation: critical-only integration/backpressure no-new
+  cycle 12 found no new score-80+ issue across main-loop stale-event
+  ownership, peer/source binding, stream relay setup, unicast ack semantics,
+  queue backpressure, graceful shutdown/stopped-peer propagation, requester
+  liveness, cross-node delivery, and configured-node steady fuzz.
 - Fix phase status: ISSUE-001, ISSUE-003, ISSUE-004, ISSUE-005, ISSUE-006, ISSUE-007,
   ISSUE-002, ISSUE-008, ISSUE-009, ISSUE-010, ISSUE-011, ISSUE-012, ISSUE-013, ISSUE-014, ISSUE-015, ISSUE-017, ISSUE-020, ISSUE-021, ISSUE-023, ISSUE-024, ISSUE-025, ISSUE-027, ISSUE-033, ISSUE-034, ISSUE-039, ISSUE-045, ISSUE-046, ISSUE-047, ISSUE-048, ISSUE-055, ISSUE-059, ISSUE-103, ISSUE-110, ISSUE-111, ISSUE-115, ISSUE-116, ISSUE-117, ISSUE-118, ISSUE-119, ISSUE-120, ISSUE-122, ISSUE-123,
   ISSUE-124, ISSUE-125, ISSUE-126, ISSUE-127, ISSUE-128, ISSUE-129, ISSUE-130,
@@ -639,6 +639,22 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   ISSUE-060, ISSUE-072, ISSUE-073, ISSUE-076, ISSUE-234. Ledger check found
   21 score-80+ issues and all are fixed; no reproducible service-layer
   resource/lifecycle failure supported a distinct score-80+ issue.
+- Fuzz phase no-new cycle 12 reviewed integration/backpressure boundaries with
+  forked reviewer `Epicurus the 2nd`. Local checks passed `security`,
+  `stream`, `cross_nodes`, `requester`, `peer_stopped`, and a 30-node steady
+  fuzz seed. Reviewer cross-checks passed `security`, `stream`, `cross_nodes`,
+  and deterministic steady/churn fuzz seeds. Rejected candidates mapped to
+  stream and relay families ISSUE-156, ISSUE-217, ISSUE-220, ISSUE-238,
+  unicast/ack families ISSUE-119, ISSUE-224, ISSUE-225, ISSUE-229,
+  ISSUE-230, graceful-stop/lifecycle families ISSUE-215 through ISSUE-225,
+  stale-event/duplicate-connect families ISSUE-153, ISSUE-189, ISSUE-194,
+  ISSUE-221 through ISSUE-223, forged source-binding families ISSUE-001,
+  ISSUE-014, ISSUE-018, ISSUE-053, ISSUE-091, queue/backpressure families
+  ISSUE-117, ISSUE-172, ISSUE-173, ISSUE-218, ISSUE-219, ISSUE-227,
+  ISSUE-235, and panic/service/requester families ISSUE-060, ISSUE-072,
+  ISSUE-073, ISSUE-076, ISSUE-191, ISSUE-234. Ledger check found 21
+  score-80+ issues and all are fixed; no reproducible integration/backpressure
+  failure supported a distinct score-80+ issue.
 - Cycle after ISSUE-231 no-new cycle 1 reviewed routing/discovery/path
   stability and stream/pipe lifecycle integration with forked reviewer
   `Carver`. Focused route, discovery, stream-relay, peer-stopped, and pubsub
