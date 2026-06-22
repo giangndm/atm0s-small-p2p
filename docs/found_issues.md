@@ -4479,6 +4479,8 @@ the source of truth for evidence and reviewer decisions.
     `MainEvent::PeerConnectError(live_conn, Some(node1), ...)` leaves
     `node2.neighbours.has_peer(node1)` true, while pending or unknown connect
     errors still follow the previous remove/no-op path.
+- Fix status: fixed by ignoring `PeerConnectError` events for connection ids
+  that `NetworkNeighbours` already reports as authenticated and connected.
 
 ### ISSUE-136: PeerDisconnected can block alias cleanup when the main event queue is full
 
