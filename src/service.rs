@@ -1,4 +1,7 @@
-use std::task::{Context, Poll};
+use std::{
+    sync::{Arc, Weak},
+    task::{Context, Poll},
+};
 
 use tokio::sync::mpsc::{channel, Receiver, Sender};
 
@@ -24,14 +27,14 @@ pub enum P2pServiceEvent {
 pub struct P2pServiceRequester {
     service: P2pServiceId,
     ctx: SharedCtx,
-    service_tx: Sender<P2pServiceEvent>,
+    liveness: Weak<()>,
 }
 
 pub struct P2pService {
     service: P2pServiceId,
     ctx: SharedCtx,
     rx: Receiver<P2pServiceEvent>,
-    service_tx: Sender<P2pServiceEvent>,
+    liveness: Arc<()>,
 }
 
 impl P2pService {
@@ -42,7 +45,7 @@ impl P2pService {
                 service,
                 ctx,
                 rx,
-                service_tx: tx.clone(),
+                liveness: Arc::new(()),
             },
             tx,
         )
@@ -52,7 +55,7 @@ impl P2pService {
         P2pServiceRequester {
             service: self.service,
             ctx: self.ctx.clone(),
-            service_tx: self.service_tx.clone(),
+            liveness: Arc::downgrade(&self.liveness),
         }
     }
 
@@ -91,7 +94,7 @@ impl P2pService {
 
 impl P2pServiceRequester {
     fn ensure_live(&self) -> anyhow::Result<()> {
-        if self.service_tx.is_closed() {
+        if self.liveness.upgrade().is_none() {
             anyhow::bail!("service requester is stale");
         }
         Ok(())

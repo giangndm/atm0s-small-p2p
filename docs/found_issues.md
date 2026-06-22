@@ -4306,6 +4306,11 @@ the source of truth for evidence and reviewer decisions.
 - Score: 58/100
 - Reviewer: `Ampere the 2nd`, confirmed.
 - Status: fixed by `e78c190` (`fix: return errors when alias channels close`).
+- Fix status: fixed by replacing `P2pService`'s self-held sender clone with an
+  `Arc`/`Weak` liveness token. Dropping the external service sender now closes
+  the base service receiver so `AliasService::run_loop` returns
+  `alias base service channel closed`, while cloned `P2pServiceRequester`s
+  still reject calls after the owning service is dropped.
 - Affected code:
   - `src/service/alias_service.rs`: `AliasService::run_loop` returns
     `anyhow::Result<()>`.
@@ -4322,7 +4327,9 @@ the source of truth for evidence and reviewer decisions.
   metrics or visualization `recv()` APIs.
 - Evidence test:
   - `cargo test alias_run_loop_after_base_service_close_must_not_panic -- --nocapture`
-  - Current result: passes. After dropping the underlying `P2pService` sender,
+  - Current result: passes. Before the liveness-token fix this test hung
+    because `P2pService` kept a sender clone alive internally. After dropping
+    the underlying external `P2pService` sender,
     `AliasService::run_loop()` returns `Ok(Err(_))` from the public `Result`
     API instead of panicking; the returned error is
     `alias base service channel closed`.
