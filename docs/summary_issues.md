@@ -7,12 +7,12 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Accepted issues: 246
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 16
-- Current audit continuation: critical-only lifecycle/route no-new cycle 18
-  found no new score-80+ issue across active path stability,
-  route/discovery sync caps, stale route resurrection, seed vs non-seed
-  deletion, `PeerStopped` forwarding and retry, duplicate/stale connect
-  events, graceful shutdown notification delivery, and high-node churn fuzz.
+- Current consecutive no-new-issue cycles: 17
+- Current audit continuation: critical-only public API/config no-new cycle 19
+  found no new score-80+ issue across shared-key handshake freshness and
+  replay, inbound peer bindings, self/duplicate connect handling, zero tick
+  config, non-dialable advertise/seed addresses, QUIC stream admission, stalled
+  setup timeouts, stale requester behavior, examples, and README defaults.
 - Fix phase status: ISSUE-001, ISSUE-003, ISSUE-004, ISSUE-005, ISSUE-006, ISSUE-007,
   ISSUE-002, ISSUE-008, ISSUE-009, ISSUE-010, ISSUE-011, ISSUE-012, ISSUE-013, ISSUE-014, ISSUE-015, ISSUE-017, ISSUE-020, ISSUE-021, ISSUE-023, ISSUE-024, ISSUE-025, ISSUE-027, ISSUE-033, ISSUE-034, ISSUE-039, ISSUE-045, ISSUE-046, ISSUE-047, ISSUE-048, ISSUE-055, ISSUE-059, ISSUE-103, ISSUE-110, ISSUE-111, ISSUE-115, ISSUE-116, ISSUE-117, ISSUE-118, ISSUE-119, ISSUE-120, ISSUE-122, ISSUE-123,
   ISSUE-124, ISSUE-125, ISSUE-126, ISSUE-127, ISSUE-128, ISSUE-129, ISSUE-130,
@@ -750,6 +750,25 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   for route/discovery sync caps and malformed rows. Ledger check found 21
   score-80+ issues and all are fixed; no reproducible lifecycle/route failure
   supported a distinct score-80+ issue.
+- Fuzz phase no-new cycle 19 reviewed public API, config, transport, and
+  example defaults with forked reviewer `Lagrange the 2nd`. Local handshake,
+  inbound-handshake, requester-connect, zero-tick, unidirectional-stream,
+  broad connect, unauthenticated-inbound, and example-build checks passed;
+  `cargo check --examples` passed with unused/dead-code warnings only. The
+  reviewer passed secure, inbound-handshake, zero-tick, own-peer-address,
+  duplicate-connection, requester, unidirectional-stream, setup-timeout,
+  open-stream-timeout, advertise, seed, example no-run, and 34-node valid
+  fuzz checks. Rejected candidates mapped to RC-1 and fixed handshake replay
+  families for shared-key freshness/replay/identity, RC-1/ISSUE-244 for
+  inbound peer binding defaults, ISSUE-153/ISSUE-189/ISSUE-194/ISSUE-223 for
+  self/duplicate connect behavior, ISSUE-211 through ISSUE-213/RC-7 for
+  advertise and seed address validation, ISSUE-217/ISSUE-220/ISSUE-238 plus
+  RC-3/RC-4 for transport admission and stalled setup, and ISSUE-072/
+  ISSUE-073/ISSUE-076/ISSUE-234/RC-6 for stale requesters. README/examples
+  remain explicit demo/open-cluster surfaces rather than unsafe library
+  defaults. Direct issue-entry ledger check found 19 score-80+ entries and all
+  are fixed; no reproducible public API/config/transport failure supported a
+  distinct score-80+ issue.
 - Cycle after ISSUE-231 no-new cycle 1 reviewed routing/discovery/path
   stability and stream/pipe lifecycle integration with forked reviewer
   `Carver`. Focused route, discovery, stream-relay, peer-stopped, and pubsub

@@ -11,12 +11,12 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 16
-- Current audit continuation: critical-only lifecycle/route no-new cycle 18
-  found no new score-80+ issue across active path stability,
-  route/discovery sync caps, stale route resurrection, seed vs non-seed
-  deletion, `PeerStopped` forwarding and retry, duplicate/stale connect
-  events, graceful shutdown notification delivery, and high-node churn fuzz.
+- Current consecutive no-new-issue cycles: 17
+- Current audit continuation: critical-only public API/config no-new cycle 19
+  found no new score-80+ issue across shared-key handshake freshness and
+  replay, inbound peer bindings, self/duplicate connect handling, zero tick
+  config, non-dialable advertise/seed addresses, QUIC stream admission, stalled
+  setup timeouts, stale requester behavior, examples, and README defaults.
 
 ## Root Cause Summary
 
@@ -21426,6 +21426,79 @@ the source of truth for evidence and reviewer decisions.
 - Ledger check: 21 score-80+ issues found and all are fixed.
 - Current consecutive no-new cycles after ISSUE-238: 28.
 - Current fuzz-phase no-new cycles after transition: 18.
+- Current focused source-review no-new cycles after fuzz phase: 10.
+
+### Fuzz phase no-new cycle 19: public API, config, transport, and example defaults review
+
+- Scope: continued critical-only review after cycle 18, focusing on public
+  constructors, config defaults, shared-key handshake freshness/replay/identity
+  binding, inbound peer binding modes, self-connect and duplicate connect
+  behavior, zero or invalid tick intervals, non-dialable advertise and seed
+  addresses, QUIC stream admission, stalled setup timeouts, requester behavior
+  after shutdown/drop, README examples, and example binaries.
+- Reviewer: `Lagrange the 2nd` (forked RED-team reviewer), returned
+  `NO_NEW_CRITICAL`.
+- Verification:
+  - `RUST_LOG=error cargo test handshake --lib`: passed 10 tests.
+  - `RUST_LOG=error cargo test inbound_handshake --lib`: passed 3 tests.
+  - `RUST_LOG=error cargo test requester_connect --lib`: passed 3 tests.
+  - `RUST_LOG=error cargo test zero_network_tick_interval --lib`: passed 1
+    test.
+  - `RUST_LOG=error cargo test unused_unidirectional_streams_must_not_be_admitted --lib`:
+    passed 1 test.
+  - `RUST_LOG=error cargo test connect --lib`: passed 61 tests.
+  - `RUST_LOG=error cargo test unauthenticated_inbound_connections_must_be_admission_bounded --lib`:
+    passed 1 test.
+  - `cargo check --examples`: passed with unused/dead-code warnings only.
+- Reviewer cross-check:
+  - `cargo test --lib -- --list | rg -i "tick|handshake|inbound|binding|self|duplicate|requester|shutdown|drop|unidirectional|stream.*timeout|advertise|seed|connect"`
+  - `RUST_LOG=error cargo test secure::tests --lib`: passed 10 tests.
+  - `RUST_LOG=error cargo test peer::tests::inbound_handshake --lib`: passed
+    3 tests.
+  - `RUST_LOG=error cargo test tests::security::zero_network_tick_interval_must_not_panic --lib`:
+    passed 1 test.
+  - `RUST_LOG=error cargo test own_peer_address --lib`: passed 3 tests.
+  - `RUST_LOG=error cargo test duplicate_connections_from_same_peer --lib`:
+    passed 1 test.
+  - `RUST_LOG=error cargo test requester_ --lib`: passed 13 tests.
+  - `RUST_LOG=error cargo test quic::tests::unused_unidirectional_streams_must_not_be_admitted --lib`:
+    passed 1 test.
+  - `RUST_LOG=error cargo test setup_must_timeout --lib`: passed 3 tests.
+  - `RUST_LOG=error cargo test open_stream_must_timeout --lib`: passed 2
+    tests.
+  - `RUST_LOG=error cargo test advertise --lib`: passed 16 tests.
+  - `RUST_LOG=error cargo test seed --lib`: passed 15 tests.
+  - `cargo test --examples --no-run`: built examples with unused/dead-code
+    warnings only.
+  - `RUST_LOG=error P2P_FUZZ_NODES=34 P2P_FUZZ_STEPS=1000 P2P_FUZZ_SEED=40001 cargo test fuzz_random_valid_node_actions_must_not_panic_connection_tasks --lib`:
+    passed.
+- Duplicate mapping:
+  - Shared-key handshake replay, freshness, role, and identity binding map to
+    RC-1 and the fixed handshake replay/freshness families.
+  - Inbound peer binding defaults and explicit open-cluster mode map to RC-1
+    and ISSUE-244.
+  - Self-connect, duplicate connect, and requester backlog behavior map to
+    ISSUE-153, ISSUE-189, ISSUE-194, ISSUE-223, and RC-6.
+  - Zero tick interval rejection has passing targeted coverage and did not
+    produce score-80+ evidence.
+  - Non-dialable advertise and seed addresses map to ISSUE-211 through
+    ISSUE-213 and RC-7.
+  - QUIC unidirectional stream admission, bidirectional stream bounds, and
+    stalled setup timeout behavior map to ISSUE-217, ISSUE-220, ISSUE-238,
+    RC-3, and RC-4.
+  - Requester behavior after shutdown/drop maps to ISSUE-072, ISSUE-073,
+    ISSUE-076, ISSUE-234, and RC-6.
+  - README and examples use demo certificates, explicit open-cluster demo
+    bindings, and example secure strings; this remains a documentation/example
+    footgun, not an unsafe library default or reproducible score-80+ runtime
+    failure in this pass.
+  - Example build warnings are unused/dead-code hygiene only.
+- Test note: `RUST_LOG=error cargo test self_connect --lib` matched zero tests
+  because current self-connect coverage uses `own_peer_address` test names; the
+  broader `connect` slice covered them.
+- Ledger check: 19 score-80+ issue entries found and all are fixed.
+- Current consecutive no-new cycles after ISSUE-238: 29.
+- Current fuzz-phase no-new cycles after transition: 19.
 - Current focused source-review no-new cycles after fuzz phase: 10.
 
 ### Cycle after ISSUE-235 no-new cycle 1: transport, auth, and peer setup review
