@@ -500,7 +500,7 @@ the source of truth for evidence and reviewer decisions.
 
 ### ISSUE-013: `open_stream` to the local peer panics instead of returning an error
 
-- Status: fixed. `SharedCtx::open_stream` now returns
+- Fix status: fixed. `SharedCtx::open_stream` now returns
   `Err("unsupported open_stream to local node")` for `RouteAction::Local`,
   matching the existing local-destination behavior of unicast sends instead of
   unwinding the caller task.
