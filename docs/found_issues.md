@@ -11,12 +11,12 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 7
-- Current audit continuation: critical-only fuzz/source-boundary no-new cycle
-  9 found no new score-80+ issue across configured-node steady and churn fuzz,
-  malformed/raw actions, forged `PeerStopped`, graceful shutdown,
-  stale-requester paths, service/requester guards, duplicate connects, stream
-  setup, unicast/broadcast backpressure, and high-load node-count handling.
+- Current consecutive no-new-issue cycles: 8
+- Current audit continuation: critical-only transport/auth/config-resource
+  no-new cycle 10 found no new score-80+ issue across shared-key handshake
+  replay/freshness, inbound identity binding, QUIC stream admission, route and
+  discovery sync caps, seed and tombstone lifecycle, malformed message bounds,
+  README/example API paths, and configured-node malformed churn fuzz.
 
 ## Root Cause Summary
 
@@ -20935,6 +20935,56 @@ the source of truth for evidence and reviewer decisions.
 - Current consecutive no-new cycles after ISSUE-238: 19.
 - Current fuzz-phase no-new cycles after transition: 9.
 - Current focused source-review no-new cycles after fuzz phase: 5.
+
+### Fuzz phase no-new cycle 10: transport/auth/config-resource boundary review
+
+- Scope: continued critical-only review after cycle 9, focusing on transport,
+  auth, config/resource, route/discovery sync, and public API boundaries:
+  `src/secure.rs`, `src/quic.rs`, `src/msg.rs`, `src/router.rs`,
+  `src/discovery.rs`, `src/lib.rs`, `src/tests/security.rs`,
+  `src/tests/discovery.rs`, `src/tests/readme.rs`,
+  `examples/readme_getting_started.rs`, and `examples/simple.rs`. No
+  `src/config.rs` or `src/transport.rs` exists; equivalent surfaces are in
+  `src/lib.rs` and `src/quic.rs`.
+- Reviewer: `Tesla the 2nd` (forked RED-team reviewer), returned
+  `NO_NEW_CRITICAL`.
+- Verification:
+  - `RUST_LOG=error cargo test handshake --lib`: passed, 10/10.
+  - `RUST_LOG=error cargo test unused_unidirectional_streams_must_not_be_admitted --lib`: passed.
+  - `RUST_LOG=error cargo test discovery::test:: --lib`: passed, 32/32.
+  - `RUST_LOG=error cargo test router::tests:: --lib`: passed, 20/20.
+  - `RUST_LOG=error P2P_FUZZ_NODES=26 P2P_FUZZ_STEPS=920 P2P_FUZZ_SEED=32001 cargo test fuzz_random_node_churn_actions_must_not_panic_connection_tasks --lib`: passed.
+- Reviewer cross-check:
+  - `RUST_LOG=error cargo test secure::tests --lib`: passed, 10/10.
+  - `RUST_LOG=error cargo test quic::tests --lib`: passed, 2/2.
+  - `RUST_LOG=error cargo test discovery --lib`: passed, 37/37.
+  - `RUST_LOG=error cargo test router --lib`: passed, 20/20.
+  - `RUST_LOG=error cargo test msg::tests --lib`: passed, 1/1.
+  - `RUST_LOG=error cargo test security --lib`: passed, 55/55.
+  - `RUST_LOG=error cargo test readme --lib`: passed, 1/1.
+- Duplicate mapping:
+  - Shared-key handshake timestamp, future-skew, overflow, replay, and replay
+    cache pressure map to ISSUE-002, ISSUE-021, ISSUE-146, ISSUE-176,
+    ISSUE-207, and existing `secure::tests`.
+  - QUIC transport stream admission and setup stalls map to the existing
+    unidirectional-stream cap guard plus ISSUE-117, ISSUE-172, and ISSUE-173.
+  - Inbound identity/static binding and forged peer ownership map to
+    ISSUE-189, ISSUE-194, and RC-1.
+  - Malformed service ids, raw broadcasts, unicast source binding, and service
+    bounds map to ISSUE-053, ISSUE-060, ISSUE-091, ISSUE-234, RC-1, and RC-6.
+  - Route jumping, direct-route priority, stale sync, max-hop bounds, oversized
+    syncs, and active-path instability map to ISSUE-003, ISSUE-214, and RC-7.
+  - Discovery non-seed aging, seed preservation, graceful-stop tombstones,
+    non-dialable addresses, duplicate sync rows, and capped syncs map to
+    ISSUE-211, ISSUE-212, ISSUE-213, ISSUE-215 through ISSUE-225, and RC-6.
+  - README/example open-cluster defaults are demos; no failing public API
+    evidence supported a score-80+ issue.
+  - No reproducible transport/auth/config-resource boundary failure supported a
+    distinct score-80+ issue.
+- Ledger check: 21 score-80+ issues found and all are fixed.
+- Current consecutive no-new cycles after ISSUE-238: 20.
+- Current fuzz-phase no-new cycles after transition: 10.
+- Current focused source-review no-new cycles after fuzz phase: 6.
 
 ### Cycle after ISSUE-235 no-new cycle 1: transport, auth, and peer setup review
 

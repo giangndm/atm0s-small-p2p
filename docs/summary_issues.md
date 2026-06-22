@@ -7,12 +7,12 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Accepted issues: 246
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 7
-- Current audit continuation: critical-only fuzz/source-boundary no-new cycle
-  9 found no new score-80+ issue across configured-node steady and churn fuzz,
-  malformed/raw actions, forged `PeerStopped`, graceful shutdown,
-  stale-requester paths, service/requester guards, duplicate connects, stream
-  setup, unicast/broadcast backpressure, and high-load node-count handling.
+- Current consecutive no-new-issue cycles: 8
+- Current audit continuation: critical-only transport/auth/config-resource
+  no-new cycle 10 found no new score-80+ issue across shared-key handshake
+  replay/freshness, inbound identity binding, QUIC stream admission, route and
+  discovery sync caps, seed and tombstone lifecycle, malformed message bounds,
+  README/example API paths, and configured-node malformed churn fuzz.
 - Fix phase status: ISSUE-001, ISSUE-003, ISSUE-004, ISSUE-005, ISSUE-006, ISSUE-007,
   ISSUE-002, ISSUE-008, ISSUE-009, ISSUE-010, ISSUE-011, ISSUE-012, ISSUE-013, ISSUE-014, ISSUE-015, ISSUE-017, ISSUE-020, ISSUE-021, ISSUE-023, ISSUE-024, ISSUE-025, ISSUE-027, ISSUE-033, ISSUE-034, ISSUE-039, ISSUE-045, ISSUE-046, ISSUE-047, ISSUE-048, ISSUE-055, ISSUE-059, ISSUE-103, ISSUE-110, ISSUE-111, ISSUE-115, ISSUE-116, ISSUE-117, ISSUE-118, ISSUE-119, ISSUE-120, ISSUE-122, ISSUE-123,
   ISSUE-124, ISSUE-125, ISSUE-126, ISSUE-127, ISSUE-128, ISSUE-129, ISSUE-130,
@@ -608,6 +608,20 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   ISSUE-125. Ledger check found 21 score-80+ issues and all are fixed; no
   reproducible fuzz/source-boundary failure supported a distinct score-80+
   issue.
+- Fuzz phase no-new cycle 10 reviewed transport/auth/config-resource
+  boundaries with forked reviewer `Tesla the 2nd`. Local focused tests passed
+  for handshake/inbound identity, QUIC unidirectional-stream admission,
+  discovery, router, and a 26-node malformed/churn fuzz seed. Reviewer
+  cross-checks passed `secure::tests`, `quic::tests`, `discovery`, `router`,
+  `msg::tests`, `security`, and `readme`. Rejected candidates mapped to
+  handshake/auth families ISSUE-002, ISSUE-021, ISSUE-146, ISSUE-176,
+  ISSUE-189, ISSUE-194, ISSUE-207, QUIC/setup families ISSUE-117,
+  ISSUE-172, ISSUE-173, malformed message/service bounds ISSUE-053,
+  ISSUE-060, ISSUE-091, ISSUE-234, route stability ISSUE-003, ISSUE-214,
+  RC-7, and discovery/lifecycle families ISSUE-211, ISSUE-212, ISSUE-213,
+  ISSUE-215 through ISSUE-225, RC-6. Ledger check found 21 score-80+ issues
+  and all are fixed; no reproducible transport/auth/config-resource boundary
+  failure supported a distinct score-80+ issue.
 - Cycle after ISSUE-231 no-new cycle 1 reviewed routing/discovery/path
   stability and stream/pipe lifecycle integration with forked reviewer
   `Carver`. Focused route, discovery, stream-relay, peer-stopped, and pubsub
