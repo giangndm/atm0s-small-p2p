@@ -11,12 +11,12 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 10
-- Current audit continuation: critical-only integration/backpressure no-new
-  cycle 12 found no new score-80+ issue across main-loop stale-event
-  ownership, peer/source binding, stream relay setup, unicast ack semantics,
-  queue backpressure, graceful shutdown/stopped-peer propagation, requester
-  liveness, cross-node delivery, and configured-node steady fuzz.
+- Current consecutive no-new-issue cycles: 11
+- Current audit continuation: critical-only full-suite/public API no-new cycle
+  13 found no new score-80+ issue across Cargo manifest, README, examples,
+  readme compile gate, broad library tests, example checks, public open-cluster
+  demo configuration, shared-key/default demo material, and configured-node
+  malformed fuzz.
 
 ## Root Cause Summary
 
@@ -21105,6 +21105,54 @@ the source of truth for evidence and reviewer decisions.
 - Current consecutive no-new cycles after ISSUE-238: 22.
 - Current fuzz-phase no-new cycles after transition: 12.
 - Current focused source-review no-new cycles after fuzz phase: 8.
+
+### Fuzz phase no-new cycle 13: full-suite and public API surface review
+
+- Scope: continued critical-only review after cycle 12, focusing on broad
+  public API and manifest coverage: `Cargo.toml`, `README.md`,
+  `examples/readme_getting_started.rs`, `examples/simple.rs`,
+  `examples/benchmark.rs`, `examples/kv.rs`, `src/tests/readme.rs`,
+  `src/lib.rs`, `src/secure.rs`, `src/quic.rs`, and the current issue docs.
+  Reviewed example defaults, open-cluster demo wording, shared demo
+  credentials/cert material, public service creation/send/stream paths, and
+  manifest/transport dependency surface for critical safety or security gaps.
+- Reviewer: `Anscombe the 2nd` (forked RED-team reviewer), returned
+  `NO_NEW_CRITICAL`.
+- Verification:
+  - `RUST_LOG=error cargo check --examples`: passed with unused-code/import
+    warnings only.
+  - `RUST_LOG=error cargo test --lib`: passed, 428/428.
+  - `RUST_LOG=error P2P_FUZZ_NODES=22 P2P_FUZZ_STEPS=760 P2P_FUZZ_SEED=35001 cargo test fuzz_random_node_actions_must_not_panic_connection_tasks --lib`: passed.
+- Reviewer cross-check:
+  - `RUST_LOG=error cargo test readme --lib`: passed, 1/1.
+  - `RUST_LOG=error cargo test security --lib`: passed, 55/55.
+  - `RUST_LOG=error cargo test cross_nodes --lib`: passed, 9/9.
+  - `cargo check --examples`: passed with warnings only.
+  - `RUST_LOG=error cargo test --all-targets`: passed all library and example
+    test targets.
+- Duplicate mapping:
+  - README/example open-cluster configuration maps to documented demo-only
+    behavior plus fixed inbound identity/static-binding issues ISSUE-014,
+    ISSUE-015, ISSUE-018, ISSUE-189, ISSUE-194, and RC-1.
+  - Default/shared demo secure strings and dev cert usage remain README/example
+    demo scope; no distinct library-level failing public API evidence supports
+    score >=80.
+  - Public example service creation, send, stream, and network receive paths map
+    to fixed service/requester/stream lifecycle families ISSUE-011, ISSUE-012,
+    ISSUE-052, ISSUE-060, ISSUE-072, ISSUE-073, ISSUE-076, ISSUE-091,
+    ISSUE-156, ISSUE-217, ISSUE-220, ISSUE-238, RC-3, and RC-6.
+  - Manifest/transport resource concerns map to fixed QUIC and
+    admission/backpressure families ISSUE-024, ISSUE-097, ISSUE-098,
+    ISSUE-117, ISSUE-172, ISSUE-173, and ISSUE-174.
+  - Public route/discovery behavior surfaced by examples maps to fixed
+    seed/non-seed/shutdown/stability families ISSUE-003, ISSUE-004,
+    ISSUE-010, ISSUE-103, ISSUE-211 through ISSUE-225, RC-6, and RC-7.
+  - No reproducible public API, manifest, example, or full-suite failure
+    supported a distinct score-80+ issue.
+- Ledger check: 21 score-80+ issues found and all are fixed.
+- Current consecutive no-new cycles after ISSUE-238: 23.
+- Current fuzz-phase no-new cycles after transition: 13.
+- Current focused source-review no-new cycles after fuzz phase: 9.
 
 ### Cycle after ISSUE-235 no-new cycle 1: transport, auth, and peer setup review
 

@@ -7,12 +7,12 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Accepted issues: 246
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 10
-- Current audit continuation: critical-only integration/backpressure no-new
-  cycle 12 found no new score-80+ issue across main-loop stale-event
-  ownership, peer/source binding, stream relay setup, unicast ack semantics,
-  queue backpressure, graceful shutdown/stopped-peer propagation, requester
-  liveness, cross-node delivery, and configured-node steady fuzz.
+- Current consecutive no-new-issue cycles: 11
+- Current audit continuation: critical-only full-suite/public API no-new cycle
+  13 found no new score-80+ issue across Cargo manifest, README, examples,
+  readme compile gate, broad library tests, example checks, public open-cluster
+  demo configuration, shared-key/default demo material, and configured-node
+  malformed fuzz.
 - Fix phase status: ISSUE-001, ISSUE-003, ISSUE-004, ISSUE-005, ISSUE-006, ISSUE-007,
   ISSUE-002, ISSUE-008, ISSUE-009, ISSUE-010, ISSUE-011, ISSUE-012, ISSUE-013, ISSUE-014, ISSUE-015, ISSUE-017, ISSUE-020, ISSUE-021, ISSUE-023, ISSUE-024, ISSUE-025, ISSUE-027, ISSUE-033, ISSUE-034, ISSUE-039, ISSUE-045, ISSUE-046, ISSUE-047, ISSUE-048, ISSUE-055, ISSUE-059, ISSUE-103, ISSUE-110, ISSUE-111, ISSUE-115, ISSUE-116, ISSUE-117, ISSUE-118, ISSUE-119, ISSUE-120, ISSUE-122, ISSUE-123,
   ISSUE-124, ISSUE-125, ISSUE-126, ISSUE-127, ISSUE-128, ISSUE-129, ISSUE-130,
@@ -655,6 +655,22 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   ISSUE-073, ISSUE-076, ISSUE-191, ISSUE-234. Ledger check found 21
   score-80+ issues and all are fixed; no reproducible integration/backpressure
   failure supported a distinct score-80+ issue.
+- Fuzz phase no-new cycle 13 reviewed the manifest, README, examples, readme
+  compile gate, and broad public API surface with forked reviewer `Anscombe
+  the 2nd`. Local checks passed `cargo check --examples`, full `cargo test
+  --lib` with 428 tests, and a 22-node malformed/random fuzz seed. Reviewer
+  cross-checks passed `readme`, `security`, `cross_nodes`, `cargo check
+  --examples`, and `cargo test --all-targets`. Rejected candidates mapped to
+  open-cluster demo/static-binding families ISSUE-014, ISSUE-015, ISSUE-018,
+  ISSUE-189, ISSUE-194, public service/requester/stream families ISSUE-011,
+  ISSUE-012, ISSUE-052, ISSUE-060, ISSUE-072, ISSUE-073, ISSUE-076,
+  ISSUE-091, ISSUE-156, ISSUE-217, ISSUE-220, ISSUE-238, transport/resource
+  families ISSUE-024, ISSUE-097, ISSUE-098, ISSUE-117, ISSUE-172,
+  ISSUE-173, ISSUE-174, and route/discovery/lifecycle families ISSUE-003,
+  ISSUE-004, ISSUE-010, ISSUE-103, ISSUE-211 through ISSUE-225. Ledger check
+  found 21 score-80+ issues and all are fixed; no reproducible public API,
+  manifest, example, or full-suite failure supported a distinct score-80+
+  issue.
 - Cycle after ISSUE-231 no-new cycle 1 reviewed routing/discovery/path
   stability and stream/pipe lifecycle integration with forked reviewer
   `Carver`. Focused route, discovery, stream-relay, peer-stopped, and pubsub
