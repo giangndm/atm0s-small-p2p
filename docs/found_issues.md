@@ -11,10 +11,10 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 12
-- Current audit continuation: Focused source-review no-new cycle 2 reviewed
-  security/transport handshake, inbound identity, setup timeout, and stale-event
-  route binding behavior without a distinct reviewed failure.
+- Current consecutive no-new-issue cycles: 13
+- Current audit continuation: Focused source-review no-new cycle 3 reviewed
+  route/discovery lifecycle, path stability, graceful-stop cleanup, and stale
+  event guards without a distinct reviewed failure.
 
 ## Root Cause Summary
 
@@ -19793,6 +19793,50 @@ the source of truth for evidence and reviewer decisions.
     existing stream/backpressure and lifecycle families, including RC-3 and
     RC-6.
 - Current consecutive no-new cycles after ISSUE-238: 12.
+- Current fuzz-phase no-new cycles after transition: 5.
+
+### Focused source-review no-new cycle 3: route, discovery, and lifecycle cross-check
+
+- Scope: revisited the highest-priority route/discovery/lifecycle surface after
+  the security source-review cycle. Audited `src/router.rs`,
+  `src/discovery.rs`, `src/lib.rs` `process_tick`/`process_internal`, and
+  relevant `src/tests/security.rs` coverage for path stability, direct-route
+  preference, duplicate and oversized sync rejection, stale sync rejection,
+  stopped-peer tombstones, seed retryability, non-seed timeout cleanup,
+  graceful-stop cleanup, pending sync task cleanup, and stale
+  connected/data/stats/disconnect/connect-error guards.
+- Reviewer: `Poincare the 2nd` (forked RED-team reviewer), rejected new issue
+  acceptance because no distinct failing test evidence was found and
+  recommended documenting this as a no-new source-review cycle.
+- Verification:
+  - `RUST_LOG=error cargo test route --lib -- --nocapture`: passed 27/27.
+  - `RUST_LOG=error cargo test discovery --lib -- --nocapture`: passed 37/37.
+  - `RUST_LOG=error cargo test PeerStopped --lib -- --nocapture`: passed 0/0; no matching test names with this exact capitalization.
+  - `RUST_LOG=error cargo test stale_peer --lib -- --nocapture`: passed 5/5.
+- Reviewer cross-check:
+  - `RUST_LOG=error cargo test peer_stopped --lib -- --nocapture`: passed 15/15.
+  - `RUST_LOG=error cargo test stopped_peer --lib -- --nocapture`: passed 4/4.
+  - `RUST_LOG=error cargo test discovery_timeout --lib -- --nocapture`: passed.
+  - `RUST_LOG=error cargo test stale_peer --lib -- --nocapture`: passed 5/5.
+  - `RUST_LOG=error cargo test router::tests --lib -- --nocapture`: passed 20/20.
+  - `RUST_LOG=error cargo test discovery::test --lib -- --nocapture`: passed 32/32.
+  - `RUST_LOG=error cargo test discovery_tick_connect_backlog_must_coalesce_duplicate_remotes --lib -- --nocapture`: passed.
+- Duplicate mapping:
+  - Forged or stale lifecycle events map to existing stale-event/route-binding
+    families, especially RC-7.
+  - Route jumping, noisy path selection, and direct-route preference map to
+    ISSUE-003 and the route-stability hysteresis/direct-route tests.
+  - Discovery timeout, non-seed cleanup, seed retryability, and graceful-stop
+    tombstones map to existing lifecycle/discovery cleanup families, including
+    ISSUE-004, ISSUE-051, ISSUE-063, ISSUE-167, ISSUE-170, and RC-6.
+  - Sync admission, duplicate/oversized sync rejection, and route/discovery
+    resource bounds map to existing bounded-sync and duplicate-entry coverage,
+    including ISSUE-010, ISSUE-055, ISSUE-190, ISSUE-192, ISSUE-211,
+    ISSUE-212, ISSUE-213, ISSUE-214, and RC-7.
+  - Pending sync task cleanup, service lifecycle fallout, pipe reliability, and
+    stream-route symptoms remain covered by RC-3, RC-6, RC-7, ISSUE-156,
+    ISSUE-180, ISSUE-217, ISSUE-220, ISSUE-229, ISSUE-230, and ISSUE-238.
+- Current consecutive no-new cycles after ISSUE-238: 13.
 - Current fuzz-phase no-new cycles after transition: 5.
 
 ### Cycle after ISSUE-235 no-new cycle 1: transport, auth, and peer setup review
