@@ -5,11 +5,11 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Audit Status
 
-- Accepted issues: 233
+- Accepted issues: 234
 - Missing issue scores: 0
 - Current consecutive no-new-issue cycles: 0
-- Current audit continuation: ISSUE-233 was accepted and fixed; the next review
-  starts a fresh post-ISSUE-233 cycle.
+- Current audit continuation: ISSUE-234 was accepted and fixed; the next review
+  starts a fresh post-ISSUE-234 cycle.
 - Fix phase status: ISSUE-001, ISSUE-003, ISSUE-004, ISSUE-005, ISSUE-006, ISSUE-007,
   ISSUE-002, ISSUE-008, ISSUE-009, ISSUE-010, ISSUE-011, ISSUE-012, ISSUE-013, ISSUE-014, ISSUE-015, ISSUE-017, ISSUE-020, ISSUE-021, ISSUE-023, ISSUE-024, ISSUE-025, ISSUE-027, ISSUE-033, ISSUE-034, ISSUE-039, ISSUE-045, ISSUE-046, ISSUE-047, ISSUE-048, ISSUE-055, ISSUE-059, ISSUE-103, ISSUE-110, ISSUE-111, ISSUE-115, ISSUE-116, ISSUE-117, ISSUE-118, ISSUE-119, ISSUE-120, ISSUE-122, ISSUE-123,
   ISSUE-124, ISSUE-125, ISSUE-126, ISSUE-127, ISSUE-128, ISSUE-129, ISSUE-130,
@@ -86,6 +86,9 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   ISSUE-233 is fixed by `c7aa3f5`: replicated-KV rejects response-only
   unicast messages from unknown peers before creating remote state or queuing
   full-sync work.
+  ISSUE-234 is fixed by `54f1118`: duplicate or rejected service creation now
+  returns a disabled service handle whose outbound service/requester paths fail
+  instead of publishing as an unregistered owner.
   ISSUE-043 is fixed by bounding pending pubsub publish/feedback RPC request
   maps before responder fanout.
   ISSUE-054 is fixed by rejecting zero network tick intervals before endpoint
@@ -406,13 +409,22 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   ISSUE-128 through ISSUE-132, ISSUE-135, ISSUE-139, ISSUE-142, ISSUE-144,
   ISSUE-148, ISSUE-150, ISSUE-151, ISSUE-161, ISSUE-165,
   ISSUE-167, ISSUE-168, ISSUE-170, ISSUE-179, ISSUE-183, ISSUE-185,
-  ISSUE-187, ISSUE-188, ISSUE-193, ISSUE-195, ISSUE-208, ISSUE-222.
+  ISSUE-187, ISSUE-188, ISSUE-193, ISSUE-195, ISSUE-208, ISSUE-222,
+  ISSUE-234.
 - Pattern: requesters, services, peer aliases, channel state, and cached hints
   can outlive the owner they represent; shutdown paths can panic, leak, emit
   false public events, keep stale routes/cache entries, announce shutdown while
   local authority remains active, or drop remote membership that arrives before
   local channel ownership exists. Peer lifecycle events also do not consistently
   reach service-owned per-peer membership or public network-event consumers.
+- ISSUE-234, score 66: fixed by `54f1118`. Rejected duplicate service creation
+  now marks the returned `P2pService` as unregistered, and both direct service
+  sends and cloned requesters fail before using the shared context. Verification:
+  `cargo test duplicate_service_creation_must_not_return_live_unregistered_sender -- --nocapture`,
+  `cargo test duplicate_service_creation_must_not_panic -- --nocapture`,
+  `cargo test dropped_service_id_must_be_reusable -- --nocapture`,
+  `cargo test service_requester -- --nocapture`, and
+  `cargo test duplicate_service -- --nocapture`.
   Connection teardown can also reset metric names through the wrong metric kind
   or reset monotonic counters to zero.
 - Minimal fix proposal: add generation or liveness tokens to cloned requesters

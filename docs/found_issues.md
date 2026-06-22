@@ -12,8 +12,8 @@ must resolve.
 ## Audit Status
 
 - Current consecutive no-new-issue cycles: 0
-- Current audit continuation: ISSUE-233 was accepted and fixed; the next review
-  starts a fresh post-ISSUE-233 cycle.
+- Current audit continuation: ISSUE-234 was accepted and fixed; the next review
+  starts a fresh post-ISSUE-234 cycle.
 
 ## Root Cause Summary
 
@@ -125,7 +125,8 @@ the source of truth for evidence and reviewer decisions.
   ISSUE-128 through ISSUE-132, ISSUE-135, ISSUE-139, ISSUE-142, ISSUE-144,
   ISSUE-148, ISSUE-150, ISSUE-151, ISSUE-161, ISSUE-165,
   ISSUE-167, ISSUE-168, ISSUE-170, ISSUE-179, ISSUE-183, ISSUE-185,
-  ISSUE-187, ISSUE-188, ISSUE-193, ISSUE-195, ISSUE-208, ISSUE-222.
+  ISSUE-187, ISSUE-188, ISSUE-193, ISSUE-195, ISSUE-208, ISSUE-222,
+  ISSUE-234.
 - Pattern: requesters, services, peer aliases, channel state, and cached hints
   can outlive the owner they represent, while shutdown paths may panic, leak,
   emit false public events, or keep stale routes/cache entries. Remote
@@ -18970,6 +18971,60 @@ the source of truth for evidence and reviewer decisions.
     `cargo test service::replicate_kv_service::tests:: --lib -- --nocapture`,
     `cargo test replicate_kv -- --nocapture`,
     `rustfmt --edition 2021 --check src/service/replicate_kv_service.rs`,
+    and `git diff --check`.
+
+### ISSUE-234: Rejected duplicate service can still publish as the registered service id
+
+- Score: 66
+- Category: API lifecycle correctness / unregistered service handle
+- Status: fixed by `54f1118` (`fix: disable rejected duplicate services`).
+- Reviewer:
+  - `Bohr` (forked RED-team reviewer), accepted the issue as distinct and
+    confirmed the disabled-service fix as the smallest compatible fix.
+- Affected code:
+  - `src/lib.rs`: `P2pNetwork::create_service` always returned the newly built
+    `P2pService`, even when `SharedCtx::set_service` rejected registration.
+  - `src/service.rs`: outbound `P2pService` and `P2pServiceRequester` paths did
+    not know whether the service had actually been registered.
+  - `src/ctx.rs`: `SharedCtxInternal::set_service` rejected duplicate or
+    out-of-range ids by logging only, without reporting admission failure to
+    the caller.
+- Impact: after a duplicate `create_service(0)` call, the returned unregistered
+  service could still send unicast, broadcast, or stream traffic labelled with
+  service id 0. It could not receive inbound traffic because the original
+  service remained registered, creating a half-live handle that can publish as
+  another service owner and blackhole replies or ownership-sensitive flows.
+- Distinctness: ISSUE-030 fixed the duplicate-creation panic but did not
+  prevent returning a usable unregistered `P2pService`. ISSUE-060 covers reuse
+  after the original receiver is dropped. ISSUE-076 covers stale cloned
+  requesters after service drop. ISSUE-119 and ISSUE-229 cover delivery-result
+  semantics for legitimate senders. ISSUE-052, ISSUE-053, and ISSUE-091 cover
+  out-of-range service ids, not duplicate in-range service ownership.
+- Root cause: service registry admission was not part of the returned service
+  handle's lifecycle state. Rejected registration dropped the receiver-side
+  sender, but the service and requester still retained a valid context and
+  service id for outbound operations.
+- Minimal fix proposal: make service creation fallible, or preserve the current
+  API while returning a disabled `P2pService` whose send, broadcast, stream,
+  and requester paths fail when registry admission was rejected.
+- Fix: `SharedCtx::set_service` now returns whether registration succeeded.
+  `P2pNetwork::create_service` stores that flag on `P2pService`, and
+  `P2pService` plus `P2pServiceRequester` reject outbound operations when the
+  handle was not registered.
+- Evidence tests:
+  - Red evidence before fix:
+    `cargo test duplicate_service_creation_must_not_return_live_unregistered_sender -- --nocapture`
+    failed at `src/tests/security.rs:1801` because the duplicate service's
+    `send_unicast(...)` returned `Ok(())`.
+  - Verification after fix:
+    `cargo test duplicate_service_creation_must_not_return_live_unregistered_sender -- --nocapture`
+  - Regression guards:
+    `cargo test duplicate_service_creation_must_not_panic -- --nocapture`,
+    `cargo test dropped_service_id_must_be_reusable -- --nocapture`,
+    `cargo test dropped_service_requester_must_not_continue_sending -- --nocapture`,
+    `cargo test service_requester -- --nocapture`,
+    `cargo test duplicate_service -- --nocapture`,
+    `rustfmt --edition 2021 --check src/service.rs src/ctx.rs src/tests/security.rs`,
     and `git diff --check`.
 
 ### Cycle after ISSUE-231 no-new cycle 1: route, discovery, stream, and graceful-stop integration review
