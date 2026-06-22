@@ -3709,6 +3709,8 @@ the source of truth for evidence and reviewer decisions.
   `src/peer/peer_internal.rs` gates pending inbound stream-connect setup tasks
   with a 16-per-connection semaphore plus an initial `StreamConnectReq`
   timeout.
+- Fix status: fixed by bounding bidirectional stream admission and pending
+  inbound stream-connect setup with a 16-stream cap plus request timeout.
 - Affected code:
   - `src/peer/peer_internal.rs`: `PeerConnectionInternal::on_accept_bi`
     spawns one `accept_bi` task for every inbound bidirectional stream.
