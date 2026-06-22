@@ -22,6 +22,8 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   ISSUE-194, ISSUE-195, ISSUE-196, ISSUE-197, ISSUE-198, ISSUE-199,
   ISSUE-200, ISSUE-201, ISSUE-202, ISSUE-203, ISSUE-204, ISSUE-205, ISSUE-206, ISSUE-207, ISSUE-208, ISSUE-097, ISSUE-098, ISSUE-099, ISSUE-100, ISSUE-101, ISSUE-102, ISSUE-104, ISSUE-105, ISSUE-106, ISSUE-107, ISSUE-108, ISSUE-109, ISSUE-112, ISSUE-018, ISSUE-022, ISSUE-061, ISSUE-042, ISSUE-016, ISSUE-073, ISSUE-072, ISSUE-076, ISSUE-052, ISSUE-030, and ISSUE-060 have focused
   fixes committed.
+  ISSUE-054 is fixed by rejecting zero network tick intervals before endpoint
+  and ticker construction.
   ISSUE-056 is fixed by fail-fast stream-open control admission.
   ISSUE-068 is fixed by validating PeerStats ownership before metrics export.
   ISSUE-165 is fixed by emitting visualization leaves from peer disconnects.

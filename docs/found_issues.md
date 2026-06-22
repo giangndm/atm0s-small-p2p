@@ -1618,6 +1618,17 @@ the source of truth for evidence and reviewer decisions.
   - `cargo test zero_network_tick_interval_must_not_panic -- --nocapture`
   - Failure summary: `P2pNetwork::new` panics at `src/lib.rs:184` with
     `` `period` must be non-zero. `` when `tick_ms` is zero.
+- Root cause: public constructor config was passed into Tokio's interval API
+  without validating Tokio's non-zero period requirement.
+- Fix proposal: reject `tick_ms == 0` at the start of `P2pNetwork::new`,
+  before binding the QUIC endpoint, and return a recoverable `anyhow::Error`.
+- Fix status: fixed by returning
+  `P2pNetworkConfig.tick_ms must be greater than 0` for zero tick intervals
+  before endpoint creation. Verified with
+  `cargo test zero_network_tick_interval_must_not_panic -- --nocapture`,
+  `cargo test connect_to_own_peer_address_must_fail -- --nocapture`, and
+  `cargo fmt -- --check`. Engineer proposal: `Descartes the 12th`; coder
+  review: `Dalton the 12th`; reviewer: `Volta the 12th`, accepted.
 
 ### ISSUE-055: Discovery advertisements can duplicate configured seed ids
 

@@ -200,6 +200,10 @@ pub struct P2pNetwork<SECURE> {
 impl<SECURE: HandshakeProtocol> P2pNetwork<SECURE> {
     pub async fn new(cfg: P2pNetworkConfig<SECURE>) -> anyhow::Result<Self> {
         log::info!("[P2pNetwork] starting node {}@{}", cfg.peer_id, cfg.listen_addr);
+        if cfg.tick_ms == 0 {
+            anyhow::bail!("P2pNetworkConfig.tick_ms must be greater than 0");
+        }
+
         let endpoint = make_server_endpoint(cfg.listen_addr, cfg.priv_key, cfg.cert)?;
         let (main_tx, main_rx) = channel(10);
         let (control_tx, control_rx) = channel(NETWORK_CONTROL_QUEUE_SIZE);

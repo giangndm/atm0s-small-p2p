@@ -1487,7 +1487,12 @@ async fn zero_network_tick_interval_must_not_panic() {
     .catch_unwind()
     .await;
 
-    assert!(result.is_ok(), "zero network tick interval must be rejected or normalized without panicking");
+    let err = match result.expect("zero network tick interval must be rejected without panicking") {
+        Ok(_) => panic!("zero network tick interval must be rejected"),
+        Err(err) => err,
+    };
+
+    assert!(err.to_string().contains("P2pNetworkConfig.tick_ms must be greater than 0"));
 }
 
 #[tokio::test]
