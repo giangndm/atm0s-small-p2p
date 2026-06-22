@@ -7,11 +7,12 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Accepted issues: 246
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 12
-- Current audit continuation: critical-only tooling/code-quality no-new cycle
-  14 found no new score-80+ issue across rustfmt, strict clippy, unsafe scan,
-  panic/unwrap scan, dependency duplicate scan, unavailable advisory tooling,
-  cargo metadata, all-target checks, and broad library tests.
+- Current consecutive no-new-issue cycles: 13
+- Current audit continuation: critical-only adversarial fuzz/harness no-new
+  cycle 15 found no new score-80+ issue across configured-node steady fuzz,
+  valid churn fuzz, malformed churn fuzz, fuzz-harness source review, route
+  stability scan, stream/pipe setup scan, backpressure scan, graceful-stop
+  scan, and reviewer targeted stopped/forged/stream regression checks.
 - Fix phase status: ISSUE-001, ISSUE-003, ISSUE-004, ISSUE-005, ISSUE-006, ISSUE-007,
   ISSUE-002, ISSUE-008, ISSUE-009, ISSUE-010, ISSUE-011, ISSUE-012, ISSUE-013, ISSUE-014, ISSUE-015, ISSUE-017, ISSUE-020, ISSUE-021, ISSUE-023, ISSUE-024, ISSUE-025, ISSUE-027, ISSUE-033, ISSUE-034, ISSUE-039, ISSUE-045, ISSUE-046, ISSUE-047, ISSUE-048, ISSUE-055, ISSUE-059, ISSUE-103, ISSUE-110, ISSUE-111, ISSUE-115, ISSUE-116, ISSUE-117, ISSUE-118, ISSUE-119, ISSUE-120, ISSUE-122, ISSUE-123,
   ISSUE-124, ISSUE-125, ISSUE-126, ISSUE-127, ISSUE-128, ISSUE-129, ISSUE-130,
@@ -686,6 +687,21 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   ISSUE-015, ISSUE-018, ISSUE-189, ISSUE-194. Ledger check found 21 score-80+
   issues and all are fixed; no reproducible tooling/code-quality failure
   supported a distinct score-80+ issue.
+- Fuzz phase no-new cycle 15 reviewed adversarial configured-node fuzz and
+  fuzz-harness blind spots with forked reviewer `Dalton the 2nd`. Local
+  high-load steady, valid churn, and malformed churn fuzz seeds passed at 34,
+  30, and 28 nodes respectively. The reviewer reran those fuzz commands and
+  targeted `peer_stopped`, `forged`, relay-stream, inbound-stream, and fuzz-list
+  checks; all passed. Rejected candidates mapped to fixed ISSUE-209 for
+  high-load configuration, ISSUE-001/ISSUE-004/ISSUE-170/ISSUE-215 through
+  ISSUE-225 and RC-6 for graceful stop/restart churn, ISSUE-014/ISSUE-015/
+  ISSUE-018 and RC-1 for forged source identity, ISSUE-052/ISSUE-053/
+  ISSUE-060/ISSUE-091/ISSUE-234 for invalid services and malformed messages,
+  ISSUE-156/ISSUE-217/ISSUE-220/ISSUE-238 and RC-3/RC-4 for stream setup and
+  admission, ISSUE-003/RC-7 for route flapping, and RC-3 plus ISSUE-218 through
+  ISSUE-230 for bounded backpressure. Ledger check found 21 score-80+ issues
+  and all are fixed; no reproducible fuzz/source-boundary failure supported a
+  distinct score-80+ issue.
 - Cycle after ISSUE-231 no-new cycle 1 reviewed routing/discovery/path
   stability and stream/pipe lifecycle integration with forked reviewer
   `Carver`. Focused route, discovery, stream-relay, peer-stopped, and pubsub

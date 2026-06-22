@@ -11,11 +11,12 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 12
-- Current audit continuation: critical-only tooling/code-quality no-new cycle
-  14 found no new score-80+ issue across rustfmt, strict clippy, unsafe scan,
-  panic/unwrap scan, dependency duplicate scan, unavailable advisory tooling,
-  cargo metadata, all-target checks, and broad library tests.
+- Current consecutive no-new-issue cycles: 13
+- Current audit continuation: critical-only adversarial fuzz/harness no-new
+  cycle 15 found no new score-80+ issue across configured-node steady fuzz,
+  valid churn fuzz, malformed churn fuzz, fuzz-harness source review, route
+  stability scan, stream/pipe setup scan, backpressure scan, graceful-stop
+  scan, and reviewer targeted stopped/forged/stream regression checks.
 
 ## Root Cause Summary
 
@@ -21209,6 +21210,51 @@ the source of truth for evidence and reviewer decisions.
 - Ledger check: 21 score-80+ issues found and all are fixed.
 - Current consecutive no-new cycles after ISSUE-238: 24.
 - Current fuzz-phase no-new cycles after transition: 14.
+- Current focused source-review no-new cycles after fuzz phase: 10.
+
+### Fuzz phase no-new cycle 15: adversarial configured-node fuzz harness review
+
+- Scope: continued critical-only review after cycle 14, focusing on
+  configured-node randomized fuzz coverage, mixed valid/malformed actions,
+  stop/restart churn, raw forged messages, invalid service ids, stream setup,
+  route flapping, backpressure, and graceful shutdown behavior.
+- Reviewer: `Dalton the 2nd` (forked RED-team reviewer), returned
+  `NO_NEW_CRITICAL`.
+- Verification:
+  - `RUST_LOG=error P2P_FUZZ_NODES=34 P2P_FUZZ_STEPS=1120 P2P_FUZZ_SEED=36001 cargo test fuzz_random_steady_valid_node_actions_must_not_panic_connection_tasks --lib`
+  - `RUST_LOG=error P2P_FUZZ_NODES=30 P2P_FUZZ_STEPS=1000 P2P_FUZZ_SEED=36002 cargo test fuzz_random_valid_node_churn_actions_must_not_panic_connection_tasks --lib`
+  - `RUST_LOG=error P2P_FUZZ_NODES=28 P2P_FUZZ_STEPS=900 P2P_FUZZ_SEED=36003 cargo test fuzz_random_node_churn_actions_must_not_panic_connection_tasks --lib`
+- Reviewer cross-check:
+  - Re-ran the same three configured-node fuzz commands; all passed.
+  - `RUST_LOG=error cargo test peer_stopped --lib`: passed 15 tests.
+  - `RUST_LOG=error cargo test forged --lib`: passed 4 tests.
+  - `RUST_LOG=error cargo test relay_must_not_deliver_downstream_stream --lib`:
+    passed 3 tests.
+  - `RUST_LOG=error cargo test inbound_stream --lib`: passed 2 tests.
+  - `cargo test fuzz_random --lib -- --list`: listed six fuzz tests.
+- Duplicate mapping:
+  - High-load configured node count coverage maps to fixed ISSUE-209.
+  - Forged `PeerStopped`, graceful shutdown, stopped-node cleanup, and restart
+    churn map to ISSUE-001, ISSUE-004, ISSUE-170, ISSUE-215 through ISSUE-225,
+    and RC-6.
+  - Raw forged unicast, broadcast, and stream source identity map to ISSUE-014,
+    ISSUE-015, ISSUE-018, and RC-1.
+  - Invalid service ids and malformed/raw peer messages map to ISSUE-052,
+    ISSUE-053, ISSUE-060, ISSUE-091, and ISSUE-234.
+  - Stream relay setup, upstream cancellation, admission permits, and response
+    write stalls map to ISSUE-156, ISSUE-217, ISSUE-220, ISSUE-238, RC-3, and
+    RC-4.
+  - Route/path jumping and noisy active path selection map to ISSUE-003 and
+    RC-7.
+  - Backpressure and bounded queue behavior under fuzz map to RC-3 and
+    ISSUE-218 through ISSUE-230.
+  - The duplicate local `let steps = ...` style candidate in the churn harness
+    has no critical behavioral evidence.
+  - No reproducible fuzz/source-boundary failure supported a distinct
+    score-80+ issue.
+- Ledger check: 21 score-80+ issues found and all are fixed.
+- Current consecutive no-new cycles after ISSUE-238: 25.
+- Current fuzz-phase no-new cycles after transition: 15.
 - Current focused source-review no-new cycles after fuzz phase: 10.
 
 ### Cycle after ISSUE-235 no-new cycle 1: transport, auth, and peer setup review
