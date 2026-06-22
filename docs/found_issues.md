@@ -685,6 +685,9 @@ the source of truth for evidence and reviewer decisions.
 - Impact: 256 live guards for the same alias panic in debug builds and wrap in
   release builds, corrupting alias lifetime accounting and causing later drops
   to remove or advertise the alias incorrectly.
+- Fix status: fixed by widening `AliasServiceInternal.local` refcounts to
+  `usize` and using checked registration increments. The stronger ISSUE-208
+  saturated-refcount fix covers both overflow panic/wrap and silent truncation.
 - Evidence test:
   - `cargo test registering_same_alias_many_times_must_not_overflow_refcount -- --nocapture`
   - Failure summary: the 256th registration panics at the `u8` increment with

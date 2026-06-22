@@ -32,6 +32,7 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   ISSUE-065 is fixed by validating disconnect ownership before cleanup and
   public event emission.
   ISSUE-068 is fixed by validating PeerStats ownership before metrics export.
+  ISSUE-019 is fixed by the ISSUE-208 alias refcount widening to `usize`.
   ISSUE-165 is fixed by emitting visualization leaves from peer disconnects.
   ISSUE-166 is fixed by a two-generation broadcast replay dedup window.
   ISSUE-167 is fixed by pruning router routes for expired discovered peers.
