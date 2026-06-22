@@ -406,6 +406,12 @@ mod tests {
     const DEFAULT_CLUSTER_CERT: &[u8] = include_bytes!("../certs/dev.cluster.cert");
     const DEFAULT_CLUSTER_KEY: &[u8] = include_bytes!("../certs/dev.cluster.key");
 
+    fn registered_test_service(service_id: P2pServiceId, mut ctx: SharedCtx) -> (P2pService, tokio::sync::mpsc::Sender<P2pServiceEvent>) {
+        let (mut service, tx) = P2pService::build(service_id, ctx.clone());
+        service.set_registered(ctx.set_service(service_id, tx.clone()));
+        (service, tx)
+    }
+
     #[derive(Clone, Copy, Debug, PartialEq, Eq)]
     enum MetricKind {
         Counter,
@@ -1305,7 +1311,7 @@ mod tests {
             .expect("test control queue should accept filler message");
 
         ctx.register_conn(ConnectionId::from(1), PeerConnectionAlias::new(PeerId::from(0), PeerId::from(1), ConnectionId::from(1), tx));
-        let (base_service, _service_tx) = P2pService::build(P2pServiceId::from(7), ctx);
+        let (base_service, _service_tx) = registered_test_service(P2pServiceId::from(7), ctx);
         let mut metrics = MetricsService::new(Some(Duration::from_millis(1)), base_service, true);
 
         for _ in 0..8 {
@@ -1339,7 +1345,7 @@ mod tests {
             .expect("test control queue should accept filler message");
 
         ctx.register_conn(ConnectionId::from(1), PeerConnectionAlias::new(PeerId::from(0), PeerId::from(1), ConnectionId::from(1), tx));
-        let (base_service, _service_tx) = P2pService::build(P2pServiceId::from(8), ctx);
+        let (base_service, _service_tx) = registered_test_service(P2pServiceId::from(8), ctx);
         let mut visualization = VisualizationService::new(Some(Duration::from_millis(1)), true, base_service);
         let _ = visualization.recv().await.expect("initial local peer event should be emitted");
 
@@ -1378,7 +1384,7 @@ mod tests {
             .expect("test control queue should accept filler message");
         ctx.register_conn(conn, PeerConnectionAlias::new(PeerId::from(0), peer, conn, tx));
 
-        let (base_service, service_tx) = P2pService::build(P2pServiceId::from(9), ctx);
+        let (base_service, service_tx) = registered_test_service(P2pServiceId::from(9), ctx);
         let mut metrics = MetricsService::new(None, base_service, false).with_trusted_scan_collectors([peer]);
         service_tx
             .send(P2pServiceEvent::Broadcast(peer, encode_metrics_scan_for_test()))
@@ -1421,7 +1427,7 @@ mod tests {
             .expect("test control queue should accept filler message");
         ctx.register_conn(conn, PeerConnectionAlias::new(PeerId::from(0), peer, conn, tx));
 
-        let (base_service, service_tx) = P2pService::build(P2pServiceId::from(10), ctx);
+        let (base_service, service_tx) = registered_test_service(P2pServiceId::from(10), ctx);
         let mut visualization = VisualizationService::new(None, false, base_service).with_trusted_scan_collectors([peer]);
         for _ in 0..8 {
             service_tx
@@ -1465,7 +1471,7 @@ mod tests {
             .expect("test control queue should accept filler message");
         ctx.register_conn(conn, PeerConnectionAlias::new(PeerId::from(0), peer, conn, tx));
 
-        let (base_service, service_tx) = P2pService::build(P2pServiceId::from(11), ctx);
+        let (base_service, service_tx) = registered_test_service(P2pServiceId::from(11), ctx);
         let mut metrics = MetricsService::new(None, base_service, false).with_trusted_scan_collectors([peer]);
         for _ in 0..8 {
             service_tx
