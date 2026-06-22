@@ -6542,6 +6542,8 @@ the source of truth for evidence and reviewer decisions.
 
 - Category: bad-network stability, connection lifecycle, setup timeout
 - Score: 68/100
+- Fix status: fixed by wrapping the inbound authentication and `ConnectRes`
+  write path in `PEER_SETUP_TIMEOUT` before the peer run loop starts.
 - Reviewer: `Peirce the 3rd`, confirmed after `Einstein the 3rd` discovery.
 - Affected code:
   - `src/peer.rs`: incoming `run_connection` reads `ConnectReq`, verifies the
