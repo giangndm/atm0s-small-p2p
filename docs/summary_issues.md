@@ -7,8 +7,9 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Accepted issues: 209
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 0
-- Stop condition: not satisfied; discovery should continue after ISSUE-209 fix.
+- Current consecutive no-new-issue cycles: 1
+- Stop condition: not satisfied; continue discovery until five consecutive
+  no-new cycles after ISSUE-209.
 - Fix phase status: ISSUE-001, ISSUE-003, ISSUE-004, ISSUE-005, ISSUE-006, ISSUE-007,
   ISSUE-002, ISSUE-008, ISSUE-009, ISSUE-010, ISSUE-011, ISSUE-012, ISSUE-013, ISSUE-014, ISSUE-015, ISSUE-017, ISSUE-020, ISSUE-021, ISSUE-023, ISSUE-024, ISSUE-025, ISSUE-027, ISSUE-033, ISSUE-034, ISSUE-039, ISSUE-045, ISSUE-046, ISSUE-047, ISSUE-048, ISSUE-055, ISSUE-059, ISSUE-103, ISSUE-110, ISSUE-111, ISSUE-115, ISSUE-116, ISSUE-117, ISSUE-118, ISSUE-119, ISSUE-120, ISSUE-122, ISSUE-123,
   ISSUE-124, ISSUE-125, ISSUE-126, ISSUE-127, ISSUE-128, ISSUE-129, ISSUE-130,
@@ -4719,6 +4720,11 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   `Russell the 4th`. Rejected candidates mapped to existing RC-2, RC-3, RC-4,
   RC-5, RC-6, and RC-7 patterns; no accepted issue or summary root-cause
   change.
+- Cycle after ISSUE-209 no-new cycle 1 ran real 12-node steady and sanitized
+  churn fuzz passes after removing the hidden eight-node cap. Both runs passed.
+  Observed duplicate connection churn, high-load control-queue pressure, and
+  stopped-peer reconnect attempts map to existing RC-3, RC-6, and RC-7
+  families unless a later run produces a focused failing invariant.
 - Fuzz-phase no-new cycle reviewed path flapping, pipe/stream reliability, and
   non-seed/seed graceful-stop hints with forked reviewer `Rawls the 3rd`.
   Rejected candidates mapped to ISSUE-003, ISSUE-004, ISSUE-011, ISSUE-012,

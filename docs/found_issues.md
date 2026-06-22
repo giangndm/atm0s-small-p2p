@@ -17629,7 +17629,7 @@ the source of truth for evidence and reviewer decisions.
 
 - Score: 86
 - Category: stability / high-load test coverage correctness
-- Status: fixed by pending commit.
+- Status: fixed by `ffbe53b` (`fix: honor high-load fuzz node count`).
 - Reviewer: `Bacon the 13th` (forked RED-team reviewer), accepted.
 - Affected code:
   - `src/tests/fuzz.rs`
@@ -17656,3 +17656,21 @@ the source of truth for evidence and reviewer decisions.
 - Verification:
   - `cargo test fuzz_node_count_must_honor_high_load_configuration -- --nocapture`
   - `P2P_FUZZ_NODES=12 P2P_FUZZ_STEPS=1 cargo test fuzz_random_steady_valid_node_actions_must_not_panic_connection_tasks -- --nocapture`
+
+### Cycle after ISSUE-209: real 12-node high-load fuzz smoke
+
+- Result: no accepted non-duplicate issue.
+- Local/source areas reviewed:
+  - `src/tests/fuzz.rs`, `docs/found_issues.md`, `docs/summary_issues.md`
+  - high-load steady and churn fuzz behavior after removing the hidden
+    eight-node cap.
+- Additional fuzz evidence reviewed:
+  - `RUST_LOG=error P2P_FUZZ_NODES=12 P2P_FUZZ_STEPS=1000 P2P_FUZZ_SEED=22062603 cargo test fuzz_random_steady_valid_node_actions_must_not_panic_connection_tasks -- --nocapture`
+    passed with no failing invariant.
+  - `RUST_LOG=error P2P_FUZZ_NODES=12 P2P_FUZZ_STEPS=1000 P2P_FUZZ_SEED=22062604 cargo test fuzz_random_sanitized_node_churn_actions_must_not_panic_connection_tasks -- --nocapture`
+    passed with no failing invariant.
+- Observed symptoms: duplicate connection churn, high-load control-queue
+  pressure, and stopped-peer reconnect attempts. These remain mapped to
+  existing RC-3, RC-6, and RC-7 families unless a future run produces a focused
+  failing invariant.
+- Root-cause summary impact: no new root cause.
