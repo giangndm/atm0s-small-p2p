@@ -7,12 +7,12 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Accepted issues: 246
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 20
-- Current audit continuation: critical-only time/order lifecycle no-new cycle
-  22 found no new score-80+ issue across timestamp arithmetic, stale event
-  ordering, reconnect after stop/disconnect, seed vs non-seed lifecycle,
-  route/discovery tombstone freshness, metrics/liveness cleanup, delayed
-  internal events, shutdown notification ordering, and active-path stability.
+- Current consecutive no-new-issue cycles: 21
+- Current audit continuation: critical-only package/API defaults no-new cycle
+  23 found no new score-80+ issue across Cargo manifest and features,
+  dependency feature defaults, README/examples, demo cert/key handling,
+  insecure-open-cluster opt-in, public config validation, advertise/seed
+  defaults, service/requester handles, and documented usage.
 - Fix phase status: ISSUE-001, ISSUE-003, ISSUE-004, ISSUE-005, ISSUE-006, ISSUE-007,
   ISSUE-002, ISSUE-008, ISSUE-009, ISSUE-010, ISSUE-011, ISSUE-012, ISSUE-013, ISSUE-014, ISSUE-015, ISSUE-017, ISSUE-020, ISSUE-021, ISSUE-023, ISSUE-024, ISSUE-025, ISSUE-027, ISSUE-033, ISSUE-034, ISSUE-039, ISSUE-045, ISSUE-046, ISSUE-047, ISSUE-048, ISSUE-055, ISSUE-059, ISSUE-103, ISSUE-110, ISSUE-111, ISSUE-115, ISSUE-116, ISSUE-117, ISSUE-118, ISSUE-119, ISSUE-120, ISSUE-122, ISSUE-123,
   ISSUE-124, ISSUE-125, ISSUE-126, ISSUE-127, ISSUE-128, ISSUE-129, ISSUE-130,
@@ -811,6 +811,24 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   issue-entry ledger check found 19 score-80+ entries and all are fixed; no
   reproducible time/order/lifecycle failure supported a distinct score-80+
   issue.
+- Fuzz phase no-new cycle 23 reviewed package, API defaults, and example
+  surfaces with forked reviewer `Kuhn the 2nd`. Local example build, README,
+  zero-tick, advertise, seed, inbound-handshake, requester, duplicate-service,
+  out-of-range-service, own-peer-address, package metadata/dependency feature,
+  and 24-node valid fuzz checks passed. The reviewer passed README,
+  handshake, inbound-handshake, requester, advertise, seed, zero-tick,
+  service-id, stream, security, package metadata/listing, example build, and
+  24-node valid fuzz checks. `cargo audit` was not installed for advisory
+  checks. Rejected candidates mapped to RC-1/ISSUE-244 for inbound
+  binding/open-cluster opt-in, ISSUE-211 through ISSUE-213/RC-7 for
+  advertise/seed validation, RC-6 and ISSUE-072/073/076/234 for stale
+  requester/service behavior, ISSUE-052/060/091/234 for service-id bounds,
+  ISSUE-117/156/217/220/238 and RC-3/RC-4/RC-5 for QUIC, stream, framing, and
+  admission concerns, and existing route/lifecycle fixes for self/duplicate
+  connect and stale events. README/examples remain explicit demo surfaces
+  rather than unsafe library defaults; direct issue-entry ledger check found 19
+  score-80+ entries and all are fixed; no reproducible package/API/default
+  failure supported a distinct score-80+ issue.
 - Cycle after ISSUE-231 no-new cycle 1 reviewed routing/discovery/path
   stability and stream/pipe lifecycle integration with forked reviewer
   `Carver`. Focused route, discovery, stream-relay, peer-stopped, and pubsub

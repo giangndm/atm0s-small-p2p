@@ -11,12 +11,12 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 20
-- Current audit continuation: critical-only time/order lifecycle no-new cycle
-  22 found no new score-80+ issue across timestamp arithmetic, stale event
-  ordering, reconnect after stop/disconnect, seed vs non-seed lifecycle,
-  route/discovery tombstone freshness, metrics/liveness cleanup, delayed
-  internal events, shutdown notification ordering, and active-path stability.
+- Current consecutive no-new-issue cycles: 21
+- Current audit continuation: critical-only package/API defaults no-new cycle
+  23 found no new score-80+ issue across Cargo manifest and features,
+  dependency feature defaults, README/examples, demo cert/key handling,
+  insecure-open-cluster opt-in, public config validation, advertise/seed
+  defaults, service/requester handles, and documented usage.
 
 ## Root Cause Summary
 
@@ -21667,6 +21667,79 @@ the source of truth for evidence and reviewer decisions.
 - Ledger check: 19 score-80+ issue entries found and all are fixed.
 - Current consecutive no-new cycles after ISSUE-238: 32.
 - Current fuzz-phase no-new cycles after transition: 22.
+- Current focused source-review no-new cycles after fuzz phase: 10.
+
+### Fuzz phase no-new cycle 23: package, API defaults, and example surface review
+
+- Scope: continued critical-only review after cycle 22, focusing on
+  `Cargo.toml`, dependency feature defaults, README and examples, dev cert/key
+  usage, open-cluster opt-in, default/static inbound peer bindings, public
+  config validation, advertise/seed defaults, service/requester handles, and
+  documented usage.
+- Reviewer: `Kuhn the 2nd` (forked RED-team reviewer), returned
+  `NO_NEW_CRITICAL`.
+- Verification:
+  - `cargo check --examples`: passed with unused/dead-code warnings only.
+  - `RUST_LOG=error cargo test readme --lib`: passed 1 test.
+  - `RUST_LOG=error cargo test zero_network_tick_interval --lib`: passed 1
+    test.
+  - `RUST_LOG=error cargo test advertise --lib`: passed 16 tests.
+  - `RUST_LOG=error cargo test seed --lib`: passed 15 tests.
+  - `RUST_LOG=error cargo test inbound_handshake --lib`: passed 3 tests.
+  - `RUST_LOG=error cargo test requester --lib`: passed 13 tests.
+  - `RUST_LOG=error cargo test duplicate_service --lib`: passed 2 tests.
+  - `RUST_LOG=error cargo test out_of_range_service_id --lib`: passed 1 test.
+  - `RUST_LOG=error cargo test own_peer_address --lib`: passed 3 tests.
+  - `RUST_LOG=error P2P_FUZZ_NODES=24 P2P_FUZZ_STEPS=800 P2P_FUZZ_SEED=44001 cargo test fuzz_random_valid_node_actions_must_not_panic_connection_tasks --lib`:
+    passed.
+  - `cargo tree -e features -i rustls`, `cargo tree -e features -i quinn`,
+    and `cargo metadata --no-deps --format-version 1` were reviewed for
+    package and dependency defaults.
+- Reviewer cross-check:
+  - `cargo test --lib -- --list | rg -i "default|config|binding|insecure|open_cluster|advertise|seed|cert|key|handshake|service|requester|example|readme|oversize|tick|self|duplicate|shutdown|queue|bounded|admission"`
+  - `RUST_LOG=error cargo test readme --lib`: passed.
+  - `RUST_LOG=error cargo test handshake --lib`: passed.
+  - `RUST_LOG=error cargo test inbound_handshake --lib`: passed.
+  - `RUST_LOG=error cargo test requester --lib`: passed.
+  - `RUST_LOG=error cargo test advertise --lib`: passed.
+  - `RUST_LOG=error cargo test seed --lib`: passed.
+  - `RUST_LOG=error cargo test zero_network_tick_interval_must_not_panic --lib`:
+    passed.
+  - `cargo check --examples`: passed with unused/dead-code warnings only.
+  - `RUST_LOG=error cargo test service_id --lib`: passed.
+  - `RUST_LOG=error cargo test stream --lib`: passed.
+  - `RUST_LOG=error cargo test security --lib`: passed.
+  - `cargo metadata --format-version=1 --no-deps`: reviewed.
+  - `cargo package --list`: reviewed; dev cert/key files are packaged but only
+    examples/tests use them, while library callers must supply cert, key,
+    secure string, and bindings explicitly.
+  - `RUST_LOG=error P2P_FUZZ_NODES=24 P2P_FUZZ_STEPS=900 P2P_FUZZ_SEED=44001 cargo test fuzz_random_valid_node_actions_must_not_panic_connection_tasks --lib`:
+    passed.
+- Duplicate mapping:
+  - README/examples demo certs, demo secure strings, and explicit open-cluster
+    modes are documented example/demo surfaces rather than library defaults.
+  - Inbound peer binding defaults and explicit open cluster map to
+    RC-1/ISSUE-244 and inbound-handshake/static binding coverage.
+  - Zero/invalid config and public constructors map to zero tick, advertise,
+    seed, out-of-range service, own-peer connect, duplicate-service, and
+    requester coverage.
+  - Non-dialable advertise/seed addresses map to ISSUE-211 through ISSUE-213
+    and RC-7.
+  - Stale/dropped service/requester behavior maps to ISSUE-072, ISSUE-073,
+    ISSUE-076, ISSUE-234, and RC-6.
+  - Service-id/out-of-range behavior maps to ISSUE-052, ISSUE-060, ISSUE-091,
+    ISSUE-234, and RC-6.
+  - QUIC/stream/framing/admission concerns map to ISSUE-117, ISSUE-156,
+    ISSUE-217, ISSUE-220, ISSUE-238, RC-3, RC-4, and RC-5.
+  - Self/duplicate connect, stale events, source forgery, and route/lifecycle
+    behavior map to ISSUE-003, ISSUE-153, ISSUE-189, ISSUE-194, ISSUE-214,
+    ISSUE-215 through ISSUE-225, RC-1, RC-6, and RC-7.
+  - Dependency/default feature concerns produced no reproducible score-80+
+    runtime failure. `cargo audit` was not installed for reviewer-side
+    advisory checks.
+- Ledger check: 19 score-80+ issue entries found and all are fixed.
+- Current consecutive no-new cycles after ISSUE-238: 33.
+- Current fuzz-phase no-new cycles after transition: 23.
 - Current focused source-review no-new cycles after fuzz phase: 10.
 
 ### Cycle after ISSUE-235 no-new cycle 1: transport, auth, and peer setup review
