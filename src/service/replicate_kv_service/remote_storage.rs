@@ -160,7 +160,7 @@ impl<N, K, V> Default for SyncFullState<N, K, V> {
             version: None,
             biggest_key: None,
             sending_req: None,
-            staged_slots: None,
+            staged_slots: Some(BTreeMap::new()),
             _tmp: PhantomData,
         }
     }
@@ -747,6 +747,40 @@ mod tests {
     }
 
     #[test]
+    fn initial_full_sync_must_not_emit_partial_snapshot_before_terminal_page() {
+        let mut ctx: StateCtx<u16, u16, u16> = StateCtx {
+            remote: 1,
+            slots: BTreeMap::new(),
+            outs: VecDeque::new(),
+            next_state: None,
+        };
+
+        let now = Instant::now();
+        let mut state = SyncFullState::default();
+        state.init(&mut ctx, now);
+        ctx.outs.clear();
+
+        state.on_rpc_res(
+            &mut ctx,
+            now,
+            RpcRes::FetchSnapshot(
+                Some(SnapshotData {
+                    slots: vec![(1, Slot::new(10, Version(1)))],
+                    next_key: Some(2),
+                    biggest_key: 2,
+                }),
+                Version(2),
+            ),
+        );
+
+        assert!(ctx.slots.is_empty(), "initial full sync must not expose partial remote slots before the terminal snapshot page");
+        assert!(
+            !ctx.outs.iter().any(|event| matches!(event, Event::KvEvent(_))),
+            "initial full sync must not emit visible KvEvent changes until the snapshot completes"
+        );
+    }
+
+    #[test]
     fn full_sync_must_reject_snapshot_next_key_past_biggest_key() {
         let mut ctx: StateCtx<u16, u16, u16> = StateCtx {
             remote: 1,
@@ -1162,7 +1196,6 @@ mod tests {
             ),
         );
 
-        assert_eq!(ctx.outs.pop_front(), Some(Event::KvEvent(KvEvent::Set(Some(1), 1, 10))));
         assert_eq!(
             ctx.outs.pop_front(),
             Some(Event::NetEvent(NetEvent::Unicast(
@@ -1175,6 +1208,7 @@ mod tests {
             )))
         );
         assert_eq!(ctx.outs.pop_front(), None);
+        assert!(ctx.slots.is_empty(), "initial full sync must stage partial snapshot pages until completion");
 
         state.on_rpc_res(
             &mut ctx,
@@ -1195,7 +1229,7 @@ mod tests {
         );
         assert_eq!(
             ctx.slots,
-            BTreeMap::from([(1, Slot::new(10, Version(1)))]),
+            BTreeMap::new(),
             "stale terminal snapshot responses must not hide keys still pending in the requested continuation range"
         );
     }
@@ -1282,7 +1316,6 @@ mod tests {
             ),
         );
 
-        assert_eq!(ctx.outs.pop_front(), Some(Event::KvEvent(KvEvent::Set(Some(1), 1, 1))));
         assert_eq!(
             ctx.outs.pop_front(),
             Some(Event::NetEvent(NetEvent::Unicast(
@@ -1295,6 +1328,7 @@ mod tests {
             )))
         );
         assert_eq!(ctx.outs.pop_front(), None);
+        assert!(ctx.slots.is_empty(), "initial full sync must stage partial snapshot pages until completion");
 
         // got last sync
         state.on_rpc_res(
@@ -1312,6 +1346,7 @@ mod tests {
 
         assert_eq!(ctx.slots, BTreeMap::from([(1, Slot::new(1, Version(1))), (2, Slot::new(2, Version(2)))]));
         assert_eq!(ctx.next_state, Some(RemoteStoreState::Working(WorkingState::new(Version(2)))));
+        assert_eq!(ctx.outs.pop_front(), Some(Event::KvEvent(KvEvent::Set(Some(1), 1, 1))));
         assert_eq!(ctx.outs.pop_front(), Some(Event::KvEvent(KvEvent::Set(Some(1), 2, 2))));
         assert_eq!(ctx.outs.pop_front(), None);
     }

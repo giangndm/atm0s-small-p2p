@@ -12,8 +12,8 @@ must resolve.
 ## Audit Status
 
 - Current consecutive no-new-issue cycles: 0
-- Current audit continuation: ISSUE-244 fixed by retaining live handshake
-  replay rejection after exact replay-cache eviction.
+- Current audit continuation: ISSUE-245 fixed replicated-KV initial full-sync
+  atomicity by staging snapshot pages until terminal completion.
 
 ## Root Cause Summary
 
@@ -45,7 +45,7 @@ the source of truth for evidence and reviewer decisions.
   ISSUE-110, ISSUE-111, ISSUE-143, ISSUE-152,
   ISSUE-154, ISSUE-155, ISSUE-158, ISSUE-166, ISSUE-171, ISSUE-175,
   ISSUE-186, ISSUE-231, ISSUE-232, ISSUE-233, ISSUE-237, ISSUE-239,
-  ISSUE-240, ISSUE-241, ISSUE-242, ISSUE-243.
+  ISSUE-240, ISSUE-241, ISSUE-242, ISSUE-243, ISSUE-245.
 - Pattern: replicated-KV full sync, changed repair, alias lookup, metrics,
   visualization, and pubsub flows accept stale, unsolicited, reordered, or
   mismatched responses or broadcasts because handlers do not verify
@@ -19619,6 +19619,64 @@ the source of truth for evidence and reviewer decisions.
     `cargo test secure::tests --lib`,
     `rustfmt --edition 2021 --check src/secure.rs`, and `git diff --check`
     passed.
+
+### ISSUE-245: Replicated-KV initial full sync exposes partial snapshot pages
+
+- Status: fixed by staging initial full-sync snapshot pages until the terminal
+  page is accepted.
+- Category: correctness, stability, bad-network replicated-KV full-sync
+  atomicity
+- Score: 58
+- Reviewers:
+  - `Galileo the 2nd` (forked RED-team reviewer) accepted the issue as
+    distinct from ISSUE-171, ISSUE-237, ISSUE-131, ISSUE-143, ISSUE-083,
+    ISSUE-038, and ISSUE-037.
+- Affected code:
+  - `src/service/replicate_kv_service/remote_storage.rs`:
+    `SyncFullState::default()` initialized `staged_slots` as `None`.
+  - `src/service/replicate_kv_service/remote_storage.rs`: while
+    `staged_slots` was `None`, accepted partial snapshot pages wrote directly
+    to `ctx.slots` and emitted visible `KvEvent::Set` before the terminal
+    snapshot page completed the full sync.
+- Impact: a stalled, partitioned, or malformed peer could expose an incomplete
+  remote snapshot prefix to local users during the initial full sync. If a
+  later stale terminal page was rejected, the remote store could remain in
+  `SyncFull` while already publishing partial data that was never committed as
+  a complete snapshot.
+- Distinctness: ISSUE-171 fixed replacement resync deletion before completion;
+  ISSUE-237 fixed non-advancing continuation cursors; ISSUE-131 fixed page
+  size bounds; ISSUE-143, ISSUE-083, ISSUE-038, and ISSUE-037 fixed malformed
+  continuation validation. ISSUE-245 is the missing atomicity guarantee for
+  the very first full sync.
+- Root cause: initial full sync and replacement full resync used different
+  staging policies. Replacement resync called `preserve_existing_until_complete`
+  and committed atomically, but the default initial state applied pages
+  directly because it had no existing data to preserve.
+- Minimal fix proposal: initialize `SyncFullState::default()` with an empty
+  staging map, reuse the existing `commit_staged_slots` path for initial and
+  replacement full syncs, and update tests to assert no visible `KvEvent`s
+  before terminal completion.
+- Fix: `SyncFullState::default()` now starts with `staged_slots:
+  Some(BTreeMap::new())`. Partial initial pages are accumulated in staging,
+  continuation requests are still sent, and visible slots/events are committed
+  only when the terminal snapshot page is accepted.
+- Evidence tests:
+  - Red evidence before fix:
+    `RUST_LOG=error cargo test initial_full_sync_must_not_emit_partial_snapshot_before_terminal_page --lib`
+    failed at `src/service/replicate_kv_service/remote_storage.rs:776` with
+    `initial full sync must not expose partial remote slots before the terminal snapshot page`.
+  - Reviewer verification:
+    `Galileo the 2nd` accepted the failing scenario and root cause as a
+    distinct correctness/stability issue.
+  - Verification after fix:
+    `RUST_LOG=error cargo test initial_full_sync_must_not_emit_partial_snapshot_before_terminal_page --lib`
+    passed.
+  - Regression guards:
+    `RUST_LOG=error cargo test replicate_kv --lib`,
+    `RUST_LOG=error cargo test full_sync --lib`,
+    `RUST_LOG=error cargo test snapshot --lib`,
+    `rustfmt --edition 2021 --check src/service/replicate_kv_service/remote_storage.rs`,
+    and `git diff --check` passed.
 
 ### Cycle after ISSUE-239 no-new cycle 1: route, lifecycle, service, pubsub, and replicated-KV review
 

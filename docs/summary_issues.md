@@ -5,12 +5,13 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Audit Status
 
-- Accepted issues: 244
+- Accepted issues: 245
 - Missing issue scores: 0
 - Current consecutive no-new-issue cycles: 0
-- Current audit continuation: ISSUE-244 fixed handshake replay-cache pressure.
-  Evicted live handshake tokens remain rejected by a compact rotating replay
-  window while the exact replay cache stays globally bounded.
+- Current audit continuation: ISSUE-245 fixed replicated-KV initial full-sync
+  atomicity. Initial snapshot pages are now staged until the terminal page is
+  accepted, so partial snapshots from stalled or malformed peers do not mutate
+  visible slots or emit `KvEvent`s.
 - Fix phase status: ISSUE-001, ISSUE-003, ISSUE-004, ISSUE-005, ISSUE-006, ISSUE-007,
   ISSUE-002, ISSUE-008, ISSUE-009, ISSUE-010, ISSUE-011, ISSUE-012, ISSUE-013, ISSUE-014, ISSUE-015, ISSUE-017, ISSUE-020, ISSUE-021, ISSUE-023, ISSUE-024, ISSUE-025, ISSUE-027, ISSUE-033, ISSUE-034, ISSUE-039, ISSUE-045, ISSUE-046, ISSUE-047, ISSUE-048, ISSUE-055, ISSUE-059, ISSUE-103, ISSUE-110, ISSUE-111, ISSUE-115, ISSUE-116, ISSUE-117, ISSUE-118, ISSUE-119, ISSUE-120, ISSUE-122, ISSUE-123,
   ISSUE-124, ISSUE-125, ISSUE-126, ISSUE-127, ISSUE-128, ISSUE-129, ISSUE-130,
@@ -182,6 +183,20 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   `cargo test handshake_replay_must_not_be_accepted_after_replay_cache_eviction_pressure --lib`,
   `cargo test secure::tests --lib`,
   `rustfmt --edition 2021 --check src/secure.rs`, and `git diff --check`.
+  ISSUE-245 is fixed, score 58: replicated-KV initial full sync now stages
+  snapshot pages until the terminal page is accepted, matching replacement
+  resync atomicity. A partial first page no longer mutates `ctx.slots` or emits
+  visible `KvEvent::Set`; stale terminal pages after a continuation request
+  leave the initial view empty instead of exposing an incomplete prefix.
+  Reviewer `Galileo the 2nd` accepted the issue as distinct from ISSUE-171,
+  ISSUE-237, ISSUE-131, ISSUE-143, ISSUE-083, ISSUE-038, and ISSUE-037.
+  Verification:
+  `RUST_LOG=error cargo test initial_full_sync_must_not_emit_partial_snapshot_before_terminal_page --lib`,
+  `RUST_LOG=error cargo test replicate_kv --lib`,
+  `RUST_LOG=error cargo test full_sync --lib`,
+  `RUST_LOG=error cargo test snapshot --lib`,
+  `rustfmt --edition 2021 --check src/service/replicate_kv_service/remote_storage.rs`,
+  and `git diff --check`.
   ISSUE-043 is fixed by bounding pending pubsub publish/feedback RPC request
   maps before responder fanout.
   ISSUE-054 is fixed by rejecting zero network tick intervals before endpoint
@@ -233,7 +248,8 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   ISSUE-110, ISSUE-111, ISSUE-143,
   ISSUE-166, ISSUE-171, ISSUE-175,
   ISSUE-186, ISSUE-205, ISSUE-206, ISSUE-231, ISSUE-232, ISSUE-233,
-  ISSUE-237, ISSUE-239, ISSUE-240, ISSUE-241, ISSUE-242, ISSUE-243.
+  ISSUE-237, ISSUE-239, ISSUE-240, ISSUE-241, ISSUE-242, ISSUE-243,
+  ISSUE-245.
 - Pattern: replicated-KV, alias, metrics, visualization, and pubsub flows accept
   stale, unsolicited, reordered, or mismatched responses or broadcasts because
   handlers do not verify request shape, bounds, version, continuation key,
@@ -301,6 +317,12 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   could grow `seen_chunks` without ever completing cleanup. Smallest fix:
   reject `chunks_count` values above `MAX_HEARTBEAT_CHUNKS_PER_SNAPSHOT` and
   clear that peer's pending snapshot on malformed chunk metadata.
+- ISSUE-245, score 58: fixed replicated-KV initial full-sync atomicity. Root
+  cause: `SyncFullState::default()` started with `staged_slots: None`, so the
+  first full sync wrote partial snapshot pages directly into visible remote
+  slots, while only replacement resyncs used atomic staging. Smallest fix:
+  initialize default full sync with an empty staging map and commit staged
+  slots only after the terminal snapshot page is accepted.
 - ISSUE-238, score 58: fixed by `d340a7b`. A peer-controlled
   `StreamConnectReq.defer_delivery` could reserve all destination service queue
   slots while waiting for a relay commit, temporarily denying legitimate stream
