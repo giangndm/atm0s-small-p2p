@@ -1592,6 +1592,45 @@ mod test {
     }
 
     #[tokio::test]
+    async fn pubsub_publisher_registration_overflow_must_not_return_silent_handle() {
+        let mut service = test_service();
+        let requester = service.requester();
+        let _publishers = fill_internal_control_queue(&requester).await;
+        let channel = PubsubChannelId(999_999);
+
+        assert_eq!(service.internal_rx.len(), PUBSUB_INTERNAL_CONTROL_QUEUE_SIZE);
+
+        let publisher = requester.publisher(channel).await;
+        assert_eq!(
+            service.internal_rx.len(),
+            PUBSUB_INTERNAL_CONTROL_QUEUE_SIZE,
+            "overflow publisher registration must not fit in the bounded control queue"
+        );
+
+        while let Ok(control) = service.internal_rx.try_recv() {
+            service.on_internal(control).await.expect("queued registrations should process");
+        }
+
+        let (sub_tx, mut sub_rx) = subscriber_event_channel();
+        service
+            .on_internal(InternalMsg::SubscriberCreated(subscriber_handle(SubscriberLocalId::rand()), channel, sub_tx))
+            .await
+            .expect("test subscriber should register on the overflow channel");
+
+        let result = publisher.requester().publish(b"silent-overflow-publish".to_vec()).await;
+
+        assert!(
+            result.is_err(),
+            "a publisher handle whose registration was dropped under control-queue pressure must not later report publish success"
+        );
+        assert_eq!(
+            sub_rx.try_recv(),
+            Err(tokio::sync::mpsc::error::TryRecvError::Empty),
+            "unregistered overflow publisher must not deliver data to subscribers"
+        );
+    }
+
+    #[tokio::test]
     async fn pending_publish_rpc_requests_must_be_bounded() {
         let mut service = test_service();
         let channel = PubsubChannelId(1);

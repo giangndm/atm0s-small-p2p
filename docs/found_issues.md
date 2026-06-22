@@ -11,9 +11,10 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 1
-- Current audit continuation: ISSUE-245 fixed replicated-KV initial full-sync
-  atomicity by staging snapshot pages until terminal completion.
+- Current consecutive no-new-issue cycles: 0
+- Current audit continuation: ISSUE-246 fixed pubsub publisher/subscriber
+  handles whose bounded registration control was not admitted under queue
+  pressure.
 
 ## Root Cause Summary
 
@@ -64,7 +65,7 @@ the source of truth for evidence and reviewer decisions.
   ISSUE-124, ISSUE-125, ISSUE-126,
   ISSUE-127, ISSUE-136, ISSUE-147, ISSUE-153, ISSUE-157,
   ISSUE-178, ISSUE-182, ISSUE-184, ISSUE-198, ISSUE-199, ISSUE-224,
-  ISSUE-229, ISSUE-230, ISSUE-235.
+  ISSUE-229, ISSUE-230, ISSUE-235, ISSUE-246.
 - Pattern: some paths use bounded channels and drop on `try_send`, some await
   bounded sends from critical tasks, and others use unbounded queues or produce
   duplicate internal control work. Under load this causes silent data loss,
@@ -127,7 +128,7 @@ the source of truth for evidence and reviewer decisions.
   ISSUE-148, ISSUE-150, ISSUE-151, ISSUE-161, ISSUE-165,
   ISSUE-167, ISSUE-168, ISSUE-170, ISSUE-179, ISSUE-183, ISSUE-185,
   ISSUE-187, ISSUE-188, ISSUE-193, ISSUE-195, ISSUE-208, ISSUE-222,
-  ISSUE-234, ISSUE-235.
+  ISSUE-234, ISSUE-235, ISSUE-246.
 - Pattern: requesters, services, peer aliases, channel state, and cached hints
   can outlive the owner they represent, while shutdown paths may panic, leak,
   emit false public events, or keep stale routes/cache entries. Remote
@@ -19676,6 +19677,68 @@ the source of truth for evidence and reviewer decisions.
     `RUST_LOG=error cargo test full_sync --lib`,
     `RUST_LOG=error cargo test snapshot --lib`,
     `rustfmt --edition 2021 --check src/service/replicate_kv_service/remote_storage.rs`,
+    and `git diff --check` passed.
+
+### ISSUE-246: Pubsub registration overflow can return a silent unregistered publisher handle
+
+- Status: fixed by marking publisher/subscriber requesters as unregistered
+  when their lifecycle registration control message is not admitted.
+- Category: correctness, API stability, high-load pubsub backpressure
+- Score: 54
+- Reviewers:
+  - Reviewer task accepted the candidate as distinct from ISSUE-058,
+    ISSUE-126, ISSUE-069, ISSUE-178, and ISSUE-234 based on the supplied
+    failing regression and current source.
+- Affected code:
+  - `src/service/pubsub_service/publisher.rs`: `Publisher::build` logged a
+    failed `PublisherCreated` admission but still returned a `Publisher` whose
+    requester retained the live service control sender.
+  - `src/service/pubsub_service/subscriber.rs`: `Subscriber::build` had the
+    same fire-and-forget registration shape for subscriber handles.
+  - `src/service/pubsub_service.rs`: `InternalMsg::Publish` correctly ignored
+    unknown publisher handles after ISSUE-069, but the public
+    `PublisherRequester::publish` call only reported whether the control
+    message was enqueued, not whether the handle had ever been registered.
+- Impact: under control-queue pressure, `PubsubServiceRequester::publisher`
+  could return a live-looking handle for a registration message that was
+  dropped. After the service drained older controls, calls through that handle
+  could enqueue `Publish` and return `Ok(())`; the service then discarded the
+  message because the handle id was unknown. Callers saw a successful publish
+  even though no local or remote subscriber could receive it.
+- Distinctness: ISSUE-058 covered handles returned after the whole pubsub
+  service/control receiver was gone and was mitigated by keeping local event
+  guards alive; it did not make queue-full registration failures visible to
+  later requester actions. ISSUE-126 bounded the internal control queue and
+  intentionally tracked remaining fire-and-forget handle behavior separately.
+  ISSUE-069 validates stale/dropped publisher requesters against live local
+  publishers after a successful registration. ISSUE-178 covers pubsub RPC
+  closed local event destinations. ISSUE-234 covers duplicate `P2pService`
+  creation, not pubsub publisher/subscriber registration admission.
+- Root cause: publisher/subscriber construction preserved an infallible public
+  API by logging registration admission errors, but the returned requesters had
+  no local liveness bit tying later actions to whether the initial lifecycle
+  control was actually accepted.
+- Minimal fix proposal: keep the current infallible constructor API, record a
+  `registered` flag on returned publisher/subscriber requesters, return
+  explicit errors from all requester actions when registration was not admitted,
+  and avoid sending teardown controls for handles that never entered service
+  state.
+- Fix: `Publisher::build` and `Subscriber::build` now store whether
+  `PublisherCreated`/`SubscriberCreated` was admitted. Their requesters reject
+  publish/feedback/RPC/answer calls when the handle was not registered, and
+  their `Drop` implementations skip destruction controls for never-registered
+  handles.
+- Evidence tests:
+  - Red evidence before fix:
+    `RUST_LOG=error cargo test pubsub_publisher_registration_overflow_must_not_return_silent_handle --lib -- --nocapture`
+    failed at `src/service/pubsub_service.rs:1622` with
+    `a publisher handle whose registration was dropped under control-queue pressure must not later report publish success`.
+  - Verification after fix:
+    `RUST_LOG=error cargo test pubsub_publisher_registration_overflow_must_not_return_silent_handle --lib -- --nocapture`
+    passed.
+  - Regression guards:
+    `RUST_LOG=error cargo test pubsub_internal_control --lib -- --nocapture`,
+    `rustfmt --edition 2021 --check src/service/pubsub_service.rs src/service/pubsub_service/publisher.rs src/service/pubsub_service/subscriber.rs`,
     and `git diff --check` passed.
 
 ### Cycle after ISSUE-245 no-new cycle 1: transport, stream, requester, and service admission review

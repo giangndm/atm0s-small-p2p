@@ -84,6 +84,7 @@ pub struct Subscriber {
     requester: SubscriberRequester,
     sub_rx: Receiver<SubscriberEvent>,
     _sub_tx_guard: Sender<SubscriberEvent>,
+    registered: bool,
 }
 
 impl Subscriber {
@@ -92,18 +93,28 @@ impl Subscriber {
         let local_id = SubscriberLocalId::rand();
         let handle_id = SubscriberHandleId::new(local_id);
         log::info!("[Subscriber {channel_id}/{local_id}] created");
-        if let Err(err) = try_send_internal_control(&control_tx, InternalMsg::SubscriberCreated(handle_id, channel_id, sub_tx.clone()), "subscriber registration") {
-            log::debug!("[Subscriber {channel_id}/{local_id}] registration dropped: {err}");
-        }
+        let registered = match try_send_internal_control(&control_tx, InternalMsg::SubscriberCreated(handle_id, channel_id, sub_tx.clone()), "subscriber registration") {
+            Ok(()) => true,
+            Err(err) => {
+                log::debug!("[Subscriber {channel_id}/{local_id}] registration dropped: {err}");
+                false
+            }
+        };
 
         Self {
             local_id,
             handle_id,
             channel_id,
             control_tx: control_tx.clone(),
-            requester: SubscriberRequester { handle_id, channel_id, control_tx },
+            requester: SubscriberRequester {
+                handle_id,
+                channel_id,
+                control_tx,
+                registered,
+            },
             sub_rx,
             _sub_tx_guard: sub_tx,
+            registered,
         }
     }
 
@@ -159,6 +170,9 @@ impl Subscriber {
 impl Drop for Subscriber {
     fn drop(&mut self) {
         log::info!("[Subscriber {}/{}] destroy", self.channel_id, self.local_id);
+        if !self.registered {
+            return;
+        }
         if let Err(err) = try_send_internal_control(&self.control_tx, InternalMsg::SubscriberDestroyed(self.handle_id, self.channel_id), "subscriber destruction") {
             log::debug!("[Subscriber {}/{}] destruction dropped: {err}", self.channel_id, self.local_id);
         }
@@ -170,10 +184,20 @@ pub struct SubscriberRequester {
     handle_id: SubscriberHandleId,
     channel_id: PubsubChannelId,
     control_tx: Sender<InternalMsg>,
+    registered: bool,
 }
 
 impl SubscriberRequester {
+    fn ensure_registered(&self, context: &str) -> anyhow::Result<()> {
+        if self.registered {
+            Ok(())
+        } else {
+            Err(anyhow!("{context}: subscriber registration was not admitted"))
+        }
+    }
+
     pub async fn feedback(&self, data: Vec<u8>) -> anyhow::Result<()> {
+        self.ensure_registered("subscriber feedback")?;
         try_send_internal_control(&self.control_tx, InternalMsg::Feedback(self.handle_id, self.channel_id, data), "subscriber feedback")?;
         Ok(())
     }
@@ -184,6 +208,7 @@ impl SubscriberRequester {
     }
 
     pub async fn feedback_rpc(&self, method: &str, data: Vec<u8>, timeout: Duration) -> anyhow::Result<Vec<u8>> {
+        self.ensure_registered("subscriber feedback_rpc")?;
         let (tx, rx) = oneshot::channel::<Result<Vec<u8>, PubsubRpcError>>();
         try_send_internal_control(
             &self.control_tx,
@@ -201,6 +226,7 @@ impl SubscriberRequester {
     }
 
     pub async fn answer_publish_rpc(&self, rpc: RpcId, source: PeerSrc, data: Vec<u8>) -> anyhow::Result<()> {
+        self.ensure_registered("subscriber answer_publish_rpc")?;
         try_send_internal_control(&self.control_tx, InternalMsg::PublishRpcAnswer(self.handle_id, rpc, source, data), "subscriber answer_publish_rpc")?;
         Ok(())
     }

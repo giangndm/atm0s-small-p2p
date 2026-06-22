@@ -84,6 +84,7 @@ pub struct Publisher {
     requester: PublisherRequester,
     pub_rx: Receiver<PublisherEvent>,
     _pub_tx_guard: Sender<PublisherEvent>,
+    registered: bool,
 }
 
 impl Publisher {
@@ -92,18 +93,28 @@ impl Publisher {
         let local_id = PublisherLocalId::rand();
         let handle_id = PublisherHandleId::new(local_id);
         log::info!("[Publisher {channel_id}/{local_id}] created");
-        if let Err(err) = try_send_internal_control(&control_tx, InternalMsg::PublisherCreated(handle_id, channel_id, pub_tx.clone()), "publisher registration") {
-            log::debug!("[Publisher {channel_id}/{local_id}] registration dropped: {err}");
-        }
+        let registered = match try_send_internal_control(&control_tx, InternalMsg::PublisherCreated(handle_id, channel_id, pub_tx.clone()), "publisher registration") {
+            Ok(()) => true,
+            Err(err) => {
+                log::debug!("[Publisher {channel_id}/{local_id}] registration dropped: {err}");
+                false
+            }
+        };
 
         Self {
             local_id,
             handle_id,
             channel_id,
             control_tx: control_tx.clone(),
-            requester: PublisherRequester { handle_id, channel_id, control_tx },
+            requester: PublisherRequester {
+                handle_id,
+                channel_id,
+                control_tx,
+                registered,
+            },
             pub_rx,
             _pub_tx_guard: pub_tx,
+            registered,
         }
     }
 
@@ -159,6 +170,9 @@ impl Publisher {
 impl Drop for Publisher {
     fn drop(&mut self) {
         log::info!("[Publisher {}/{}] destroy", self.channel_id, self.local_id);
+        if !self.registered {
+            return;
+        }
         if let Err(err) = try_send_internal_control(&self.control_tx, InternalMsg::PublisherDestroyed(self.handle_id, self.channel_id), "publisher destruction") {
             log::debug!("[Publisher {}/{}] destruction dropped: {err}", self.channel_id, self.local_id);
         }
@@ -170,10 +184,20 @@ pub struct PublisherRequester {
     handle_id: PublisherHandleId,
     channel_id: PubsubChannelId,
     control_tx: Sender<InternalMsg>,
+    registered: bool,
 }
 
 impl PublisherRequester {
+    fn ensure_registered(&self, context: &str) -> anyhow::Result<()> {
+        if self.registered {
+            Ok(())
+        } else {
+            Err(anyhow!("{context}: publisher registration was not admitted"))
+        }
+    }
+
     pub async fn publish(&self, data: Vec<u8>) -> anyhow::Result<()> {
+        self.ensure_registered("publisher publish")?;
         try_send_internal_control(&self.control_tx, InternalMsg::Publish(self.handle_id, self.channel_id, data), "publisher publish")?;
         Ok(())
     }
@@ -184,6 +208,7 @@ impl PublisherRequester {
     }
 
     pub async fn publish_rpc(&self, method: &str, data: Vec<u8>, timeout: Duration) -> anyhow::Result<Vec<u8>> {
+        self.ensure_registered("publisher publish_rpc")?;
         let (tx, rx) = oneshot::channel::<Result<Vec<u8>, PubsubRpcError>>();
         try_send_internal_control(
             &self.control_tx,
@@ -201,6 +226,7 @@ impl PublisherRequester {
     }
 
     pub async fn answer_feedback_rpc(&self, rpc: RpcId, source: PeerSrc, data: Vec<u8>) -> anyhow::Result<()> {
+        self.ensure_registered("publisher answer_feedback_rpc")?;
         try_send_internal_control(&self.control_tx, InternalMsg::FeedbackRpcAnswer(self.handle_id, rpc, source, data), "publisher answer_feedback_rpc")?;
         Ok(())
     }

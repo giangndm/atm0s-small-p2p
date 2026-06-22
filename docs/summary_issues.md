@@ -5,13 +5,13 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Audit Status
 
-- Accepted issues: 245
+- Accepted issues: 246
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 1
-- Current audit continuation: ISSUE-245 fixed replicated-KV initial full-sync
-  atomicity. Initial snapshot pages are now staged until the terminal page is
-  accepted, so partial snapshots from stalled or malformed peers do not mutate
-  visible slots or emit `KvEvent`s.
+- Current consecutive no-new-issue cycles: 0
+- Current audit continuation: ISSUE-246 fixed pubsub publisher/subscriber
+  handles whose bounded registration control was not admitted under queue
+  pressure. Requester actions now fail explicitly instead of reporting
+  success for handles that never entered service state.
 - Fix phase status: ISSUE-001, ISSUE-003, ISSUE-004, ISSUE-005, ISSUE-006, ISSUE-007,
   ISSUE-002, ISSUE-008, ISSUE-009, ISSUE-010, ISSUE-011, ISSUE-012, ISSUE-013, ISSUE-014, ISSUE-015, ISSUE-017, ISSUE-020, ISSUE-021, ISSUE-023, ISSUE-024, ISSUE-025, ISSUE-027, ISSUE-033, ISSUE-034, ISSUE-039, ISSUE-045, ISSUE-046, ISSUE-047, ISSUE-048, ISSUE-055, ISSUE-059, ISSUE-103, ISSUE-110, ISSUE-111, ISSUE-115, ISSUE-116, ISSUE-117, ISSUE-118, ISSUE-119, ISSUE-120, ISSUE-122, ISSUE-123,
   ISSUE-124, ISSUE-125, ISSUE-126, ISSUE-127, ISSUE-128, ISSUE-129, ISSUE-130,
@@ -207,6 +207,15 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   ISSUE-220, ISSUE-224, ISSUE-225, ISSUE-229, ISSUE-230, ISSUE-234,
   ISSUE-235, ISSUE-238, RC-3, RC-4, and RC-6; no distinct issue survived
   duplicate mapping.
+  ISSUE-246 is fixed, score 54: pubsub publisher/subscriber constructors now
+  remember whether their bounded lifecycle registration control was admitted.
+  Requester actions from never-registered handles fail immediately, and drops
+  do not enqueue destruction controls for handles that never entered service
+  state. Verification:
+  `RUST_LOG=error cargo test pubsub_publisher_registration_overflow_must_not_return_silent_handle --lib -- --nocapture`,
+  `RUST_LOG=error cargo test pubsub_internal_control --lib -- --nocapture`,
+  `rustfmt --edition 2021 --check src/service/pubsub_service.rs src/service/pubsub_service/publisher.rs src/service/pubsub_service/subscriber.rs`,
+  and `git diff --check`.
   ISSUE-043 is fixed by bounding pending pubsub publish/feedback RPC request
   maps before responder fanout.
   ISSUE-054 is fixed by rejecting zero network tick intervals before endpoint
@@ -560,7 +569,7 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   ISSUE-178, ISSUE-182, ISSUE-184, ISSUE-198, ISSUE-199,
   ISSUE-200, ISSUE-201, ISSUE-202, ISSUE-203, ISSUE-204, ISSUE-209,
   ISSUE-223, ISSUE-224, ISSUE-225, ISSUE-227, ISSUE-229, ISSUE-230,
-  ISSUE-235.
+  ISSUE-235, ISSUE-246.
 - ISSUE-235, score 60: fixed by `5b0fc47`. `AliasServiceRequester::register`
   now returns `Result<AliasGuard>` and creates the ownership guard only after
   bounded alias-control admission succeeds. Verification:
@@ -799,7 +808,7 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   ISSUE-148, ISSUE-150, ISSUE-151, ISSUE-161, ISSUE-165,
   ISSUE-167, ISSUE-168, ISSUE-170, ISSUE-179, ISSUE-183, ISSUE-185,
   ISSUE-187, ISSUE-188, ISSUE-193, ISSUE-195, ISSUE-208, ISSUE-222,
-  ISSUE-234, ISSUE-235.
+  ISSUE-234, ISSUE-235, ISSUE-246.
 - Pattern: requesters, services, peer aliases, channel state, and cached hints
   can outlive the owner they represent; shutdown paths can panic, leak, emit
   false public events, keep stale routes/cache entries, announce shutdown while
@@ -820,6 +829,13 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   of the stale/false-success handle class. Verification:
   `cargo test alias_register_when_control_queue_full_must_not_return_live_guard -- --nocapture`
   and `cargo test alias -- --nocapture`.
+- ISSUE-246, score 54: fixed pubsub registration overflow false success.
+  Root cause: publisher/subscriber construction logged bounded queue-full
+  registration failures but returned requesters with live control senders, so
+  later actions could enqueue and return success even though service state had
+  never registered the handle. Smallest fix: store a registration-admitted bit
+  in returned requesters, fail later actions for never-registered handles, and
+  skip teardown controls for handles that never entered service state.
   Connection teardown can also reset metric names through the wrong metric kind
   or reset monotonic counters to zero.
 - Minimal fix proposal: add generation or liveness tokens to cloned requesters
