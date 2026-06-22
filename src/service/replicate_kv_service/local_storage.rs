@@ -20,6 +20,7 @@ where
     V: Eq + Clone,
 {
     pub fn new(max_changeds: usize, compose_max_pkts: usize) -> Self {
+        let compose_max_pkts = compose_max_pkts.max(1);
         LocalStore {
             slots: BTreeMap::new(),
             changeds: BTreeMap::new(),
@@ -304,10 +305,17 @@ mod tests {
 
         store.on_rpc_req(2, RpcReq::FetchChanged { from: Version(1), count: 1 });
 
-        assert_ne!(
+        assert_eq!(
             store.pop_out(),
-            Some(Event::NetEvent(NetEvent::Unicast(2, RpcEvent::RpcRes(RpcRes::FetchChanged(Ok(vec![])))))),
-            "FetchChanged must not report empty success when the requested change exists but compose_max_pkts is zero"
+            Some(Event::NetEvent(NetEvent::Unicast(
+                2,
+                RpcEvent::RpcRes(RpcRes::FetchChanged(Ok(vec![Changed {
+                    key: 1,
+                    version: Version(1),
+                    action: Action::Set(1)
+                }])))
+            ))),
+            "zero compose budget is normalized to a one-change page so FetchChanged can make progress"
         );
     }
 
@@ -406,9 +414,42 @@ mod tests {
 
         let snapshot = store.snapshot(None, None, None).expect("snapshot should exist");
 
-        assert!(
-            !snapshot.slots.is_empty() || snapshot.next_key.is_none(),
-            "snapshot paging must not return an empty page with next_key because sync cannot advance"
+        assert_eq!(
+            snapshot,
+            SnapshotData {
+                slots: vec![(1, Slot::new(1, Version(1)))],
+                next_key: None,
+                biggest_key: 1
+            },
+            "zero compose budget is normalized to a one-slot page so snapshot sync can make progress"
+        );
+    }
+
+    #[test]
+    fn multi_slot_snapshot_with_zero_compose_budget_must_advance_by_one_slot() {
+        let mut store: LocalStore<u16, u16, u16> = LocalStore::new(10, 0);
+        store.set(1, 1);
+        store.set(2, 2);
+        store.set(3, 3);
+
+        let first = store.snapshot(None, None, None).expect("first snapshot page should exist");
+        assert_eq!(
+            first,
+            SnapshotData {
+                slots: vec![(1, Slot::new(1, Version(1)))],
+                next_key: Some(2),
+                biggest_key: 3
+            }
+        );
+
+        let second = store.snapshot(first.next_key, Some(first.biggest_key), Some(Version(3))).expect("second snapshot page should exist");
+        assert_eq!(
+            second,
+            SnapshotData {
+                slots: vec![(2, Slot::new(2, Version(2)))],
+                next_key: Some(3),
+                biggest_key: 3
+            }
         );
     }
 

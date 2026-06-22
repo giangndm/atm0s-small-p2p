@@ -960,6 +960,9 @@ the source of truth for evidence and reviewer decisions.
 - Category: correctness, bad-network stability
 - Score: 61/100
 - Reviewer: `Sartre`, confirmed.
+- Fix status: fixed. `LocalStore::new` now clamps `compose_max_pkts` to at
+  least `1`, so zero public compose budgets still produce one-item snapshot and
+  changed pages instead of no-progress pages.
 - Affected code:
   - `src/service/replicate_kv_service.rs`: `ReplicatedKvStore::new` accepts
     `max_compose_pkts == 0`.
@@ -979,6 +982,17 @@ the source of truth for evidence and reviewer decisions.
   - Failure summary: `LocalStore::snapshot` with `compose_max_pkts = 0`
     returns `slots: []` and `next_key: Some(...)`, proving snapshot paging can
     request continuation without advancing.
+- Root cause: `LocalStore` stored a zero compose budget directly, and snapshot
+  paging checked the budget before pushing any slot.
+- Fix: normalize `compose_max_pkts` to `max(1)` in `LocalStore::new`. Snapshot
+  sync and `FetchChanged { count: 1 }` now make one-item progress under a zero
+  configured budget, while `FetchChanged { count: 0 }` remains rejected.
+- Fixed verification:
+  `cargo test snapshot_with_zero_compose_budget_must_make_progress -- --nocapture`,
+  `cargo test multi_slot_snapshot_with_zero_compose_budget_must_advance_by_one_slot -- --nocapture`,
+  `cargo test zero_changed_batch_size_must_not_return_empty_success -- --nocapture`,
+  and `cargo test service::replicate_kv_service::local_storage::tests -- --nocapture`
+  pass.
 
 ### ISSUE-033: Router route-sync metric arithmetic overflows
 

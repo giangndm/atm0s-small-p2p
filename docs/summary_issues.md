@@ -215,6 +215,12 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   when no successor version exists. Verification:
   `cargo test local_set_at_max_version_must_not_overflow -- --nocapture` and
   `cargo test local_del_at_max_version_must_not_overflow_or_remove_slot -- --nocapture`.
+- ISSUE-032: fixed by normalizing `LocalStore::new(..., compose_max_pkts)` to a
+  minimum page size of one. Zero public compose budgets now make one-item
+  progress for snapshots and `FetchChanged { count: 1 }`, while requested count
+  zero remains rejected. Verification:
+  `cargo test snapshot_with_zero_compose_budget_must_make_progress -- --nocapture`
+  and `cargo test service::replicate_kv_service::local_storage::tests -- --nocapture`.
 - ISSUE-117: fixed by bounding inbound stream-connect setup at both transport
   and application layers. QUIC now admits at most one main control stream plus
   16 application bidirectional streams per peer direction, while
