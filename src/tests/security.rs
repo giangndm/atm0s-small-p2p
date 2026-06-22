@@ -8,7 +8,7 @@ use crate::{
     CERT_DOMAIN_NAME, ConnectionId, ControlCmd, MainEvent, NetworkAddress, P2pNetwork, P2pNetworkConfig, P2pNetworkEvent, P2pServiceEvent, PeerAddress, PeerConnectionMetric, PeerId, PeerMainData,
     SharedKeyHandshake, SharedRouterTable,
     discovery::PeerDiscovery,
-    msg::{BroadcastMsgId, P2pServiceId, PeerMessage},
+    msg::{BroadcastMsgId, P2pServiceId, PeerMessage, UnicastAckId},
     quic::make_server_endpoint,
     router::RouteAction,
     secure::HandshakeProtocol,
@@ -586,6 +586,57 @@ async fn peer_stopped_must_not_wait_behind_full_local_service_queue() {
     .await;
 
     assert!(disconnected.is_ok(), "PeerStopped must not wait behind a full local service queue on the same connection");
+}
+
+#[tokio::test]
+async fn peer_stopped_must_not_wait_behind_full_acked_unicast_queue() {
+    let (mut node1, addr1) = create_node(true, 1, vec![]).await;
+    let (mut node2, addr2) = create_node(false, 2, vec![addr1.clone()]).await;
+    let _service2 = node2.create_service(0.into());
+
+    let conn_to_node1 = tokio::time::timeout(Duration::from_secs(3), async {
+        loop {
+            tokio::select! {
+                _ = node1.recv() => {}
+                event = node2.recv() => {
+                    if let Ok(P2pNetworkEvent::PeerConnected(conn, peer)) = event {
+                        if peer == addr1.peer_id() {
+                            return conn;
+                        }
+                    }
+                }
+            }
+        }
+    })
+    .await
+    .expect("node2 should connect to node1");
+
+    let conn = node1.ctx.conns().into_iter().next().expect("node1 should have a connection to node2");
+    for idx in 0..10 {
+        conn.send(PeerMessage::Unicast(addr1.peer_id(), addr2.peer_id(), 0.into(), vec![idx]))
+            .await
+            .expect("unicast should enqueue to peer connection");
+    }
+    tokio::time::sleep(Duration::from_millis(100)).await;
+
+    conn.send(PeerMessage::UnicastWithAck(UnicastAckId::rand(), addr1.peer_id(), addr2.peer_id(), 0.into(), b"acked".to_vec()))
+        .await
+        .expect("acked unicast should enqueue to peer connection");
+    conn.send(PeerMessage::PeerStopped(addr1.peer_id()))
+        .await
+        .expect("stop notification should enqueue behind the service-backpressured acked unicast");
+
+    let disconnected = tokio::time::timeout(Duration::from_millis(200), async {
+        loop {
+            match node2.recv().await.expect("node2 should keep running") {
+                P2pNetworkEvent::PeerDisconnected(conn, peer) if conn == conn_to_node1 && peer == addr1.peer_id() => break,
+                _ => {}
+            }
+        }
+    })
+    .await;
+
+    assert!(disconnected.is_ok(), "PeerStopped must not wait behind a service-backpressured acked unicast on the same connection");
 }
 
 #[tokio::test]
