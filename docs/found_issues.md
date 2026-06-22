@@ -4186,6 +4186,9 @@ the source of truth for evidence and reviewer decisions.
   admission fails, while `register`, `shutdown`, and `AliasGuard::drop` use
   best-effort `try_send` with debug logging to preserve their current
   non-`Result` APIs.
+- Fix status: fixed by bounding the alias control queue at
+  `ALIAS_CONTROL_QUEUE_SIZE` and using `try_send` admission for requester and
+  guard control messages.
 - Caveat: preserving `register -> AliasGuard` means overloaded registration can
   return a dead-on-arrival guard when the control queue is full or closed. The
   API-level correction remains a separate breaking-change follow-up.
