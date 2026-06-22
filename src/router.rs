@@ -72,14 +72,33 @@ impl RouterTable {
     }
 
     fn create_sync(&self, dest: &PeerId) -> RouterTableSync {
-        RouterTableSync(
-            self.peers
-                .iter()
-                .map(|(addr, history)| (*addr, history.best_metric().expect("should have best")))
-                .filter(|(addr, metric)| !dest.eq(addr) && !self.peer_id.eq(addr) && metric.relay_hops <= MAX_HOPS && !self.route_uses_peer_as_next_hop(addr, dest))
-                .take(MAX_SYNC_ENTRIES)
-                .collect::<Vec<_>>(),
-        )
+        let mut entries = Vec::with_capacity(MAX_SYNC_ENTRIES);
+
+        for (addr, history) in &self.peers {
+            let metric = history.best_metric().expect("should have best");
+            if metric.relay_hops == 0 && self.should_advertise_route(dest, addr, metric) {
+                entries.push((*addr, metric));
+                if entries.len() == MAX_SYNC_ENTRIES {
+                    return RouterTableSync(entries);
+                }
+            }
+        }
+
+        for (addr, history) in &self.peers {
+            let metric = history.best_metric().expect("should have best");
+            if metric.relay_hops != 0 && self.should_advertise_route(dest, addr, metric) {
+                entries.push((*addr, metric));
+                if entries.len() == MAX_SYNC_ENTRIES {
+                    break;
+                }
+            }
+        }
+
+        RouterTableSync(entries)
+    }
+
+    fn should_advertise_route(&self, dest: &PeerId, route: &PeerId, metric: PathMetric) -> bool {
+        !dest.eq(route) && !self.peer_id.eq(route) && metric.relay_hops <= MAX_HOPS && !self.route_uses_peer_as_next_hop(route, dest)
     }
 
     fn route_uses_peer_as_next_hop(&self, route: &PeerId, peer: &PeerId) -> bool {
@@ -398,9 +417,9 @@ impl SharedRouterTable {
 
 #[cfg(test)]
 mod tests {
-    use crate::{router::RouterTableSync, ConnectionId, PeerId};
+    use crate::{ConnectionId, PeerId, router::RouterTableSync};
 
-    use super::{RouteAction, RouterTable, MAX_HOPS, MAX_SYNC_ENTRIES};
+    use super::{MAX_HOPS, MAX_SYNC_ENTRIES, RouteAction, RouterTable};
 
     #[test_log::test]
     fn route_local() {
@@ -725,6 +744,27 @@ mod tests {
         let sync = table.create_sync(&PeerId(2_000));
 
         assert_eq!(sync.0.len(), MAX_SYNC_ENTRIES, "outbound route syncs must cap the number of advertised entries");
+    }
+
+    #[test_log::test]
+    fn create_sync_must_prioritize_direct_routes_under_cap() {
+        let mut table = RouterTable::new(PeerId(0));
+        let relay = PeerId(1);
+        let relay_conn = ConnectionId(1);
+        let direct_peer = PeerId(50_000);
+        let direct_conn = ConnectionId(2);
+
+        table.set_direct(relay_conn, relay, 10);
+        let learned_routes = (10_000..10_000 + MAX_SYNC_ENTRIES as u64).map(|id| (PeerId(id), (0, 1).into())).collect::<Vec<_>>();
+        table.apply_sync(relay_conn, RouterTableSync(learned_routes));
+        table.set_direct(direct_conn, direct_peer, 5);
+
+        let sync = table.create_sync(&PeerId(99_999));
+
+        assert!(
+            sync.0.iter().any(|(peer, metric)| *peer == direct_peer && metric.relay_hops == 0),
+            "direct routes must not be starved by lower-id learned routes under the outbound route sync cap"
+        );
     }
 
     #[test_log::test]

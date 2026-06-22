@@ -11,9 +11,9 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 1
+- Current consecutive no-new-issue cycles: 0
 - Stop condition requested by user: continue until 5 consecutive cycles find no
-  new accepted issue. Not satisfied after ISSUE-213; continue auditing.
+  new accepted issue. Not satisfied after ISSUE-214; continue auditing.
 
 ## Root Cause Summary
 
@@ -17862,3 +17862,39 @@ the source of truth for evidence and reviewer decisions.
 - Root-cause summary impact: no new root cause; these observations remain
   covered by existing high-load churn and teardown classifications unless a
   focused failing invariant is produced.
+
+### ISSUE-214: Direct routes can be starved from capped router syncs
+
+- Score: 58
+- Category: correctness / routing convergence stability
+- Status: fixed by ISSUE-214 implementation commit.
+- Reviewer: main-agent RED review; forked subagent tool was unavailable in
+  this turn, so the issue is backed by focused failing test evidence.
+- Affected code:
+  - `src/router.rs`
+- Impact: when a router has more than `MAX_SYNC_ENTRIES` eligible routes,
+  `RouterTable::create_sync` emits entries in peer-id order and applies the
+  cap directly. A large set of learned low-peer-id routes can consume the cap
+  before directly connected high-peer-id neighbours are advertised, so
+  downstream peers may keep relayed or missing paths instead of converging on
+  direct routes under high-load or noisy routing tables.
+- Distinctness: ISSUE-003 covers active path flapping once routes are known.
+  ISSUE-010 covers bounding route sync size. ISSUE-212 and ISSUE-213 cover
+  discovery advertise cap starvation, not router route-sync prioritization.
+- Failing evidence:
+  - `RUST_LOG=error cargo test create_sync_must_prioritize_direct_routes_under_cap --lib -- --nocapture`
+  - Failure before fix:
+    - `direct routes must not be starved by lower-id learned routes under the outbound route sync cap`
+- Root cause: `RouterTable::create_sync` iterates the `peers` `BTreeMap` in
+  peer-id order, maps each route to its best metric, filters eligible entries,
+  and then applies `take(MAX_SYNC_ENTRIES)`. It does not prioritize direct
+  `relay_hops == 0` routes before learned relay paths.
+- Minimal fix proposal: preserve all existing route advertisement filters and
+  the max-entry cap, but build outbound route syncs in two passes: eligible
+  direct routes first, then eligible learned routes until the cap is reached.
+- Fix status: fixed by making `RouterTable::create_sync` emit eligible direct
+  routes before learned routes, with the existing destination/local/max-hop and
+  next-hop loop filters centralized in a helper.
+- Verification:
+  - `RUST_LOG=error cargo test create_sync_must_prioritize_direct_routes_under_cap --lib -- --nocapture`
+  - `RUST_LOG=error cargo test router::tests:: --lib -- --nocapture`

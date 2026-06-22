@@ -5,10 +5,10 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Audit Status
 
-- Accepted issues: 213
+- Accepted issues: 214
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 1
-- Stop condition: not satisfied; continue auditing after ISSUE-213 no-new cycle 1.
+- Current consecutive no-new-issue cycles: 0
+- Stop condition: not satisfied; continue auditing after ISSUE-214 fix.
 - Fix phase status: ISSUE-001, ISSUE-003, ISSUE-004, ISSUE-005, ISSUE-006, ISSUE-007,
   ISSUE-002, ISSUE-008, ISSUE-009, ISSUE-010, ISSUE-011, ISSUE-012, ISSUE-013, ISSUE-014, ISSUE-015, ISSUE-017, ISSUE-020, ISSUE-021, ISSUE-023, ISSUE-024, ISSUE-025, ISSUE-027, ISSUE-033, ISSUE-034, ISSUE-039, ISSUE-045, ISSUE-046, ISSUE-047, ISSUE-048, ISSUE-055, ISSUE-059, ISSUE-103, ISSUE-110, ISSUE-111, ISSUE-115, ISSUE-116, ISSUE-117, ISSUE-118, ISSUE-119, ISSUE-120, ISSUE-122, ISSUE-123,
   ISSUE-124, ISSUE-125, ISSUE-126, ISSUE-127, ISSUE-128, ISSUE-129, ISSUE-130,
@@ -29,6 +29,8 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   applying the outbound sync cap.
   Post-ISSUE-213 high-load steady and sanitized-churn fuzz passed as no-new
   cycle 1.
+  ISSUE-214 is fixed by prioritizing direct routes before learned routes in
+  capped outbound router syncs.
   ISSUE-043 is fixed by bounding pending pubsub publish/feedback RPC request
   maps before responder fanout.
   ISSUE-054 is fixed by rejecting zero network tick intervals before endpoint
@@ -264,6 +266,14 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   seed priority, destination/local-peer/dialability filters, and the existing
   local-before-remotes ordering. Implemented by per-sync seed peer-id dedup
   after the existing filters and before the cap.
+- ISSUE-214: fixed direct-route cap starvation issue. `RouterTable::create_sync`
+  previously emitted eligible routes in peer-id order, so a large learned-route
+  table could consume `MAX_SYNC_ENTRIES` before high-peer-id direct neighbours
+  were advertised. Evidence:
+  `cargo test create_sync_must_prioritize_direct_routes_under_cap --lib -- --nocapture`
+  fails with the direct route absent. Minimal fix proposal: keep existing route
+  filters and cap, but emit direct `relay_hops == 0` routes before learned
+  relay paths.
 - Minimal fix proposal: sanitize before insertion: reject local/self candidates
   and over-hop routes, pin authenticated direct paths for their peer ids, use
   checked metric math, ignore stale discovery timestamps, reject duplicate
