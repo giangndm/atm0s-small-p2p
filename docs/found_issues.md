@@ -430,6 +430,8 @@ the source of truth for evidence and reviewer decisions.
   before per-entry allocation or iteration, outbound route/discovery syncs are
   truncated with `take(1024)`, and discovery debug logging records only the
   entry count instead of the full peer-supplied payload.
+- Fix status: fixed by enforcing a 1,024-entry cap for inbound and outbound
+  route/discovery sync payloads.
 - Category: high-load stability, resource exhaustion
 - Score: 84/100
 - Reviewer: `Bernoulli`, confirmed.
