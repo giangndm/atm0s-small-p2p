@@ -18003,7 +18003,7 @@ the source of truth for evidence and reviewer decisions.
 
 - Score: 72
 - Category: correctness / stream relay stability under bad network
-- Status: fixed by pending commit.
+- Status: fixed by commit `07546c0`.
 - Reviewers:
   - `Bernoulli` (forked RED-team reviewer), accepted.
   - `Fermat` (forked candidate reviewer), accepted.
