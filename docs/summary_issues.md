@@ -5,12 +5,11 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Audit Status
 
-- Accepted issues: 231
+- Accepted issues: 232
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 1
-- Current audit continuation: post-ISSUE-231 no-new cycle 1 reviewed
-  routing/discovery/path stability and stream/pipe lifecycle integration
-  without accepting a distinct new issue.
+- Current consecutive no-new-issue cycles: 0
+- Current audit continuation: ISSUE-232 was accepted and fixed; the next review
+  starts a fresh post-ISSUE-232 cycle.
 - Fix phase status: ISSUE-001, ISSUE-003, ISSUE-004, ISSUE-005, ISSUE-006, ISSUE-007,
   ISSUE-002, ISSUE-008, ISSUE-009, ISSUE-010, ISSUE-011, ISSUE-012, ISSUE-013, ISSUE-014, ISSUE-015, ISSUE-017, ISSUE-020, ISSUE-021, ISSUE-023, ISSUE-024, ISSUE-025, ISSUE-027, ISSUE-033, ISSUE-034, ISSUE-039, ISSUE-045, ISSUE-046, ISSUE-047, ISSUE-048, ISSUE-055, ISSUE-059, ISSUE-103, ISSUE-110, ISSUE-111, ISSUE-115, ISSUE-116, ISSUE-117, ISSUE-118, ISSUE-119, ISSUE-120, ISSUE-122, ISSUE-123,
   ISSUE-124, ISSUE-125, ISSUE-126, ISSUE-127, ISSUE-128, ISSUE-129, ISSUE-130,
@@ -81,6 +80,9 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   ISSUE-231 is fixed by `ed8f4fb`: absent-channel pubsub leaves now write
   bounded remote-role tombstones so delayed older joins cannot resurrect remote
   publisher/subscriber membership.
+  ISSUE-232 is fixed by `8339384`: metrics clears pending responder and
+  scan-response state on `PeerDisconnected`, so delayed stale `Info` cannot
+  publish metrics for a disconnected peer.
   ISSUE-043 is fixed by bounding pending pubsub publish/feedback RPC request
   maps before responder fanout.
   ISSUE-054 is fixed by rejecting zero network tick intervals before endpoint
@@ -131,7 +133,7 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   ISSUE-059, ISSUE-071, ISSUE-081 through ISSUE-089, ISSUE-095, ISSUE-099,
   ISSUE-110, ISSUE-111, ISSUE-143,
   ISSUE-166, ISSUE-171, ISSUE-175,
-  ISSUE-186, ISSUE-205, ISSUE-206, ISSUE-231.
+  ISSUE-186, ISSUE-205, ISSUE-206, ISSUE-231, ISSUE-232.
 - Pattern: replicated-KV, alias, metrics, visualization, and pubsub flows accept
   stale, unsolicited, reordered, or mismatched responses or broadcasts because
   handlers do not verify request shape, bounds, version, continuation key,
@@ -149,6 +151,15 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   `cargo test unknown_subscriber_leave_must_tombstone_stale_join -- --nocapture`,
   `cargo test reclaimed_remote -- --nocapture`, and
   `cargo test stale_pubsub_leave_must_not_remove_membership_after_newer_heartbeat -- --nocapture`.
+- ISSUE-232, score 58: fixed by `8339384`. Metrics now clears pending
+  responder and scan-response state when a peer disconnects, so a delayed
+  stale `Info` cannot satisfy an earlier request and publish disconnected-peer
+  metrics. Verification:
+  `cargo test metrics_stale_info_after_peer_disconnected_must_be_ignored -- --nocapture`,
+  `cargo test metrics_info_must_not_be_accepted_without_scan_request -- --nocapture`,
+  `cargo test metrics_info_batches_must_be_bounded -- --nocapture`,
+  `cargo test visualization_stale_info_after_peer_disconnected_must_be_ignored -- --nocapture`,
+  and `cargo test metrics -- --nocapture`.
 - Cycle after ISSUE-231 no-new cycle 1 reviewed routing/discovery/path
   stability and stream/pipe lifecycle integration with forked reviewer
   `Carver`. Focused route, discovery, stream-relay, peer-stopped, and pubsub

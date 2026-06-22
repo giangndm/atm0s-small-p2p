@@ -11,10 +11,9 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 1
-- Current audit continuation: post-ISSUE-231 no-new cycle 1 reviewed
-  routing/discovery/path stability and stream/pipe lifecycle integration
-  without accepting a distinct new issue.
+- Current consecutive no-new-issue cycles: 0
+- Current audit continuation: ISSUE-232 was accepted and fixed; the next review
+  starts a fresh post-ISSUE-232 cycle.
 
 ## Root Cause Summary
 
@@ -45,7 +44,7 @@ the source of truth for evidence and reviewer decisions.
   ISSUE-059, ISSUE-071, ISSUE-081 through ISSUE-089, ISSUE-095, ISSUE-099,
   ISSUE-110, ISSUE-111, ISSUE-143, ISSUE-152,
   ISSUE-154, ISSUE-155, ISSUE-158, ISSUE-166, ISSUE-171, ISSUE-175,
-  ISSUE-186, ISSUE-231.
+  ISSUE-186, ISSUE-231, ISSUE-232.
 - Pattern: replicated-KV full sync, changed repair, alias lookup, metrics,
   visualization, and pubsub flows accept stale, unsolicited, reordered, or
   mismatched responses or broadcasts because handlers do not verify
@@ -18875,6 +18874,54 @@ the source of truth for evidence and reviewer decisions.
     `cargo test stale_pubsub_leave_must_not_remove_membership_after_newer_heartbeat -- --nocapture`,
     `cargo test tombstone_must_survive_newer_join_dropped_by_channel_cap -- --nocapture`,
     `cargo test inactive_channel_must_not_be_reclaimed_when_tombstone_cap_would_drop_generations -- --nocapture`,
+    and `git diff --check`.
+
+### ISSUE-232: Metrics accepts stale Info after peer disconnect
+
+- Score: 58
+- Category: lifecycle correctness / metrics responder correlation
+- Status: fixed by `8339384` (`fix: clear stale metrics responders`).
+- Reviewer:
+  - `Huygens` (forked RED-team reviewer), confirmed the failing test is a
+    distinct current-baseline issue and accepted the minimal fix.
+- Affected code:
+  - `src/service/metrics_service.rs`: `MetricsService::recv` ignored
+    `P2pServiceEvent::PeerDisconnected(peer)`.
+  - `src/service/metrics_service.rs`: the metrics `Info` handler accepted a
+    peer response whenever `pending_info_responders.remove(&from)` succeeded,
+    even if that peer had disconnected after the request was recorded.
+- Impact: a collector could publish stale `OnPeerConnectionMetric` data for a
+  disconnected peer when a delayed metrics `Info` arrives after
+  `PeerDisconnected`. Under bad-network reordering, this makes observability
+  consumers see disconnected peers as still reporting fresh connection metrics
+  and leaves scan coalescing state stale.
+- Distinctness: ISSUE-062 covers unsolicited metrics `Info` without any
+  pending request, ISSUE-104 covers oversized metrics rows, ISSUE-165 covers
+  visualization lifecycle state, ISSUE-226 covers scan authorization, and the
+  PeerStats ownership fixes validate main-loop stats events rather than
+  metrics-service wire-response lifecycle invalidation.
+- Root cause: metrics responder correlation did not model peer lifecycle
+  invalidation. Pending responders were request-correlated, but a disconnect
+  did not revoke the pending responder or pending scan-response state for that
+  peer.
+- Minimal fix proposal: handle `P2pServiceEvent::PeerDisconnected(peer)` in
+  `MetricsService::recv` by removing `peer` from `pending_info_responders` and
+  `pending_scan_responses`.
+- Fix: metrics now clears both pending maps for a disconnected peer before any
+  later stale `Info` can satisfy the outstanding responder check.
+- Evidence tests:
+  - Red evidence before fix:
+    `cargo test metrics_stale_info_after_peer_disconnected_must_be_ignored -- --nocapture`
+    failed at `src/service/metrics_service.rs:138:9` because stale metrics
+    `Info` was still published after `PeerDisconnected`.
+  - Verification after fix:
+    `cargo test metrics_stale_info_after_peer_disconnected_must_be_ignored -- --nocapture`
+  - Regression guards:
+    `cargo test metrics_info_must_not_be_accepted_without_scan_request -- --nocapture`,
+    `cargo test metrics_info_batches_must_be_bounded -- --nocapture`,
+    `cargo test visualization_stale_info_after_peer_disconnected_must_be_ignored -- --nocapture`,
+    `cargo test metrics -- --nocapture`,
+    `rustfmt --edition 2021 --check src/service/metrics_service.rs`,
     and `git diff --check`.
 
 ### Cycle after ISSUE-231 no-new cycle 1: route, discovery, stream, and graceful-stop integration review
