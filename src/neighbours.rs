@@ -38,8 +38,14 @@ impl NetworkNeighbours {
         self.conns.values().filter(|c| c.is_connected())
     }
 
-    pub fn pending_unauthenticated_inbound_count(&self) -> usize {
-        self.conns.values().filter(|c| !c.is_connected() && c.peer_id().is_none()).count()
+    pub fn pending_unauthenticated_inbound_count<F>(&self, mut is_authenticated: F) -> usize
+    where
+        F: FnMut(&ConnectionId) -> bool,
+    {
+        self.conns
+            .iter()
+            .filter(|(conn_id, c)| !c.is_connected() && c.peer_id().is_none() && !is_authenticated(conn_id))
+            .count()
     }
 
     #[cfg(test)]

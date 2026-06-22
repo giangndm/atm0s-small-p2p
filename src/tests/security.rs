@@ -5,17 +5,33 @@ use std::{
 };
 
 use crate::{
-    ConnectionId, ControlCmd, MainEvent, NetworkAddress, P2pNetwork, P2pNetworkConfig, P2pNetworkEvent, P2pServiceEvent, PeerAddress, PeerConnectionMetric, PeerId, PeerMainData, SharedKeyHandshake,
-    SharedRouterTable,
+    CERT_DOMAIN_NAME, ConnectionId, ControlCmd, MainEvent, NetworkAddress, P2pNetwork, P2pNetworkConfig, P2pNetworkEvent, P2pServiceEvent, PeerAddress, PeerConnectionMetric, PeerId,
+    PeerMainData, SharedKeyHandshake, SharedRouterTable,
     discovery::PeerDiscovery,
     msg::{BroadcastMsgId, P2pServiceId, PeerMessage},
+    quic::make_server_endpoint,
     router::RouteAction,
+    secure::HandshakeProtocol,
+    stream::{wait_object, write_object},
 };
 use futures::FutureExt;
-use quinn::{Endpoint, ServerConfig};
+use quinn::{Connection, Endpoint, RecvStream, SendStream, ServerConfig};
 use rustls::pki_types::{CertificateDer, PrivatePkcs8KeyDer};
+use serde::{Deserialize, Serialize};
 
 use super::{DEFAULT_CLUSTER_CERT, DEFAULT_CLUSTER_KEY, DEFAULT_SECURE_KEY, create_node};
+
+#[derive(Deserialize, Serialize)]
+struct RawConnectReq {
+    from: PeerId,
+    to: PeerId,
+    auth: Vec<u8>,
+}
+
+#[derive(Deserialize, Serialize)]
+struct RawConnectRes {
+    result: Result<Vec<u8>, String>,
+}
 
 fn make_zero_bidi_server_endpoint(bind_addr: SocketAddr) -> anyhow::Result<Endpoint> {
     let _ = rustls::crypto::ring::default_provider().install_default();
@@ -733,6 +749,107 @@ async fn peer_connected_must_not_block_authenticated_connection_run_loop_on_full
         Ok(Some(P2pServiceEvent::Unicast(addr2.peer_id(), b"after-auth".to_vec()))),
         "authenticated connection must process traffic even if PeerConnected event delivery is backpressured"
     );
+}
+
+async fn authenticate_raw_inbound(
+    node: &mut P2pNetwork<SharedKeyHandshake>,
+    node_addr: &PeerAddress,
+    remote_id: PeerId,
+) -> anyhow::Result<(Endpoint, Connection, SendStream, RecvStream)> {
+    let client_addr = UdpSocket::bind("127.0.0.1:0")
+        .expect("raw client udp should bind")
+        .local_addr()
+        .expect("raw client addr should exist");
+    let priv_key = PrivatePkcs8KeyDer::from(DEFAULT_CLUSTER_KEY.to_vec());
+    let cert = CertificateDer::from(DEFAULT_CLUSTER_CERT.to_vec());
+    let client = make_server_endpoint(client_addr, priv_key, cert)?;
+
+    let connecting = client.connect(**node_addr.network_address(), CERT_DOMAIN_NAME)?;
+    let incoming = node
+        .endpoint
+        .accept()
+        .await
+        .ok_or_else(|| anyhow::anyhow!("node endpoint closed before accepting incoming transport"))?;
+    node.process_incoming(incoming)?;
+    let connection = connecting.await?;
+    let (mut send, mut recv) = connection.open_bi().await?;
+
+    let secure: SharedKeyHandshake = DEFAULT_SECURE_KEY.into();
+    write_object::<_, _, 60000>(
+        &mut send,
+        &RawConnectReq {
+            from: remote_id,
+            to: node_addr.peer_id(),
+            auth: secure.create_request(remote_id, node_addr.peer_id(), crate::now_ms()),
+        },
+    )
+    .await?;
+    let response: RawConnectRes = wait_object::<_, _, 60000>(&mut recv).await?;
+    secure
+        .verify_response(
+            response.result.map_err(|err| anyhow::anyhow!("connect response rejected: {err}"))?,
+            node_addr.peer_id(),
+            remote_id,
+            crate::now_ms(),
+        )
+        .map_err(|err| anyhow::anyhow!("raw client failed to verify connect response: {err}"))?;
+
+    Ok((client, connection, send, recv))
+}
+
+#[tokio::test]
+async fn authenticated_inbound_peers_must_not_exhaust_unauthenticated_admission_cap() {
+    let (mut node, addr) = create_node(false, 1, vec![]).await;
+
+    for idx in 0..10 {
+        node.main_tx
+            .try_send(MainEvent::PeerStats(
+                ConnectionId::from(6000 + idx),
+                PeerId::from(6000 + idx),
+                PeerConnectionMetric {
+                    uptime: 1,
+                    rtt: 1,
+                    sent_pkt: 0,
+                    lost_pkt: 0,
+                    lost_bytes: 0,
+                    send_bytes: 0,
+                    recv_bytes: 0,
+                    current_mtu: 1200,
+                },
+            ))
+            .expect("test should fill node main queue");
+    }
+
+    let mut authenticated = Vec::new();
+    for idx in 0..crate::MAX_PENDING_UNAUTHENTICATED_INBOUND_CONNECTIONS {
+        authenticated.push(
+            authenticate_raw_inbound(&mut node, &addr, PeerId::from(100 + idx as u64))
+                .await
+                .expect("raw peer should authenticate while below the unauthenticated admission cap"),
+        );
+    }
+
+    tokio::time::timeout(Duration::from_secs(1), async {
+        while node.ctx.conns().len() < crate::MAX_PENDING_UNAUTHENTICATED_INBOUND_CONNECTIONS {
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .expect("all raw peers should authenticate and register aliases");
+
+    assert_eq!(
+        node.ctx.conns().len(),
+        crate::MAX_PENDING_UNAUTHENTICATED_INBOUND_CONNECTIONS,
+        "test setup should have authenticated peers whose PeerConnected events are still backpressured"
+    );
+
+    let seventeenth = tokio::time::timeout(Duration::from_secs(2), authenticate_raw_inbound(&mut node, &addr, PeerId::from(999))).await;
+
+    assert!(
+        matches!(seventeenth, Ok(Ok(_))),
+        "authenticated inbound peers must stop consuming the unauthenticated admission cap before their PeerConnected events are drained: {seventeenth:?}"
+    );
+    drop(authenticated);
 }
 
 #[tokio::test]
