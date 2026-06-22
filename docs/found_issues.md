@@ -1203,6 +1203,9 @@ the source of truth for evidence and reviewer decisions.
   - Failure summary: an empty snapshot page with `next_key: Some(1)` causes the
     receiver to emit another `FetchSnapshot` instead of rejecting the
     non-progressing page.
+- Fix status: fixed by rejecting empty `FetchSnapshot(Some(snapshot), version)`
+  pages that carry `next_key`, preventing non-progressing full-sync
+  continuation loops.
 
 ### ISSUE-039: Pubsub accepts member messages from peers without channel membership
 

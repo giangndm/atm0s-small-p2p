@@ -535,6 +535,10 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   mismatched pages are rejected before slot insertion, event emission, or
   state transition. Verification:
   `cargo test full_sync_must_reject_continuation_snapshot_version_mismatch -- --nocapture`.
+- ISSUE-038: fixed by rejecting empty snapshot pages that still carry
+  `next_key`, so full sync cannot loop forever on non-progressing
+  continuations. Verification:
+  `cargo test full_sync_must_reject_empty_snapshot_page_with_next_key -- --nocapture`.
 - ISSUE-025: fixed by validating resolved local snapshot bounds before
   `BTreeMap::range`; reversed untrusted `FetchSnapshot` bounds now return
   `None` instead of panicking. Verification:
