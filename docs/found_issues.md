@@ -12,8 +12,8 @@ must resolve.
 ## Audit Status
 
 - Current consecutive no-new-issue cycles: 0
-- Stop condition requested by user: stop after fixing the highest-impact
-  currently accepted issue, ISSUE-226.
+- Current audit continuation: ISSUE-227 accepted and fixed after the
+  post-ISSUE-226 continuation.
 
 ## Root Cause Summary
 
@@ -18644,4 +18644,48 @@ the source of truth for evidence and reviewer decisions.
   - `RUST_LOG=error cargo test visualization --lib -- --nocapture`
   - `RUST_LOG=error cargo test scan_response --lib -- --nocapture`
   - `rustfmt --edition 2021 --check src/service/metrics_service.rs src/service/visualization_service.rs src/tests/metrics.rs src/tests/visualization.rs`
+  - `git diff --check`
+
+### ISSUE-227: Broadcast fanout still waits one timeout per congested peer
+
+- Score: 64
+- Category: high-load stability / bad-network broadcast fanout
+- Status: fixed by `c0d7616` (`fix: parallelize broadcast admission`).
+- Reviewer:
+  - `Arendt` (forked RED-team reviewer), accepted.
+- Affected code:
+  - `src/ctx.rs`
+  - `src/peer/peer_alias.rs`
+  - `src/peer.rs`
+- Impact: `SharedCtx::send_broadcast` no longer blocks indefinitely on one
+  congested peer after ISSUE-049, but it still waits up to
+  `BROADCAST_ADMISSION_TIMEOUT` sequentially for each congested peer. Under
+  high load or bad network conditions, fanout latency scales as
+  `N * BROADCAST_ADMISSION_TIMEOUT`, stalling service loops such as pubsub,
+  alias, metrics, and visualization broadcasts.
+- Distinctness: ISSUE-049 fixed unbounded blocking from a single congested
+  peer by adding a per-peer timeout. ISSUE-118 fixed timeout multiplication for
+  graceful shutdown notifications. ISSUE-198 and ISSUE-199 cover zero-delivery
+  reporting. ISSUE-200 and ISSUE-201 cover duplicate collector scan tasks.
+  ISSUE-227 is the remaining aggregate latency issue in ordinary awaited
+  broadcast fanout when many peer queues are congested.
+- Failing evidence:
+  - `RUST_LOG=error cargo test send_broadcast_must_not_wait_one_timeout_per_congested_peer --lib -- --nocapture`
+  - Failure before fix:
+    - `send_broadcast must use a global deadline or parallel admission instead of waiting one timeout per congested peer`
+- Root cause: `SharedCtx::send_broadcast` iterated peer aliases and awaited
+  `timeout(BROADCAST_ADMISSION_TIMEOUT, conn_alias.send(msg))` inside the loop,
+  so each congested peer consumed its own timeout before the next peer was
+  attempted.
+- Minimal fix proposal: keep existing accepted-count and zero-accepted error
+  semantics, but admit all peer-alias broadcast sends concurrently under the
+  existing bounded admission timeout.
+- Fix: `SharedCtx::send_broadcast` now builds a `FuturesUnordered` of bounded
+  alias-send admissions and counts results as they complete. The broadcast id is
+  still marked delivered only after at least one peer accepts the frame.
+- Fixed evidence:
+  - `RUST_LOG=error cargo test send_broadcast_must_not_wait_one_timeout_per_congested_peer --lib -- --nocapture`
+  - `RUST_LOG=error cargo test send_broadcast_must --lib -- --nocapture`
+  - `RUST_LOG=error cargo test broadcast --lib -- --nocapture`
+  - `rustfmt --edition 2021 --check src/ctx.rs`
   - `git diff --check`
