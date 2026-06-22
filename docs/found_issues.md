@@ -11,9 +11,9 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 0
+- Current consecutive no-new-issue cycles: 1
 - Stop condition requested by user: continue until 5 consecutive cycles find no
-  new accepted issue. Not satisfied after ISSUE-223; continue auditing.
+  new accepted issue. Not satisfied after ISSUE-225; continue auditing.
 
 ## Root Cause Summary
 
