@@ -1533,6 +1533,9 @@ the source of truth for evidence and reviewer decisions.
 
 ### ISSUE-052: Out-of-range service ids panic service registration
 
+- Status: fixed by validating `P2pServiceId::as_service_index()` before
+  indexing the service table and rejecting out-of-range registrations without
+  unwinding.
 - Category: correctness, API stability
 - Score: 56/100
 - Reviewer: `James`, confirmed.
@@ -1548,9 +1551,8 @@ the source of truth for evidence and reviewer decisions.
   which covers duplicate ids inside the valid service table range.
 - Evidence test:
   - `cargo test out_of_range_service_id_must_not_panic -- --nocapture`
-  - Failure summary: `node.create_service(P2pServiceId::from(256u16))` panics
-    at `src/ctx.rs:28` with `index out of bounds: the len is 256 but the index
-    is 256`.
+  - Fixed summary: `node.create_service(P2pServiceId::from(256u16))` no
+    longer panics while attempting to index the 256-slot service table.
 
 ### ISSUE-053: Inbound out-of-range service ids kill peer connection tasks
 

@@ -34,7 +34,10 @@ struct SharedCtxInternal {
 
 impl SharedCtxInternal {
     fn set_service(&mut self, service_id: P2pServiceId, tx: Sender<P2pServiceEvent>) {
-        let index = service_id.as_service_index().expect("Service ID out of range");
+        let Some(index) = service_id.as_service_index() else {
+            log::warn!("[SharedCtx] reject out-of-range service id {service_id}");
+            return;
+        };
         assert!(self.services[index].is_none(), "Service ID already used");
         self.services[index] = Some(tx);
     }
