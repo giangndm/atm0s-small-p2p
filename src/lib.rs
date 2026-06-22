@@ -234,8 +234,9 @@ impl<SECURE: HandshakeProtocol> P2pNetwork<SECURE> {
     }
 
     pub fn create_service(&mut self, service_id: P2pServiceId) -> P2pService {
-        let (service, tx) = P2pService::build(service_id, self.ctx.clone());
-        self.ctx.set_service(service_id, tx);
+        let (mut service, tx) = P2pService::build(service_id, self.ctx.clone());
+        let registered = self.ctx.set_service(service_id, tx);
+        service.set_registered(registered);
         service
     }
 

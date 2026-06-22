@@ -5,21 +5,21 @@ use std::{
 };
 
 use crate::{
-    CERT_DOMAIN_NAME, ConnectionId, ControlCmd, MainEvent, NetworkAddress, P2pNetwork, P2pNetworkConfig, P2pNetworkEvent, P2pServiceEvent, PeerAddress, PeerConnectionMetric, PeerId, PeerMainData,
-    SharedKeyHandshake, SharedRouterTable,
     discovery::PeerDiscovery,
     msg::{BroadcastMsgId, P2pServiceId, PeerMessage, UnicastAckId},
     quic::make_server_endpoint,
     router::RouteAction,
     secure::HandshakeProtocol,
     stream::{wait_object, write_object},
+    ConnectionId, ControlCmd, MainEvent, NetworkAddress, P2pNetwork, P2pNetworkConfig, P2pNetworkEvent, P2pServiceEvent, PeerAddress, PeerConnectionMetric, PeerId, PeerMainData, SharedKeyHandshake,
+    SharedRouterTable, CERT_DOMAIN_NAME,
 };
 use futures::FutureExt;
 use quinn::{Connection, Endpoint, RecvStream, SendStream, ServerConfig};
 use rustls::pki_types::{CertificateDer, PrivatePkcs8KeyDer};
 use serde::{Deserialize, Serialize};
 
-use super::{DEFAULT_CLUSTER_CERT, DEFAULT_CLUSTER_KEY, DEFAULT_SECURE_KEY, create_node};
+use super::{create_node, DEFAULT_CLUSTER_CERT, DEFAULT_CLUSTER_KEY, DEFAULT_SECURE_KEY};
 
 #[derive(Deserialize, Serialize)]
 struct RawConnectReq {
@@ -1771,6 +1771,43 @@ async fn duplicate_service_creation_must_not_panic() {
     }));
 
     assert!(result.is_ok(), "creating a duplicate service id must return a recoverable error instead of panicking");
+}
+
+#[tokio::test]
+async fn duplicate_service_creation_must_not_return_live_unregistered_sender() {
+    let (mut node1, _addr1) = create_node(true, 1, vec![]).await;
+    let _registered_service = node1.create_service(0.into());
+    let duplicate_service = node1.create_service(0.into());
+    let node1_requester = node1.requester();
+    tokio::spawn(async move { while node1.recv().await.is_ok() {} });
+
+    let (mut node2, addr2) = create_node(false, 2, vec![]).await;
+    let mut service2 = node2.create_service(0.into());
+    tokio::spawn(async move { while node2.recv().await.is_ok() {} });
+
+    node1_requester.connect(addr2.clone()).await.expect("connect should succeed");
+    tokio::time::timeout(Duration::from_secs(3), async {
+        loop {
+            if matches!(duplicate_service.router().action(&addr2.peer_id()), Some(RouteAction::Next(_))) {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .expect("route to node2 should become available");
+
+    let data = b"duplicate-service-should-not-send".to_vec();
+    assert!(
+        duplicate_service.send_unicast(addr2.peer_id(), data.clone()).await.is_err(),
+        "a duplicate service whose registration was rejected must not still send as that service id"
+    );
+
+    let delivered = tokio::time::timeout(Duration::from_millis(500), service2.recv()).await;
+    assert!(
+        !matches!(delivered, Ok(Some(P2pServiceEvent::Unicast(_, received))) if received == data),
+        "an unregistered duplicate service must not publish traffic that looks like it came from the registered service id"
+    );
 }
 
 #[tokio::test]

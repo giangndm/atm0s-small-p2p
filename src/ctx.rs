@@ -64,16 +64,17 @@ struct SharedCtxInternal {
 }
 
 impl SharedCtxInternal {
-    fn set_service(&mut self, service_id: P2pServiceId, tx: Sender<P2pServiceEvent>) {
+    fn set_service(&mut self, service_id: P2pServiceId, tx: Sender<P2pServiceEvent>) -> bool {
         let Some(index) = service_id.as_service_index() else {
             log::warn!("[SharedCtx] reject out-of-range service id {service_id}");
-            return;
+            return false;
         };
         if self.services[index].as_ref().is_some_and(|existing| !existing.is_closed()) {
             log::warn!("[SharedCtx] reject duplicate live service id {service_id}");
-            return;
+            return false;
         }
         self.services[index] = Some(tx);
+        true
     }
 
     fn get_service(&self, service_id: &P2pServiceId) -> Option<Sender<P2pServiceEvent>> {
@@ -240,8 +241,8 @@ impl SharedCtx {
         self.local_id
     }
 
-    pub(super) fn set_service(&mut self, service_id: P2pServiceId, tx: Sender<P2pServiceEvent>) {
-        self.ctx.write().set_service(service_id, tx);
+    pub(super) fn set_service(&mut self, service_id: P2pServiceId, tx: Sender<P2pServiceEvent>) -> bool {
+        self.ctx.write().set_service(service_id, tx)
     }
 
     pub fn register_conn(&self, conn: ConnectionId, alias: PeerConnectionAlias) {
