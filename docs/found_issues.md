@@ -2422,6 +2422,9 @@ the source of truth for evidence and reviewer decisions.
     `FetchChanged { from: Version(1), count: 1 }` returns
     `RpcRes::FetchChanged(Ok(vec![]))` instead of rejecting the request or
     returning at least one change.
+- Fix status: fixed by normalizing zero `compose_max_pkts` to one in
+  `LocalStore::new` and rejecting zero effective `FetchChanged` windows with
+  `FetchChangedError::MissingData`.
 
 ### ISSUE-078: Metrics service discloses metrics to arbitrary scan requests
 
