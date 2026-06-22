@@ -11,7 +11,7 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 2
+- Current consecutive no-new-issue cycles: 3
 - Stop condition requested by user: continue until 5 consecutive cycles find no
   new accepted issue.
 
@@ -7296,6 +7296,56 @@ the source of truth for evidence and reviewer decisions.
     guards remaining.
 
 ## No-New-Issue Audit Cycles
+
+### Cycle after ISSUE-208 no-new cycle 3: route discovery pubsub churn review
+
+- Result: no accepted non-duplicate issue.
+- Reviewer: `Banach the 12th`, forked subagent review, confirmed
+  duplicate/no-new.
+- Source and test evidence reviewed:
+  - `src/lib.rs`
+  - `src/discovery.rs`
+  - `src/router.rs`
+  - `src/service/pubsub_service.rs`
+  - `src/service/pubsub_service/publisher.rs`
+  - `src/service/pubsub_service/subscriber.rs`
+  - `src/tests/discovery.rs`
+  - `src/tests/security.rs`
+  - `src/tests/pubsub.rs`
+  - `src/tests/fuzz.rs`
+  - `cargo test graceful_shutdown_removes_stopped_non_seed -- --nocapture`
+    passed.
+  - `cargo test discovery_tick_connect_backlog_must_coalesce_duplicate_remotes -- --nocapture`
+    passed.
+  - `cargo test pubsub_must_remove_remote_subscriber_on_graceful_peer_stop -- --nocapture`
+    passed.
+  - `cargo test pubsub_heartbeat -- --nocapture` passed with 4 tests.
+  - `cargo test stale_pubsub -- --nocapture` passed with 2 tests.
+  - `RUST_LOG=error P2P_FUZZ_SEED=208201 P2P_FUZZ_NODES=8 P2P_FUZZ_STEPS=2000 cargo test fuzz_random_sanitized_node_churn_actions_must_not_panic_connection_tasks -- --nocapture`
+    passed.
+- Evidence summary:
+  - Graceful non-seed shutdown, discovery duplicate-connect coalescing, pubsub
+    graceful-stop membership cleanup, pubsub heartbeat caps, and stale pubsub
+    event handling all passed.
+  - The sanitized churn fuzz pass completed without panic, failed assertion, or
+    background task failure. Refused connects, shutdown closes, deadlines,
+    duplicate-connection closes, connection-lost events, and closed-by-control
+    logs were reviewed as expected bad-network/churn context.
+- Duplicate mapping:
+  - route, discovery, and stopped-peer candidates map to ISSUE-003,
+    ISSUE-004, ISSUE-055, ISSUE-092, ISSUE-103, ISSUE-112, ISSUE-113,
+    ISSUE-114, ISSUE-133, ISSUE-139, ISSUE-153, ISSUE-164, ISSUE-167,
+    ISSUE-170, ISSUE-177, ISSUE-181, ISSUE-190, ISSUE-192, and ISSUE-197.
+  - pubsub lifecycle, stale membership, and backpressure candidates map to
+    ISSUE-020, ISSUE-039, ISSUE-078 through ISSUE-080, ISSUE-094, ISSUE-115,
+    ISSUE-121, ISSUE-126, ISSUE-128 through ISSUE-132, ISSUE-142, ISSUE-150,
+    ISSUE-155, ISSUE-157, ISSUE-158, ISSUE-188, ISSUE-193, and ISSUE-198.
+- Root-cause summary impact: no new root cause; reviewed candidates map to
+  existing RC-1, RC-2, RC-3, RC-4, RC-6, and RC-7.
+- Smallest fix proposal: no new summary fix change; keep the mapped issue fix
+  proposals for authenticated peer ownership validation, graceful-stop
+  tombstones, duplicate-connect coalescing, pubsub membership generations,
+  bounded pubsub queues, and route/discovery input sanitization.
 
 ### Cycle after ISSUE-208 no-new cycle 2: replicated-KV stream boundary review
 
