@@ -103,6 +103,43 @@ mod test {
         assert_eq!(delivered_peer, peer);
         assert_eq!(delivered.len(), MAX_METRICS_PER_INFO);
     }
+
+    #[tokio::test]
+    async fn metrics_stale_info_after_peer_disconnected_must_be_ignored() {
+        let ctx = SharedCtx::new(PeerId::from(1), SharedRouterTable::new(PeerId::from(1)));
+        let (base_service, service_tx) = P2pService::build(P2pServiceId::from(0), ctx);
+        let mut service = MetricsService::new(Some(Duration::from_secs(3600)), base_service, true);
+        let peer = PeerId::from(2);
+        let _ = service.recv().await.expect("collector should emit initial local metrics");
+        service.pending_info_responders.insert(peer);
+        let metric = PeerConnectionMetric {
+            uptime: 1,
+            rtt: 2,
+            sent_pkt: 3,
+            lost_pkt: 4,
+            lost_bytes: 5,
+            send_bytes: 6,
+            recv_bytes: 7,
+            current_mtu: 1200,
+        };
+        let metrics = vec![(ConnectionId::from(10), peer, metric)];
+
+        service_tx
+            .send(P2pServiceEvent::PeerDisconnected(peer))
+            .await
+            .expect("metrics service channel should accept disconnect");
+        service_tx
+            .send(P2pServiceEvent::Unicast(peer, encode_info_for_test(metrics.clone())))
+            .await
+            .expect("metrics service channel should accept stale info");
+
+        let delivered = tokio::time::timeout(Duration::from_millis(200), service.recv()).await;
+
+        assert!(
+            !matches!(delivered, Ok(Ok(MetricsServiceEvent::OnPeerConnectionMetric(delivered_peer, delivered_metrics))) if delivered_peer == peer && delivered_metrics == metrics),
+            "stale metrics Info after PeerDisconnected must not be published for a disconnected peer"
+        );
+    }
 }
 
 #[derive(Deserialize, Serialize)]
@@ -274,7 +311,11 @@ impl MetricsService {
                             }
                         }
                     }
-                    Some(P2pServiceEvent::Stream(..) | P2pServiceEvent::PeerDisconnected(..)) => {}
+                    Some(P2pServiceEvent::Stream(..)) => {}
+                    Some(P2pServiceEvent::PeerDisconnected(peer)) => {
+                        self.pending_info_responders.remove(&peer);
+                        self.pending_scan_responses.remove(&peer);
+                    }
                     None => anyhow::bail!("metrics base service channel closed"),
                 }
             }
