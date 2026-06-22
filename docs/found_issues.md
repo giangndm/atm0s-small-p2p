@@ -2241,6 +2241,8 @@ the source of truth for evidence and reviewer decisions.
   - Fixed summary: after dropping node1's `P2pService`, the cloned requester
     now returns `Err` from `send_unicast`, and node2's service receives no
     stale `P2pServiceEvent::Unicast`.
+- Fix status: fixed by checking the `P2pServiceRequester` liveness token before
+  stale requesters can send unicast through `SharedCtx`.
 
 ### ISSUE-073: Dropped service requesters can still open streams
 
