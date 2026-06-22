@@ -5,10 +5,10 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Audit Status
 
-- Accepted issues: 224
+- Accepted issues: 225
 - Missing issue scores: 0
 - Current consecutive no-new-issue cycles: 0
-- Stop condition: not satisfied; continue auditing after ISSUE-224 fix commit.
+- Stop condition: not satisfied; continue auditing after ISSUE-225 fix commit.
 - Fix phase status: ISSUE-001, ISSUE-003, ISSUE-004, ISSUE-005, ISSUE-006, ISSUE-007,
   ISSUE-002, ISSUE-008, ISSUE-009, ISSUE-010, ISSUE-011, ISSUE-012, ISSUE-013, ISSUE-014, ISSUE-015, ISSUE-017, ISSUE-020, ISSUE-021, ISSUE-023, ISSUE-024, ISSUE-025, ISSUE-027, ISSUE-033, ISSUE-034, ISSUE-039, ISSUE-045, ISSUE-046, ISSUE-047, ISSUE-048, ISSUE-055, ISSUE-059, ISSUE-103, ISSUE-110, ISSUE-111, ISSUE-115, ISSUE-116, ISSUE-117, ISSUE-118, ISSUE-119, ISSUE-120, ISSUE-122, ISSUE-123,
   ISSUE-124, ISSUE-125, ISSUE-126, ISSUE-127, ISSUE-128, ISSUE-129, ISSUE-130,
@@ -59,6 +59,9 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   ISSUE-224 is fixed by moving fire-and-forget local service delivery behind a
   bounded per-connection worker so full service queues do not park the peer
   read loop before later graceful-stop frames.
+  ISSUE-225 is fixed by queuing acked local unicast delivery into the same
+  bounded per-connection worker and emitting `UnicastAck` only after local
+  service admission succeeds or fails.
   ISSUE-043 is fixed by bounding pending pubsub publish/feedback RPC request
   maps before responder fanout.
   ISSUE-054 is fixed by rejecting zero network tick intervals before endpoint
@@ -124,7 +127,7 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   ISSUE-127, ISSUE-136, ISSUE-153,
   ISSUE-178, ISSUE-182, ISSUE-184, ISSUE-198, ISSUE-199,
   ISSUE-200, ISSUE-201, ISSUE-202, ISSUE-203, ISSUE-204, ISSUE-209,
-  ISSUE-223, ISSUE-224.
+  ISSUE-223, ISSUE-224, ISSUE-225.
 - ISSUE-209: fixed high-load fuzz coverage issue. The fuzz harness silently
   capped `P2P_FUZZ_NODES` values above 8, so intended 12-15 node fuzz cycles
   executed with only 8 nodes. The fix keeps the lower bound at two nodes while
@@ -145,6 +148,12 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   fire-and-forget local delivery into a bounded per-connection worker, closing
   the connection on worker queue overflow; keep `UnicastWithAck` awaited so
   sender-visible acknowledgements still represent service admission.
+- ISSUE-225, score 69: fixed by commit `d1359e9`. Local `UnicastWithAck`
+  still awaits bounded destination service admission inside the peer read loop;
+  with a full service queue this delays later `PeerStopped` frames on the same
+  connection. Fix: enqueue acked local delivery into the bounded
+  per-connection local delivery worker with ack metadata, then send the only
+  ack from that worker after service admission succeeds or fails.
 - Pattern: some paths drop on `try_send`, some await bounded sends from
   critical tasks, and others use unbounded queues or duplicate internal control
   work. Under load this causes silent loss, head-of-line blocking, unreported

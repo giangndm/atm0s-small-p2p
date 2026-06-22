@@ -18374,3 +18374,58 @@ the source of truth for evidence and reviewer decisions.
   - `cargo test peer_stopped_ --lib -- --nocapture`
   - `cargo test tests::security:: --lib -- --nocapture`
   - `rustfmt --edition 2024 --check src/peer/peer_internal.rs src/tests/security.rs`
+
+### ISSUE-225: Acked unicast local delivery delays graceful stop processing
+
+- Score: 69
+- Category: high-load stability / peer read-loop head-of-line blocking
+- Status: fixed by commit `d1359e9`.
+- Reviewers:
+  - `Hilbert` (forked RED-team reviewer), found.
+  - Main reviewer accepted the coder feedback fix: no premature success ack,
+    ack success remains tied to local service admission, and the read loop only
+    performs bounded enqueue before continuing.
+- Affected code:
+  - `src/peer/peer_internal.rs`
+  - `src/tests/security.rs`
+- Impact: if a destination service queue is full, an inbound
+  `UnicastWithAck` to the local node parks the peer connection read loop while
+  it awaits local service admission and then ack writing. Later frames already
+  sent on the same connection, including a legitimate `PeerStopped`, are not
+  read until the acked delivery wait completes. A peer can therefore delay
+  graceful-stop cleanup by queueing acked unicasts ahead of its stop frame.
+- Distinctness: ISSUE-224 fixed this root class for fire-and-forget
+  `Broadcast` and non-acked `Unicast`, but explicitly left `UnicastWithAck`
+  awaited so the sender-visible ack reflected service admission. ISSUE-218
+  covers inbound `Sync` main-queue blocking, ISSUE-219 covers outbound
+  control-frame writes, and ISSUE-215 through ISSUE-224 cover other
+  graceful-stop and local-delivery paths.
+- Failing evidence:
+  - `cargo test peer_stopped_must_not_wait_behind_full_acked_unicast_queue --lib -- --nocapture`
+  - Failure before fix:
+    - `PeerStopped must not wait behind a service-backpressured acked unicast on the same connection`
+- Root cause: `PeerConnectionInternal::run_loop` awaits `on_msg` serially for
+  each main-stream frame. The local `UnicastWithAck` path still calls
+  `send_local_service_event(...).await`, which awaits bounded
+  `service.send(event)` capacity when the destination service queue is full.
+  While that await is pending, the same read loop cannot read the following
+  lifecycle frame.
+- Minimal fix proposal: reuse the bounded per-connection local delivery worker
+  for local `UnicastWithAck`, carrying the ack id with queued work so the
+  worker sends `UnicastAck` after service admission succeeds or fails. The peer
+  read loop should only enqueue bounded work and must not await destination
+  service capacity before reading later frames.
+- Fix: commit `d1359e9` adds ack metadata to the bounded local service
+  delivery worker and a bounded worker-to-read-loop ack channel. Local
+  `UnicastWithAck` now returns from `on_msg` after bounded enqueue; the worker
+  sends the only `UnicastAck` after `send_local_service_event` succeeds or
+  fails.
+- Verification after fix:
+  - `RUST_LOG=error cargo test peer_stopped_must_not_wait_behind_full_acked_unicast_queue --lib -- --nocapture`
+  - `RUST_LOG=error cargo test unicast_must_not_report_success_when_destination_service_receiver_is_closed --lib -- --nocapture`
+  - `RUST_LOG=error cargo test inbound_unicast_must_not_drop_when_service_queue_is_full --lib -- --nocapture`
+  - `RUST_LOG=error cargo test inbound_broadcast_must_not_drop_when_service_queue_is_full --lib -- --nocapture`
+  - `RUST_LOG=error cargo test peer_stopped_must_not_wait_behind_full_local_service_queue --lib -- --nocapture`
+  - `RUST_LOG=error cargo test peer_stopped_ --lib -- --nocapture`
+  - `RUST_LOG=error cargo test tests::security:: --lib -- --nocapture`
+  - `rustfmt --edition 2024 --check src/peer/peer_internal.rs src/tests/security.rs src/tests/cross_nodes.rs`
