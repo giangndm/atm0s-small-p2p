@@ -1409,6 +1409,8 @@ the source of truth for evidence and reviewer decisions.
   - Failure summary: a composed metric `(relay_hops: 2, rtt_ms: 65525)` panics
     at `src/router.rs:190` with `attempt to add with overflow` while selecting
     the best path.
+- Fix status: fixed by widening `PathMetric::score` arithmetic to `u32`
+  before adding RTT and relay-hop penalty.
 
 ### ISSUE-045: Replicated KV creates unbounded remote stores
 
