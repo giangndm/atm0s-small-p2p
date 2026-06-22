@@ -1661,9 +1661,8 @@ the source of truth for evidence and reviewer decisions.
   - `src/peer/peer_alias.rs`: `PeerConnectionAlias::open_stream` awaits
     `control_tx.send(PeerConnectionControl::OpenStream(...))` on a bounded
     peer control queue before any stream setup timeout can apply.
-  - `src/peer/peer_internal.rs`: `OPEN_BI_TIMEOUT` only wraps
-    `connection.open_bi()` after the peer task has already received the
-    `OpenStream` command.
+  - `src/peer/peer_internal.rs`: `OPEN_BI_TIMEOUT` only applies after the peer
+    task has already received the `OpenStream` command.
 - Impact: under high load, a full peer control queue can make stream-opening
   callers wait indefinitely before the operation reaches the existing
   `OPEN_BI_TIMEOUT`. This is distinct from ISSUE-049 and ISSUE-050 because it
@@ -1674,6 +1673,21 @@ the source of truth for evidence and reviewer decisions.
   - Failure summary: the test fills a synthetic bounded peer control queue,
     then `SharedCtx::open_stream` fails the 50 ms timeout assertion because it
     is blocked while awaiting admission of `PeerConnectionControl::OpenStream`.
+- Root cause: stream-open used awaited bounded-queue admission before the peer
+  task could apply the existing stream setup timeout, so high load on the peer
+  control queue bypassed the timeout entirely.
+- Fix proposal: use non-blocking `try_send` for `OpenStream` control admission
+  and keep the existing oneshot wait for successfully enqueued stream opens.
+- Fix status: fixed by changing `PeerConnectionAlias::open_stream` to fail fast
+  when the peer control queue is full or closed. Verified with
+  `cargo test open_stream_must_not_block_on_full_peer_control_queue -- --nocapture`,
+  `cargo test send_unicast_must_not_block_on_full_peer_control_queue -- --nocapture`,
+  `cargo test open_stream_must_timeout_when_peer_withholds_connect_response -- --nocapture`,
+  `cargo test open_stream_must_timeout_when_connect_request_write_stalls -- --nocapture`,
+  `cargo test open_stream_does_not_succeed_when_destination_service_queue_is_full -- --nocapture`,
+  `cargo test open_stream_fails_when_destination_service_receiver_is_closed -- --nocapture`,
+  and `cargo fmt -- --check`. Engineer `Jason the 12th` proposed the minimal
+  fix; coder-review `Gauss the 12th` accepted it.
 
 ### ISSUE-057: Stale peer-connected events install unusable routes
 
