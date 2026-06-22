@@ -1789,6 +1789,8 @@ the source of truth for evidence and reviewer decisions.
 
 - Category: correctness, async race stability
 - Score: 67/100
+- Fix status: fixed by requiring a live registered connection alias, and a
+  matching alias peer id, before `PeerConnected` installs a direct route.
 - Reviewer: `Russell`, confirmed.
 - Affected code:
   - `src/lib.rs`: `P2pNetwork::process_internal` handles
