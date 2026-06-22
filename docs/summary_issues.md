@@ -7,10 +7,10 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Accepted issues: 238
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 15
-- Current audit continuation: Focused source-review no-new cycle 5 reviewed
-  pubsub and replicated-KV state-machine correlation, stale membership, and
-  repair/full-sync validation without a distinct reviewed failure.
+- Current consecutive no-new-issue cycles: 16
+- Current audit continuation: Fuzz phase no-new cycle 6 returned to
+  configured-node randomized fuzzing after five focused source-review no-new
+  cycles without a distinct reviewed failure.
 - Fix phase status: ISSUE-001, ISSUE-003, ISSUE-004, ISSUE-005, ISSUE-006, ISSUE-007,
   ISSUE-002, ISSUE-008, ISSUE-009, ISSUE-010, ISSUE-011, ISSUE-012, ISSUE-013, ISSUE-014, ISSUE-015, ISSUE-017, ISSUE-020, ISSUE-021, ISSUE-023, ISSUE-024, ISSUE-025, ISSUE-027, ISSUE-033, ISSUE-034, ISSUE-039, ISSUE-045, ISSUE-046, ISSUE-047, ISSUE-048, ISSUE-055, ISSUE-059, ISSUE-103, ISSUE-110, ISSUE-111, ISSUE-115, ISSUE-116, ISSUE-117, ISSUE-118, ISSUE-119, ISSUE-120, ISSUE-122, ISSUE-123,
   ISSUE-124, ISSUE-125, ISSUE-126, ISSUE-127, ISSUE-128, ISSUE-129, ISSUE-130,
@@ -365,6 +365,18 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   cycles are now recorded after the prior fuzz phase; the next audit phase
   should return to configured-node randomized fuzzing with reviewer-confirmed
   failing evidence required for any accepted issue.
+- Fuzz phase no-new cycle 6 returned to configured-node randomized fuzzing
+  after five focused source-review no-new cycles with forked reviewer
+  `Hubble the 2nd`. Local fuzz coverage passed the node-count configuration
+  check, the 6-test fuzz inventory check, and deterministic seeds
+  28001 through 28006 across steady valid actions, valid random actions,
+  valid churn, sanitized churn, malformed/random raw actions, and
+  malformed/churn actions. Reviewer cross-check seeds 28101 through 28103
+  also passed. Rejected noise mapped to duplicate-connect/route churn and
+  lifecycle families, RC-6, RC-7, stream/open path backpressure families
+  RC-3/RC-7, ISSUE-156, ISSUE-180, ISSUE-217, ISSUE-220, ISSUE-238,
+  malformed-input/ownership families including ISSUE-053, ISSUE-060,
+  ISSUE-091, ISSUE-234, RC-1, RC-6, and fixed ISSUE-209.
 - Cycle after ISSUE-231 no-new cycle 1 reviewed routing/discovery/path
   stability and stream/pipe lifecycle integration with forked reviewer
   `Carver`. Focused route, discovery, stream-relay, peer-stopped, and pubsub
