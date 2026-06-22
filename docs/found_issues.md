@@ -639,6 +639,8 @@ the source of truth for evidence and reviewer decisions.
   local `P2pServiceEvent::Stream` delivery and relayed `open_stream(...)`
   requests. This intentionally preserves the existing wire/API shape and does
   not address ISSUE-156 relay setup cancellation.
+- Fix status: fixed by deriving the effective stream source from the
+  authenticated ingress peer before local stream delivery and relay setup.
 - Category: security, correctness, pipe reliability
 - Score: 93/100
 - Reviewer: `Rawls`, confirmed.
