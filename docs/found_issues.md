@@ -1905,6 +1905,8 @@ the source of truth for evidence and reviewer decisions.
     `P2pService`, node1's live service can still route a unicast to node2 and
     observe `Ok(())`; the stale registered sender means the closed destination
     remains addressable until delivery is later discarded.
+- Fix status: fixed by allowing `SharedCtxInternal::set_service` to replace a
+  registered sender once the previous service receiver has closed.
 
 ### ISSUE-061: Visualization accepts unsolicited forged topology info
 
