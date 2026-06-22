@@ -2174,6 +2174,9 @@ the source of truth for evidence and reviewer decisions.
     `SubscriberEvent::PeerLeaved(PeerSrc::Local)`, a cloned stale requester
     publishes `stale-publish`, and the subscriber still receives
     `SubscriberEvent::Publish`.
+- Fix status: fixed by validating the `PublisherHandleId` carried by
+  `InternalMsg::Publish` against the channel's live local publishers before
+  delivering publishes to subscribers or remote peers.
 
 ### ISSUE-070: Dropped subscriber requesters can still send feedback
 

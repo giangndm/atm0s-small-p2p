@@ -716,6 +716,11 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   subscriber RPC handlers after their owning `Publisher` has been dropped.
   Verified with
   `cargo test dropped_publisher_requester_must_not_continue_publish_rpc -- --nocapture`.
+- ISSUE-069: fixed by validating `InternalMsg::Publish` against the live local
+  publisher handle map before publish fanout. Stale cloned publisher requesters
+  can no longer deliver ordinary publishes after their owning `Publisher` has
+  been dropped. Verified with
+  `cargo test dropped_publisher_requester_must_not_continue_publishing -- --nocapture`.
 - ISSUE-115: fixed by carrying `SubscriberHandleId` on local
   `PublishRpcAnswer` control messages and recording which local subscriber
   handles actually received each publish RPC. Stale or unrelated subscriber
