@@ -96,6 +96,11 @@ where
     }
 
     pub fn on_remote_event(&mut self, from: N, event: NetEvent<N, K, V>) {
+        if !self.remotes.contains_key(&from) && matches!(event, NetEvent::Unicast(_, RpcEvent::RpcRes(_))) {
+            log::warn!("[ReplicatedKvService] reject unsolicited RPC response from unknown remote {from:?}");
+            return;
+        }
+
         if !self.remotes.contains_key(&from) {
             if self.remotes.len() >= MAX_REMOTE_STORES {
                 self.cleanup_timed_out_remotes();
@@ -289,6 +294,20 @@ mod tests {
 
         assert!(remote_count <= MAX_REMOTE_STORES, "remote stores must be bounded, got {remote_count}");
         assert!(queued_sync_requests <= MAX_REMOTE_STORES, "queued full-sync requests must be bounded, got {queued_sync_requests}");
+    }
+
+    #[test]
+    fn unsolicited_rpc_response_from_unknown_peer_must_not_create_remote_store() {
+        let mut store: ReplicatedKvStore<u64, u64, u64> = ReplicatedKvStore::new(10, 10);
+        let unknown_peer = 42;
+
+        store.on_remote_event(
+            unknown_peer,
+            NetEvent::Unicast(unknown_peer, RpcEvent::RpcRes(messages::RpcRes::FetchChanged(Err(messages::FetchChangedError::MissingData)))),
+        );
+
+        assert!(store.remotes.is_empty(), "an unsolicited RPC response from an unknown peer must not allocate remote state");
+        assert!(store.outs.is_empty(), "an unsolicited RPC response from an unknown peer must not queue a full-sync request");
     }
 
     #[test]
