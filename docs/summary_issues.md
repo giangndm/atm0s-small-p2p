@@ -7,8 +7,8 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Accepted issues: 225
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 4
-- Stop condition: not satisfied; continue auditing after ISSUE-225 fix commit.
+- Current consecutive no-new-issue cycles: 5
+- Stop condition: satisfied after ISSUE-225 no-new cycle 5.
 - Fix phase status: ISSUE-001, ISSUE-003, ISSUE-004, ISSUE-005, ISSUE-006, ISSUE-007,
   ISSUE-002, ISSUE-008, ISSUE-009, ISSUE-010, ISSUE-011, ISSUE-012, ISSUE-013, ISSUE-014, ISSUE-015, ISSUE-017, ISSUE-020, ISSUE-021, ISSUE-023, ISSUE-024, ISSUE-025, ISSUE-027, ISSUE-033, ISSUE-034, ISSUE-039, ISSUE-045, ISSUE-046, ISSUE-047, ISSUE-048, ISSUE-055, ISSUE-059, ISSUE-103, ISSUE-110, ISSUE-111, ISSUE-115, ISSUE-116, ISSUE-117, ISSUE-118, ISSUE-119, ISSUE-120, ISSUE-122, ISSUE-123,
   ISSUE-124, ISSUE-125, ISSUE-126, ISSUE-127, ISSUE-128, ISSUE-129, ISSUE-130,
@@ -185,6 +185,13 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   delayed-`PeerConnected` versus fast-`PeerStopped` ordering candidate was
   rejected as scheduler-sensitive and overlapping existing issues. No new root
   cause beyond RC-3, RC-4, RC-6, and RC-7.
+- Cycle after ISSUE-225 no-new cycle 5: forked reviewer `Carson` reviewed
+  post-225 acked local unicast worker behavior, `PeerStopped` lifecycle under
+  backpressure, route/path selection, seed/non-seed discovery lifecycle,
+  stream/pipe setup, and fuzz coverage. Steady, sanitized-churn, valid-churn,
+  ISSUE-225, closed-service-ack, and `peer_stopped_` checks passed. Duplicate
+  mappings stayed in RC-3, RC-4, RC-6, and RC-7. This satisfies the requested
+  five consecutive no-new cycles after ISSUE-225.
 - Pattern: some paths drop on `try_send`, some await bounded sends from
   critical tasks, and others use unbounded queues or duplicate internal control
   work. Under load this causes silent loss, head-of-line blocking, unreported

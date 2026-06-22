@@ -11,9 +11,9 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 4
+- Current consecutive no-new-issue cycles: 5
 - Stop condition requested by user: continue until 5 consecutive cycles find no
-  new accepted issue. Not satisfied after ISSUE-225; continue auditing.
+  new accepted issue. Satisfied after ISSUE-225 cycle 5.
 
 ## Root Cause Summary
 
@@ -18557,3 +18557,33 @@ the source of truth for evidence and reviewer decisions.
   backpressure policy, RC-4 stream setup hardening, RC-6 lifecycle cleanup, and
   RC-7 route stability. Continue auditing; consecutive no-new cycles after
   ISSUE-225: 4.
+
+### Cycle after ISSUE-225 no-new cycle 5: threshold fuzz and lifecycle review
+
+- Scope: forked RED-team reviewer `Carson` reviewed the post-225 acked local
+  unicast worker and internal ack-control path, `PeerStopped` lifecycle under
+  service/main/control backpressure, route/path selection and churn mappings,
+  seed/non-seed discovery timeout and stopped tombstone handling, stream/pipe
+  setup surfaces, and fuzz coverage for steady and churn action mixes.
+- Result: no new accepted issue.
+- Duplicate or reviewed mappings:
+  - Ack/local-service backpressure maps to ISSUE-224 and ISSUE-225.
+  - Main-queue lifecycle/sync backpressure maps to ISSUE-215 through ISSUE-223.
+  - Outbound/control-frame stalls map to ISSUE-219 and ISSUE-164.
+  - Stream setup reliability maps to ISSUE-117, ISSUE-156, ISSUE-217, and
+    ISSUE-220.
+  - Route/path jumping maps to ISSUE-003 and RC-7.
+  - Discovery seed/non-seed lifecycle maps to existing stopped and timeout
+    fixes.
+- Evidence:
+  - `RUST_LOG=error P2P_FUZZ_NODES=12 P2P_FUZZ_STEPS=1000 P2P_FUZZ_SEED=22505 cargo test fuzz_random_steady_valid_node_actions_must_not_panic_connection_tasks --lib -- --nocapture`
+  - `RUST_LOG=error P2P_FUZZ_NODES=12 P2P_FUZZ_STEPS=500 P2P_FUZZ_SEED=22555 cargo test fuzz_random_sanitized_node_churn_actions_must_not_panic_connection_tasks --lib -- --nocapture`
+  - `RUST_LOG=error cargo test peer_stopped_must_not_wait_behind_full_acked_unicast_queue --lib -- --nocapture`
+  - `RUST_LOG=error cargo test unicast_must_not_report_success_when_destination_service_receiver_is_closed --lib -- --nocapture`
+  - `RUST_LOG=error cargo test peer_stopped_ --lib -- --nocapture`
+  - Main-agent threshold pass also ran `RUST_LOG=error P2P_FUZZ_NODES=12 P2P_FUZZ_STEPS=500 P2P_FUZZ_SEED=22505 cargo test fuzz_random_valid_node_churn_actions_must_not_panic_connection_tasks --lib -- --nocapture`.
+  - Result: passed.
+- Summary/root cause review: no new root cause beyond RC-3 bounded
+  backpressure policy, RC-4 stream setup hardening, RC-6 lifecycle cleanup, and
+  RC-7 route stability. The requested five consecutive no-new cycles after
+  ISSUE-225 are complete.
