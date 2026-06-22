@@ -5976,10 +5976,11 @@ the source of truth for evidence and reviewer decisions.
     endpoint.
   - `src/lib.rs`: `PeerStopped` and `PeerDisconnected` handling updates
     discovery, routing, and neighbour state only.
-  - `src/service.rs`: `P2pServiceEvent` has payload and stream variants, but no
-    peer lifecycle event for services.
+  - `src/service.rs`: `P2pServiceEvent::PeerDisconnected` carries accepted
+    peer lifecycle notifications to services.
   - `src/service/visualization_service.rs`: `VisualizationService` emits
-    `PeerLeaved` only from its timeout sweep.
+    `PeerLeaved` only from its timeout sweep and ignored
+    `P2pServiceEvent::PeerDisconnected`.
 - Impact: when a peer gracefully stops and the network loop processes
   `PeerStopped`/`PeerDisconnected`, visualization consumers do not learn that
   the peer left until the collection timeout expires. This keeps monitoring or
@@ -5999,6 +6000,24 @@ the source of truth for evidence and reviewer decisions.
     `PeerStopped`/disconnect, but `VisualizationService` does not emit
     `PeerLeaved(node2)` within the prompt leave window; expected lifecycle
     propagation instead of waiting for the timeout sweep.
+- Root cause: the network already fanned out accepted peer disconnect events to
+  services, but visualization treated `PeerDisconnected` the same as ignored
+  stream events, leaving stale peer state until timeout.
+- Fix proposal: handle `P2pServiceEvent::PeerDisconnected(peer)` in
+  `VisualizationService::recv` by clearing pending scan/info state and emitting
+  `PeerLeaved(peer)` only when the peer was known.
+- Fix status: fixed by consuming visualization peer-disconnect lifecycle
+  events immediately while keeping timeout cleanup for silent loss. Verified
+  with
+  `cargo test visualization_must_emit_peer_leaved_on_graceful_peer_stop -- --nocapture`,
+  `cargo test visualization_peer_disconnected_known_peer_must_emit_leave_and_clear_pending -- --nocapture`,
+  `cargo test visualization_peer_disconnected_unknown_peer_must_not_emit_leave -- --nocapture`,
+  `cargo test visualization_stale_info_after_peer_disconnected_must_be_ignored -- --nocapture`,
+  and `cargo fmt -- --check`. `cargo test visualization -- --nocapture` was
+  attempted and passed the ISSUE-165 tests, but was interrupted after
+  `visualization_recv_after_base_service_close_must_not_panic` ran for over 60
+  seconds. Engineer `Parfit the 12th` proposed the fix; coder-review
+  `Kierkegaard the 12th` accepted it.
 
 ### ISSUE-166: Broadcast replay is accepted again after dedup cache eviction
 

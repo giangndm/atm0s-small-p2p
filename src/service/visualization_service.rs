@@ -178,7 +178,14 @@ impl VisualizationService {
                             }
                         }
                     }
-                    Some(P2pServiceEvent::Stream(..) | P2pServiceEvent::PeerDisconnected(..)) => {}
+                    Some(P2pServiceEvent::Stream(..)) => {}
+                    Some(P2pServiceEvent::PeerDisconnected(peer)) => {
+                        self.pending_info_responders.remove(&peer);
+                        self.pending_scan_responses.remove(&peer);
+                        if self.neighbours.remove(&peer).is_some() {
+                            self.outs.push_back(VisualizationServiceEvent::PeerLeaved(peer));
+                        }
+                    }
                     None => anyhow::bail!("visualization base service channel closed"),
                 }
             }
@@ -332,6 +339,71 @@ mod test {
         let event = service.recv().await.expect("existing remote update should be emitted");
         assert_eq!(event, VisualizationServiceEvent::PeerUpdated(existing, vec![(ConnectionId::from(7), PeerId::from(8), 9)]));
         assert_eq!(service.neighbours.len(), MAX_VISUALIZATION_REMOTE_PEERS);
+    }
+
+    #[tokio::test]
+    async fn visualization_peer_disconnected_known_peer_must_emit_leave_and_clear_pending() {
+        let ctx = SharedCtx::new(PeerId::from(1), SharedRouterTable::new(PeerId::from(1)));
+        let (base_service, service_tx) = P2pService::build(P2pServiceId::from(0), ctx);
+        let mut service = VisualizationService::new(None, false, base_service);
+        let peer = PeerId::from(2);
+
+        service.neighbours.insert(peer, now_ms());
+        service.pending_info_responders.insert(peer);
+        service.pending_scan_responses.insert(peer);
+        service_tx
+            .send(P2pServiceEvent::PeerDisconnected(peer))
+            .await
+            .expect("visualization service channel should accept disconnect");
+
+        assert_eq!(service.recv().await.expect("disconnect should emit leave"), VisualizationServiceEvent::PeerLeaved(peer));
+        assert!(!service.neighbours.contains_key(&peer));
+        assert!(!service.pending_info_responders.contains(&peer));
+        assert!(!service.pending_scan_responses.contains(&peer));
+    }
+
+    #[tokio::test]
+    async fn visualization_peer_disconnected_unknown_peer_must_not_emit_leave() {
+        let ctx = SharedCtx::new(PeerId::from(1), SharedRouterTable::new(PeerId::from(1)));
+        let (base_service, service_tx) = P2pService::build(P2pServiceId::from(0), ctx);
+        let mut service = VisualizationService::new(None, false, base_service);
+
+        service_tx
+            .send(P2pServiceEvent::PeerDisconnected(PeerId::from(2)))
+            .await
+            .expect("visualization service channel should accept disconnect");
+
+        assert!(
+            tokio::time::timeout(Duration::from_millis(20), service.recv()).await.is_err(),
+            "unknown peer disconnects must not emit spurious leave events"
+        );
+    }
+
+    #[tokio::test]
+    async fn visualization_stale_info_after_peer_disconnected_must_be_ignored() {
+        let ctx = SharedCtx::new(PeerId::from(1), SharedRouterTable::new(PeerId::from(1)));
+        let (base_service, service_tx) = P2pService::build(P2pServiceId::from(0), ctx);
+        let mut service = VisualizationService::new(None, false, base_service);
+        let peer = PeerId::from(2);
+
+        service.neighbours.insert(peer, now_ms());
+        service.pending_info_responders.insert(peer);
+        service_tx
+            .send(P2pServiceEvent::PeerDisconnected(peer))
+            .await
+            .expect("visualization service channel should accept disconnect");
+        assert_eq!(service.recv().await.expect("disconnect should emit leave"), VisualizationServiceEvent::PeerLeaved(peer));
+
+        service_tx
+            .send(P2pServiceEvent::Unicast(peer, encode_info_for_test(vec![(ConnectionId::from(7), PeerId::from(8), 9)])))
+            .await
+            .expect("visualization service channel should accept stale info");
+
+        assert!(
+            tokio::time::timeout(Duration::from_millis(20), service.recv()).await.is_err(),
+            "stale Info after disconnect must not emit a new visualization event"
+        );
+        assert!(!service.neighbours.contains_key(&peer), "stale Info after disconnect must not recreate peer state");
     }
 
     #[tokio::test]

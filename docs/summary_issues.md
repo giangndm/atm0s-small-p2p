@@ -24,6 +24,7 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   fixes committed.
   ISSUE-056 is fixed by fail-fast stream-open control admission.
   ISSUE-068 is fixed by validating PeerStats ownership before metrics export.
+  ISSUE-165 is fixed by emitting visualization leaves from peer disconnects.
   ISSUE-166 is fixed by a two-generation broadcast replay dedup window.
   ISSUE-167 is fixed by pruning router routes for expired discovered peers.
   ISSUE-003 is fixed by `cfc8e57`;
