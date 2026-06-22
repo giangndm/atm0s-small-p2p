@@ -11,12 +11,12 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 14
-- Current audit continuation: critical-only protocol/service-boundary no-new
-  cycle 16 found no new score-80+ issue across peer frame bounds, stream object
-  length bounds, service-id validation, stale/dropped service requesters,
-  stalled stream setup, malformed high-node fuzz, and reviewer protocol/service
-  regression checks.
+- Current consecutive no-new-issue cycles: 15
+- Current audit continuation: critical-only service-protocol no-new cycle 17
+  found no new score-80+ issue across pubsub RPC correlation, publish/feedback
+  fanout, heartbeat chunking, stale pubsub handles, replicated-KV full-sync
+  pagination, changed-repair correlation, remote-store caps, graceful-stop
+  cleanup, and high-node churn fuzz.
 
 ## Root Cause Summary
 
@@ -21310,6 +21310,61 @@ the source of truth for evidence and reviewer decisions.
 - Ledger check: 21 score-80+ issues found and all are fixed.
 - Current consecutive no-new cycles after ISSUE-238: 26.
 - Current fuzz-phase no-new cycles after transition: 16.
+- Current focused source-review no-new cycles after fuzz phase: 10.
+
+### Fuzz phase no-new cycle 17: pubsub and replicated-KV service-protocol review
+
+- Scope: continued critical-only review after cycle 16, focusing on pubsub RPC
+  correlation, publish/feedback fanout, oversized methods and heartbeat
+  chunks, stale publisher/subscriber handles, local queue backpressure,
+  replicated-KV full sync and changed repair correlation, snapshot pagination,
+  stale/future versions, remote-store caps, graceful-stop data cleanup, and
+  high-load churn interactions.
+- Reviewer: `Volta the 2nd` (forked RED-team reviewer), returned
+  `NO_NEW_CRITICAL`.
+- Verification:
+  - `RUST_LOG=error cargo test pubsub --lib`: passed 92 tests.
+  - `RUST_LOG=error cargo test replicate_kv --lib`: passed 64 tests.
+  - `RUST_LOG=error cargo test rpc --lib`: passed 32 tests.
+  - `RUST_LOG=error cargo test heartbeat --lib`: passed 15 tests.
+  - `RUST_LOG=error cargo test full_sync --lib`: passed 16 tests.
+  - `RUST_LOG=error cargo test working_state_must --lib`: passed 12 tests.
+  - `RUST_LOG=error P2P_FUZZ_NODES=32 P2P_FUZZ_STEPS=1100 P2P_FUZZ_SEED=38001 cargo test fuzz_random_valid_node_churn_actions_must_not_panic_connection_tasks --lib`:
+    passed.
+- Reviewer cross-check:
+  - `RUST_LOG=error cargo test pubsub --lib`: passed 92 tests.
+  - `RUST_LOG=error cargo test replicate_kv --lib`: passed 64 tests.
+  - `RUST_LOG=error cargo test stale --lib`: passed 25 tests.
+  - `RUST_LOG=error cargo test heartbeat --lib`: passed 15 tests.
+  - `RUST_LOG=error cargo test pubsub_publish_rpc_answer_must_be_bound_to_expected_responder --lib`:
+    passed 1 test.
+  - `RUST_LOG=error cargo test pubsub_feedback_rpc_answer_must_be_bound_to_expected_responder --lib`:
+    passed 1 test.
+  - `RUST_LOG=error cargo test full_sync_must_reject --lib`: passed 12 tests.
+  - `RUST_LOG=error cargo test working_state_must_reject --lib`: passed 5
+    tests.
+  - `RUST_LOG=error P2P_FUZZ_NODES=36 P2P_FUZZ_STEPS=1200 P2P_FUZZ_SEED=38001 cargo test fuzz_random_valid_node_churn_actions_must_not_panic_connection_tasks --lib`:
+    passed.
+- Duplicate mapping:
+  - Pubsub RPC answer spoofing and correlation map to RC-1, RC-2, ISSUE-020,
+    ISSUE-043, ISSUE-115, ISSUE-116, and ISSUE-236.
+  - Pubsub publish/feedback fanout under local queue pressure maps to RC-3,
+    ISSUE-123 through ISSUE-126, and ISSUE-246.
+  - Oversized pubsub RPC methods and heartbeat batches/chunks map to
+    ISSUE-228 and ISSUE-240 through ISSUE-243.
+  - Stale publisher/subscriber handles, stale leaves, restarts, tombstones, and
+    disconnect cleanup map to ISSUE-231, ISSUE-246, RC-2, and RC-6.
+  - Replicated-KV full-sync snapshot pagination and correlation map to
+    ISSUE-237 and ISSUE-245.
+  - Replicated-KV changed repair correlation and stale/future versions map to
+    ISSUE-081 through ISSUE-089, ISSUE-110, ISSUE-111, ISSUE-143, and RC-2.
+  - Remote-store caps, unknown response allocation, pending outbound queues,
+    and graceful-stop cleanup map to ISSUE-233, RC-3, and RC-6.
+  - High-load churn/fuzz interaction produced no distinct score-80+ failing
+    evidence.
+- Ledger check: 21 score-80+ issues found and all are fixed.
+- Current consecutive no-new cycles after ISSUE-238: 27.
+- Current fuzz-phase no-new cycles after transition: 17.
 - Current focused source-review no-new cycles after fuzz phase: 10.
 
 ### Cycle after ISSUE-235 no-new cycle 1: transport, auth, and peer setup review
