@@ -11,9 +11,9 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 5
+- Current consecutive no-new-issue cycles: 1
 - Stop condition requested by user: continue until 5 consecutive cycles find no
-  new accepted issue. Satisfied after ISSUE-208 no-new cycle 5.
+  new accepted issue. Not satisfied after ISSUE-213; continue auditing.
 
 ## Root Cause Summary
 
@@ -17846,3 +17846,19 @@ the source of truth for evidence and reviewer decisions.
 - Verification:
   - `RUST_LOG=error cargo test create_sync_for_must_deduplicate_configured_seeds_before_cap --lib -- --nocapture`
   - `RUST_LOG=error cargo test discovery::test:: --lib -- --nocapture`
+
+### Cycle after ISSUE-213 no-new cycle 1: twelve-node post-fix fuzz
+
+- Result: no new accepted issue.
+- Scope: post-fix high-load fuzz after duplicate configured seed dedup.
+- Evidence:
+  - `RUST_LOG=error P2P_FUZZ_NODES=12 P2P_FUZZ_STEPS=1200 P2P_FUZZ_SEED=22062113 cargo test fuzz_random_steady_valid_node_actions_must_not_panic_connection_tasks -- --nocapture`
+    passed with no panic or failed invariant.
+  - `RUST_LOG=error P2P_FUZZ_NODES=12 P2P_FUZZ_STEPS=1200 P2P_FUZZ_SEED=22062114 cargo test fuzz_random_sanitized_node_churn_actions_must_not_panic_connection_tasks -- --nocapture`
+    passed with no panic or failed invariant.
+- Observed noise: churn logs still include refused outbound connects, duplicate
+  connection shutdowns, peer connection closed-by-control, endpoint-driver drop
+  during test teardown, and transient connection-lost errors.
+- Root-cause summary impact: no new root cause; these observations remain
+  covered by existing high-load churn and teardown classifications unless a
+  focused failing invariant is produced.
