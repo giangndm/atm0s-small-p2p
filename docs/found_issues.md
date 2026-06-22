@@ -6510,6 +6510,8 @@ the source of truth for evidence and reviewer decisions.
 
 - Category: bad-network stability, connection lifecycle, setup timeout
 - Score: 68/100
+- Fix status: fixed by wrapping outbound authentication, including
+  `ConnectReq` write and `ConnectRes` read, in `PEER_SETUP_TIMEOUT`.
 - Reviewer: `James the 3rd`, confirmed after `Ptolemy the 3rd` discovery.
 - Affected code:
   - `src/peer.rs`: outbound `run_connection` writes `ConnectReq` with
