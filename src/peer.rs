@@ -1283,6 +1283,30 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn send_unicast_to_relay_must_not_block_on_full_peer_control_queue() {
+        let router = SharedRouterTable::new(PeerId::from(0));
+        let ctx = SharedCtx::new(PeerId::from(0), router.clone());
+        let conn = ConnectionId::from(1);
+        let relay = PeerId::from(1);
+        let dest = PeerId::from(2);
+        let (tx, _rx) = channel(1);
+
+        router.set_direct(conn, relay, 0);
+        let remote_router = SharedRouterTable::new(relay);
+        remote_router.set_direct(ConnectionId::from(99), dest, 1);
+        router.apply_sync(conn, remote_router.create_sync(&PeerId::from(0)));
+        tx.try_send(PeerConnectionControl::Send(PeerMessage::PeerStopped(PeerId::from(99)), None))
+            .expect("test control queue should accept first message");
+
+        let alias = PeerConnectionAlias::new(PeerId::from(0), relay, conn, tx);
+        ctx.register_conn(conn, alias);
+
+        let result = tokio::time::timeout(Duration::from_millis(50), ctx.send_unicast(P2pServiceId::from(1), dest, vec![1, 2, 3])).await;
+
+        assert!(result.is_ok(), "send_unicast to a relayed destination must not wait indefinitely on a congested peer control queue");
+    }
+
+    #[tokio::test]
     async fn open_stream_must_not_block_on_full_peer_control_queue() {
         let router = SharedRouterTable::new(PeerId::from(0));
         let ctx = SharedCtx::new(PeerId::from(0), router.clone());

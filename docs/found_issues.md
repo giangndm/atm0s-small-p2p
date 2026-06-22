@@ -1590,6 +1590,11 @@ the source of truth for evidence and reviewer decisions.
   - Failure summary: a full synthetic peer control channel makes
     `SharedCtx::send_unicast` exceed the 50 ms timeout instead of failing fast
     or using the nonblocking unicast path.
+- Fix status: fixed by making relayed `SharedCtx::send_unicast` use
+  `PeerConnectionAlias::try_send` for peer-control admission while preserving
+  the direct-route unicast ack path. Verified with the original direct-route
+  evidence and
+  `cargo test send_unicast_to_relay_must_not_block_on_full_peer_control_queue -- --nocapture`.
 
 ### ISSUE-051: Legitimate PeerStopped leaves stopped neighbour connected
 

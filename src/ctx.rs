@@ -310,7 +310,7 @@ impl SharedCtx {
                 if conn.to_id() == dest {
                     conn.send_unicast_with_ack(source, dest, service_id, data).await?;
                 } else {
-                    conn.send(PeerMessage::Unicast(source, dest, service_id, data)).await?;
+                    conn.try_send(PeerMessage::Unicast(source, dest, service_id, data))?;
                 }
                 Ok(())
             }

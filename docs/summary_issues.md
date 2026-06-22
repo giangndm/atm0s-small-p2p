@@ -317,6 +317,14 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   `cargo test unicast_must_not_report_success_when_destination_service_receiver_is_closed -- --nocapture`
   and
   `cargo test inbound_unicast_must_not_drop_when_service_queue_is_full -- --nocapture`.
+- ISSUE-050: fixed by making relayed `send_unicast` use nonblocking
+  peer-control admission via `PeerConnectionAlias::try_send`, while keeping the
+  direct-route unicast ack path for destination service admission. Congested
+  relay control queues now return promptly instead of parking the caller.
+  Verified with
+  `cargo test send_unicast_must_not_block_on_full_peer_control_queue -- --nocapture`
+  and
+  `cargo test send_unicast_to_relay_must_not_block_on_full_peer_control_queue -- --nocapture`.
 - ISSUE-120: fixed by replacing inbound broadcast local delivery's lossy
   bounded-service `try_send` with awaited `send_local_service_event(...).await`
   over bounded `service.send(...)` plus timeout/backpressure. This preserves
