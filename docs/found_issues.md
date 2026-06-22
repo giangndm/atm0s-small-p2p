@@ -5387,7 +5387,7 @@ the source of truth for evidence and reviewer decisions.
 - Category: stability, resource cleanup, bad-network resilience
 - Score: 54/100
 - Reviewer: `Nietzsche the 3rd`, confirmed after local discovery.
-- Status: Fixed by the accepted-event liveness refresh introduced for
+- Fix status: fixed by the accepted-event liveness refresh introduced for
   ISSUE-140.
 - Affected code:
   - `src/service/replicate_kv_service/remote_storage.rs`:
