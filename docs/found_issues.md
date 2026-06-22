@@ -11,10 +11,11 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 0
-- Current audit continuation: ISSUE-246 fixed pubsub publisher/subscriber
-  handles whose bounded registration control was not admitted under queue
-  pressure.
+- Current consecutive no-new-issue cycles: 1
+- Current audit continuation: critical-only post-ISSUE-246 review found no
+  new score-80+ issue across handshake/auth binding, inbound message trust,
+  stream admission, service-id bounds, routing/relay loops, and high-load
+  backpressure.
 
 ## Root Cause Summary
 
@@ -19686,9 +19687,9 @@ the source of truth for evidence and reviewer decisions.
 - Category: correctness, API stability, high-load pubsub backpressure
 - Score: 54
 - Reviewers:
-  - Reviewer task accepted the candidate as distinct from ISSUE-058,
-    ISSUE-126, ISSUE-069, ISSUE-178, and ISSUE-234 based on the supplied
-    failing regression and current source.
+  - `Mill the 2nd` (forked RED-team reviewer) accepted the candidate as
+    distinct from ISSUE-058, ISSUE-126, ISSUE-069, ISSUE-178, and ISSUE-234
+    based on the supplied failing regression and current source.
 - Affected code:
   - `src/service/pubsub_service/publisher.rs`: `Publisher::build` logged a
     failed `PublisherCreated` admission but still returned a `Publisher` whose
@@ -19740,6 +19741,41 @@ the source of truth for evidence and reviewer decisions.
     `RUST_LOG=error cargo test pubsub_internal_control --lib -- --nocapture`,
     `rustfmt --edition 2021 --check src/service/pubsub_service.rs src/service/pubsub_service/publisher.rs src/service/pubsub_service/subscriber.rs`,
     and `git diff --check` passed.
+
+### Cycle after ISSUE-246 no-new critical cycle 1: auth, stream, service-id, and admission review
+
+- Scope: critical-only pass after the user narrowed the fix phase to score-80+
+  issues. Reviewed the current ledgers, `src/secure.rs`, `src/msg.rs`,
+  `src/ctx.rs`, `src/service.rs`, `src/peer.rs`,
+  `src/peer/peer_internal.rs`, and `src/router.rs` for new critical
+  correctness, security, or stability issues around shared-key handshake
+  replay and identity binding, inbound `PeerMessage` trust, service-id
+  bounds, direct/relay loop rejection, stream setup/admission, unicast ack
+  backpressure, sync/discovery caps, and high-load queue behavior.
+- Reviewer: `Linnaeus the 2nd` (forked RED-team reviewer), returned
+  `NO_NEW_CRITICAL`.
+- Verification:
+  - `RUST_LOG=error cargo test handshake --lib` passed, 10/10.
+  - `RUST_LOG=error cargo test inbound_handshake --lib` passed, 3/3.
+  - `RUST_LOG=error cargo test stream --lib` passed, 30/30.
+  - `RUST_LOG=error cargo test service_id --lib` passed, 4/4.
+  - Ledger check found 21 score-80+ issues and all 21 are marked fixed.
+- Duplicate mapping:
+  - Handshake freshness, replay cache pressure, self-identity rejection, and
+    third-party inbound peer claims map to ISSUE-002, ISSUE-146, ISSUE-176,
+    ISSUE-189, ISSUE-194, ISSUE-207, ISSUE-223, and ISSUE-244.
+  - Inbound `PeerStopped`, broadcast, unicast, and stream source trust maps to
+    ISSUE-001, ISSUE-014, ISSUE-015, ISSUE-018, ISSUE-180, ISSUE-197, and
+    RC-1.
+  - Service-id bounds and malformed frame handling map to ISSUE-053,
+    ISSUE-060, ISSUE-091, ISSUE-234, and the existing stream codec guards.
+  - Stream setup/admission, relayed delivery, local service queue pressure,
+    acked unicast, and high-load control/backpressure behavior map to
+    ISSUE-117, ISSUE-156, ISSUE-169, ISSUE-217, ISSUE-218, ISSUE-220,
+    ISSUE-224, ISSUE-225, ISSUE-229, ISSUE-230, ISSUE-238, RC-3, and RC-4.
+  - Route and relay loop handling maps to ISSUE-003, ISSUE-160, ISSUE-180,
+    ISSUE-197, and RC-7.
+- Current consecutive no-new cycles after ISSUE-246: 1.
 
 ### Cycle after ISSUE-245 no-new cycle 1: transport, stream, requester, and service admission review
 
