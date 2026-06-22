@@ -11,11 +11,11 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 2
-- Current audit continuation: critical-only post-ISSUE-246 pubsub and
-  replicated-KV review found no new score-80+ issue across RPC responder
-  binding, membership churn, heartbeat state, full-sync validation,
-  fetch-changed repair correlation, pending caps, and remote liveness.
+- Current consecutive no-new-issue cycles: 3
+- Current audit continuation: critical-only post-ISSUE-246 route, discovery,
+  and alias lifecycle review found no new score-80+ issue across route sync,
+  path stability, discovery seed/non-seed lifecycle, tombstones, alias cache,
+  pending find bounds, and peer-disconnect cleanup.
 
 ## Root Cause Summary
 
@@ -19816,6 +19816,47 @@ the source of truth for evidence and reviewer decisions.
   - High-version arithmetic did not survive as a distinct score-80+ issue;
     existing overflow/local producer cases map to ISSUE-023 and ISSUE-031.
 - Current consecutive no-new cycles after ISSUE-246: 2.
+
+### Cycle after ISSUE-246 no-new critical cycle 3: route, discovery, and alias lifecycle review
+
+- Scope: critical-only pass over route, discovery, and alias lifecycle after
+  the user narrowed the fix phase to score-80+ issues. Reviewed
+  `src/router.rs`, `src/discovery.rs`, and
+  `src/service/alias_service.rs` for new critical correctness, security, or
+  stability issues around route sync ingestion, direct-route pinning,
+  stale-connection handling, split-horizon advertisement, hop/metric caps,
+  duplicate destination handling, discovery freshness, local/seed filtering,
+  tombstones, sync caps, non-dialable address rejection, alias lifecycle
+  generations, `Found`/`NotFound` correlation, pending find bounds, hint cache
+  bounds, and shutdown/disconnect cleanup.
+- Reviewer: `Averroes the 2nd` (forked RED-team reviewer), returned
+  `NO_NEW_CRITICAL`.
+- Verification:
+  - `RUST_LOG=error cargo test route --lib` passed, 27/27.
+  - `RUST_LOG=error cargo test discovery --lib` passed, 37/37.
+  - `RUST_LOG=error cargo test alias --lib` passed, 47/47.
+  - `RUST_LOG=error cargo test peer_stopped --lib` passed, 15/15.
+  - Reviewer verification also passed `RUST_LOG=error cargo test
+    router::tests --lib`, 20/20; `RUST_LOG=error cargo test
+    discovery::test --lib`, 32/32; and `RUST_LOG=error cargo test
+    alias_service::test --lib`, 38/38.
+  - Ledger check found 21 score-80+ issues and all 21 are marked fixed.
+- Duplicate mapping:
+  - Route poisoning, local/self routes, loops, hop/metric caps, stale sync,
+    route flapping, direct-route preference, and duplicate destination
+    handling map to ISSUE-003, ISSUE-006, ISSUE-007, ISSUE-008, ISSUE-010,
+    ISSUE-033, ISSUE-044, ISSUE-190, ISSUE-197, ISSUE-214, and RC-7.
+  - Discovery stale entries, seed retention, non-seed expiry, tombstones,
+    sync caps, non-dialable addresses, configured seed deduplication, and
+    local/seed sync priority map to ISSUE-005, ISSUE-009, ISSUE-055,
+    ISSUE-167, ISSUE-192, ISSUE-211 through ISSUE-213, RC-6, and RC-7.
+  - Alias cache, lifecycle, pending find, request correlation, admission,
+    shutdown, and disconnect-cleanup behavior maps to ISSUE-090, ISSUE-127,
+    ISSUE-152, ISSUE-158, ISSUE-179, ISSUE-183, ISSUE-208, ISSUE-235,
+    ISSUE-239, RC-3, RC-5, and RC-6.
+  - Alias/pubsub lifecycle generation saturation remains a noncritical score
+    58 candidate and is deferred under the current critical-only rule.
+- Current consecutive no-new cycles after ISSUE-246: 3.
 
 ### Cycle after ISSUE-245 no-new cycle 1: transport, stream, requester, and service admission review
 

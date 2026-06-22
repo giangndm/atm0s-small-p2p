@@ -7,11 +7,11 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Accepted issues: 246
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 2
-- Current audit continuation: critical-only post-ISSUE-246 pubsub and
-  replicated-KV review found no new score-80+ issue across RPC responder
-  binding, membership churn, heartbeat state, full-sync validation,
-  fetch-changed repair correlation, pending caps, and remote liveness.
+- Current consecutive no-new-issue cycles: 3
+- Current audit continuation: critical-only post-ISSUE-246 route, discovery,
+  and alias lifecycle review found no new score-80+ issue across route sync,
+  path stability, discovery seed/non-seed lifecycle, tombstones, alias cache,
+  pending find bounds, and peer-disconnect cleanup.
 - Fix phase status: ISSUE-001, ISSUE-003, ISSUE-004, ISSUE-005, ISSUE-006, ISSUE-007,
   ISSUE-002, ISSUE-008, ISSUE-009, ISSUE-010, ISSUE-011, ISSUE-012, ISSUE-013, ISSUE-014, ISSUE-015, ISSUE-017, ISSUE-020, ISSUE-021, ISSUE-023, ISSUE-024, ISSUE-025, ISSUE-027, ISSUE-033, ISSUE-034, ISSUE-039, ISSUE-045, ISSUE-046, ISSUE-047, ISSUE-048, ISSUE-055, ISSUE-059, ISSUE-103, ISSUE-110, ISSUE-111, ISSUE-115, ISSUE-116, ISSUE-117, ISSUE-118, ISSUE-119, ISSUE-120, ISSUE-122, ISSUE-123,
   ISSUE-124, ISSUE-125, ISSUE-126, ISSUE-127, ISSUE-128, ISSUE-129, ISSUE-130,
@@ -235,6 +235,16 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   validation, fetch-changed correlation, pending caps, liveness refresh, and
   high-version arithmetic mapped to existing fixed issues or noncritical
   families; no new critical issue was accepted.
+  Post-ISSUE-246 no-new critical cycle 3 reviewed route, discovery, and alias
+  lifecycle behavior under reviewer `Averroes the 2nd`.
+  `RUST_LOG=error cargo test route --lib`, `RUST_LOG=error cargo test
+  discovery --lib`, `RUST_LOG=error cargo test alias --lib`, and
+  `RUST_LOG=error cargo test peer_stopped --lib` passed. Route poisoning,
+  local/self routes, loops, direct-route preference, discovery stale/seed
+  retention, tombstones, non-dialable addresses, alias cache/lifecycle,
+  pending find bounds, request correlation, admission, and cleanup mapped to
+  existing fixed issues or noncritical families; no new critical issue was
+  accepted.
   ISSUE-043 is fixed by bounding pending pubsub publish/feedback RPC request
   maps before responder fanout.
   ISSUE-054 is fixed by rejecting zero network tick intervals before endpoint
