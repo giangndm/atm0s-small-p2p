@@ -4656,7 +4656,7 @@ the source of truth for evidence and reviewer decisions.
 - Category: stability, resource cleanup, bad-network resilience
 - Score: 55/100
 - Reviewer: `Helmholtz the 2nd`, confirmed.
-- Status: Fixed by accepted-event liveness refresh in
+- Fix status: fixed by accepted-event liveness refresh in
   `src/service/replicate_kv_service/remote_storage.rs`.
 - Affected code:
   - `src/service/replicate_kv_service/remote_storage.rs`:
