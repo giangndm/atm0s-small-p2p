@@ -1414,6 +1414,8 @@ the source of truth for evidence and reviewer decisions.
 - Status: fixed. `ReplicatedKvStore` now caps tracked remote stores at 1,024,
   runs timeout cleanup before admitting a new remote at capacity, and rejects
   still-over-cap new identities before creating `RemoteStore` full-sync work.
+- Fix status: fixed by enforcing `MAX_REMOTE_STORES = 1024` before creating
+  new replicated-KV remote stores and their full-sync work.
 - Affected code:
   - `src/service/replicate_kv_service.rs`: `ReplicatedKvStore::on_remote_event`
     creates a `RemoteStore` for every previously unseen `from` node before
