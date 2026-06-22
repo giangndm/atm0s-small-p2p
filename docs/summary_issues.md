@@ -5,10 +5,10 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Audit Status
 
-- Accepted issues: 216
+- Accepted issues: 217
 - Missing issue scores: 0
 - Current consecutive no-new-issue cycles: 0
-- Stop condition: not satisfied; continue auditing after ISSUE-216 fix.
+- Stop condition: not satisfied; continue auditing after ISSUE-217 fix commit.
 - Fix phase status: ISSUE-001, ISSUE-003, ISSUE-004, ISSUE-005, ISSUE-006, ISSUE-007,
   ISSUE-002, ISSUE-008, ISSUE-009, ISSUE-010, ISSUE-011, ISSUE-012, ISSUE-013, ISSUE-014, ISSUE-015, ISSUE-017, ISSUE-020, ISSUE-021, ISSUE-023, ISSUE-024, ISSUE-025, ISSUE-027, ISSUE-033, ISSUE-034, ISSUE-039, ISSUE-045, ISSUE-046, ISSUE-047, ISSUE-048, ISSUE-055, ISSUE-059, ISSUE-103, ISSUE-110, ISSUE-111, ISSUE-115, ISSUE-116, ISSUE-117, ISSUE-118, ISSUE-119, ISSUE-120, ISSUE-122, ISSUE-123,
   ISSUE-124, ISSUE-125, ISSUE-126, ISSUE-127, ISSUE-128, ISSUE-129, ISSUE-130,
@@ -37,6 +37,9 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   admission succeeds, so backpressured retries are not suppressed.
   ISSUE-216 is fixed by clearing stale `PeerStopped` dedup state when a new
   connection lifecycle is registered for the same peer id.
+  ISSUE-217 is fixed by rejecting an already-stopped upstream relay setup side
+  before opening downstream, then delaying upstream success until downstream
+  stream setup is accepted.
   ISSUE-043 is fixed by bounding pending pubsub publish/feedback RPC request
   maps before responder fanout.
   ISSUE-054 is fixed by rejecting zero network tick intervals before endpoint
@@ -299,6 +302,17 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   proposal: clear the peer-stopped dedup entry when a new connection lifecycle
   is registered for that peer id, preserving same-lifecycle duplicate
   suppression. Implemented in `SharedCtxInternal::register_conn`.
+- ISSUE-217: fixed relayed stream setup correctness issue. In the relayed
+  stream branch, `accept_bi` writes upstream `Ok(())` before
+  `alias.open_stream(...)` completes, so callers can receive
+  `Ok(P2pQuicStream)` while the downstream peer withholds `StreamConnectRes`.
+  Evidence:
+  `cargo test relayed_open_stream_must_not_succeed_before_downstream_accepts --lib -- --nocapture`
+  fails because the caller observes success before downstream acceptance.
+  Minimal fix proposal: reject an already-stopped upstream setup response side
+  before opening downstream, open downstream first, write upstream `Err` on
+  downstream failure, and write upstream `Ok` only after downstream success.
+  Implemented in `accept_bi` with a `P2pQuicStream::write_stopped` guard.
 - Minimal fix proposal: sanitize before insertion: reject local/self candidates
   and over-hop routes, pin authenticated direct paths for their peer ids, use
   checked metric math, ignore stale discovery timestamps, reject duplicate

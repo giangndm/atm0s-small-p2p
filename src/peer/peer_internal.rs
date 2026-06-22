@@ -44,6 +44,7 @@ const OPEN_BI_TIMEOUT: Duration = Duration::from_secs(2);
 const ACCEPT_BI_INITIAL_REQ_TIMEOUT: Duration = Duration::from_secs(1);
 const MAX_PENDING_ACCEPT_BI: usize = 16;
 const LOCAL_SERVICE_DELIVERY_TIMEOUT: Duration = Duration::from_secs(1);
+const RELAY_UPSTREAM_STOP_GRACE: Duration = Duration::from_millis(20);
 const UNICAST_ACK_TIMEOUT: Duration = Duration::from_secs(1);
 const MAX_CONTROL_STREAM_PKT: usize = 60000;
 const MAX_PEER_MESSAGE_FRAME: usize = 60000;
@@ -424,6 +425,15 @@ async fn open_bi(connection: Connection, source: PeerId, dest: PeerId, service: 
     .map_err(|_| anyhow!("open_bi stream setup timed out"))?
 }
 
+async fn reject_if_upstream_stopped_before_relay_setup(stream: &P2pQuicStream) -> anyhow::Result<()> {
+    match tokio::time::timeout(RELAY_UPSTREAM_STOP_GRACE, stream.write_stopped()).await {
+        Ok(Ok(Some(code))) => Err(anyhow!("upstream stream stopped before relay setup ack: {code}")),
+        Ok(Ok(None)) => Err(anyhow!("upstream stream finished before relay setup ack")),
+        Ok(Err(err)) => Err(anyhow!("upstream stream stopped check failed: {err}")),
+        Err(_) => Ok(()),
+    }
+}
+
 async fn accept_bi(ingress: ConnectionId, authenticated_ingress_peer: PeerId, mut stream: P2pQuicStream, ctx: SharedCtx, _permit: OwnedSemaphorePermit) -> anyhow::Result<()> {
     let req = tokio::time::timeout(ACCEPT_BI_INITIAL_REQ_TIMEOUT, wait_object::<_, StreamConnectReq, MAX_CONTROL_STREAM_PKT>(&mut stream))
         .await
@@ -468,9 +478,15 @@ async fn accept_bi(ingress: ConnectionId, authenticated_ingress_peer: PeerId, mu
         Some(RouteAction::Next(next)) => {
             if let Some(alias) = ctx.conn(&next) {
                 log::info!("[PeerConnectionInternal {authenticated_ingress_peer}] stream service {service} source {effective_source} to dest {dest} => forward to {next}");
-                write_object::<_, _, MAX_CONTROL_STREAM_PKT>(&mut stream, &Ok::<_, String>(())).await?;
+                reject_if_upstream_stopped_before_relay_setup(&stream).await?;
                 match alias.open_stream(service, effective_source, dest, meta).await {
                     Ok(mut next_stream) => {
+                        if let Err(err) = write_object::<_, _, MAX_CONTROL_STREAM_PKT>(&mut stream, &Ok::<_, String>(())).await {
+                            log::warn!(
+                                "[PeerConnectionInternal {authenticated_ingress_peer}] stream service {service} source {effective_source} to dest {dest} => upstream ack failed after downstream open: {err}"
+                            );
+                            return Err(err);
+                        }
                         log::info!("[PeerConnectionInternal {authenticated_ingress_peer}] stream service {service} source {effective_source} to dest {dest} => start copy_bidirectional");
                         match copy_bidirectional(&mut next_stream, &mut stream).await {
                             Ok(stats) => {
@@ -484,6 +500,7 @@ async fn accept_bi(ingress: ConnectionId, authenticated_ingress_peer: PeerId, mu
                     }
                     Err(err) => {
                         log::error!("[PeerConnectionInternal {authenticated_ingress_peer}] stream service {service} source {effective_source} to dest {dest} => open bi error {err}");
+                        write_object::<_, _, MAX_CONTROL_STREAM_PKT>(&mut stream, &Err::<(), _>(err.to_string())).await?;
                         Err(err)
                     }
                 }

@@ -17998,3 +17998,45 @@ the source of truth for evidence and reviewer decisions.
   - `RUST_LOG=error cargo test peer_stopped_ --lib -- --nocapture`
   - `RUST_LOG=error cargo test security:: --lib -- --nocapture`
   - `rustfmt --edition 2024 --check src/ctx.rs src/peer.rs src/peer/peer_internal.rs src/peer/peer_alias.rs`
+
+### ISSUE-217: Relayed open_stream reports success before downstream accepts
+
+- Score: 72
+- Category: correctness / stream relay stability under bad network
+- Status: fixed by pending commit.
+- Reviewers:
+  - `Bernoulli` (forked RED-team reviewer), accepted.
+  - `Fermat` (forked candidate reviewer), accepted.
+- Affected code:
+  - `src/peer/peer_internal.rs`
+  - `src/tests/stream.rs`
+- Impact: a caller can receive `Ok(P2pQuicStream)` for a relayed stream before
+  the downstream peer has accepted the stream. If the downstream peer accepts
+  the QUIC stream but withholds or fails `StreamConnectRes`, the upstream
+  application starts using a pipe that is not connected end-to-end.
+- Distinctness: ISSUE-149/ISSUE-169 cover direct outbound stream setup timeout
+  and write stalls. ISSUE-156 covered orphan downstream delivery when the
+  upstream side was already gone. This issue covers premature upstream success
+  before downstream setup is proven.
+- Failing evidence:
+  - `RUST_LOG=error cargo test relayed_open_stream_must_not_succeed_before_downstream_accepts --lib -- --nocapture`
+  - Failure before fix:
+    - `relayed open_stream must not report success before the downstream peer accepts the stream`
+- Root cause: in the relayed stream branch,
+  `accept_bi` writes `Ok(())` to the ingress stream before
+  `alias.open_stream(service, effective_source, dest, meta).await` completes.
+  Caller-side `open_bi` treats that early `Ok` as a completed setup even if
+  the downstream peer never accepts.
+- Minimal fix proposal: before opening downstream, reject an already-stopped
+  upstream setup response side to preserve orphan-stream protection. Then
+  attempt downstream `alias.open_stream` first. If it fails, write an upstream
+  `Err`. If it succeeds, write upstream `Ok(())` and start
+  `copy_bidirectional` only after that write succeeds.
+- Fix status: fixed by adding a relay setup guard for an already-stopped
+  upstream response side, then delaying upstream `Ok(())` until downstream
+  `alias.open_stream(...)` accepts. Downstream failures are propagated upstream
+  as `Err`.
+- Verification:
+  - `RUST_LOG=error cargo test relayed_open_stream_must_not_succeed_before_downstream_accepts --lib -- --nocapture`
+  - `RUST_LOG=error cargo test relay_must_not_deliver_downstream_stream_after_upstream_setup_closes --lib -- --nocapture`
+  - `RUST_LOG=error cargo test stream --lib -- --nocapture`

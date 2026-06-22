@@ -1,12 +1,13 @@
 use std::{fmt::Debug, marker::PhantomData};
 use std::{
+    future::Future,
     io,
     pin::Pin,
     task::{Context, Poll},
 };
 
 use anyhow::anyhow;
-use serde::{de::DeserializeOwned, Serialize};
+use serde::{Serialize, de::DeserializeOwned};
 use tokio_util::codec::LengthDelimitedCodec;
 use tokio_util::codec::{Decoder, Encoder};
 
@@ -30,6 +31,10 @@ impl Eq for P2pQuicStream {}
 impl P2pQuicStream {
     pub fn new(read: RecvStream, write: SendStream) -> Self {
         Self { read, write }
+    }
+
+    pub(crate) fn write_stopped(&self) -> impl Future<Output = Result<Option<quinn::VarInt>, quinn::StoppedError>> + Send + Sync + 'static {
+        self.write.stopped()
     }
 }
 
@@ -134,15 +139,15 @@ mod tests {
     use std::cell::Cell;
 
     use futures::FutureExt;
-    use serde::{ser::SerializeSeq, Serializer};
+    use serde::{Serializer, ser::SerializeSeq};
     use tokio_util::{
         bytes::BytesMut,
         codec::{Decoder, Encoder},
     };
 
     use crate::{
-        msg::{P2pServiceId, PeerMessage},
         PeerId,
+        msg::{P2pServiceId, PeerMessage},
     };
 
     use super::*;

@@ -448,6 +448,91 @@ async fn open_stream_must_timeout_when_peer_withholds_connect_response() {
 }
 
 #[tokio::test]
+async fn relayed_open_stream_must_not_succeed_before_downstream_accepts() {
+    let (mut node1, addr1) = create_node(true, 1, vec![]).await;
+    let service1 = node1.create_service(0.into());
+    tokio::spawn(async move { while node1.recv().await.is_ok() {} });
+
+    let (mut node2, addr2) = create_node(false, 2, vec![addr1.clone()]).await;
+    let requester2 = node2.requester();
+    tokio::spawn(async move { while node2.recv().await.is_ok() {} });
+
+    let raw_addr = UdpSocket::bind("127.0.0.1:0").expect("should bind raw peer udp").local_addr().expect("should get raw peer addr");
+    let priv_key = PrivatePkcs8KeyDer::from(super::DEFAULT_CLUSTER_KEY.to_vec());
+    let cert = CertificateDer::from(super::DEFAULT_CLUSTER_CERT.to_vec());
+    let raw_peer = make_server_endpoint(raw_addr, priv_key, cert).expect("should create raw peer endpoint");
+    let raw_peer_id = PeerId::from(3);
+    let secure: SharedKeyHandshake = super::DEFAULT_SECURE_KEY.into();
+    let (stream_req_tx, stream_req_rx) = tokio::sync::oneshot::channel();
+
+    let raw_task = tokio::spawn({
+        let node2_peer_id = addr2.peer_id();
+        async move {
+            let connecting = raw_peer.accept().await.expect("raw peer should accept incoming connect");
+            let connection = connecting.await.expect("raw peer should complete QUIC connection");
+            let (send, recv) = connection.accept_bi().await.expect("raw peer should accept main control stream");
+            let mut main_stream = P2pQuicStream::new(recv, send);
+            let request: RawConnectReq = wait_object::<_, _, 60000>(&mut main_stream).await.expect("raw peer should receive connect request");
+            secure
+                .verify_request(request.auth, request.from, request.to, crate::now_ms())
+                .expect("raw peer should verify connect request");
+            assert_eq!(request.from, node2_peer_id);
+            assert_eq!(request.to, raw_peer_id);
+            write_object::<_, _, 60000>(
+                &mut main_stream,
+                &RawConnectRes {
+                    result: Ok(secure.create_response(raw_peer_id, node2_peer_id, crate::now_ms())),
+                },
+            )
+            .await
+            .expect("raw peer should write connect response");
+
+            let (send, recv) = connection.accept_bi().await.expect("raw peer should accept relayed stream connect");
+            let mut stream = P2pQuicStream::new(recv, send);
+            let request: StreamConnectReq = wait_object::<_, _, 60000>(&mut stream).await.expect("raw peer should receive relayed stream connect request");
+            let _ = stream_req_tx.send(request);
+            std::future::pending::<()>().await;
+        }
+    });
+
+    requester2.connect((raw_peer_id, raw_addr.into()).into()).await.expect("node2 should queue connect to raw peer");
+
+    tokio::time::timeout(Duration::from_secs(3), async {
+        loop {
+            if matches!(service1.router().action(&raw_peer_id), Some(RouteAction::Next(_))) {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+    })
+    .await
+    .expect("node1 should learn a relay route to the raw peer through node2");
+
+    let mut open = tokio::spawn({
+        let service_requester = service1.requester();
+        async move { service_requester.open_stream(raw_peer_id, b"relayed-withheld-response".to_vec()).await }
+    });
+
+    let request = tokio::time::timeout(Duration::from_secs(1), stream_req_rx)
+        .await
+        .expect("raw peer should observe relayed stream open")
+        .expect("raw peer should send observed stream request");
+    assert_eq!(request.dest, raw_peer_id);
+    assert_eq!(request.source, addr1.peer_id());
+
+    let result = tokio::time::timeout(Duration::from_millis(2500), &mut open).await;
+    if result.is_err() {
+        open.abort();
+    }
+    raw_task.abort();
+
+    assert!(
+        matches!(result, Ok(Ok(Err(_)))),
+        "relayed open_stream must not report success before the downstream peer accepts the stream"
+    );
+}
+
+#[tokio::test]
 async fn open_stream_must_timeout_when_connect_request_write_stalls() {
     let (mut node, addr) = create_node(false, 1, vec![]).await;
     let service = node.create_service(0.into());
