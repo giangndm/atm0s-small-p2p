@@ -11,10 +11,10 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 4
-- Current audit continuation: Cycle after ISSUE-238 no-new cycle 4 reviewed
-  P2pNetwork/service lifecycle, requester admission, duplicate service
-  boundaries, graceful shutdown, and pending cleanup; continue auditing.
+- Current consecutive no-new-issue cycles: 5
+- Current audit continuation: Cycle after ISSUE-238 no-new cycle 5 reviewed
+  fuzz harness coverage and transitioned the next audit phase to configured
+  node-count randomized fuzzing.
 
 ## Root Cause Summary
 
@@ -19447,6 +19447,48 @@ the source of truth for evidence and reviewer decisions.
   - Pending sync task and main queue backpressure map to ISSUE-164,
     ISSUE-218, and ISSUE-219.
 - Current consecutive no-new cycles after ISSUE-238: 4.
+
+### Cycle after ISSUE-238 no-new cycle 5: fuzz harness coverage and transition review
+
+- Scope: reviewed `src/tests/fuzz.rs`, existing fuzz history in
+  `docs/found_issues.md` and `docs/summary_issues.md`, and the configured
+  random-action coverage for steady networks, malformed/bad-network actions,
+  churn with stop/restart, sanitized churn, raw wire injections, forged
+  `PeerStopped`, public requester operations, stream open, broadcast/unicast,
+  and background panic detection.
+- Reviewer: `Raman` (forked RED-team reviewer), rejected new issue acceptance
+  and recommended recording no-new cycle 5 plus the transition to the fuzzing
+  phase requested after five no-new cycles.
+- Verification:
+  - `RUST_LOG=error cargo test fuzz_node_count_must_honor_high_load_configuration --lib -- --nocapture`
+  - `cargo test fuzz_random --lib -- --list`
+  - `RUST_LOG=error P2P_FUZZ_NODES=6 P2P_FUZZ_STEPS=80 P2P_FUZZ_SEED=2385 cargo test fuzz_random_steady_valid_node_actions_must_not_panic_connection_tasks --lib -- --nocapture`
+  - `RUST_LOG=error P2P_FUZZ_NODES=6 P2P_FUZZ_STEPS=80 P2P_FUZZ_SEED=2386 cargo test fuzz_random_sanitized_node_churn_actions_must_not_panic_connection_tasks --lib -- --nocapture`
+  - `RUST_LOG=error P2P_FUZZ_NODES=6 P2P_FUZZ_STEPS=60 P2P_FUZZ_SEED=2387 cargo test fuzz_random_valid_node_actions_must_not_panic_connection_tasks --lib -- --nocapture`
+  - `RUST_LOG=error P2P_FUZZ_NODES=12 P2P_FUZZ_STEPS=300 P2P_FUZZ_SEED=23805 cargo test fuzz_random_steady_valid_node_actions_must_not_panic_connection_tasks --lib -- --nocapture`
+  - `RUST_LOG=error P2P_FUZZ_NODES=12 P2P_FUZZ_STEPS=240 P2P_FUZZ_SEED=23855 cargo test fuzz_random_sanitized_node_churn_actions_must_not_panic_connection_tasks --lib -- --nocapture`
+  - `RUST_LOG=error P2P_FUZZ_NODES=12 P2P_FUZZ_STEPS=180 P2P_FUZZ_SEED=23895 cargo test fuzz_random_node_actions_must_not_panic_connection_tasks --lib -- --nocapture`
+- Reviewer cross-check:
+  - `RUST_LOG=error cargo test fuzz_node_count_must_honor_high_load_configuration --lib -- --nocapture`: passed.
+  - `RUST_LOG=error P2P_FUZZ_NODES=12 P2P_FUZZ_STEPS=300 P2P_FUZZ_SEED=23805 cargo test fuzz_random_steady_valid_node_actions_must_not_panic_connection_tasks --lib -- --nocapture`: passed.
+  - `RUST_LOG=error P2P_FUZZ_NODES=12 P2P_FUZZ_STEPS=240 P2P_FUZZ_SEED=23855 cargo test fuzz_random_sanitized_node_churn_actions_must_not_panic_connection_tasks --lib -- --nocapture`: passed.
+  - `RUST_LOG=error P2P_FUZZ_NODES=12 P2P_FUZZ_STEPS=180 P2P_FUZZ_SEED=23895 cargo test fuzz_random_node_actions_must_not_panic_connection_tasks --lib -- --nocapture`: passed.
+  - `cargo test --lib -- --list | rg "fuzz_random|fuzz_node_count"`: passed.
+- Duplicate mapping:
+  - High-load configured node count coverage maps to fixed ISSUE-209.
+  - Invalid service id and malformed wire fuzz actions map to ISSUE-053,
+    ISSUE-060, ISSUE-091, and ISSUE-234.
+  - Forged `PeerStopped`, stale stop/disconnect, and restart lifecycle map to
+    ISSUE-215 through ISSUE-225.
+  - Route/path noise and pipe reliability map to RC-7 and prior stream-route
+    issues.
+  - Queue and backpressure behavior maps to RC-3, RC-6, and ISSUE-218 through
+    ISSUE-230.
+- Transition: five consecutive no-new cycles after ISSUE-238 are now recorded.
+  Continue the next audit phase by running and extending configured
+  node-count randomized fuzzing, accepting only distinct failures with
+  reviewer-confirmed failing test evidence.
+- Current consecutive no-new cycles after ISSUE-238: 5.
 
 ### Cycle after ISSUE-235 no-new cycle 1: transport, auth, and peer setup review
 
