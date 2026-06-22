@@ -4741,6 +4741,9 @@ the source of truth for evidence and reviewer decisions.
     existing remote publisher.
 - Fixed verification:
   - `cargo test new_local_pubsub_handles_must_observe_existing_remote_members -- --nocapture`
+- Fix status: fixed by replaying active `remote_subscribers` to newly-created
+  local publishers and active `remote_publishers` to newly-created local
+  subscribers during pubsub handle registration.
 
 ### ISSUE-143: Replicated KV full sync accepts stale terminal snapshot responses
 
