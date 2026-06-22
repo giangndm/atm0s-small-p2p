@@ -2372,6 +2372,8 @@ the source of truth for evidence and reviewer decisions.
   - Fixed summary: after dropping node1's `P2pService`, the cloned requester
     now returns `Err` from `send_broadcast`, and node2's service receives no
     stale `P2pServiceEvent::Broadcast`.
+- Fix status: fixed by checking the `P2pServiceRequester` liveness token before
+  stale requesters can send broadcasts through `SharedCtx`.
 
 ### ISSUE-077: Replicated KV zero changed batch size returns false empty success
 
