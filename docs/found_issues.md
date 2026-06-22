@@ -956,7 +956,7 @@ the source of truth for evidence and reviewer decisions.
 
 ### ISSUE-030: Duplicate service creation panics instead of returning an error
 
-- Status: fixed by rejecting duplicate live service registrations without
+- Fix status: fixed by rejecting duplicate live service registrations without
   asserting inside `SharedCtxInternal::set_service`.
 - Category: correctness, API stability
 - Score: 52/100
