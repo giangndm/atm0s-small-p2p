@@ -12,8 +12,8 @@ must resolve.
 ## Audit Status
 
 - Current consecutive no-new-issue cycles: 0
-- Current audit continuation: ISSUE-241 fixed by binding pubsub chunked
-  heartbeat pending state to a snapshot id.
+- Current audit continuation: ISSUE-242 fixed by requiring complete pubsub
+  heartbeat chunk sequences before omitted-role cleanup.
 
 ## Root Cause Summary
 
@@ -45,7 +45,7 @@ the source of truth for evidence and reviewer decisions.
   ISSUE-110, ISSUE-111, ISSUE-143, ISSUE-152,
   ISSUE-154, ISSUE-155, ISSUE-158, ISSUE-166, ISSUE-171, ISSUE-175,
   ISSUE-186, ISSUE-231, ISSUE-232, ISSUE-233, ISSUE-237, ISSUE-239,
-  ISSUE-240, ISSUE-241.
+  ISSUE-240, ISSUE-241, ISSUE-242.
 - Pattern: replicated-KV full sync, changed repair, alias lookup, metrics,
   visualization, and pubsub flows accept stale, unsolicited, reordered, or
   mismatched responses or broadcasts because handlers do not verify
@@ -19454,6 +19454,61 @@ the source of truth for evidence and reviewer decisions.
     `RUST_LOG=error cargo test pubsub_new_chunked_heartbeat_must_not_reuse_stale_pending_seen_channels --lib -- --nocapture`
     passed.
   - Regression guards:
+    `RUST_LOG=error cargo test pubsub_chunked_heartbeat_must_not_remove_roles_from_previous_chunk --lib -- --nocapture`,
+    `RUST_LOG=error cargo test pubsub_outbound_heartbeat_batches_must_respect_inbound_cap --lib -- --nocapture`,
+    `RUST_LOG=error cargo test pubsub_heartbeat --lib -- --nocapture`,
+    `RUST_LOG=error cargo test pubsub --lib -- --nocapture`,
+    `rustfmt --edition 2021 --check src/service/pubsub_service.rs`, and
+    `git diff --check` passed.
+
+### ISSUE-242: Final pubsub heartbeat chunk can clean up an incomplete snapshot
+
+- Status: fixed by adding chunk sequence metadata and requiring all chunks in a
+  snapshot before omitted-role cleanup runs.
+- Category: correctness, stability, bad-network/pubsub membership churn
+- Score: 62
+- Reviewers:
+  - `Carver the 2nd` (forked RED-team reviewer) accepted the issue as
+    distinct from ISSUE-240 and ISSUE-241 and confirmed the failing regression.
+- Affected code:
+  - `src/service/pubsub_service.rs`: `HeartbeatChunk` carried a `snapshot_id`
+    and `is_last`, but no chunk index or total chunk count.
+  - `src/service/pubsub_service.rs`: inbound final-chunk handling ran
+    omitted-role cleanup whenever `is_last` was true, even if earlier chunks
+    for that snapshot were never received.
+- Impact: if only the final chunk of a multi-batch heartbeat is delivered or
+  admitted, the receiver treats that partial view as a complete snapshot and
+  removes remote roles omitted from the final chunk. Under backpressure, churn,
+  or bad network conditions this can create false pubsub leave events and
+  noisy destination membership.
+- Distinctness: ISSUE-240 fixed per-chunk cleanup across chunks within a
+  complete snapshot. ISSUE-241 fixed stale pending state leaking across
+  different snapshot ids. ISSUE-242 is the same-snapshot completeness gap:
+  cleanup can still run from an incomplete current snapshot.
+- Root cause: final-chunk cleanup trusted a boolean `is_last` without proving
+  that all prior chunks in the same snapshot had been received.
+- Minimal fix proposal: add `chunk_index` and `chunks_count` to
+  `HeartbeatChunk`, track received chunk indexes in pending state, reject
+  malformed sequence metadata, and run omitted-role cleanup only when the
+  receiver has seen every chunk for the current snapshot.
+- Fix: chunk messages now include `chunk_index` and `chunks_count`.
+  `PendingHeartbeatChunks` tracks `seen_chunks`, resets it on snapshot or
+  count changes, rejects zero-count or out-of-range chunks, and runs
+  omitted-role cleanup on a final chunk only after `seen_chunks.len()` equals
+  `chunks_count`.
+- Evidence tests:
+  - Red evidence before fix:
+    `RUST_LOG=error cargo test pubsub_final_heartbeat_chunk_without_prior_chunks_must_not_remove_omitted_roles --lib -- --nocapture`
+    failed at `src/service/pubsub_service.rs:2739` with
+    `a final chunk without the earlier chunks from its snapshot must not remove roles omitted from that partial view`.
+  - Reviewer verification:
+    `Carver the 2nd` reran the same command and confirmed the failing
+    assertion.
+  - Verification after fix:
+    `RUST_LOG=error cargo test pubsub_final_heartbeat_chunk_without_prior_chunks_must_not_remove_omitted_roles --lib -- --nocapture`
+    passed.
+  - Regression guards:
+    `RUST_LOG=error cargo test pubsub_new_chunked_heartbeat_must_not_reuse_stale_pending_seen_channels --lib -- --nocapture`,
     `RUST_LOG=error cargo test pubsub_chunked_heartbeat_must_not_remove_roles_from_previous_chunk --lib -- --nocapture`,
     `RUST_LOG=error cargo test pubsub_outbound_heartbeat_batches_must_respect_inbound_cap --lib -- --nocapture`,
     `RUST_LOG=error cargo test pubsub_heartbeat --lib -- --nocapture`,

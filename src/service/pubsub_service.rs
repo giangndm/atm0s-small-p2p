@@ -123,7 +123,13 @@ enum PubsubMessage {
     Feedback(PubsubChannelId, Vec<u8>),
     FeedbackRpc(PubsubChannelId, Vec<u8>, RpcId, String),
     FeedbackRpcAnswer(Vec<u8>, RpcId),
-    HeartbeatChunk { snapshot_id: u64, channels: Vec<ChannelHeartbeat>, is_last: bool },
+    HeartbeatChunk {
+        snapshot_id: u64,
+        chunk_index: u64,
+        chunks_count: u64,
+        channels: Vec<ChannelHeartbeat>,
+        is_last: bool,
+    },
 }
 
 #[cfg(test)]
@@ -364,6 +370,8 @@ pub struct PubsubService {
 
 struct PendingHeartbeatChunks {
     snapshot_id: u64,
+    chunks_count: u64,
+    seen_chunks: HashSet<u64>,
     seen_channels: HashSet<PubsubChannelId>,
 }
 
@@ -558,9 +566,12 @@ impl PubsubService {
             self.local_heartbeat_snapshot_id = self.local_heartbeat_snapshot_id.wrapping_add(1);
             let snapshot_id = self.local_heartbeat_snapshot_id;
             let last_chunk_index = (heartbeat.len() - 1) / MAX_HEARTBEAT_CHANNELS_PER_BATCH;
+            let chunks_count = heartbeat.len().div_ceil(MAX_HEARTBEAT_CHANNELS_PER_BATCH) as u64;
             for (chunk_index, chunk) in heartbeat.chunks(MAX_HEARTBEAT_CHANNELS_PER_BATCH).enumerate() {
                 self.broadcast(&PubsubMessage::HeartbeatChunk {
                     snapshot_id,
+                    chunk_index: chunk_index as u64,
+                    chunks_count,
                     channels: chunk.to_vec(),
                     is_last: chunk_index == last_chunk_index,
                 })
@@ -749,9 +760,25 @@ impl PubsubService {
                             self.apply_heartbeat_rows(from_peer, channels);
                             self.remove_heartbeat_omissions(from_peer, &seen_channels);
                         }
-                        PubsubMessage::HeartbeatChunk { snapshot_id, channels, is_last } => {
+                        PubsubMessage::HeartbeatChunk {
+                            snapshot_id,
+                            chunk_index,
+                            chunks_count,
+                            channels,
+                            is_last,
+                        } => {
                             if channels.len() > MAX_HEARTBEAT_CHANNELS_PER_BATCH {
                                 log::warn!("[PubsubService] heartbeat chunk from {from_peer} has {} channels, dropping oversized batch", channels.len());
+                                self.pending_heartbeat_chunks.remove(&from_peer);
+                                return Ok(());
+                            }
+                            if chunks_count == 0 || chunk_index >= chunks_count {
+                                log::warn!("[PubsubService] heartbeat chunk from {from_peer} has invalid sequence {chunk_index}/{chunks_count}, dropping malformed snapshot");
+                                self.pending_heartbeat_chunks.remove(&from_peer);
+                                return Ok(());
+                            }
+                            if is_last != (chunk_index + 1 == chunks_count) {
+                                log::warn!("[PubsubService] heartbeat chunk from {from_peer} has inconsistent last flag for sequence {chunk_index}/{chunks_count}, dropping malformed snapshot");
                                 self.pending_heartbeat_chunks.remove(&from_peer);
                                 return Ok(());
                             }
@@ -763,17 +790,26 @@ impl PubsubService {
                                     .collect::<Vec<_>>();
                                 let pending = self.pending_heartbeat_chunks.entry(from_peer).or_insert_with(|| PendingHeartbeatChunks {
                                     snapshot_id,
+                                    chunks_count,
+                                    seen_chunks: HashSet::new(),
                                     seen_channels: HashSet::new(),
                                 });
-                                if pending.snapshot_id != snapshot_id {
+                                if pending.snapshot_id != snapshot_id || pending.chunks_count != chunks_count {
                                     pending.snapshot_id = snapshot_id;
+                                    pending.chunks_count = chunks_count;
+                                    pending.seen_chunks.clear();
                                     pending.seen_channels.clear();
                                 }
+                                pending.seen_chunks.insert(chunk_index);
                                 pending.seen_channels.extend(chunk_seen_channels);
                             }
                             self.apply_heartbeat_rows(from_peer, channels);
 
-                            if is_last {
+                            if self
+                                .pending_heartbeat_chunks
+                                .get(&from_peer)
+                                .is_some_and(|pending| pending.seen_chunks.len() == pending.chunks_count as usize)
+                            {
                                 let seen_channels = self.pending_heartbeat_chunks.remove(&from_peer).map(|pending| pending.seen_channels).unwrap_or_default();
                                 self.remove_heartbeat_omissions(from_peer, &seen_channels);
                             }
@@ -2593,9 +2629,12 @@ mod test {
         }
 
         let last_chunk_index = (heartbeats.len() - 1) / MAX_HEARTBEAT_CHANNELS_PER_BATCH;
+        let chunks_count = heartbeats.len().div_ceil(MAX_HEARTBEAT_CHANNELS_PER_BATCH) as u64;
         for (chunk_index, chunk) in heartbeats.chunks(MAX_HEARTBEAT_CHANNELS_PER_BATCH).enumerate() {
             let payload = bincode::serialize(&PubsubMessage::HeartbeatChunk {
                 snapshot_id: 1,
+                chunk_index: chunk_index as u64,
+                chunks_count,
                 channels: chunk.to_vec(),
                 is_last: chunk_index == last_chunk_index,
             })
@@ -2638,6 +2677,8 @@ mod test {
         let first_chunk = first_heartbeats[..MAX_HEARTBEAT_CHANNELS_PER_BATCH].to_vec();
         let payload = bincode::serialize(&PubsubMessage::HeartbeatChunk {
             snapshot_id: 1,
+            chunk_index: 0,
+            chunks_count: 2,
             channels: first_chunk,
             is_last: false,
         })
@@ -2670,9 +2711,12 @@ mod test {
         }
 
         let last_chunk_index = (second_heartbeats.len() - 1) / MAX_HEARTBEAT_CHANNELS_PER_BATCH;
+        let chunks_count = second_heartbeats.len().div_ceil(MAX_HEARTBEAT_CHANNELS_PER_BATCH) as u64;
         for (chunk_index, chunk) in second_heartbeats.chunks(MAX_HEARTBEAT_CHANNELS_PER_BATCH).enumerate() {
             let payload = bincode::serialize(&PubsubMessage::HeartbeatChunk {
                 snapshot_id: 2,
+                chunk_index: chunk_index as u64,
+                chunks_count,
                 channels: chunk.to_vec(),
                 is_last: chunk_index == last_chunk_index,
             })
@@ -2686,6 +2730,133 @@ mod test {
         assert!(
             !service.channels.get(&stale_channel).expect("stale channel should remain local").has_remote_publisher(from_peer),
             "a later complete chunked heartbeat must remove roles that were only seen in an earlier incomplete snapshot"
+        );
+    }
+
+    #[tokio::test]
+    async fn pubsub_final_heartbeat_chunk_without_prior_chunks_must_not_remove_omitted_roles() {
+        let mut service = test_service();
+        let from_peer = PeerId::from(2);
+        let old_channel = PubsubChannelId(10);
+        let final_only_channel = PubsubChannelId(20_000);
+
+        for channel in [old_channel, final_only_channel] {
+            let (sub_tx, _sub_rx) = subscriber_event_channel();
+            service
+                .on_internal(InternalMsg::SubscriberCreated(subscriber_handle(SubscriberLocalId::rand()), channel, sub_tx))
+                .await
+                .expect("subscriber should be registered");
+        }
+
+        let initial = bincode::serialize(&PubsubMessage::Heartbeat(vec![ChannelHeartbeat {
+            channel: old_channel,
+            publish: true,
+            publish_generation: 1,
+            subscribe: false,
+            subscribe_generation: 1,
+        }]))
+        .expect("test heartbeat should serialize");
+        service.on_service(P2pServiceEvent::Unicast(from_peer, initial)).await.expect("initial heartbeat should process");
+
+        assert!(
+            service.channels.get(&old_channel).expect("old channel should exist").has_remote_publisher(from_peer),
+            "initial heartbeat should establish old remote role"
+        );
+
+        let final_only = bincode::serialize(&PubsubMessage::HeartbeatChunk {
+            snapshot_id: 1,
+            chunk_index: 1,
+            chunks_count: 2,
+            channels: vec![ChannelHeartbeat {
+                channel: final_only_channel,
+                publish: true,
+                publish_generation: 2,
+                subscribe: false,
+                subscribe_generation: 2,
+            }],
+            is_last: true,
+        })
+        .expect("test heartbeat chunk should serialize");
+        service.on_service(P2pServiceEvent::Unicast(from_peer, final_only)).await.expect("final-only chunk should be processed");
+
+        assert!(
+            service.channels.get(&old_channel).expect("old channel should remain local").has_remote_publisher(from_peer),
+            "a final chunk without the earlier chunks from its snapshot must not remove roles omitted from that partial view"
+        );
+    }
+
+    #[tokio::test]
+    async fn pubsub_chunked_heartbeat_must_cleanup_after_out_of_order_snapshot_completes() {
+        let mut service = test_service();
+        let from_peer = PeerId::from(2);
+        let old_channel = PubsubChannelId(10);
+        let first_channel = PubsubChannelId(20_000);
+        let final_channel = PubsubChannelId(20_001);
+
+        for channel in [old_channel, first_channel, final_channel] {
+            let (sub_tx, _sub_rx) = subscriber_event_channel();
+            service
+                .on_internal(InternalMsg::SubscriberCreated(subscriber_handle(SubscriberLocalId::rand()), channel, sub_tx))
+                .await
+                .expect("subscriber should be registered");
+        }
+
+        let initial = bincode::serialize(&PubsubMessage::Heartbeat(vec![ChannelHeartbeat {
+            channel: old_channel,
+            publish: true,
+            publish_generation: 1,
+            subscribe: false,
+            subscribe_generation: 1,
+        }]))
+        .expect("test heartbeat should serialize");
+        service.on_service(P2pServiceEvent::Unicast(from_peer, initial)).await.expect("initial heartbeat should process");
+
+        let final_chunk = bincode::serialize(&PubsubMessage::HeartbeatChunk {
+            snapshot_id: 1,
+            chunk_index: 1,
+            chunks_count: 2,
+            channels: vec![ChannelHeartbeat {
+                channel: final_channel,
+                publish: true,
+                publish_generation: 2,
+                subscribe: false,
+                subscribe_generation: 2,
+            }],
+            is_last: true,
+        })
+        .expect("test final chunk should serialize");
+        service
+            .on_service(P2pServiceEvent::Unicast(from_peer, final_chunk))
+            .await
+            .expect("out-of-order final chunk should process");
+
+        assert!(
+            service.channels.get(&old_channel).expect("old channel should exist").has_remote_publisher(from_peer),
+            "cleanup must wait until every chunk in the snapshot has arrived"
+        );
+
+        let first_chunk = bincode::serialize(&PubsubMessage::HeartbeatChunk {
+            snapshot_id: 1,
+            chunk_index: 0,
+            chunks_count: 2,
+            channels: vec![ChannelHeartbeat {
+                channel: first_channel,
+                publish: true,
+                publish_generation: 2,
+                subscribe: false,
+                subscribe_generation: 2,
+            }],
+            is_last: false,
+        })
+        .expect("test first chunk should serialize");
+        service
+            .on_service(P2pServiceEvent::Unicast(from_peer, first_chunk))
+            .await
+            .expect("completing earlier chunk should process");
+
+        assert!(
+            !service.channels.get(&old_channel).expect("old channel should remain local").has_remote_publisher(from_peer),
+            "cleanup must run once all chunks in an out-of-order snapshot have arrived"
         );
     }
 
