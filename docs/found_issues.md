@@ -16857,11 +16857,12 @@ the source of truth for evidence and reviewer decisions.
     expected messages.
   - the closed-receiver subcase still fails at `src/tests/cross_nodes.rs:203:5`;
     `send_unicast` reports success even when the destination service receiver
-    is gone. This is already accepted under ISSUE-119 and does not add
-    ISSUE-205.
-- Root-cause summary impact: no new root cause; this cycle records partial
-  fixed evidence for ISSUE-119 under RC-3 while the closed-receiver reporting
-  subcase remains open.
+    is gone. This historical duplicate evidence was already accepted under
+    ISSUE-119 and did not add ISSUE-205; later direct and relayed
+    closed-receiver unicast tests now pass.
+- Root-cause summary impact: no new root cause; this cycle recorded partial
+  fixed evidence for ISSUE-119 under RC-3. Later fixes closed the
+  closed-receiver reporting subcase.
 
 ### Cycle after ISSUE-204 no-new cycle 21: visualization info batch duplicate
 

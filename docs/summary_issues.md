@@ -1829,8 +1829,8 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   emitting a successful handshake response or installing alias/neighbour state.
   Verified with
   `cargo test inbound_handshake_must_reject_peer_claiming_local_id -- --nocapture`
-  and `cargo fmt -- --check`. ISSUE-194 remains open for arbitrary third-party
-  peer-id claims.
+  and `cargo fmt -- --check`. Historical note: ISSUE-194 was still open at
+  this point, but it is now fixed by `InboundPeerBindings`.
 - ISSUE-191: fixed by updating the README getting-started snippet and its
   compile-mirror example to use a numeric `PeerId`, propagate
   `P2pNetwork::new(...).await?`, bind a mutable network, and create the service
@@ -4163,7 +4163,8 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   fixed/no-new evidence for ISSUE-197: unicast relay now detects
   `RouteAction::Next(next) == ingress` via `DropIngressLoop` and drops/logs
   instead of forwarding back to the sender. This does not prove stream relay
-  loop handling is fixed; ISSUE-180 remains open.
+  loop handling is fixed at this point; ISSUE-180 is now fixed by passing the
+  ingress `ConnectionId` into `accept_bi` and rejecting same-connection relay.
 - Focused relay stream ingress-loop review:
   `cargo test relay_stream_must_not_forward_back_to_ingress_peer -- --nocapture`
   failed with duplicate evidence for ISSUE-180. Reviewer `Socrates the 4th`
@@ -4242,7 +4243,8 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   still fails at `src/tests/cross_nodes.rs:203`. Reviewer `Noether the 4th`
   classified this as existing-issue partial-fix/no-new evidence for ISSUE-119
   under RC-3: queue-full silent drop is fixed by awaited local delivery, while
-  closed-receiver success reporting remains open.
+  closed-receiver success reporting was still open at this point. It is now
+  covered by the fixed direct and relayed closed-receiver unicast tests.
 - Focused visualization resource-bound source/test review:
   `cargo test visualization_info_batches_must_be_bounded -- --nocapture`
   failed with duplicate evidence for ISSUE-105. Reviewer `Popper the 4th`
