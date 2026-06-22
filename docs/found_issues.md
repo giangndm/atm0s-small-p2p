@@ -4329,6 +4329,8 @@ the source of truth for evidence and reviewer decisions.
   `SyncFullState::on_rpc_res`. Oversized snapshot pages are rejected before any
   slots are applied to local state or emitted as local events. Fix commit:
   `d2dfbf7` (`fix: cap full sync snapshot pages`).
+- Fix status: fixed by rejecting full-sync snapshot pages whose slot count
+  exceeds `MAX_SNAPSHOT_SLOTS_PER_PAGE` before applying or emitting slots.
 - Category: high-load stability, bad-network stability, resource exhaustion
 - Score: 62/100
 - Reviewer: `Erdos the 2nd`, confirmed.
