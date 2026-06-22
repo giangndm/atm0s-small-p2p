@@ -7,9 +7,9 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Accepted issues: 208
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 0
+- Current consecutive no-new-issue cycles: 1
 - Stop condition: continue until 5 consecutive cycles find no new accepted
-  issue; currently 0/5 after ISSUE-208.
+  issue; currently 1/5 after ISSUE-208.
 - Fix phase status: ISSUE-001, ISSUE-003, ISSUE-004, ISSUE-005, ISSUE-006, ISSUE-007,
   ISSUE-002, ISSUE-008, ISSUE-009, ISSUE-010, ISSUE-011, ISSUE-012, ISSUE-013, ISSUE-014, ISSUE-015, ISSUE-017, ISSUE-020, ISSUE-021, ISSUE-023, ISSUE-024, ISSUE-025, ISSUE-027, ISSUE-033, ISSUE-034, ISSUE-039, ISSUE-045, ISSUE-046, ISSUE-047, ISSUE-048, ISSUE-055, ISSUE-059, ISSUE-103, ISSUE-110, ISSUE-111, ISSUE-115, ISSUE-116, ISSUE-117, ISSUE-118, ISSUE-119, ISSUE-120, ISSUE-122, ISSUE-123,
   ISSUE-124, ISSUE-125, ISSUE-126, ISSUE-127, ISSUE-128, ISSUE-129, ISSUE-130,
@@ -3668,6 +3668,19 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Recent No-New Audit
 
+- Cycle after ISSUE-208 no-new cycle 1 reviewed `src/lib.rs`,
+  `src/requester.rs`, and `src/tests/security.rs`, then ran the focused
+  `PeerStats` tests and sanitized churn fuzz. The two `PeerStats` tests failed
+  exactly as existing ISSUE-064 and ISSUE-068 evidence:
+  `stale_peer_stats_event_must_not_publish_metrics_for_unknown_connection`
+  failed at `src/tests/security.rs:747:5`, and
+  `peer_stats_must_validate_peer_matches_connection` failed at
+  `src/tests/security.rs:770:5`. The fuzz pass
+  `P2P_FUZZ_SEED=208001 P2P_FUZZ_NODES=8 P2P_FUZZ_STEPS=1800` passed with
+  expected shutdown/refused/duplicate/connection-lost churn noise only.
+  Reviewer `Franklin the 12th` confirmed no-new; requester/control candidates
+  map to ISSUE-016, ISSUE-028, ISSUE-112, ISSUE-113, ISSUE-114, ISSUE-125,
+  ISSUE-153, and ISSUE-177.
 - Cycle after ISSUE-204 no-new cycle 342 reviewed route/service delivery,
   pubsub lifecycle, and replicated-KV state machines, then ran two fresh fuzz
   passes: `P2P_FUZZ_SEED=342001 P2P_FUZZ_NODES=8 P2P_FUZZ_STEPS=2200` steady

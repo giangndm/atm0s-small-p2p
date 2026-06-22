@@ -11,7 +11,7 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 0
+- Current consecutive no-new-issue cycles: 1
 - Stop condition requested by user: continue until 5 consecutive cycles find no
   new accepted issue.
 
@@ -7296,6 +7296,40 @@ the source of truth for evidence and reviewer decisions.
     guards remaining.
 
 ## No-New-Issue Audit Cycles
+
+### Cycle after ISSUE-208 no-new cycle 1: network lifecycle requester duplicate review
+
+- Result: no accepted non-duplicate issue.
+- Reviewer: `Franklin the 12th`, forked subagent review, confirmed
+  duplicate/no-new.
+- Source and test evidence reviewed:
+  - `src/lib.rs`
+  - `src/requester.rs`
+  - `src/tests/security.rs`
+  - `cargo test stale_peer_stats_event_must_not_publish_metrics_for_unknown_connection -- --nocapture`
+    failed at `src/tests/security.rs:747:5`.
+  - `cargo test peer_stats_must_validate_peer_matches_connection -- --nocapture`
+    failed at `src/tests/security.rs:770:5`.
+  - `RUST_LOG=error P2P_FUZZ_SEED=208001 P2P_FUZZ_NODES=8 P2P_FUZZ_STEPS=1800 cargo test fuzz_random_sanitized_node_churn_actions_must_not_panic_connection_tasks -- --nocapture`
+    passed.
+- Evidence summary:
+  - `MainEvent::PeerStats` still publishes metrics for unknown connections and
+    for mismatched `(ConnectionId, PeerId)` reports, but those failures match
+    existing ISSUE-064 and ISSUE-068 evidence.
+  - sanitized churn completed with no panic, failed assertion, or background
+    task failure; shutdown, duplicate-connection, refused-connect, deadline,
+    connection-lost, and closed-channel logs were reviewed as expected churn
+    context.
+- Duplicate mapping:
+  - unknown-connection `PeerStats` maps to ISSUE-064.
+  - mismatched-peer `PeerStats` maps to ISSUE-068.
+  - requester/control candidates map to ISSUE-016, ISSUE-028, ISSUE-112,
+    ISSUE-113, ISSUE-114, ISSUE-125, ISSUE-153, and ISSUE-177.
+- Root-cause summary impact: no new root cause; reviewed candidates map to
+  existing RC-1, RC-3, RC-6, and RC-7.
+- Smallest fix proposal: no new summary fix change; keep the mapped issue fix
+  proposals for validating PeerStats against live connection ownership and for
+  requester/control admission and duplicate-connect handling.
 
 ### Cycle after ISSUE-204 no-new cycle 342: post-fix route service fuzz pass
 
