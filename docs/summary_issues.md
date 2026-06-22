@@ -7,10 +7,10 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Accepted issues: 238
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 16
-- Current audit continuation: Fuzz phase no-new cycle 6 returned to
-  configured-node randomized fuzzing after five focused source-review no-new
-  cycles without a distinct reviewed failure.
+- Current consecutive no-new-issue cycles: 17
+- Current audit continuation: Fuzz phase no-new cycle 7 raised high-stress
+  configured-node randomized fuzzing to 28 nodes without a distinct reviewed
+  failure.
 - Fix phase status: ISSUE-001, ISSUE-003, ISSUE-004, ISSUE-005, ISSUE-006, ISSUE-007,
   ISSUE-002, ISSUE-008, ISSUE-009, ISSUE-010, ISSUE-011, ISSUE-012, ISSUE-013, ISSUE-014, ISSUE-015, ISSUE-017, ISSUE-020, ISSUE-021, ISSUE-023, ISSUE-024, ISSUE-025, ISSUE-027, ISSUE-033, ISSUE-034, ISSUE-039, ISSUE-045, ISSUE-046, ISSUE-047, ISSUE-048, ISSUE-055, ISSUE-059, ISSUE-103, ISSUE-110, ISSUE-111, ISSUE-115, ISSUE-116, ISSUE-117, ISSUE-118, ISSUE-119, ISSUE-120, ISSUE-122, ISSUE-123,
   ISSUE-124, ISSUE-125, ISSUE-126, ISSUE-127, ISSUE-128, ISSUE-129, ISSUE-130,
@@ -377,6 +377,17 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   RC-3/RC-7, ISSUE-156, ISSUE-180, ISSUE-217, ISSUE-220, ISSUE-238,
   malformed-input/ownership families including ISSUE-053, ISSUE-060,
   ISSUE-091, ISSUE-234, RC-1, RC-6, and fixed ISSUE-209.
+- Fuzz phase no-new cycle 7 raised configured-node randomized fuzzing to
+  20-, 24-, 26-, and 28-node deterministic runs with forked reviewer
+  `Kepler the 2nd`. Local seeds 29001 through 29006 passed across steady
+  valid actions, valid random actions, valid churn, sanitized churn,
+  malformed/random raw actions, and malformed/churn actions. Reviewer
+  cross-check seeds 29101 through 29103 also passed. Rejected noise mapped to
+  duplicate-connect/route-churn/lifecycle families, RC-7, RC-6,
+  ISSUE-215 through ISSUE-225, stream/open path backpressure families
+  RC-3/RC-7, ISSUE-156, ISSUE-180, ISSUE-217, ISSUE-220, and ISSUE-238.
+  Malformed/random and malformed/churn coverage did not produce failing
+  evidence for a new malformed-input issue.
 - Cycle after ISSUE-231 no-new cycle 1 reviewed routing/discovery/path
   stability and stream/pipe lifecycle integration with forked reviewer
   `Carver`. Focused route, discovery, stream-relay, peer-stopped, and pubsub

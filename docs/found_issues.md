@@ -11,10 +11,10 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 16
-- Current audit continuation: Fuzz phase no-new cycle 6 returned to
-  configured-node randomized fuzzing after five focused source-review no-new
-  cycles without a distinct reviewed failure.
+- Current consecutive no-new-issue cycles: 17
+- Current audit continuation: Fuzz phase no-new cycle 7 raised high-stress
+  configured-node randomized fuzzing to 28 nodes without a distinct reviewed
+  failure.
 
 ## Root Cause Summary
 
@@ -20008,6 +20008,46 @@ the source of truth for evidence and reviewer decisions.
     configuration family.
 - Current consecutive no-new cycles after ISSUE-238: 16.
 - Current fuzz-phase no-new cycles after transition: 6.
+- Current focused source-review no-new cycles after fuzz phase: 5.
+
+### Fuzz phase no-new cycle 7: 28-node high-stress randomized fuzz batch
+
+- Scope: continued configured-node randomized fuzzing after fuzz-phase no-new
+  cycle 6. The batch raised local coverage to 20-, 24-, 26-, and 28-node
+  deterministic runs with steady valid actions, valid random actions, valid
+  action churn, sanitized churn, malformed/random raw actions,
+  malformed/churn actions, stop/restart churn, refused reconnect/handshake
+  close behavior, stream/open_bi setup, route churn, channel-closed delivery,
+  local service ack-ended noise, and background panic detection.
+- Reviewer: `Kepler the 2nd` (forked RED-team reviewer), rejected new issue
+  acceptance because there was no distinct failing test evidence. The reviewer
+  independently cross-checked deterministic fuzz seeds and recommended
+  documenting this as a no-new fuzz cycle.
+- Verification:
+  - `RUST_LOG=error P2P_FUZZ_NODES=28 P2P_FUZZ_STEPS=980 P2P_FUZZ_SEED=29001 cargo test fuzz_random_steady_valid_node_actions_must_not_panic_connection_tasks --lib -- --nocapture`: passed.
+  - `RUST_LOG=error P2P_FUZZ_NODES=26 P2P_FUZZ_STEPS=920 P2P_FUZZ_SEED=29002 cargo test fuzz_random_valid_node_actions_must_not_panic_connection_tasks --lib -- --nocapture`: passed.
+  - `RUST_LOG=error P2P_FUZZ_NODES=26 P2P_FUZZ_STEPS=940 P2P_FUZZ_SEED=29003 cargo test fuzz_random_valid_node_churn_actions_must_not_panic_connection_tasks --lib -- --nocapture`: passed.
+  - `RUST_LOG=error P2P_FUZZ_NODES=24 P2P_FUZZ_STEPS=960 P2P_FUZZ_SEED=29004 cargo test fuzz_random_sanitized_node_churn_actions_must_not_panic_connection_tasks --lib -- --nocapture`: passed.
+  - `RUST_LOG=error P2P_FUZZ_NODES=20 P2P_FUZZ_STEPS=700 P2P_FUZZ_SEED=29005 cargo test fuzz_random_node_actions_must_not_panic_connection_tasks --lib -- --nocapture`: passed.
+  - `RUST_LOG=error P2P_FUZZ_NODES=20 P2P_FUZZ_STEPS=700 P2P_FUZZ_SEED=29006 cargo test fuzz_random_node_churn_actions_must_not_panic_connection_tasks --lib -- --nocapture`: passed.
+- Reviewer cross-check:
+  - `RUST_LOG=error P2P_FUZZ_NODES=12 P2P_FUZZ_STEPS=180 P2P_FUZZ_SEED=29101 cargo test fuzz_random_steady_valid_node_actions_must_not_panic_connection_tasks --lib -- --nocapture`: passed.
+  - `RUST_LOG=error P2P_FUZZ_NODES=12 P2P_FUZZ_STEPS=160 P2P_FUZZ_SEED=29102 cargo test fuzz_random_sanitized_node_churn_actions_must_not_panic_connection_tasks --lib -- --nocapture`: passed.
+  - `RUST_LOG=error P2P_FUZZ_NODES=10 P2P_FUZZ_STEPS=140 P2P_FUZZ_SEED=29103 cargo test fuzz_random_node_churn_actions_must_not_panic_connection_tasks --lib -- --nocapture`: passed.
+- Duplicate mapping:
+  - Duplicate peer connections, connection lost, refused reconnect, and
+    handshake-close noise map to existing duplicate-connect, route-churn, and
+    lifecycle families, mainly RC-7.
+  - `PeerStopped`, `Shutdown`, and stopped-node reconnect noise map to RC-6
+    and ISSUE-215 through ISSUE-225.
+  - `channel closed`, local service delivery ack-ended, and `open_bi`
+    internal-channel errors map to RC-3/RC-7 and ISSUE-156, ISSUE-180,
+    ISSUE-217, ISSUE-220, and ISSUE-238.
+  - Malformed/random and malformed/churn coverage did not produce a
+    reproducible failure, so no new malformed-input issue is supported by
+    failing evidence.
+- Current consecutive no-new cycles after ISSUE-238: 17.
+- Current fuzz-phase no-new cycles after transition: 7.
 - Current focused source-review no-new cycles after fuzz phase: 5.
 
 ### Cycle after ISSUE-235 no-new cycle 1: transport, auth, and peer setup review
