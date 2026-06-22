@@ -4029,6 +4029,8 @@ the source of truth for evidence and reviewer decisions.
   `LOCAL_PUBLISHER_EVENT_QUEUE_SIZE = 1024`, and publisher-event fanout uses
   nonblocking `try_send` so full or closed local queues are treated as failed
   deliveries instead of accumulating unbounded backlog.
+- Fix status: fixed by bounding local publisher event queues and using
+  nonblocking publisher-event fanout.
 - Category: high-load stability, resource exhaustion, pubsub reliability
 - Score: 72/100
 - Reviewer: `Cicero the 2nd`, confirmed.
