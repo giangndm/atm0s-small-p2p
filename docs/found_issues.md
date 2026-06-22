@@ -12,8 +12,8 @@ must resolve.
 ## Audit Status
 
 - Current consecutive no-new-issue cycles: 0
-- Current audit continuation: ISSUE-243 fixed by bounding pubsub heartbeat
-  chunk counts before pending chunk indexes are stored.
+- Current audit continuation: ISSUE-244 fixed by retaining live handshake
+  replay rejection after exact replay-cache eviction.
 
 ## Root Cause Summary
 
@@ -25,7 +25,7 @@ the source of truth for evidence and reviewer decisions.
 - Representative issues: ISSUE-001, ISSUE-004, ISSUE-014, ISSUE-015,
   ISSUE-018, ISSUE-020, ISSUE-039, ISSUE-048, ISSUE-066, ISSUE-067,
   ISSUE-068, ISSUE-090, ISSUE-115, ISSUE-116, ISSUE-145, ISSUE-189,
-  ISSUE-194.
+  ISSUE-194, ISSUE-244.
 - Pattern: message payloads and internal events carry peer ids, RPC ids, or
   source identities that are trusted without binding them back to the live
   authenticated connection, local handle, expected responder, channel role, or
@@ -19565,6 +19565,60 @@ the source of truth for evidence and reviewer decisions.
     `RUST_LOG=error cargo test pubsub_heartbeat --lib`,
     `rustfmt --edition 2021 --check src/service/pubsub_service.rs`, and
     `git diff --check` passed.
+
+### ISSUE-244: Handshake replay tokens become reusable after cache pressure
+
+- Status: fixed by adding a compact rotating replay window that remembers
+  accepted token hashes after they leave the exact bounded cache.
+- Category: security, correctness, high-load authentication/replay protection
+- Score: 72
+- Reviewers:
+  - `Locke the 2nd` (forked RED-team reviewer) accepted the issue as distinct
+    from ISSUE-146, ISSUE-176, ISSUE-207, and ISSUE-166 and supplied the
+    failing regression scenario.
+- Affected code:
+  - `src/secure.rs`: `SharedKeyHandshake::validate_handshake` rejected replay
+    only when the token hash was still present in `accepted_tokens`.
+  - `src/secure.rs`: when `total_tokens >= HANDSHAKE_REPLAY_CACHE_MAX_ENTRIES`,
+    the verifier evicted the oldest accepted token marker, even if that
+    marker was still inside its timestamp validity window.
+- Impact: an attacker with valid shared-key credentials can authenticate once,
+  pressure the global replay cache with fresh valid tokens, and then replay
+  the still-live original handshake token after its exact marker is evicted.
+  This weakens replay protection under high connection churn or hostile
+  shared-key peers.
+- Distinctness: ISSUE-146 and ISSUE-176 added request/response replay
+  protection, ISSUE-207 preserved availability when the bounded replay cache
+  is full, and ISSUE-166 covers broadcast replay. ISSUE-244 is the follow-up
+  security gap where availability-preserving exact-cache eviction forgets a
+  live authentication replay marker.
+- Root cause: the replay cache used one bounded exact set as both the
+  admission cache and the complete live replay memory. Evicting a token to
+  admit unrelated fresh handshakes removed the only record needed to reject
+  that token until `expires_at`.
+- Minimal fix proposal: keep the exact cache bounded for memory and
+  availability, but retain live replay evidence in a compact fixed-size
+  rotating window until the handshake timestamp window has elapsed.
+- Fix: added `ReplaySeenWindow`, a fixed-size rotating bitset keyed by current
+  verifier time. Every accepted token hash is inserted into the window, and
+  validation rejects hashes already seen in any live bucket before admitting a
+  token into the exact cache. The existing exact cache remains globally
+  bounded and still prunes/evicts for availability.
+- Evidence tests:
+  - Red evidence before fix:
+    `cargo test handshake_replay_must_not_be_accepted_after_replay_cache_eviction_pressure --lib`
+    failed at `src/secure.rs:332` with
+    `a live accepted handshake token must remain non-replayable even after replay-cache pressure`.
+  - Reviewer verification:
+    `Locke the 2nd` supplied and accepted the same cache-pressure replay
+    scenario as distinct.
+  - Verification after fix:
+    `cargo test handshake_replay_must_not_be_accepted_after_replay_cache_eviction_pressure --lib`
+    passed.
+  - Regression guards:
+    `cargo test secure::tests --lib`,
+    `rustfmt --edition 2021 --check src/secure.rs`, and `git diff --check`
+    passed.
 
 ### Cycle after ISSUE-239 no-new cycle 1: route, lifecycle, service, pubsub, and replicated-KV review
 

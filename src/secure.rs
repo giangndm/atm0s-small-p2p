@@ -14,6 +14,11 @@ const HASH_SEED: &str = "atm0s-small-p2p";
 const HANDSHAKE_TIMEOUT: u64 = 30_000;
 const HANDSHAKE_MAX_FUTURE_SKEW: u64 = 1_000;
 const HANDSHAKE_REPLAY_CACHE_MAX_ENTRIES: usize = 8192;
+const HANDSHAKE_REPLAY_SEEN_BUCKETS: usize = 4;
+const HANDSHAKE_REPLAY_SEEN_BITS: usize = 1 << 20;
+const HANDSHAKE_REPLAY_SEEN_WORDS: usize = HANDSHAKE_REPLAY_SEEN_BITS / u64::BITS as usize;
+const HANDSHAKE_REPLAY_SEEN_WINDOW_MS: u64 = HANDSHAKE_TIMEOUT + HANDSHAKE_MAX_FUTURE_SKEW;
+const HANDSHAKE_REPLAY_SEEN_BUCKET_MS: u64 = HANDSHAKE_REPLAY_SEEN_WINDOW_MS.div_ceil(HANDSHAKE_REPLAY_SEEN_BUCKETS as u64);
 
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
 struct ReplayScope {
@@ -26,6 +31,17 @@ struct ReplayScope {
 struct ReplayToken {
     expires_at: u64,
     accepted_at: u64,
+}
+
+#[derive(Debug)]
+struct ReplaySeenBucket {
+    started_at: u64,
+    bits: Vec<u64>,
+}
+
+#[derive(Debug)]
+struct ReplaySeenWindow {
+    buckets: Vec<ReplaySeenBucket>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -50,6 +66,7 @@ struct HandshakeData {
 pub struct SharedKeyHandshake {
     secure_key: String,
     accepted_tokens: Mutex<HashMap<ReplayScope, HashMap<[u8; 32], ReplayToken>>>,
+    seen_tokens: Mutex<ReplaySeenWindow>,
 }
 
 impl From<&str> for SharedKeyHandshake {
@@ -57,6 +74,7 @@ impl From<&str> for SharedKeyHandshake {
         Self {
             secure_key: value.to_owned(),
             accepted_tokens: Mutex::new(HashMap::new()),
+            seen_tokens: Mutex::new(ReplaySeenWindow::new()),
         }
     }
 }
@@ -140,10 +158,16 @@ impl SharedKeyHandshake {
             return Err("Handshake token replayed".to_string());
         }
 
+        let mut seen_tokens = self.seen_tokens.lock();
+        if seen_tokens.contains(current_ts, &token_id) {
+            return Err("Handshake token replayed".to_string());
+        }
+
         if total_tokens >= HANDSHAKE_REPLAY_CACHE_MAX_ENTRIES {
             Self::evict_oldest_replay_token(&mut accepted_tokens);
         }
         accepted_tokens.entry(scope).or_default().insert(token_id, ReplayToken { expires_at, accepted_at: current_ts });
+        seen_tokens.insert(current_ts, &token_id);
 
         Ok(())
     }
@@ -165,6 +189,82 @@ impl SharedKeyHandshake {
                 }
             }
         }
+    }
+}
+
+impl ReplaySeenWindow {
+    fn new() -> Self {
+        Self {
+            buckets: (0..HANDSHAKE_REPLAY_SEEN_BUCKETS)
+                .map(|_| ReplaySeenBucket {
+                    started_at: u64::MAX,
+                    bits: vec![0; HANDSHAKE_REPLAY_SEEN_WORDS],
+                })
+                .collect(),
+        }
+    }
+
+    fn contains(&mut self, now: u64, token_id: &[u8; 32]) -> bool {
+        self.rotate(now);
+        self.buckets
+            .iter()
+            .filter(|bucket| bucket.started_at != u64::MAX && now <= bucket.started_at.saturating_add(HANDSHAKE_REPLAY_SEEN_WINDOW_MS))
+            .any(|bucket| Self::token_bits(token_id).into_iter().all(|bit| bucket.bit_is_set(bit)))
+    }
+
+    fn insert(&mut self, now: u64, token_id: &[u8; 32]) {
+        self.rotate(now);
+        let bucket = self.current_bucket(now);
+        for bit in Self::token_bits(token_id) {
+            bucket.set_bit(bit);
+        }
+    }
+
+    fn rotate(&mut self, now: u64) {
+        let bucket_start = Self::bucket_start(now);
+        let index = Self::bucket_index(bucket_start);
+        let bucket = &mut self.buckets[index];
+        if bucket.started_at != bucket_start {
+            bucket.started_at = bucket_start;
+            bucket.bits.fill(0);
+        }
+    }
+
+    fn current_bucket(&mut self, now: u64) -> &mut ReplaySeenBucket {
+        let bucket_start = Self::bucket_start(now);
+        let index = Self::bucket_index(bucket_start);
+        &mut self.buckets[index]
+    }
+
+    fn bucket_start(now: u64) -> u64 {
+        now / HANDSHAKE_REPLAY_SEEN_BUCKET_MS * HANDSHAKE_REPLAY_SEEN_BUCKET_MS
+    }
+
+    fn bucket_index(bucket_start: u64) -> usize {
+        ((bucket_start / HANDSHAKE_REPLAY_SEEN_BUCKET_MS) as usize) % HANDSHAKE_REPLAY_SEEN_BUCKETS
+    }
+
+    fn token_bits(token_id: &[u8; 32]) -> [usize; 4] {
+        let mut bits = [0; 4];
+        for (idx, chunk) in token_id.chunks_exact(8).enumerate() {
+            let value = u64::from_le_bytes(chunk.try_into().expect("token chunks are 8 bytes"));
+            bits[idx] = value as usize % HANDSHAKE_REPLAY_SEEN_BITS;
+        }
+        bits
+    }
+}
+
+impl ReplaySeenBucket {
+    fn bit_is_set(&self, bit: usize) -> bool {
+        let word = bit / u64::BITS as usize;
+        let offset = bit % u64::BITS as usize;
+        self.bits[word] & (1 << offset) != 0
+    }
+
+    fn set_bit(&mut self, bit: usize) {
+        let word = bit / u64::BITS as usize;
+        let offset = bit % u64::BITS as usize;
+        self.bits[word] |= 1 << offset;
     }
 }
 
@@ -312,6 +412,27 @@ mod tests {
         let accepted_tokens = secure.accepted_tokens.lock();
         let total_tokens: usize = accepted_tokens.values().map(HashMap::len).sum();
         assert!(total_tokens <= HANDSHAKE_REPLAY_CACHE_MAX_ENTRIES, "replay cache must stay globally bounded across many unique scopes");
+    }
+
+    #[test]
+    fn handshake_replay_must_not_be_accepted_after_replay_cache_eviction_pressure() {
+        let secure = SharedKeyHandshake::from("test_key");
+        let victim = PeerId::from(1);
+        let server = PeerId::from(2);
+
+        let replayed = secure.create_request(victim, server, 1_000);
+        assert!(secure.verify_request(replayed.clone(), victim, server, 1_000).is_ok());
+
+        for idx in 0..HANDSHAKE_REPLAY_CACHE_MAX_ENTRIES {
+            let peer = PeerId::from(10_000 + idx as u64);
+            let request = secure.create_request(peer, server, 1_001);
+            assert!(secure.verify_request(request, peer, server, 1_001).is_ok());
+        }
+
+        assert!(
+            secure.verify_request(replayed, victim, server, 1_002).is_err(),
+            "a live accepted handshake token must remain non-replayable even after replay-cache pressure"
+        );
     }
 
     #[test]
