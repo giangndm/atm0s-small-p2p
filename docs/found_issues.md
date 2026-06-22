@@ -3706,7 +3706,7 @@ the source of truth for evidence and reviewer decisions.
     `process_control(ControlCmd::Connect(node1_peer_id@127.0.0.1:9, Some(tx)))`
     sends `Ok(())`; expected an error because the requested socket address does
     not match the existing connection.
-- Fixed summary: fixed by the shared ISSUE-153 `process_connect` path.
+- Fix status: fixed by the shared ISSUE-153 `process_connect` path.
   `P2pNetwork::process_connect` now calls
   `NetworkNeighbours::has_peer_connection_attempt` before `endpoint.connect`;
   that predicate matches existing connected peers and pending outbound attempts
