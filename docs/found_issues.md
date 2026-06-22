@@ -17674,3 +17674,45 @@ the source of truth for evidence and reviewer decisions.
   existing RC-3, RC-6, and RC-7 families unless a future run produces a focused
   failing invariant.
 - Root-cause summary impact: no new root cause.
+
+### ISSUE-210: Remote discovery sync accepts non-dialable addresses
+
+- Score: 48
+- Category: correctness / discovery input validation
+- Status: fixed by pending commit.
+- Reviewer: `Sartre the 13th` (forked RED-team reviewer), accepted.
+- Affected code:
+  - `src/discovery.rs`
+- Impact: an authenticated peer can gossip `PeerDiscoverySync` rows with
+  wildcard or port-zero addresses such as `0.0.0.0:0` or `127.0.0.1:0`. The
+  receiver stores them as remote dial candidates and may re-gossip or repeatedly
+  try to connect to endpoints that cannot represent a reachable peer.
+- Distinctness: ISSUE-181 fixed local advertise validation in
+  `PeerDiscovery::enable_local`; this issue covers the remote ingress path in
+  `PeerDiscovery::apply_sync`. Existing stale, duplicate, seed, and local-id
+  discovery issues validate freshness or identity, not remote address
+  dialability.
+- Failing evidence:
+  - `cargo test apply_sync_must_reject_non_dialable_remote_addresses -- --nocapture`
+  - Failure before fix:
+    - `left: Some(PeerAddress(PeerId(2), NetworkAddress(0.0.0.0:0)))`
+    - `right: None`
+- Root cause: `PeerDiscovery::apply_sync` validates timestamp, local peer id,
+  seed id, and stopped tombstones before `remotes.insert`, but does not reuse
+  the existing `is_dialable_advertise_address` predicate for untrusted remote
+  discovery rows.
+- Minimal fix proposal: reject `apply_sync` rows where
+  `!is_dialable_advertise_address(&address)` before tombstone mutation or
+  remote insertion.
+- Fix status: fixed by reusing the existing dialability predicate in
+  `PeerDiscovery::apply_sync` before stopped-tombstone mutation and remote
+  insertion.
+- Verification:
+  - `cargo test apply_sync_must_reject_non_dialable_remote_addresses -- --nocapture`
+  - `cargo test discovery::test:: --lib -- --nocapture`
+- Residual test note: `cargo test --lib` was also run and failed only
+  `tests::discovery::discovery_remain_node`, which still learns a relayed route
+  but does not establish the expected direct neighbour within the test's fixed
+  one-second sleep. Coder review classified this as unrelated to ISSUE-210
+  because the involved test addresses are dialable `127.0.0.1:<ephemeral>`
+  addresses.

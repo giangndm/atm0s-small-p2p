@@ -125,6 +125,11 @@ impl PeerDiscovery {
                 continue;
             }
 
+            if !is_dialable_advertise_address(&address) {
+                log::warn!("[PeerDiscovery] ignore non-dialable remote advertise address {address}");
+                continue;
+            }
+
             if let Some(stopped_at) = self.stopped.get(&peer).copied() {
                 if timestamp_is_live(stopped_at, now_ms) && last_updated <= stopped_at {
                     continue;
@@ -223,6 +228,27 @@ mod test {
             discovery.create_sync_for(100, &remote),
             PeerDiscoverySync(vec![]),
             "port-zero local advertise addresses must not be gossiped as dial candidates"
+        );
+    }
+
+    #[test_log::test]
+    fn apply_sync_must_reject_non_dialable_remote_addresses() {
+        let wildcard = peer_addr("2@0.0.0.0:0");
+        let port_zero = peer_addr("3@127.0.0.1:0");
+        let mut discovery = PeerDiscovery::default();
+
+        discovery.apply_sync(
+            100,
+            PeerDiscoverySync(vec![
+                (wildcard.peer_id(), 100, wildcard.network_address().clone()),
+                (port_zero.peer_id(), 100, port_zero.network_address().clone()),
+            ]),
+        );
+
+        assert_eq!(
+            discovery.remotes().next(),
+            None,
+            "remote discovery syncs must reject non-dialable wildcard or port-zero addresses before they become dial candidates"
         );
     }
 

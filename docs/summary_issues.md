@@ -5,11 +5,10 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Audit Status
 
-- Accepted issues: 209
+- Accepted issues: 210
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 1
-- Stop condition: not satisfied; continue discovery until five consecutive
-  no-new cycles after ISSUE-209.
+- Current consecutive no-new-issue cycles: 0
+- Stop condition: not satisfied; discovery should continue after ISSUE-210 fix.
 - Fix phase status: ISSUE-001, ISSUE-003, ISSUE-004, ISSUE-005, ISSUE-006, ISSUE-007,
   ISSUE-002, ISSUE-008, ISSUE-009, ISSUE-010, ISSUE-011, ISSUE-012, ISSUE-013, ISSUE-014, ISSUE-015, ISSUE-017, ISSUE-020, ISSUE-021, ISSUE-023, ISSUE-024, ISSUE-025, ISSUE-027, ISSUE-033, ISSUE-034, ISSUE-039, ISSUE-045, ISSUE-046, ISSUE-047, ISSUE-048, ISSUE-055, ISSUE-059, ISSUE-103, ISSUE-110, ISSUE-111, ISSUE-115, ISSUE-116, ISSUE-117, ISSUE-118, ISSUE-119, ISSUE-120, ISSUE-122, ISSUE-123,
   ISSUE-124, ISSUE-125, ISSUE-126, ISSUE-127, ISSUE-128, ISSUE-129, ISSUE-130,
@@ -206,7 +205,8 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 - Representative issues: ISSUE-003, ISSUE-005, ISSUE-006, ISSUE-007,
   ISSUE-008, ISSUE-033, ISSUE-044, ISSUE-055, ISSUE-092, ISSUE-103,
   ISSUE-112 through ISSUE-114, ISSUE-164, ISSUE-167,
-  ISSUE-177, ISSUE-180, ISSUE-181, ISSUE-190, ISSUE-192, ISSUE-197.
+  ISSUE-177, ISSUE-180, ISSUE-181, ISSUE-190, ISSUE-192, ISSUE-197,
+  ISSUE-210.
 - Pattern: route/discovery inputs can include local ids, self seeds, stale
   addresses, overflowed metrics, over-hop routes, duplicate connection races,
   explicit connect addresses that are ignored by peer-id-only fast paths, or
@@ -214,15 +214,23 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   or discovery syncs can also contain duplicate destination rows whose last
   value silently wins before validation. Stream relay setup and unicast
   forwarding can also forward back to the ingress connection when route state
-  forms a loop, and local advertise config can gossip non-dialable addresses.
+  forms a loop. Local advertise config and remote discovery syncs can also
+  gossip non-dialable addresses.
+- ISSUE-210: fixed remote discovery input validation issue. Unlike local
+  advertise config, `PeerDiscovery::apply_sync` accepts `0.0.0.0:0` and
+  port-zero remote rows as dial candidates. The fix rejects non-dialable
+  remote discovery rows with the existing dialability predicate before
+  tombstone mutation or insertion. Verification:
+  `cargo test apply_sync_must_reject_non_dialable_remote_addresses -- --nocapture`
+  and `cargo test discovery::test:: --lib -- --nocapture`.
 - Minimal fix proposal: sanitize before insertion: reject local/self candidates
   and over-hop routes, pin authenticated direct paths for their peer ids, use
   checked metric math, ignore stale discovery timestamps, reject duplicate
   destination rows in one route or discovery sync, coalesce duplicate connects,
   validate already-connected peer addresses, add hysteresis before switching
   active paths, and reject relay stream or unicast hops that point back to the
-  ingress connection. Validate configured local advertise addresses before
-  gossiping them.
+  ingress connection. Validate configured local advertise addresses and remote
+  discovery row addresses before gossiping or storing them.
 
 ### RC-8: Public examples are not compile-checked
 
