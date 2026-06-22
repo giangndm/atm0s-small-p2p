@@ -1789,6 +1789,14 @@ the source of truth for evidence and reviewer decisions.
   - Failure summary: node2 injects `Message::Info([(ConnectionId(999),
     PeerId(123), 7)])` to node1, and node1 emits a matching `PeerJoined`
     event even though it never requested a scan response.
+- Fix status: fixed. Visualization collectors now track expected scan
+  responders from live connections, ignore broadcast `Info`, and accept unicast
+  `Info` only from a pending responder. Completed scan-response tasks are
+  drained promptly so normal repeated scan/update behavior keeps working.
+- Fixed verification:
+  - `cargo test -q visualization_info_must_not_be_accepted_without_scan_request -- --nocapture`
+  - `cargo test -q tests::visualization::discovery_new_node -- --nocapture`
+  - `cargo test -q visualization_scan_must_not_disclose_topology_to_non_collector -- --nocapture`
 
 ### ISSUE-062: Metrics accepts unsolicited forged connection metrics
 

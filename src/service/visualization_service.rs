@@ -45,6 +45,7 @@ pub struct VisualizationService {
     service: P2pService,
     neighbours: HashMap<PeerId, u64>,
     pending_scan_responses: HashSet<PeerId>,
+    pending_info_responders: HashSet<PeerId>,
     scan_response_tasks: FuturesUnordered<JoinHandle<PeerId>>,
     pending_scan_broadcast: Option<JoinHandle<()>>,
     ticker: Interval,
@@ -67,6 +68,7 @@ impl VisualizationService {
             collect_me,
             neighbours: HashMap::new(),
             pending_scan_responses: HashSet::new(),
+            pending_info_responders: HashSet::new(),
             scan_response_tasks: FuturesUnordered::new(),
             pending_scan_broadcast: None,
             outs: if collect_me {
@@ -102,12 +104,24 @@ impl VisualizationService {
             }
 
             select! {
+                Some(task) = self.scan_response_tasks.next(), if !self.scan_response_tasks.is_empty() => {
+                    match task {
+                        Ok(peer) => {
+                            self.pending_scan_responses.remove(&peer);
+                        }
+                        Err(err) => {
+                            log::warn!("visualization scan response task failed: {err}");
+                        }
+                    }
+                }
                 _ = self.ticker.tick() => {
                     if let Some(interval) = self.collect_interval {
                         if self.collect_me {
                             // for update local node
                             self.outs.push_back(VisualizationServiceEvent::PeerUpdated(self.service.router().local_id(), self.service.router().neighbours()));
                         }
+
+                        self.pending_info_responders = self.service.ctx.conns().into_iter().map(|conn| conn.to_id()).collect();
 
                         if self.pending_scan_broadcast.is_none() {
                             let requester = self.service.requester();
@@ -142,7 +156,7 @@ impl VisualizationService {
                                 Message::Scan => {
                                     self.on_scan(from);
                                 }
-                                Message::Info(neighbours) => self.on_info(from, neighbours),
+                                Message::Info(_) => {}
                             }
                         }
                     }
@@ -150,7 +164,11 @@ impl VisualizationService {
                         if let Ok(msg) = bincode::deserialize::<Message>(&data) {
                             match msg {
                                 Message::Scan => {}
-                                Message::Info(neighbours) => self.on_info(from, neighbours),
+                                Message::Info(neighbours) => {
+                                    if self.pending_info_responders.remove(&from) {
+                                        self.on_info(from, neighbours);
+                                    }
+                                }
                             }
                         }
                     }
@@ -258,13 +276,16 @@ mod test {
         let info = encode_info_for_test(vec![]);
 
         for peer in 0..MAX_VISUALIZATION_REMOTE_PEERS {
+            let peer = PeerId::from(peer as u64 + 10);
+            service.pending_info_responders.insert(peer);
             service_tx
-                .send(P2pServiceEvent::Unicast(PeerId::from(peer as u64 + 10), info.clone()))
+                .send(P2pServiceEvent::Unicast(peer, info.clone()))
                 .await
                 .expect("visualization service channel should accept test message");
             let _ = service.recv().await.expect("visualization event should be emitted");
         }
 
+        service.pending_info_responders.insert(PeerId::from(20_000));
         service_tx
             .send(P2pServiceEvent::Unicast(PeerId::from(20_000), info.clone()))
             .await
@@ -286,14 +307,17 @@ mod test {
         let info = encode_info_for_test(vec![]);
 
         for peer in 0..MAX_VISUALIZATION_REMOTE_PEERS {
+            let peer = PeerId::from(peer as u64 + 10);
+            service.pending_info_responders.insert(peer);
             service_tx
-                .send(P2pServiceEvent::Unicast(PeerId::from(peer as u64 + 10), info.clone()))
+                .send(P2pServiceEvent::Unicast(peer, info.clone()))
                 .await
                 .expect("visualization service channel should accept test message");
             let _ = service.recv().await.expect("visualization event should be emitted");
         }
 
         let existing = PeerId::from(10);
+        service.pending_info_responders.insert(existing);
         service_tx
             .send(P2pServiceEvent::Unicast(existing, encode_info_for_test(vec![(ConnectionId::from(7), PeerId::from(8), 9)])))
             .await
@@ -311,24 +335,16 @@ mod test {
         let mut service = VisualizationService::new(None, false, base_service);
         let info = encode_info_for_test(vec![]);
 
-        for peer in 0..MAX_VISUALIZATION_REMOTE_PEERS {
-            service_tx
-                .send(P2pServiceEvent::Broadcast(PeerId::from(peer as u64 + 10), info.clone()))
-                .await
-                .expect("visualization service channel should accept test message");
-            let _ = service.recv().await.expect("visualization event should be emitted");
-        }
-
         service_tx
-            .send(P2pServiceEvent::Broadcast(PeerId::from(20_000), info))
+            .send(P2pServiceEvent::Broadcast(PeerId::from(10), info))
             .await
-            .expect("visualization service channel should accept rejected test message");
+            .expect("visualization service channel should accept ignored test message");
 
         assert!(
             tokio::time::timeout(Duration::from_millis(20), service.recv()).await.is_err(),
-            "rejected broadcast remote peers must not emit visualization events"
+            "broadcast Info frames must not emit visualization events"
         );
-        assert_eq!(service.neighbours.len(), MAX_VISUALIZATION_REMOTE_PEERS);
+        assert_eq!(service.neighbours.len(), 0);
     }
 
     #[tokio::test]
@@ -339,6 +355,7 @@ mod test {
         let neighbours = (0..=MAX_TOPOLOGY_ROWS_PER_INFO)
             .map(|idx| (ConnectionId::from(idx as u64 + 10), PeerId::from(idx as u64 + 100), idx as u16))
             .collect::<Vec<_>>();
+        service.pending_info_responders.insert(PeerId::from(2));
 
         service_tx
             .send(P2pServiceEvent::Unicast(PeerId::from(2), encode_info_for_test(neighbours)))
@@ -359,6 +376,7 @@ mod test {
         let neighbours = (0..MAX_TOPOLOGY_ROWS_PER_INFO)
             .map(|idx| (ConnectionId::from(idx as u64 + 10), PeerId::from(idx as u64 + 100), idx as u16))
             .collect::<Vec<_>>();
+        service.pending_info_responders.insert(PeerId::from(2));
 
         service_tx
             .send(P2pServiceEvent::Unicast(PeerId::from(2), encode_info_for_test(neighbours)))
