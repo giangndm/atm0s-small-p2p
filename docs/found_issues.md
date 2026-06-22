@@ -11,12 +11,12 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 5
-- Current audit continuation: critical-only post-ISSUE-246 transport,
-  framing, handshake, neighbour, stats, and network-lifecycle review found no
-  new score-80+ issue across QUIC stream caps, bincode frame bounds, malformed
-  objects, handshake replay/timestamp/identity binding, inbound authorization,
-  pending connect cleanup, stale ownership checks, and shutdown behavior.
+- Current consecutive no-new-issue cycles: 6
+- Current audit continuation: critical-only configured-node fuzz phase no-new
+  cycle 8 found no new score-80+ issue across steady valid actions, valid
+  random actions, valid churn, sanitized churn, malformed/raw random actions,
+  malformed/raw churn, forged `PeerStopped`, stop/restart, streams,
+  unicast/broadcast, requester paths, and high-load node-count handling.
 
 ## Root Cause Summary
 
@@ -20841,6 +20841,52 @@ the source of truth for evidence and reviewer decisions.
     failing evidence.
 - Current consecutive no-new cycles after ISSUE-238: 17.
 - Current fuzz-phase no-new cycles after transition: 7.
+- Current focused source-review no-new cycles after fuzz phase: 5.
+
+### Fuzz phase no-new cycle 8: 30-node configured randomized fuzz batch
+
+- Scope: continued configured-node randomized fuzzing after five post-ISSUE-246
+  focused critical source-review cycles and fuzz-phase no-new cycle 7. Reviewed
+  `src/tests/fuzz.rs` and ran fresh deterministic seeds across the six fuzz
+  entry points: steady valid actions, valid random actions, valid churn,
+  sanitized churn, malformed/raw random actions, and malformed/raw churn.
+  Covered configured high-load node counts, connect/try-connect bursts,
+  unicast, try-unicast, broadcast, stream open, raw forged unicast, invalid
+  service broadcast, forged `PeerStopped`, stop, restart, route/open-stream
+  churn, refused reconnect, and background panic detection.
+- Reviewer: `Ramanujan the 2nd` (forked RED-team reviewer), returned
+  `NO_NEW_CRITICAL` because no distinct failing fuzz evidence survived as a
+  score-80+ issue.
+- Verification:
+  - `RUST_LOG=error cargo test fuzz_node_count_must_honor_high_load_configuration --lib`: passed.
+  - `cargo test fuzz_random --lib -- --list`: listed 6 fuzz tests.
+  - `RUST_LOG=error P2P_FUZZ_NODES=30 P2P_FUZZ_STEPS=1040 P2P_FUZZ_SEED=30001 cargo test fuzz_random_steady_valid_node_actions_must_not_panic_connection_tasks --lib`: passed.
+  - `RUST_LOG=error P2P_FUZZ_NODES=28 P2P_FUZZ_STEPS=980 P2P_FUZZ_SEED=30002 cargo test fuzz_random_valid_node_actions_must_not_panic_connection_tasks --lib`: passed.
+  - `RUST_LOG=error P2P_FUZZ_NODES=28 P2P_FUZZ_STEPS=1000 P2P_FUZZ_SEED=30003 cargo test fuzz_random_valid_node_churn_actions_must_not_panic_connection_tasks --lib`: passed.
+  - `RUST_LOG=error P2P_FUZZ_NODES=26 P2P_FUZZ_STEPS=1020 P2P_FUZZ_SEED=30004 cargo test fuzz_random_sanitized_node_churn_actions_must_not_panic_connection_tasks --lib`: passed.
+  - `RUST_LOG=error P2P_FUZZ_NODES=22 P2P_FUZZ_STEPS=760 P2P_FUZZ_SEED=30005 cargo test fuzz_random_node_actions_must_not_panic_connection_tasks --lib`: passed.
+  - `RUST_LOG=error P2P_FUZZ_NODES=22 P2P_FUZZ_STEPS=760 P2P_FUZZ_SEED=30006 cargo test fuzz_random_node_churn_actions_must_not_panic_connection_tasks --lib`: passed.
+- Reviewer cross-check:
+  - `RUST_LOG=error cargo test fuzz_node_count_must_honor_high_load_configuration --lib -- --nocapture`: passed.
+  - `cargo test fuzz_random --lib -- --list`: listed 6 fuzz tests.
+  - `RUST_LOG=error P2P_FUZZ_NODES=12 P2P_FUZZ_STEPS=180 P2P_FUZZ_SEED=300101 cargo test fuzz_random_steady_valid_node_actions_must_not_panic_connection_tasks --lib -- --nocapture`: passed.
+  - `RUST_LOG=error P2P_FUZZ_NODES=12 P2P_FUZZ_STEPS=160 P2P_FUZZ_SEED=300102 cargo test fuzz_random_sanitized_node_churn_actions_must_not_panic_connection_tasks --lib -- --nocapture`: passed.
+  - `RUST_LOG=error P2P_FUZZ_NODES=10 P2P_FUZZ_STEPS=160 P2P_FUZZ_SEED=300103 cargo test fuzz_random_node_churn_actions_must_not_panic_connection_tasks --lib -- --nocapture`: passed.
+  - `RUST_LOG=error P2P_FUZZ_NODES=14 P2P_FUZZ_STEPS=180 P2P_FUZZ_SEED=300104 cargo test fuzz_random_node_actions_must_not_panic_connection_tasks --lib -- --nocapture`: passed.
+  - `RUST_LOG=error P2P_FUZZ_NODES=14 P2P_FUZZ_STEPS=180 P2P_FUZZ_SEED=300105 cargo test fuzz_random_valid_node_actions_must_not_panic_connection_tasks --lib -- --nocapture`: passed.
+- Duplicate mapping:
+  - High-load node-count coverage maps to fixed ISSUE-209.
+  - Malformed service ids and malformed/raw peer messages map to ISSUE-053,
+    ISSUE-060, ISSUE-091, ISSUE-234, RC-1, and RC-6.
+  - Stop/restart, forged `PeerStopped`, disconnect cleanup, and graceful
+    shutdown map to ISSUE-215 through ISSUE-225 and RC-6.
+  - Route churn, duplicate connections, route instability, relay/stream noise,
+    `open_bi`/internal-channel errors, and local service delivery backpressure
+    map to ISSUE-003, ISSUE-156, ISSUE-180, ISSUE-217, ISSUE-220, ISSUE-238,
+    RC-3, and RC-7.
+  - No reproducible fuzz failure supported a distinct score-80+ issue.
+- Current consecutive no-new cycles after ISSUE-238: 18.
+- Current fuzz-phase no-new cycles after transition: 8.
 - Current focused source-review no-new cycles after fuzz phase: 5.
 
 ### Cycle after ISSUE-235 no-new cycle 1: transport, auth, and peer setup review
