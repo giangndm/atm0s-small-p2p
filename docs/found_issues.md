@@ -18429,3 +18429,34 @@ the source of truth for evidence and reviewer decisions.
   - `RUST_LOG=error cargo test peer_stopped_ --lib -- --nocapture`
   - `RUST_LOG=error cargo test tests::security:: --lib -- --nocapture`
   - `rustfmt --edition 2024 --check src/peer/peer_internal.rs src/tests/security.rs src/tests/cross_nodes.rs`
+
+### Cycle after ISSUE-225 no-new cycle 1: ack-worker, route, stream, and steady fuzz review
+
+- Scope: reviewed the current ledgers after ISSUE-225, then audited remaining
+  ack-worker backpressure, peer-control admission, stream setup, graceful-stop
+  cleanup, and route/path-jumping surfaces.
+- Result: no new accepted issue.
+- Duplicate or reviewed mappings:
+  - Peer-control queue admission failures under concurrent acked unicast bursts
+    map to existing bounded-backpressure behavior and earlier requester/control
+    queue fixes, not a new correctness bug.
+  - Open-stream setup and control admission map to existing fixed stream issues
+    such as ISSUE-117, ISSUE-149, ISSUE-169, and related RC-4 entries.
+  - Active route path jumping maps to ISSUE-003/RC-7; current
+    `PeerMemory::select_best` keeps the existing path unless another candidate
+    beats it by `PATH_SWITCH_SCORE_MARGIN`, and direct paths remain preferred
+    over relayed paths.
+  - Fuzz logs containing duplicate-connection closes, connection-lost teardown,
+    and `local service delivery ack channel ended` were reviewed as shutdown or
+    bounded backpressure fallout. A focused healthy-connection acked-unicast
+    burst probe passed after avoiding intentional peer-control queue overflow.
+- Evidence:
+  - `RUST_LOG=error P2P_FUZZ_NODES=12 P2P_FUZZ_STEPS=200 cargo test fuzz_random_steady_valid_node_actions_must_not_panic_connection_tasks --lib -- --nocapture`
+  - Temporary focused probe:
+    sequential acked unicast burst with destination service draining completed
+    and a follow-up unicast succeeded; the initial concurrent version failed
+    only at expected bounded peer-control admission (`no available capacity`).
+- Summary/root cause review: no new root cause beyond RC-3 bounded
+  backpressure policy, RC-4 stream setup hardening, RC-6 lifecycle cleanup, and
+  RC-7 route stability. Continue auditing; consecutive no-new cycles after
+  ISSUE-225: 1.
