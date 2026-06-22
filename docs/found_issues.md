@@ -5143,6 +5143,9 @@ the source of truth for evidence and reviewer decisions.
   `cargo test awaited_connect_must_error_while_same_peer_connect_is_pending -- --nocapture`,
   plus
   `cargo test connect_to_same_peer_id_at_different_address_must_not_report_success -- --nocapture`.
+- Fix status: fixed by routing discovery tick retries through
+  `P2pNetwork::process_connect`, which coalesces existing neighbour connection
+  attempts with `has_peer_connection_attempt`.
 
 ### ISSUE-154: Stale FetchChanged response cancels a newer replicated-KV repair
 
