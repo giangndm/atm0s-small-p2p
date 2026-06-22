@@ -7,10 +7,10 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Accepted issues: 238
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 3
-- Current audit continuation: Cycle after ISSUE-238 no-new cycle 3 repaired
-  stale metrics/visualization scan-response evidence harnesses after service
-  liveness registration; continue auditing.
+- Current consecutive no-new-issue cycles: 4
+- Current audit continuation: Cycle after ISSUE-238 no-new cycle 4 reviewed
+  P2pNetwork/service lifecycle, requester admission, duplicate service
+  boundaries, graceful shutdown, and pending cleanup; continue auditing.
 - Fix phase status: ISSUE-001, ISSUE-003, ISSUE-004, ISSUE-005, ISSUE-006, ISSUE-007,
   ISSUE-002, ISSUE-008, ISSUE-009, ISSUE-010, ISSUE-011, ISSUE-012, ISSUE-013, ISSUE-014, ISSUE-015, ISSUE-017, ISSUE-020, ISSUE-021, ISSUE-023, ISSUE-024, ISSUE-025, ISSUE-027, ISSUE-033, ISSUE-034, ISSUE-039, ISSUE-045, ISSUE-046, ISSUE-047, ISSUE-048, ISSUE-055, ISSUE-059, ISSUE-103, ISSUE-110, ISSUE-111, ISSUE-115, ISSUE-116, ISSUE-117, ISSUE-118, ISSUE-119, ISSUE-120, ISSUE-122, ISSUE-123,
   ISSUE-124, ISSUE-125, ISSUE-126, ISSUE-127, ISSUE-128, ISSUE-129, ISSUE-130,
@@ -238,6 +238,16 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   `RUST_LOG=error cargo test metrics --lib -- --nocapture`,
   `RUST_LOG=error cargo test visualization --lib -- --nocapture`, and
   `git diff --check`.
+- Cycle after ISSUE-238 no-new cycle 4 reviewed P2pNetwork/service lifecycle,
+  requester admission, duplicate service boundaries, graceful shutdown, and
+  pending cleanup with forked reviewer `Tesla`. Focused requester, service
+  requester, duplicate service, and graceful shutdown filters passed; reviewer
+  cross-checks also passed `peer_stopped_`, `pending`, and `disconnect`
+  filters serially where needed. Rejected candidates mapped to ISSUE-028,
+  ISSUE-030, ISSUE-051, ISSUE-052, ISSUE-053, ISSUE-060, ISSUE-063,
+  ISSUE-072, ISSUE-073, ISSUE-076, ISSUE-091, ISSUE-118, ISSUE-125,
+  ISSUE-164, ISSUE-167, ISSUE-170, ISSUE-215 through ISSUE-225, ISSUE-234,
+  RC-3, and RC-6.
 - Cycle after ISSUE-231 no-new cycle 1 reviewed routing/discovery/path
   stability and stream/pipe lifecycle integration with forked reviewer
   `Carver`. Focused route, discovery, stream-relay, peer-stopped, and pubsub

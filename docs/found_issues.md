@@ -11,10 +11,10 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 3
-- Current audit continuation: Cycle after ISSUE-238 no-new cycle 3 repaired
-  stale metrics/visualization scan-response evidence harnesses after service
-  liveness registration; continue auditing.
+- Current consecutive no-new-issue cycles: 4
+- Current audit continuation: Cycle after ISSUE-238 no-new cycle 4 reviewed
+  P2pNetwork/service lifecycle, requester admission, duplicate service
+  boundaries, graceful shutdown, and pending cleanup; continue auditing.
 
 ## Root Cause Summary
 
@@ -19397,6 +19397,56 @@ the source of truth for evidence and reviewer decisions.
   failure was a test-harness mismatch with ISSUE-234 service requester
   liveness semantics.
 - Current consecutive no-new cycles after ISSUE-238: 3.
+
+### Cycle after ISSUE-238 no-new cycle 4: P2pNetwork and service lifecycle review
+
+- Scope: reviewed `docs/found_issues.md` and `docs/summary_issues.md`, then
+  audited `src/lib.rs`, `src/service.rs`, `src/requester.rs`, `src/ctx.rs`,
+  `src/peer.rs`, `src/peer/peer_internal.rs`, and relevant lifecycle,
+  requester, security, discovery, and fuzz tests. Focus areas were service
+  registration and duplicate/rejected service semantics, requester liveness,
+  control queue admission, pending connect cleanup, pending sync retry cleanup,
+  graceful shutdown, `PeerStopped`/`PeerDisconnected` propagation, and
+  high-load or bad-network lifecycle ordering.
+- Reviewer: `Tesla` (forked RED-team reviewer), rejected new issue acceptance
+  and recommended documenting a no-new cycle for this lifecycle slice.
+- Local candidate checked: authenticated inbound disconnect before delayed
+  `PeerConnected` delivery looked like it might leave a stale pending
+  neighbour, but a focused temporary evidence test passed because the delayed
+  `PeerConnected` still establishes the direct route before disconnect cleanup.
+- Verification:
+  - `RUST_LOG=error cargo test requester_connect --lib -- --nocapture`
+  - `RUST_LOG=error cargo test service_requester --lib -- --nocapture`
+  - `RUST_LOG=error cargo test duplicate_service --lib -- --nocapture`
+  - `RUST_LOG=error cargo test shutdown_gracefully --lib -- --nocapture`
+- Reviewer cross-check:
+  - `RUST_LOG=error cargo test requester_connect --lib -- --nocapture`: passed, 3/3.
+  - `RUST_LOG=error cargo test duplicate_service --lib -- --nocapture`: passed, 2/2.
+  - `RUST_LOG=error cargo test dropped_service_requester --lib -- --nocapture`: passed, 3/3.
+  - `RUST_LOG=error cargo test graceful --lib -- --nocapture`: passed, 11/11.
+  - `RUST_LOG=error cargo test peer_stopped_ --lib -- --nocapture --test-threads=1`: passed, 15/15.
+  - `RUST_LOG=error cargo test pending --lib -- --nocapture`: passed, 15/15.
+  - `RUST_LOG=error cargo test shutdown_gracefully_must_not_wait --lib -- --nocapture`: passed, 1/1.
+  - `RUST_LOG=error cargo test disconnect --lib -- --nocapture --test-threads=1`: passed, 16/16.
+- Duplicate mapping:
+  - Service registration, duplicate service replacement, and out-of-range
+    service IDs map to ISSUE-030, ISSUE-052, ISSUE-053, ISSUE-060, ISSUE-091,
+    and ISSUE-234.
+  - Requester liveness after drop and stale cloned service requesters map to
+    ISSUE-028, ISSUE-072, ISSUE-073, ISSUE-076, and ISSUE-234.
+  - Network control queue full and bounded requester connect backlog map to
+    ISSUE-125 and RC-3/RC-6.
+  - Pending connect coalescing and duplicate pending connect behavior map to
+    ISSUE-028, ISSUE-125, and existing requester/security tests.
+  - Graceful shutdown latency and propagation map to ISSUE-118 and ISSUE-215
+    through ISSUE-225.
+  - `PeerStopped` deduplication/retry/lifecycle, stale aliases, post-stop
+    traffic, and service queue backpressure map to ISSUE-215 through ISSUE-225.
+  - Disconnect propagation and stale disconnect validation map to ISSUE-051,
+    ISSUE-063, ISSUE-167, ISSUE-170, and ISSUE-215 through ISSUE-222.
+  - Pending sync task and main queue backpressure map to ISSUE-164,
+    ISSUE-218, and ISSUE-219.
+- Current consecutive no-new cycles after ISSUE-238: 4.
 
 ### Cycle after ISSUE-235 no-new cycle 1: transport, auth, and peer setup review
 
