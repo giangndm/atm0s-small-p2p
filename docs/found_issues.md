@@ -11,9 +11,9 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 0
-- Current audit continuation: ISSUE-238 accepted and fixed after ISSUE-156
-  regression; no-new counter reset.
+- Current consecutive no-new-issue cycles: 1
+- Current audit continuation: Cycle after ISSUE-238 no-new cycle 1 reviewed
+  route/discovery lifecycle and path stability; continue auditing.
 
 ## Root Cause Summary
 
@@ -19284,6 +19284,50 @@ the source of truth for evidence and reviewer decisions.
     `cargo test stream --lib -- --nocapture`,
     `rustfmt --edition 2021 --check src/peer/peer_internal.rs src/service.rs src/tests/stream.rs`,
     and `git diff --check`.
+
+### Cycle after ISSUE-238 no-new cycle 1: route/discovery lifecycle and path stability review
+
+- Scope: reviewed `docs/found_issues.md` and `docs/summary_issues.md`, then
+  audited `src/router.rs`, `src/discovery.rs`, `src/lib.rs`,
+  `src/peer/peer_internal.rs`, `src/neighbours.rs`, `src/ctx.rs`, and the
+  route/discovery/lifecycle fuzz and security tests for active path flapping,
+  stale direct or relayed routes after stop/disconnect, seed versus non-seed
+  retention, graceful shutdown propagation, and bad-network/high-load lifecycle
+  backpressure.
+- Reviewer: `Kierkegaard` (forked RED-team reviewer), rejected new issue
+  acceptance and recommended documenting a no-new cycle.
+- Verification:
+  - `RUST_LOG=error cargo test active_path --lib -- --nocapture`
+  - `RUST_LOG=error cargo test direct_peer_route --lib -- --nocapture`
+  - `RUST_LOG=error cargo test create_sync_must_prioritize --lib -- --nocapture`
+  - `RUST_LOG=error cargo test graceful_stop_tombstone --lib -- --nocapture`
+  - `RUST_LOG=error cargo test non_seed_discovered_peer --lib -- --nocapture`
+  - `RUST_LOG=error cargo test discovery_timeout --lib -- --nocapture`
+  - `RUST_LOG=error cargo test peer_stopped_ --lib -- --nocapture`
+  - `RUST_LOG=error cargo test tick_sync_must_not_be_dropped --lib -- --nocapture`
+  - `RUST_LOG=error cargo test shutdown_gracefully_must_not_wait --lib -- --nocapture`
+- Reviewer cross-check:
+  - `active_path_should_not_jump_for_tiny_rtt_jitter`: passed.
+  - `direct_peer_route_must_not_be_replaced_by_relayed_path`: passed.
+  - `create_sync_must_prioritize_direct_routes_under_cap`: passed.
+  - `graceful_stop_tombstone_ignores_stale_non_seed_advertise`: passed.
+  - `non_seed_discovered_peer_ages_out_but_seed_remains_retryable`: passed.
+  - `peer_stopped_route_must_not_be_resurrected_by_connection_ticker`: passed.
+  - `stopped_peer_route_must_not_be_resurrected_by_third_party_sync`: passed.
+  - `peer_stopped_for_seed_must_not_remove_active_seed_route`: passed.
+  - `peer_stopped_must_remove_stopped_neighbour_immediately`: passed.
+- Duplicate mapping:
+  - Active path flapping and noisy path changes map to ISSUE-003 and RC-7;
+    current selection keeps the existing path unless another path wins by the
+    switch margin, and direct paths remain preferred over relayed paths.
+  - Stale direct or relayed routes after disconnect or stop map to ISSUE-051,
+    ISSUE-063, ISSUE-151, ISSUE-170, and ISSUE-215 through ISSUE-222.
+  - Seed versus non-seed retention maps to ISSUE-004, ISSUE-055, ISSUE-103,
+    ISSUE-167, ISSUE-211, ISSUE-213, and RC-7.
+  - Graceful shutdown propagation and backpressure maps to ISSUE-118 and
+    ISSUE-215 through ISSUE-225.
+  - Bad-network/high-load lifecycle pressure maps to RC-3, RC-6, and RC-7.
+- Current consecutive no-new cycles after ISSUE-238: 1.
 
 ### Cycle after ISSUE-235 no-new cycle 1: transport, auth, and peer setup review
 

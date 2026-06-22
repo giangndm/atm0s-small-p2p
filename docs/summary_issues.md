@@ -7,9 +7,9 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Accepted issues: 238
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 0
-- Current audit continuation: ISSUE-238 accepted and fixed after ISSUE-156
-  regression; no-new counter reset.
+- Current consecutive no-new-issue cycles: 1
+- Current audit continuation: Cycle after ISSUE-238 no-new cycle 1 reviewed
+  route/discovery lifecycle and path stability; continue auditing.
 - Fix phase status: ISSUE-001, ISSUE-003, ISSUE-004, ISSUE-005, ISSUE-006, ISSUE-007,
   ISSUE-002, ISSUE-008, ISSUE-009, ISSUE-010, ISSUE-011, ISSUE-012, ISSUE-013, ISSUE-014, ISSUE-015, ISSUE-017, ISSUE-020, ISSUE-021, ISSUE-023, ISSUE-024, ISSUE-025, ISSUE-027, ISSUE-033, ISSUE-034, ISSUE-039, ISSUE-045, ISSUE-046, ISSUE-047, ISSUE-048, ISSUE-055, ISSUE-059, ISSUE-103, ISSUE-110, ISSUE-111, ISSUE-115, ISSUE-116, ISSUE-117, ISSUE-118, ISSUE-119, ISSUE-120, ISSUE-122, ISSUE-123,
   ISSUE-124, ISSUE-125, ISSUE-126, ISSUE-127, ISSUE-128, ISSUE-129, ISSUE-130,
@@ -213,6 +213,14 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   `cargo test stream --lib -- --nocapture`,
   `rustfmt --edition 2021 --check src/peer/peer_internal.rs src/service.rs src/tests/stream.rs`,
   and `git diff --check`.
+- Cycle after ISSUE-238 no-new cycle 1 reviewed route/discovery lifecycle and
+  path stability with forked reviewer `Kierkegaard`. Focused route hysteresis,
+  direct-route preference, sync cap prioritization, stopped tombstone,
+  seed/non-seed expiry, `PeerStopped`, tick-sync retry, and graceful shutdown
+  checks passed. Rejected candidates mapped to ISSUE-003/RC-7, ISSUE-004,
+  ISSUE-051, ISSUE-055, ISSUE-063, ISSUE-103, ISSUE-118, ISSUE-151,
+  ISSUE-167, ISSUE-170, ISSUE-211, ISSUE-213, ISSUE-215 through ISSUE-225,
+  RC-3, RC-6, and RC-7.
 - Cycle after ISSUE-231 no-new cycle 1 reviewed routing/discovery/path
   stability and stream/pipe lifecycle integration with forked reviewer
   `Carver`. Focused route, discovery, stream-relay, peer-stopped, and pubsub
