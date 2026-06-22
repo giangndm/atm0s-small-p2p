@@ -2202,6 +2202,9 @@ the source of truth for evidence and reviewer decisions.
     `PublisherEvent::PeerLeaved(PeerSrc::Local)`, a cloned stale requester sends
     `stale-feedback`, and the publisher still receives
     `PublisherEvent::Feedback`.
+- Fix status: fixed by validating the `SubscriberHandleId` carried by
+  `InternalMsg::Feedback` against the channel's live local subscribers before
+  delivering feedback to publishers or remote peers.
 
 ### ISSUE-071: Replicated KV retries stale FetchChanged after broadcasts fill the gap
 

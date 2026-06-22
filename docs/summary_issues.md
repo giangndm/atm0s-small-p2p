@@ -728,6 +728,11 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   publisher RPC handlers after their owning `Subscriber` has been dropped.
   Verified with
   `cargo test dropped_subscriber_requester_must_not_continue_feedback_rpc -- --nocapture`.
+- ISSUE-070: fixed by validating `InternalMsg::Feedback` against the live
+  local subscriber handle map before feedback fanout. Stale cloned subscriber
+  requesters can no longer deliver ordinary feedback after their owning
+  `Subscriber` has been dropped. Verified with
+  `cargo test dropped_subscriber_requester_must_not_continue_feedback -- --nocapture`.
 - ISSUE-116: fixed by carrying `PublisherHandleId` on local
   `FeedbackRpcAnswer` control messages and recording which local publisher
   handles actually received each feedback RPC. Stale or unrelated publisher
