@@ -458,6 +458,8 @@ the source of truth for evidence and reviewer decisions.
   capacity before sending a successful `StreamConnectRes`. If the destination
   service receiver is closed, the opener receives an error response instead of
   an apparently usable pipe.
+- Fix status: fixed by reserving destination service queue capacity before
+  successful stream setup and returning an error when the receiver is closed.
 - Category: correctness, pipe reliability
 - Score: 76/100
 - Reviewer: `Linnaeus`, confirmed.
