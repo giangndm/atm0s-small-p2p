@@ -11,9 +11,9 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 1
-- Current audit continuation: post-ISSUE-235 no-new cycle 1 documented for
-  transport/auth/peer setup review.
+- Current consecutive no-new-issue cycles: 2
+- Current audit continuation: post-ISSUE-235 no-new cycle 2 documented for
+  requester/service public boundary and graceful-stop lifecycle review.
 
 ## Root Cause Summary
 
@@ -19155,6 +19155,39 @@ the source of truth for evidence and reviewer decisions.
 - Test note: two initial timeout filters used the wrong names and matched zero
   tests; exact filters were found with `rg` and rerun successfully.
 - Current consecutive no-new cycles after ISSUE-235: 1.
+
+### Cycle after ISSUE-235 no-new cycle 2: requester, service boundary, and lifecycle review
+
+- Scope: reviewed `docs/found_issues.md` and `docs/summary_issues.md`, then
+  audited `src/requester.rs`, `src/service.rs`, `src/lib.rs`,
+  `src/peer.rs`, and `src/discovery.rs` for public requester/service-handle
+  false success, bounded connect admission, pending-connect cleanup,
+  duplicate-service rejection, graceful shutdown, and non-seed/seed lifecycle
+  behavior under bad network and high-load conditions.
+- Reviewer: `Wegener` (forked RED-team reviewer), rejected new issue
+  acceptance and recommended documenting a no-new cycle for the
+  requester/service boundary.
+- Verification:
+  - `cargo test connect -- --nocapture`
+  - `cargo test graceful -- --nocapture`
+  - `cargo test non_seed_discovered_peer_ages_out_but_seed_remains_retryable -- --nocapture`
+- Reviewer cross-check: read-only review mapped requester/service candidates
+  to existing issues and did not run tests.
+- Duplicate mapping:
+  - Bounded requester connect admission and best-effort connect drops map to
+    ISSUE-028, ISSUE-125, RC-3, and RC-6.
+  - Duplicate or rejected service handles returning disabled outbound paths map
+    to ISSUE-234 and RC-6.
+  - Stale service requester liveness and closed-owner behavior map to
+    ISSUE-072, ISSUE-073, ISSUE-076, and ISSUE-234.
+  - Service registry duplicate/invalid id replacement behavior maps to
+    ISSUE-030, ISSUE-052, ISSUE-053, ISSUE-060, ISSUE-091, and ISSUE-234.
+  - Graceful shutdown, non-seed expiry, seed retention, and stopped-peer
+    tombstone behavior map to ISSUE-001, ISSUE-167, ISSUE-215 through
+    ISSUE-225, and the post-ISSUE-234/235 lifecycle coverage.
+- Test note: two initial multi-filter `cargo test` commands used invalid Cargo
+  syntax; equivalent broad filters were rerun successfully.
+- Current consecutive no-new cycles after ISSUE-235: 2.
 
 ### Cycle after ISSUE-231 no-new cycle 1: route, discovery, stream, and graceful-stop integration review
 

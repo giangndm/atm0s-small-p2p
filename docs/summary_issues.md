@@ -7,9 +7,9 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Accepted issues: 235
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 1
-- Current audit continuation: post-ISSUE-235 no-new cycle 1 documented for
-  transport/auth/peer setup review.
+- Current consecutive no-new-issue cycles: 2
+- Current audit continuation: post-ISSUE-235 no-new cycle 2 documented for
+  requester/service public boundary and graceful-stop lifecycle review.
 - Fix phase status: ISSUE-001, ISSUE-003, ISSUE-004, ISSUE-005, ISSUE-006, ISSUE-007,
   ISSUE-002, ISSUE-008, ISSUE-009, ISSUE-010, ISSUE-011, ISSUE-012, ISSUE-013, ISSUE-014, ISSUE-015, ISSUE-017, ISSUE-020, ISSUE-021, ISSUE-023, ISSUE-024, ISSUE-025, ISSUE-027, ISSUE-033, ISSUE-034, ISSUE-039, ISSUE-045, ISSUE-046, ISSUE-047, ISSUE-048, ISSUE-055, ISSUE-059, ISSUE-103, ISSUE-110, ISSUE-111, ISSUE-115, ISSUE-116, ISSUE-117, ISSUE-118, ISSUE-119, ISSUE-120, ISSUE-122, ISSUE-123,
   ISSUE-124, ISSUE-125, ISSUE-126, ISSUE-127, ISSUE-128, ISSUE-129, ISSUE-130,
@@ -201,6 +201,14 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   ISSUE-002, ISSUE-021, ISSUE-117, ISSUE-146, ISSUE-172, ISSUE-173,
   ISSUE-176, ISSUE-189, ISSUE-194, ISSUE-207, and existing QUIC uni-stream cap
   coverage; no new root-cause summary change was needed.
+- Cycle after ISSUE-235 no-new cycle 2 reviewed requester/connect admission,
+  public service-handle/requester boundaries, duplicate-service rejection,
+  graceful shutdown, and seed/non-seed lifecycle cleanup with forked reviewer
+  `Wegener`. Focused connect, graceful, and non-seed expiry tests passed.
+  Rejected candidates mapped to ISSUE-028, ISSUE-030, ISSUE-052, ISSUE-053,
+  ISSUE-060, ISSUE-072, ISSUE-073, ISSUE-076, ISSUE-091, ISSUE-125,
+  ISSUE-167, ISSUE-215 through ISSUE-225, ISSUE-234, RC-3, and RC-6; no new
+  root-cause summary change was needed.
 
 ### RC-3: Backpressure is inconsistent across async boundaries
 
