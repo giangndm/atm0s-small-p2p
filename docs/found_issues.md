@@ -4362,6 +4362,9 @@ the source of truth for evidence and reviewer decisions.
   16 unauthenticated inbound neighbours are already pending, and peer setup has
   a bounded pre-authentication timeout so stale pending entries are reported to
   the main loop for cleanup.
+- Fix status: fixed by refusing inbound QUIC attempts once
+  `MAX_PENDING_UNAUTHENTICATED_INBOUND_CONNECTIONS` pending unauthenticated
+  neighbours are already tracked.
 - Affected code:
   - `src/lib.rs`: `P2pNetwork::process_incoming` checks the pending
     unauthenticated inbound count before accepting, and calls
