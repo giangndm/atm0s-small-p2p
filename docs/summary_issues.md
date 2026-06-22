@@ -5,10 +5,10 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Audit Status
 
-- Accepted issues: 212
+- Accepted issues: 213
 - Missing issue scores: 0
 - Current consecutive no-new-issue cycles: 0
-- Stop condition: not satisfied; discovery should continue after ISSUE-212 fix.
+- Stop condition: not satisfied; discovery should continue after ISSUE-213 fix.
 - Fix phase status: ISSUE-001, ISSUE-003, ISSUE-004, ISSUE-005, ISSUE-006, ISSUE-007,
   ISSUE-002, ISSUE-008, ISSUE-009, ISSUE-010, ISSUE-011, ISSUE-012, ISSUE-013, ISSUE-014, ISSUE-015, ISSUE-017, ISSUE-020, ISSUE-021, ISSUE-023, ISSUE-024, ISSUE-025, ISSUE-027, ISSUE-033, ISSUE-034, ISSUE-039, ISSUE-045, ISSUE-046, ISSUE-047, ISSUE-048, ISSUE-055, ISSUE-059, ISSUE-103, ISSUE-110, ISSUE-111, ISSUE-115, ISSUE-116, ISSUE-117, ISSUE-118, ISSUE-119, ISSUE-120, ISSUE-122, ISSUE-123,
   ISSUE-124, ISSUE-125, ISSUE-126, ISSUE-127, ISSUE-128, ISSUE-129, ISSUE-130,
@@ -25,6 +25,8 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   and dropping stale relayed broadcast copies after mesh convergence.
   ISSUE-212 is fixed by placing local advertise before learned remotes in
   capped outbound discovery syncs.
+  ISSUE-213 is fixed by deduplicating configured seed entries by peer id before
+  applying the outbound sync cap.
   ISSUE-043 is fixed by bounding pending pubsub publish/feedback RPC request
   maps before responder fanout.
   ISSUE-054 is fixed by rejecting zero network tick intervals before endpoint
@@ -251,6 +253,15 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   fails with the local row absent. Minimal fix proposal: emit local advertise
   before learned remotes while preserving seed priority, destination filtering,
   local-peer seed duplicate filtering, dialability checks, and the cap.
+- ISSUE-213: fixed duplicate-seed cap starvation issue. A config with
+  repeated seed entries can fill `PeerDiscovery::create_sync_for`'s capped
+  outbound sync before the local advertise row is emitted. Evidence:
+  `cargo test create_sync_for_must_deduplicate_configured_seeds_before_cap --lib -- --nocapture`
+  fails with the local row absent. Minimal fix proposal: deduplicate configured
+  seed rows by peer id before applying `MAX_SYNC_ENTRIES`, while preserving
+  seed priority, destination/local-peer/dialability filters, and the existing
+  local-before-remotes ordering. Implemented by per-sync seed peer-id dedup
+  after the existing filters and before the cap.
 - Minimal fix proposal: sanitize before insertion: reject local/self candidates
   and over-hop routes, pin authenticated direct paths for their peer ids, use
   checked metric math, ignore stale discovery timestamps, reject duplicate

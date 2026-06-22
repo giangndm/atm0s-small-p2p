@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use serde::{Deserialize, Serialize};
 
@@ -94,12 +94,14 @@ impl PeerDiscovery {
 
     pub fn create_sync_for(&self, now_ms: u64, dest: &PeerId) -> PeerDiscoverySync {
         let local_peer = self.local.as_ref().map(|(peer, _)| *peer);
+        let mut seen_seed_peers = BTreeSet::new();
         let seeds = self
             .seeds
             .iter()
             .filter(|seed| seed.peer_id() != *dest)
             .filter(move |seed| Some(seed.peer_id()) != local_peer)
             .filter(|seed| is_dialable_advertise_address(seed.network_address()))
+            .filter(move |seed| seen_seed_peers.insert(seed.peer_id()))
             .map(|seed| (seed.peer_id(), now_ms, seed.network_address().clone()));
         let local = self.local.iter().filter(|(p, _addr)| p != dest).map(|(p, addr)| (*p, now_ms, addr.clone()));
         let remotes = self.remotes.iter().filter(|(k, _)| !dest.eq(k)).map(|(k, (v1, v2))| (*k, *v1, v2.clone()));
@@ -441,6 +443,22 @@ mod test {
         assert!(
             sync.0.iter().any(|(peer, _updated, address)| *peer == seed.peer_id() && address == seed.network_address()),
             "configured seeds should not be starved by a large learned-remote table"
+        );
+    }
+
+    #[test_log::test]
+    fn create_sync_for_must_deduplicate_configured_seeds_before_cap() {
+        let seed = peer_addr("1@127.0.0.1:9000");
+        let local = peer_addr("2@127.0.0.1:9001");
+        let mut discovery = PeerDiscovery::new(vec![seed.clone(); MAX_SYNC_ENTRIES]);
+
+        discovery.enable_local(local.peer_id(), local.network_address().clone());
+
+        let sync = discovery.create_sync_for(100, &PeerId(3));
+
+        assert!(
+            sync.0.iter().any(|(peer, _updated, address)| *peer == local.peer_id() && address == local.network_address()),
+            "duplicate configured seeds must not consume the sync cap before local advertise is emitted"
         );
     }
 

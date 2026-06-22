@@ -17806,3 +17806,43 @@ the source of truth for evidence and reviewer decisions.
   - `RUST_LOG=error cargo test discovery::test:: --lib -- --nocapture`
   - `RUST_LOG=error cargo test tests::stream::relayed_stream_source_must_be_bound_to_previous_hop_peer -- --nocapture`
   - `RUST_LOG=error cargo test --lib -- --nocapture`
+
+### ISSUE-213: Duplicate configured seeds can starve local advertise under sync cap
+
+- Score: 48
+- Category: correctness / discovery bootstrap stability
+- Status: fixed by ISSUE-213 implementation commit.
+- Reviewer: `Copernicus` (forked RED-team reviewer), accepted.
+- Affected code:
+  - `src/discovery.rs`
+- Impact: a node with repeated configured seed entries can fill the outbound
+  discovery sync cap with duplicate rows for the same seed peer. Because
+  configured seeds are emitted before the node's local advertise row, downstream
+  peers can learn the seed address but miss the sender's direct dial address,
+  preserving relayed routes longer than necessary under bad configuration or
+  generated high-load topologies.
+- Distinctness: ISSUE-211 covered configured seed addresses being omitted from
+  outbound syncs. ISSUE-212 covered learned remotes starving local advertise
+  after seed priority was added. This issue covers duplicate configured seed
+  rows consuming the cap before local advertise is reached. ISSUE-055 and
+  ISSUE-103 cover configured-seed authority and local-peer filtering, not
+  duplicate seed-list cap consumption.
+- Failing evidence:
+  - `RUST_LOG=error cargo test create_sync_for_must_deduplicate_configured_seeds_before_cap --lib -- --nocapture`
+  - Failure before fix:
+    - `duplicate configured seeds must not consume the sync cap before local advertise is emitted`
+- Root cause: `PeerDiscovery::new` stores configured seeds as a `Vec` exactly
+  as supplied, and `PeerDiscovery::create_sync_for` maps that vector directly
+  into outbound sync rows before applying `take(MAX_SYNC_ENTRIES)`. Duplicate
+  seed rows can therefore consume the cap even though they represent the same
+  peer id.
+- Minimal fix proposal: deduplicate configured seed rows by peer id before
+  applying `MAX_SYNC_ENTRIES`, while preserving seed priority,
+  destination/local-peer/dialability filters, and the existing
+  local-before-remotes ordering.
+- Fix status: fixed by deduplicating configured seed rows by peer id in
+  outbound discovery sync creation after destination, local-peer, and
+  dialability filters, before applying `MAX_SYNC_ENTRIES`.
+- Verification:
+  - `RUST_LOG=error cargo test create_sync_for_must_deduplicate_configured_seeds_before_cap --lib -- --nocapture`
+  - `RUST_LOG=error cargo test discovery::test:: --lib -- --nocapture`
