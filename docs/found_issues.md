@@ -3024,7 +3024,7 @@ the source of truth for evidence and reviewer decisions.
 
 ### ISSUE-098: QUIC object writer truncates lengths above `u16::MAX`
 
-- Status: fixed by the `write_object` concrete-buffer validation in `9b331cd`
+- Fix status: fixed by the `write_object` concrete-buffer validation in `9b331cd`
   (`fix: return stream serialization errors`). `write_object` now rejects
   actual serialized payloads larger than the two-byte length prefix can
   represent before writing any frame bytes.
