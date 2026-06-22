@@ -11,7 +11,7 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 0
+- Current consecutive no-new-issue cycles: 1
 - Current audit continuation: ISSUE-245 fixed replicated-KV initial full-sync
   atomicity by staging snapshot pages until terminal completion.
 
@@ -19677,6 +19677,40 @@ the source of truth for evidence and reviewer decisions.
     `RUST_LOG=error cargo test snapshot --lib`,
     `rustfmt --edition 2021 --check src/service/replicate_kv_service/remote_storage.rs`,
     and `git diff --check` passed.
+
+### Cycle after ISSUE-245 no-new cycle 1: transport, stream, requester, and service admission review
+
+- Scope: reviewed `docs/found_issues.md` and `docs/summary_issues.md`, then
+  audited `src/quic.rs`, `src/stream.rs`, `src/requester.rs`,
+  `src/service.rs`, `src/ctx.rs`, `src/peer.rs`,
+  `src/peer/peer_alias.rs`, `src/peer/peer_internal.rs`,
+  `src/tests/stream.rs`, `src/tests/security.rs`, and
+  `src/tests/cross_nodes.rs` for distinct correctness, security, and
+  stability issues around transport frame bounds, malformed handshakes,
+  stream setup deadlines, relay commits, service queue backpressure, requester
+  liveness, peer alias control admission, unicast acknowledgement semantics,
+  and disconnect/service delivery behavior.
+- Reviewer: `Aquinas the 2nd` (forked RED-team reviewer), returned
+  `PASS_NO_NEW`.
+- Verification:
+  - `cargo test stream --lib -- --nocapture` passed, 30/30.
+- Rejected candidates:
+  - QUIC unidirectional admission maps to the existing uni-stream cap test and
+    ISSUE-182.
+  - Codec/frame-size and malformed bincode inputs map to the stream codec
+    tests plus ISSUE-053, ISSUE-060, and ISSUE-091.
+  - Stream setup stalls, response-write stalls, relay premature success, relay
+    loops, and deferred final-hop delivery map to ISSUE-011, ISSUE-012,
+    ISSUE-117, ISSUE-149, ISSUE-156, ISSUE-169, ISSUE-180, ISSUE-217,
+    ISSUE-220, and ISSUE-238.
+  - Forged stream/unicast source normalization maps to ISSUE-014 and
+    ISSUE-018.
+  - Requester/control queue admission and stale service requesters map to
+    ISSUE-028, ISSUE-072, ISSUE-073, ISSUE-076, ISSUE-125, ISSUE-234, and
+    ISSUE-235.
+  - Unicast ack false success, local service delivery backpressure, and ack
+    caps map to ISSUE-119, ISSUE-224, ISSUE-225, ISSUE-229, and ISSUE-230.
+- Current consecutive no-new cycles after ISSUE-245: 1.
 
 ### Cycle after ISSUE-239 no-new cycle 1: route, lifecycle, service, pubsub, and replicated-KV review
 

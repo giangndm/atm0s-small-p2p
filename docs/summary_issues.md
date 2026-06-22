@@ -7,7 +7,7 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Accepted issues: 245
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 0
+- Current consecutive no-new-issue cycles: 1
 - Current audit continuation: ISSUE-245 fixed replicated-KV initial full-sync
   atomicity. Initial snapshot pages are now staged until the terminal page is
   accepted, so partial snapshots from stalled or malformed peers do not mutate
@@ -197,6 +197,16 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   `RUST_LOG=error cargo test snapshot --lib`,
   `rustfmt --edition 2021 --check src/service/replicate_kv_service/remote_storage.rs`,
   and `git diff --check`.
+  Post-ISSUE-245 no-new cycle 1 reviewed transport/request framing, stream
+  setup, service/requester admission, peer alias control, unicast acking, and
+  local service delivery under reviewer `Aquinas the 2nd`. `cargo test stream
+  --lib -- --nocapture` passed. Rejected candidates mapped to ISSUE-011,
+  ISSUE-012, ISSUE-014, ISSUE-018, ISSUE-028, ISSUE-053, ISSUE-060,
+  ISSUE-072, ISSUE-073, ISSUE-076, ISSUE-091, ISSUE-117, ISSUE-119,
+  ISSUE-125, ISSUE-149, ISSUE-156, ISSUE-169, ISSUE-180, ISSUE-217,
+  ISSUE-220, ISSUE-224, ISSUE-225, ISSUE-229, ISSUE-230, ISSUE-234,
+  ISSUE-235, ISSUE-238, RC-3, RC-4, and RC-6; no distinct issue survived
+  duplicate mapping.
   ISSUE-043 is fixed by bounding pending pubsub publish/feedback RPC request
   maps before responder fanout.
   ISSUE-054 is fixed by rejecting zero network tick intervals before endpoint
