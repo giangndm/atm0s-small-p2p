@@ -5,10 +5,10 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Audit Status
 
-- Accepted issues: 220
+- Accepted issues: 221
 - Missing issue scores: 0
 - Current consecutive no-new-issue cycles: 0
-- Stop condition: not satisfied; continue auditing after ISSUE-220 fix commit.
+- Stop condition: not satisfied; continue auditing after ISSUE-221 fix commit.
 - Fix phase status: ISSUE-001, ISSUE-003, ISSUE-004, ISSUE-005, ISSUE-006, ISSUE-007,
   ISSUE-002, ISSUE-008, ISSUE-009, ISSUE-010, ISSUE-011, ISSUE-012, ISSUE-013, ISSUE-014, ISSUE-015, ISSUE-017, ISSUE-020, ISSUE-021, ISSUE-023, ISSUE-024, ISSUE-025, ISSUE-027, ISSUE-033, ISSUE-034, ISSUE-039, ISSUE-045, ISSUE-046, ISSUE-047, ISSUE-048, ISSUE-055, ISSUE-059, ISSUE-103, ISSUE-110, ISSUE-111, ISSUE-115, ISSUE-116, ISSUE-117, ISSUE-118, ISSUE-119, ISSUE-120, ISSUE-122, ISSUE-123,
   ISSUE-124, ISSUE-125, ISSUE-126, ISSUE-127, ISSUE-128, ISSUE-129, ISSUE-130,
@@ -48,6 +48,9 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   stalled peers cannot hold all
   accept permits for one authenticated connection when the peer stops reading
   `StreamConnectRes`.
+  ISSUE-221 is fixed by closing and exiting the connection task after an
+  admitted graceful stop so a stopped peer cannot continue sending traffic over
+  the old authenticated connection.
   ISSUE-043 is fixed by bounding pending pubsub publish/feedback RPC request
   maps before responder fanout.
   ISSUE-054 is fixed by rejecting zero network tick intervals before endpoint
@@ -166,6 +169,13 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   connection's accept permits and prevent later stream setup on the same
   connection. Fix: use a bounded timeout for every accept-side setup response
   write and return an error on timeout so the permit is released.
+- ISSUE-221, score 72: fixed by commit `4758786`. After accepting a direct
+  peer's `PeerStopped`, the main loop removed route/neighbour state but the
+  connection task could keep processing frames from the still-open connection.
+  Authenticated direct broadcasts could therefore reach local services after
+  graceful stop was accepted. Fix: close and exit the connection task after an
+  admitted or duplicate already-delivered stop while preserving the full-queue
+  retry path.
 - ISSUE-036: fixed by routing alias find hint and scan timeout checks through
   checked deadline arithmetic. Deadlines that overflow `u64` remain pending
   instead of panicking or wrapping into early expiry. Verification:

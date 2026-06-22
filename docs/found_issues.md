@@ -13,7 +13,7 @@ must resolve.
 
 - Current consecutive no-new-issue cycles: 0
 - Stop condition requested by user: continue until 5 consecutive cycles find no
-  new accepted issue. Not satisfied after ISSUE-220; continue auditing.
+  new accepted issue. Not satisfied after ISSUE-221; continue auditing.
 
 ## Root Cause Summary
 
@@ -18181,3 +18181,48 @@ the source of truth for evidence and reviewer decisions.
   - `RUST_LOG=error cargo test open_stream_does_not_succeed_when_destination_service_queue_is_full --lib -- --nocapture`
   - `RUST_LOG=error cargo test tests::stream:: --lib -- --nocapture`
   - `rustfmt --edition 2024 --check src/peer/peer_internal.rs src/tests/stream.rs`
+
+### ISSUE-221: Stopped peer can continue sending traffic on the old connection
+
+- Score: 72
+- Category: graceful-shutdown correctness / post-stop traffic isolation
+- Status: fixed by commit `4758786` (`fix: close peer connection after graceful stop`).
+- Reviewers:
+  - Main RED-team cycle, found with failing test evidence.
+  - Main coder/reviewer pass, accepted after focused lifecycle regression tests.
+- Affected code:
+  - `src/peer/peer_internal.rs`
+  - `src/tests/security.rs`
+- Impact: after a peer's `PeerStopped` message is accepted, the main loop
+  removes the direct route and neighbour state, but the per-connection task
+  can keep reading frames from the still-open QUIC connection. Because
+  authenticated direct broadcasts with `source == to_id` do not recheck that
+  the connection is still a live direct route, the stopped peer can continue
+  delivering broadcast traffic to local services after its graceful stop was
+  accepted.
+- Distinctness: ISSUE-215 and ISSUE-216 cover `PeerStopped` admission and
+  deduplication. ISSUE-187 covers public disconnect visibility. ISSUE-221
+  covers post-stop data-plane isolation on the same already-authenticated
+  connection after stop handling succeeds.
+- Failing evidence:
+  - `RUST_LOG=error cargo test stopped_peer_must_not_deliver_broadcast_after_stop_is_accepted --lib -- --nocapture`
+  - Failure before fix:
+    - `a peer whose graceful stop was accepted must not continue delivering broadcast traffic over the still-open connection`
+- Root cause: `PeerConnectionInternal::on_msg(PeerMessage::PeerStopped)` only
+  enqueued the stop event and forwarded the stop notification. It did not
+  terminate the connection task after successful stop admission. The main loop
+  removed route/neighbour state, but the connection task retained the
+  authenticated peer id and could process later data frames from that peer.
+- Minimal fix proposal: once a direct peer's own `PeerStopped` frame is
+  admitted, close the QUIC connection and return an error from the connection
+  task so no later frames from that stopped lifecycle are processed. Preserve
+  the existing retry behavior when the main event queue is full and the stop
+  was not admitted.
+- Fix: `PeerConnectionInternal` now closes and exits the connection after an
+  admitted or duplicate already-delivered stop. It leaves the full-queue path
+  open so the peer can retry stop admission, preserving ISSUE-215 behavior.
+- Verification after fix:
+  - `RUST_LOG=error cargo test stopped_peer_must_not_deliver_broadcast_after_stop_is_accepted --lib -- --nocapture`
+  - `RUST_LOG=error cargo test peer_stopped_ --lib -- --nocapture`
+  - `RUST_LOG=error cargo test tests::security:: --lib -- --nocapture`
+  - `rustfmt --edition 2024 --check src/peer/peer_internal.rs src/tests/security.rs`
