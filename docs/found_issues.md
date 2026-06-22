@@ -4385,7 +4385,7 @@ the source of truth for evidence and reviewer decisions.
 - Category: correctness, shutdown stability, API stability
 - Score: 57/100
 - Reviewer: `Halley the 2nd`, confirmed.
-- Status: fixed by `e78c190` (`fix: return errors when alias channels close`).
+- Fix status: fixed by `e78c190` (`fix: return errors when alias channels close`).
 - Affected code:
   - `src/service/alias_service.rs`: `AliasService::run_loop` returns
     `anyhow::Result<()>`.
