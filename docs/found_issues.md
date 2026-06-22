@@ -12,8 +12,8 @@ must resolve.
 ## Audit Status
 
 - Current consecutive no-new-issue cycles: 0
-- Current audit continuation: ISSUE-232 was accepted and fixed; the next review
-  starts a fresh post-ISSUE-232 cycle.
+- Current audit continuation: ISSUE-233 was accepted and fixed; the next review
+  starts a fresh post-ISSUE-233 cycle.
 
 ## Root Cause Summary
 
@@ -44,7 +44,7 @@ the source of truth for evidence and reviewer decisions.
   ISSUE-059, ISSUE-071, ISSUE-081 through ISSUE-089, ISSUE-095, ISSUE-099,
   ISSUE-110, ISSUE-111, ISSUE-143, ISSUE-152,
   ISSUE-154, ISSUE-155, ISSUE-158, ISSUE-166, ISSUE-171, ISSUE-175,
-  ISSUE-186, ISSUE-231, ISSUE-232.
+  ISSUE-186, ISSUE-231, ISSUE-232, ISSUE-233.
 - Pattern: replicated-KV full sync, changed repair, alias lookup, metrics,
   visualization, and pubsub flows accept stale, unsolicited, reordered, or
   mismatched responses or broadcasts because handlers do not verify
@@ -18922,6 +18922,54 @@ the source of truth for evidence and reviewer decisions.
     `cargo test visualization_stale_info_after_peer_disconnected_must_be_ignored -- --nocapture`,
     `cargo test metrics -- --nocapture`,
     `rustfmt --edition 2021 --check src/service/metrics_service.rs`,
+    and `git diff --check`.
+
+### ISSUE-233: Unknown replicated-KV RPC responses create remote state
+
+- Score: 63
+- Category: protocol admission correctness / unsolicited response resource use
+- Status: fixed by `c7aa3f5` (`fix: reject unknown replicated-kv responses`).
+- Reviewer:
+  - `Nash` (forked RED-team reviewer), accepted the issue as distinct and
+    confirmed the smallest fix proposal.
+- Affected code:
+  - `src/service/replicate_kv_service.rs`: `ReplicatedKvStore::on_remote_event`
+    created a `RemoteStore` for every unknown `from` before checking whether a
+    unicast event was `RpcReq` or `RpcRes`.
+- Impact: a never-seen peer could send an unsolicited replicated-KV `RpcRes`
+  and force the receiver to allocate remote state and queue an outbound
+  full-sync `FetchSnapshot` request. Under bad networks or hostile peers, this
+  amplifies response-only traffic into state churn and outbound sync work.
+- Distinctness: ISSUE-045 bounds total remote-store admission but still allowed
+  a response-only first packet to create one store and one full-sync request.
+  ISSUE-086 and ISSUE-087 reject unsolicited `FetchChanged` responses after a
+  remote store already exists in `WorkingState`. ISSUE-154 and ISSUE-184 cover
+  repair correlation and duplicate in-flight repairs after a remote already
+  exists. ISSUE-233 covers the earlier unknown-peer admission boundary.
+- Root cause: replicated-KV remote admission did not distinguish request or
+  broadcast traffic, which can legitimately establish remote state, from RPC
+  responses, which must only be meaningful after an existing local request and
+  tracked remote state exist.
+- Minimal fix proposal: in `ReplicatedKvStore::on_remote_event`, before
+  creating a `RemoteStore`, reject `NetEvent::Unicast(_, RpcEvent::RpcRes(_))`
+  when `from` is not already tracked. Preserve unknown-peer admission for
+  broadcasts and RPC requests.
+- Fix: unknown-peer `RpcRes` messages now return before remote-store creation
+  or full-sync request enqueue; existing tracked peers still route responses to
+  their `RemoteStore`.
+- Evidence tests:
+  - Red evidence before fix:
+    `cargo test unsolicited_rpc_response_from_unknown_peer_must_not_create_remote_store -- --nocapture`
+    failed at `src/service/replicate_kv_service.rs:307:9` because an
+    unsolicited `RpcRes` allocated remote state.
+  - Verification after fix:
+    `cargo test unsolicited_rpc_response_from_unknown_peer_must_not_create_remote_store -- --nocapture`
+  - Regression guards:
+    `cargo test unsolicited_fetch_changed -- --nocapture`,
+    `cargo test working_state_must_not_let_stale_fetch_changed_response_cancel_newer_repair -- --nocapture`,
+    `cargo test service::replicate_kv_service::tests:: --lib -- --nocapture`,
+    `cargo test replicate_kv -- --nocapture`,
+    `rustfmt --edition 2021 --check src/service/replicate_kv_service.rs`,
     and `git diff --check`.
 
 ### Cycle after ISSUE-231 no-new cycle 1: route, discovery, stream, and graceful-stop integration review
