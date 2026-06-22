@@ -2052,6 +2052,9 @@ the source of truth for evidence and reviewer decisions.
 
 - Category: correctness, routing stability
 - Score: 68/100
+- Fix status: fixed by validating `MainEvent::PeerDisconnected(conn, peer)`
+  against the live direct `(ConnectionId, PeerId)` binding before cleanup or
+  public event emission.
 - Reviewer: `Raman`, confirmed.
 - Affected code:
   - `src/lib.rs`: `P2pNetwork::process_internal` handles
