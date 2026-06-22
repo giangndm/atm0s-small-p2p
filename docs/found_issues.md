@@ -11,12 +11,12 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 4
-- Current audit continuation: critical-only post-ISSUE-246 metrics,
-  visualization, requester, and service-boundary review found no new
-  score-80+ issue across scan trust, responder correlation, stale disconnect
-  cleanup, service registration, requester liveness, service-id validation,
-  and backpressure behavior.
+- Current consecutive no-new-issue cycles: 5
+- Current audit continuation: critical-only post-ISSUE-246 transport,
+  framing, handshake, neighbour, stats, and network-lifecycle review found no
+  new score-80+ issue across QUIC stream caps, bincode frame bounds, malformed
+  objects, handshake replay/timestamp/identity binding, inbound authorization,
+  pending connect cleanup, stale ownership checks, and shutdown behavior.
 
 ## Root Cause Summary
 
@@ -19892,6 +19892,56 @@ the source of truth for evidence and reviewer decisions.
     map to ISSUE-215 through ISSUE-225, ISSUE-227, ISSUE-229, ISSUE-230,
     RC-3, and RC-6.
 - Current consecutive no-new cycles after ISSUE-246: 4.
+
+### Cycle after ISSUE-246 no-new critical cycle 5: transport, framing, handshake, and network lifecycle review
+
+- Scope: critical-only pass over transport, framing, handshake, neighbour,
+  stats, and network-lifecycle behavior after the user narrowed the fix phase
+  to score-80+ issues. Reviewed `src/quic.rs`, `src/stream.rs`,
+  `src/msg.rs`, `src/secure.rs`, `src/neighbours.rs`, `src/stats.rs`,
+  `src/lib.rs`, `src/peer.rs`, `src/peer/peer_internal.rs`, and
+  `src/peer/peer_alias.rs` for new critical correctness, security, or
+  stability issues around QUIC stream caps, frame bounds, malformed handshake
+  objects, stream setup timeout/error paths, handshake replay, timestamp
+  overflow, self/third-party peer claims, inbound static authorization,
+  pending connect lifecycle, unauthenticated inbound caps, stale event
+  ownership, metrics ownership, graceful shutdown, and bad-network stalls.
+- Reviewer: `Bohr the 2nd` (forked RED-team reviewer), returned
+  `NO_NEW_CRITICAL`.
+- Verification:
+  - `RUST_LOG=error cargo test quic --lib` passed, 2/2.
+  - `RUST_LOG=error cargo test stream --lib` passed, 30/30.
+  - `RUST_LOG=error cargo test handshake --lib` passed, 10/10.
+  - `RUST_LOG=error cargo test inbound_handshake --lib` passed, 3/3.
+  - `RUST_LOG=error cargo test connect --lib` passed, 61/61.
+  - `RUST_LOG=error cargo test stats --lib` passed, 2/2.
+  - Reviewer verification also passed `RUST_LOG=error cargo test secure --lib`,
+    10/10; `RUST_LOG=error cargo test security --lib`, 55/55; and
+    `RUST_LOG=error cargo test peer --lib`, 112/112.
+  - Ledger check found 21 score-80+ issues and all 21 are marked fixed.
+- Duplicate mapping:
+  - QUIC unidirectional/bidirectional stream admission, peer setup timeout,
+    accept-side stalls, and transport flow-control stalls map to ISSUE-117,
+    ISSUE-172, ISSUE-173, ISSUE-219, ISSUE-220, and existing QUIC cap tests.
+  - Codec oversized/malformed frames, handshake object length bounds,
+    out-of-range service ids, and unknown-service survival map to ISSUE-024,
+    ISSUE-052, ISSUE-053, ISSUE-060, ISSUE-091, ISSUE-234, RC-3, and RC-6.
+  - Stream setup stalls, relay commit, route loops, source normalization,
+    deferred delivery, local service backpressure, and pending ack caps map to
+    ISSUE-011, ISSUE-012, ISSUE-014, ISSUE-018, ISSUE-149, ISSUE-156,
+    ISSUE-169, ISSUE-180, ISSUE-217, ISSUE-220, ISSUE-229, ISSUE-230,
+    ISSUE-238, RC-3, RC-4, and RC-7.
+  - Handshake replay, timestamp overflow/future skew, self identity, third
+    party identity, and inbound static binding authorization map to ISSUE-002,
+    ISSUE-021, ISSUE-146, ISSUE-176, ISSUE-189, ISSUE-194, ISSUE-207,
+    ISSUE-223, ISSUE-244, and RC-1.
+  - Neighbour, stale-event ownership, pending connect cleanup, stats
+    ownership, route cleanup, graceful shutdown, and disconnect behavior map
+    to ISSUE-064, ISSUE-065, ISSUE-068, ISSUE-167, ISSUE-170, ISSUE-215
+    through ISSUE-225, RC-6, and RC-7.
+- Transition: five consecutive no-new critical cycles after ISSUE-246 are now
+  recorded under the current critical-only rule.
+- Current consecutive no-new cycles after ISSUE-246: 5.
 
 ### Cycle after ISSUE-245 no-new cycle 1: transport, stream, requester, and service admission review
 
