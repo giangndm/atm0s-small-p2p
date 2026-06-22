@@ -11,13 +11,13 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 24
-- Current audit continuation: critical-only serialization/API-boundary no-new
-  cycle 26 found no new score-80+ issue across object framing helpers,
-  `BincodeCodec`, bincode deserialize paths, service-id parsing and indexing,
-  frame/object length caps, panic/unwrap paths reachable from peer-controlled
-  input, malformed raw peer messages, oversized payload handling, and public
-  API behavior under bad inputs.
+- Current consecutive no-new-issue cycles: 25
+- Current audit continuation: critical-only secure-handshake/QUIC setup
+  no-new cycle 27 found no new score-80+ issue across token freshness/replay,
+  replay-cache pressure, request/response role binding, self/third-party peer
+  identity, inbound authorization/static binding, unauthenticated admission,
+  QUIC stream admission, setup timeout/error cleanup, and stalled or malformed
+  control-stream setup.
 
 ## Root Cause Summary
 
@@ -21912,6 +21912,84 @@ the source of truth for evidence and reviewer decisions.
 - Current consecutive no-new cycles after ISSUE-238: 36.
 - Current fuzz-phase no-new cycles after transition: 26.
 - Current focused source-review no-new cycles after fuzz phase: 12.
+
+### Fuzz phase no-new cycle 27: secure handshake and QUIC setup review
+
+- Scope: continued critical-only review after cycle 26, focusing on
+  `SharedKeyHandshake` token freshness, replay/cache pressure, request and
+  response role binding, self-auth and third-party identity rejection, inbound
+  authorization/static bindings/open-cluster behavior, QUIC endpoint transport
+  settings, unauthenticated admission, setup timeout/error cleanup, malformed
+  or stalled main control streams, stream setup timeouts, and source binding
+  after authentication.
+- Reviewer: `Euler the 2nd` (forked RED-team reviewer), returned
+  `NO_NEW_CRITICAL`.
+- Verification:
+  - `RUST_LOG=error cargo test handshake --lib`: passed 10 tests.
+  - `RUST_LOG=error cargo test secure::tests --lib`: passed 10 tests.
+  - `RUST_LOG=error cargo test inbound_handshake --lib`: passed 3 tests.
+  - `RUST_LOG=error cargo test setup --lib`: passed 6 tests.
+  - `RUST_LOG=error cargo test quic --lib`: passed 2 tests.
+  - `RUST_LOG=error cargo test unauthenticated --lib`: passed 2 tests.
+  - `RUST_LOG=error cargo test identity --lib`: passed 1 test.
+  - `RUST_LOG=error cargo test connect_must_fail_when_remote_peer_id_does_not_match_address --lib`:
+    passed 1 test.
+  - `RUST_LOG=error cargo test stream --lib`: passed 30 tests.
+  - `RUST_LOG=error cargo test security --lib`: passed 55 tests.
+  - `RUST_LOG=error P2P_FUZZ_NODES=24 P2P_FUZZ_STEPS=900 P2P_FUZZ_SEED=48001 cargo test fuzz_random_valid_node_actions_must_not_panic_connection_tasks --lib`:
+    passed.
+  - `cargo test --lib -- --list | rg -i "handshake|secure|inbound_handshake|setup|quic|unauthenticated|identity|connect.*mismatch|replay|future|timeout|stalled|control stream"`:
+    reviewed focused coverage.
+- Reviewer cross-check:
+  - `cargo test --lib -- --list | rg -i "handshake|inbound|binding|unauthenticated|admission|stalled|stream_connect|setup|timeout|open_stream|connect_request|control_stream|unidirectional|malformed|replay|fresh|future|overflow|third_party|local_id"`
+  - `RUST_LOG=error cargo test handshake --lib -- --nocapture`: passed.
+  - `RUST_LOG=error cargo test inbound_handshake --lib -- --nocapture`:
+    passed.
+  - `RUST_LOG=error cargo test unused_unidirectional_streams_must_not_be_admitted --lib -- --nocapture`:
+    passed.
+  - `RUST_LOG=error cargo test setup_must_timeout --lib -- --nocapture`:
+    passed.
+  - `RUST_LOG=error cargo test open_stream_must_timeout --lib -- --nocapture`:
+    passed.
+  - `RUST_LOG=error cargo test unauthenticated_inbound_connections_must_be_admission_bounded --lib -- --nocapture`:
+    passed.
+  - `RUST_LOG=error cargo test idle_inbound_stream_connects_must_be_admission_bounded --lib -- --nocapture`:
+    passed.
+  - `RUST_LOG=error cargo test future_request_timestamp --lib -- --nocapture`:
+    passed.
+  - `RUST_LOG=error cargo test overflowing_request_timestamp --lib -- --nocapture`:
+    passed.
+  - `RUST_LOG=error cargo test replay_cache --lib -- --nocapture`: passed.
+  - `RUST_LOG=error cargo test connect_must_fail_when_remote_peer_id_does_not_match_address --lib -- --nocapture`:
+    passed.
+  - `RUST_LOG=error cargo test inbound_out_of_range_stream_service_id_must_not_panic_accept_task --lib -- --nocapture`:
+    passed.
+  - `RUST_LOG=error cargo test inbound_stream_response_write_must_not_exhaust_accept_permits --lib -- --nocapture`:
+    passed.
+  - `RUST_LOG=error P2P_FUZZ_NODES=24 P2P_FUZZ_STEPS=900 P2P_FUZZ_SEED=77001 cargo test fuzz_random_valid_node_actions_must_not_panic_connection_tasks --lib -- --nocapture`:
+    passed.
+  - Direct issue-entry ledger check found
+    `critical_entries=19 critical_fixed=19 critical_open=0 open=[]`.
+- Duplicate mapping:
+  - `SharedKeyHandshake` freshness, overflow, replay, response replay, and
+    replay-cache pressure map to ISSUE-002, ISSUE-021, ISSUE-146, ISSUE-176,
+    ISSUE-207, RC-1, and existing `secure::tests`.
+  - Request/response role binding, expected peer IDs, self-auth, third-party
+    identity, and inbound static binding behavior map to ISSUE-189, ISSUE-194,
+    ISSUE-223, ISSUE-244, RC-1, and `peer::tests::inbound_handshake`.
+  - QUIC unidirectional stream admission, bidirectional stream caps,
+    unauthenticated admission pressure, and transport setup caps map to
+    ISSUE-117, ISSUE-172, ISSUE-173, ISSUE-220, ISSUE-223, RC-3, RC-4, and
+    current stream/QUIC admission tests.
+  - Malformed or stalled main control streams and stream setup cleanup map to
+    ISSUE-217, ISSUE-220, ISSUE-238, RC-4, and open/setup timeout tests.
+  - Source forgery after authentication for unicast, broadcast, and stream
+    paths maps to ISSUE-014, ISSUE-018, RC-1, and existing security/stream
+    source-binding tests.
+- Ledger check: 19 score-80+ issue entries found and all are fixed.
+- Current consecutive no-new cycles after ISSUE-238: 37.
+- Current fuzz-phase no-new cycles after transition: 27.
+- Current focused source-review no-new cycles after fuzz phase: 13.
 
 ### Cycle after ISSUE-235 no-new cycle 1: transport, auth, and peer setup review
 

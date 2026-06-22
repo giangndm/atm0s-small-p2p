@@ -7,13 +7,13 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Accepted issues: 246
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 24
-- Current audit continuation: critical-only serialization/API-boundary no-new
-  cycle 26 found no new score-80+ issue across object framing helpers,
-  `BincodeCodec`, bincode deserialize paths, service-id parsing and indexing,
-  frame/object length caps, panic/unwrap paths reachable from peer-controlled
-  input, malformed raw peer messages, oversized payload handling, and public
-  API behavior under bad inputs.
+- Current consecutive no-new-issue cycles: 25
+- Current audit continuation: critical-only secure-handshake/QUIC setup
+  no-new cycle 27 found no new score-80+ issue across token freshness/replay,
+  replay-cache pressure, request/response role binding, self/third-party peer
+  identity, inbound authorization/static binding, unauthenticated admission,
+  QUIC stream admission, setup timeout/error cleanup, and stalled or malformed
+  control-stream setup.
 - Fix phase status: ISSUE-001, ISSUE-003, ISSUE-004, ISSUE-005, ISSUE-006, ISSUE-007,
   ISSUE-002, ISSUE-008, ISSUE-009, ISSUE-010, ISSUE-011, ISSUE-012, ISSUE-013, ISSUE-014, ISSUE-015, ISSUE-017, ISSUE-020, ISSUE-021, ISSUE-023, ISSUE-024, ISSUE-025, ISSUE-027, ISSUE-033, ISSUE-034, ISSUE-039, ISSUE-045, ISSUE-046, ISSUE-047, ISSUE-048, ISSUE-055, ISSUE-059, ISSUE-103, ISSUE-110, ISSUE-111, ISSUE-115, ISSUE-116, ISSUE-117, ISSUE-118, ISSUE-119, ISSUE-120, ISSUE-122, ISSUE-123,
   ISSUE-124, ISSUE-125, ISSUE-126, ISSUE-127, ISSUE-128, ISSUE-129, ISSUE-130,
@@ -878,6 +878,23 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   issue-entry ledger check found 19 score-80+ entries and all are fixed; no
   reproducible serialization/API-boundary failure supported a distinct
   score-80+ issue.
+- Fuzz phase no-new cycle 27 reviewed secure handshake and QUIC setup
+  behavior. Local source inspection and focused `handshake`, `secure::tests`,
+  `inbound_handshake`, `setup`, `quic`, `unauthenticated`, `identity`,
+  remote-peer-id mismatch, `stream`, `security`, 24-node fuzz, and test-list
+  coverage checks passed. Reviewer `Euler the 2nd` passed handshake,
+  inbound-handshake, unidirectional-stream admission, setup/open-stream
+  timeout, unauthenticated and idle inbound admission, future/overflowing
+  timestamp, replay-cache, peer-id mismatch, inbound out-of-range stream
+  service id, inbound response-write permit, and 24-node valid fuzz checks.
+  Rejected candidates mapped to ISSUE-002/021/146/176/207 and RC-1 for
+  handshake freshness/replay/cache pressure, ISSUE-189/194/223/244 and RC-1
+  for role/peer-id/self/third-party/static-binding behavior,
+  ISSUE-117/172/173/220/223 and RC-3/RC-4 for QUIC/admission caps,
+  ISSUE-217/220/238 and RC-4 for malformed or stalled setup cleanup, and
+  ISSUE-014/018/RC-1 for post-auth source forgery. Direct issue-entry ledger
+  check found 19 score-80+ entries and all are fixed; no reproducible
+  secure-handshake/QUIC setup failure supported a distinct score-80+ issue.
 - Cycle after ISSUE-231 no-new cycle 1 reviewed routing/discovery/path
   stability and stream/pipe lifecycle integration with forked reviewer
   `Carver`. Focused route, discovery, stream-relay, peer-stopped, and pubsub
