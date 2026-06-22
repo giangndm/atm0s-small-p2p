@@ -7,12 +7,11 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Accepted issues: 246
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 11
-- Current audit continuation: critical-only full-suite/public API no-new cycle
-  13 found no new score-80+ issue across Cargo manifest, README, examples,
-  readme compile gate, broad library tests, example checks, public open-cluster
-  demo configuration, shared-key/default demo material, and configured-node
-  malformed fuzz.
+- Current consecutive no-new-issue cycles: 12
+- Current audit continuation: critical-only tooling/code-quality no-new cycle
+  14 found no new score-80+ issue across rustfmt, strict clippy, unsafe scan,
+  panic/unwrap scan, dependency duplicate scan, unavailable advisory tooling,
+  cargo metadata, all-target checks, and broad library tests.
 - Fix phase status: ISSUE-001, ISSUE-003, ISSUE-004, ISSUE-005, ISSUE-006, ISSUE-007,
   ISSUE-002, ISSUE-008, ISSUE-009, ISSUE-010, ISSUE-011, ISSUE-012, ISSUE-013, ISSUE-014, ISSUE-015, ISSUE-017, ISSUE-020, ISSUE-021, ISSUE-023, ISSUE-024, ISSUE-025, ISSUE-027, ISSUE-033, ISSUE-034, ISSUE-039, ISSUE-045, ISSUE-046, ISSUE-047, ISSUE-048, ISSUE-055, ISSUE-059, ISSUE-103, ISSUE-110, ISSUE-111, ISSUE-115, ISSUE-116, ISSUE-117, ISSUE-118, ISSUE-119, ISSUE-120, ISSUE-122, ISSUE-123,
   ISSUE-124, ISSUE-125, ISSUE-126, ISSUE-127, ISSUE-128, ISSUE-129, ISSUE-130,
@@ -671,6 +670,22 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   found 21 score-80+ issues and all are fixed; no reproducible public API,
   manifest, example, or full-suite failure supported a distinct score-80+
   issue.
+- Fuzz phase no-new cycle 14 reviewed tooling and code-quality/security-scan
+  boundaries with forked reviewer `Hegel the 2nd`. `cargo fmt -- --check`
+  failed on formatting/import ordering only, and strict clippy failed on
+  unused imports, dead code, style lints, and test-code idioms only. Unsafe
+  scans found no `unsafe` usage. `cargo audit` and `cargo deny check` were not
+  installed, while `cargo metadata`, `cargo check --all-targets`, and broad
+  tests passed; local `cargo test --all-targets` passed 428 library tests plus
+  all example test targets. Rejected candidates mapped to fixed lifecycle and
+  resource families RC-3 through RC-6, ISSUE-060, ISSUE-156, ISSUE-217,
+  ISSUE-220, ISSUE-234, ISSUE-236, ISSUE-238, handshake families ISSUE-002,
+  ISSUE-021, ISSUE-146, ISSUE-176, ISSUE-207, ISSUE-244, transport families
+  ISSUE-117, ISSUE-172, ISSUE-173, router/path families ISSUE-003, ISSUE-180,
+  ISSUE-197, ISSUE-214, and public API identity/binding families ISSUE-014,
+  ISSUE-015, ISSUE-018, ISSUE-189, ISSUE-194. Ledger check found 21 score-80+
+  issues and all are fixed; no reproducible tooling/code-quality failure
+  supported a distinct score-80+ issue.
 - Cycle after ISSUE-231 no-new cycle 1 reviewed routing/discovery/path
   stability and stream/pipe lifecycle integration with forked reviewer
   `Carver`. Focused route, discovery, stream-relay, peer-stopped, and pubsub

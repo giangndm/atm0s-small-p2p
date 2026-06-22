@@ -11,12 +11,11 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 11
-- Current audit continuation: critical-only full-suite/public API no-new cycle
-  13 found no new score-80+ issue across Cargo manifest, README, examples,
-  readme compile gate, broad library tests, example checks, public open-cluster
-  demo configuration, shared-key/default demo material, and configured-node
-  malformed fuzz.
+- Current consecutive no-new-issue cycles: 12
+- Current audit continuation: critical-only tooling/code-quality no-new cycle
+  14 found no new score-80+ issue across rustfmt, strict clippy, unsafe scan,
+  panic/unwrap scan, dependency duplicate scan, unavailable advisory tooling,
+  cargo metadata, all-target checks, and broad library tests.
 
 ## Root Cause Summary
 
@@ -21153,6 +21152,64 @@ the source of truth for evidence and reviewer decisions.
 - Current consecutive no-new cycles after ISSUE-238: 23.
 - Current fuzz-phase no-new cycles after transition: 13.
 - Current focused source-review no-new cycles after fuzz phase: 9.
+
+### Fuzz phase no-new cycle 14: tooling and code-quality critical review
+
+- Scope: continued critical-only review after cycle 13, focusing on toolchain
+  and code-quality/security-scan boundaries: rustfmt, clippy, unsafe usage,
+  panic/unwrap patterns, dependency duplicates, metadata, unavailable advisory
+  tooling, and source paths surfaced by those checks.
+- Reviewer: `Hegel the 2nd` (forked RED-team reviewer), returned
+  `NO_NEW_CRITICAL`.
+- Verification:
+  - `cargo fmt -- --check`: failed on formatting/import ordering and line
+    wrapping only.
+  - `cargo clippy --all-targets --all-features -- -D warnings`: failed on
+    unused imports, dead code, style lints, and test-code idioms only.
+  - `rg -n "\\bunsafe\\b" src examples README.md Cargo.toml`: no matches.
+  - `cargo audit`: unavailable; cargo reported no such subcommand.
+  - `cargo tree -d`: duplicate transitive versions found, with no direct
+    critical evidence.
+  - `RUST_LOG=error cargo test --all-targets`: passed, including 428 library
+    tests and all example test targets.
+- Reviewer cross-check:
+  - `cargo fmt -- --check`: failed on formatting/import ordering only.
+  - `cargo clippy --all-targets --all-features -- -D warnings`: failed on
+    unused imports/dead code/style lints and test-code idioms only.
+  - Unsafe scan over non-test/non-example Rust source: no matches.
+  - Panic/unwrap scan reviewed production sites in `src/secure.rs`,
+    `src/quic.rs`, `src/router.rs`, `src/utils.rs`, `src/lib.rs`,
+    `src/ctx.rs`, `src/peer/peer_internal.rs`,
+    `src/service/alias_service.rs`, `src/service/pubsub_service.rs`, and
+    `src/service/replicate_kv_service/remote_storage.rs`.
+  - `cargo tree -d`: duplicate transitive versions found, no direct critical
+    evidence.
+  - `cargo audit` and `cargo deny check`: unavailable.
+  - `cargo metadata --format-version=1 --no-deps`: passed.
+  - `cargo check --all-targets`: passed with warnings only.
+  - `RUST_LOG=error cargo test --lib`: passed, 428/428.
+- Duplicate mapping:
+  - Formatting and clippy failures are quality debt, not score-80
+    correctness/security/stability evidence.
+  - Production `expect`/`unwrap` resource and lifecycle concerns map to fixed
+    RC-3, RC-4, RC-5, RC-6, ISSUE-060, ISSUE-156, ISSUE-217, ISSUE-220,
+    ISSUE-234, ISSUE-236, and ISSUE-238.
+  - Handshake token/replay/timestamp/hash concerns map to ISSUE-002,
+    ISSUE-021, ISSUE-146, ISSUE-176, ISSUE-207, and ISSUE-244.
+  - QUIC stream admission and transport limits map to ISSUE-117, ISSUE-172,
+    ISSUE-173, and `unused_unidirectional_streams_must_not_be_admitted`.
+  - Router path stability, metric overflow, duplicate sync, direct-route
+    priority, and relay loops map to ISSUE-003, ISSUE-180, ISSUE-197,
+    ISSUE-214, and RC-7.
+  - README/examples default certs and insecure open-cluster demos map to the
+    existing public API audit and fixed inbound identity/binding families
+    ISSUE-014, ISSUE-015, ISSUE-018, ISSUE-189, and ISSUE-194.
+  - No reproducible tooling/code-quality failure supported a distinct
+    score-80+ issue.
+- Ledger check: 21 score-80+ issues found and all are fixed.
+- Current consecutive no-new cycles after ISSUE-238: 24.
+- Current fuzz-phase no-new cycles after transition: 14.
+- Current focused source-review no-new cycles after fuzz phase: 10.
 
 ### Cycle after ISSUE-235 no-new cycle 1: transport, auth, and peer setup review
 
