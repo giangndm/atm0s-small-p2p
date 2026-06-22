@@ -7,9 +7,10 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Accepted issues: 230
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 0
-- Current audit continuation: ISSUE-230 accepted and fixed after the
-  post-ISSUE-229 continuation.
+- Current consecutive no-new-issue cycles: 1
+- Current audit continuation: post-ISSUE-230 no-new cycle 1 reviewed
+  requester/control admission, unicast/acked-unicast relay, stream relay/setup,
+  and 12-node steady fuzz coverage without accepting a distinct new issue.
 - Fix phase status: ISSUE-001, ISSUE-003, ISSUE-004, ISSUE-005, ISSUE-006, ISSUE-007,
   ISSUE-002, ISSUE-008, ISSUE-009, ISSUE-010, ISSUE-011, ISSUE-012, ISSUE-013, ISSUE-014, ISSUE-015, ISSUE-017, ISSUE-020, ISSUE-021, ISSUE-023, ISSUE-024, ISSUE-025, ISSUE-027, ISSUE-033, ISSUE-034, ISSUE-039, ISSUE-045, ISSUE-046, ISSUE-047, ISSUE-048, ISSUE-055, ISSUE-059, ISSUE-103, ISSUE-110, ISSUE-111, ISSUE-115, ISSUE-116, ISSUE-117, ISSUE-118, ISSUE-119, ISSUE-120, ISSUE-122, ISSUE-123,
   ISSUE-124, ISSUE-125, ISSUE-126, ISSUE-127, ISSUE-128, ISSUE-129, ISSUE-130,
@@ -186,6 +187,22 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   stale pending ack entries, rejects overflow at `MAX_PENDING_UNICAST_ACKS = 16`
   before writing another frame, and reports `pending unicast ack queue full` to
   the caller instead of letting the pending ack map scale with write throughput.
+- Cycle after ISSUE-230 no-new cycle 1: reviewed the issue ledger and summary,
+  then audited public requester/control admission, direct and relayed
+  `UnicastWithAck`, unicast ingress-loop/source handling, stream relay/setup,
+  and recent shutdown/discovery/routing hints. Forked reviewer `Aquinas`
+  rejected new issue acceptance: requester/control maps to existing bounded
+  admission coverage, direct/relayed acked unicast maps to ISSUE-119,
+  ISSUE-224, ISSUE-225, ISSUE-229, and ISSUE-230, unicast relay loops/source
+  binding map to ISSUE-014 and ISSUE-197, and stream relay/setup maps to
+  ISSUE-011, ISSUE-012, ISSUE-013, ISSUE-018, ISSUE-056, ISSUE-117, ISSUE-149,
+  ISSUE-156, ISSUE-169, ISSUE-180, ISSUE-217, and ISSUE-220. Verification:
+  `cargo test requester_connect -- --nocapture`,
+  `cargo test relayed_open_stream_must_not_succeed_before_downstream_accepts -- --nocapture`,
+  `cargo test unicast_relay_must_not_forward_back_to_ingress_peer -- --nocapture`,
+  and
+  `P2P_FUZZ_NODES=12 P2P_FUZZ_STEPS=200 P2P_FUZZ_SEED=23001 cargo test fuzz_random_steady_valid_node_actions_must_not_panic_connection_tasks -- --nocapture`
+  passed. No new root cause beyond RC-3, RC-4, RC-6, and RC-7.
 - Cycle after ISSUE-225 no-new cycle 1: reviewed the issue ledger, ack-worker
   backpressure, peer-control admission, stream setup, graceful-stop cleanup,
   and route/path-jumping surfaces. A 12-node, 200-step steady valid fuzz run

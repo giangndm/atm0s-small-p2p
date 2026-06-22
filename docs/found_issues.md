@@ -18820,3 +18820,38 @@ the source of truth for evidence and reviewer decisions.
   - `RUST_LOG=error cargo test peer::tests:: --lib -- --nocapture`
   - `rustfmt --edition 2021 --check src/peer/peer_internal.rs`
   - `git diff --check`
+
+### Cycle after ISSUE-230 no-new cycle 1: requester, relay, stream setup, and steady fuzz review
+
+- Scope: reviewed `docs/found_issues.md` and `docs/summary_issues.md`, then
+  audited public requester/control admission, duplicate/pending connect
+  behavior, peer-internal `Unicast`/`UnicastWithAck` source binding and relay
+  acknowledgement handling, stream relay/setup acceptance, and the recent
+  shutdown/discovery/routing hints.
+- Reviewer: `Aquinas` (forked RED-team reviewer), rejected new issue
+  acceptance and recommended documenting a no-new cycle.
+- Verification:
+  - `cargo test requester_connect -- --nocapture`
+  - `cargo test relayed_open_stream_must_not_succeed_before_downstream_accepts -- --nocapture`
+  - `cargo test unicast_relay_must_not_forward_back_to_ingress_peer -- --nocapture`
+  - `P2P_FUZZ_NODES=12 P2P_FUZZ_STEPS=200 P2P_FUZZ_SEED=23001 cargo test fuzz_random_steady_valid_node_actions_must_not_panic_connection_tasks -- --nocapture`
+- Reviewer cross-check:
+  - `cargo test requester --lib -- --nocapture`: passed 13/13
+  - `cargo test unicast --lib -- --nocapture`: passed 12/12
+  - `cargo test stream --lib -- --nocapture`: passed 25/25
+- Duplicate mapping:
+  - Public requester/control admission maps to existing bounded admission and
+    requester backlog coverage, including stale requester, full control queue,
+    self-connect, duplicate-connect, and wrong-address cases.
+  - Direct and relayed `UnicastWithAck` maps to ISSUE-119, ISSUE-224,
+    ISSUE-225, ISSUE-229, and ISSUE-230.
+  - Unicast relay ingress loops and source binding map to ISSUE-014 and
+    ISSUE-197.
+  - Stream relay/setup maps to ISSUE-011, ISSUE-012, ISSUE-013, ISSUE-018,
+    ISSUE-056, ISSUE-117, ISSUE-149, ISSUE-156, ISSUE-169, ISSUE-180,
+    ISSUE-217, and ISSUE-220.
+- Fuzz notes: the 12-node, 200-step valid steady fuzz pass produced route-churn
+  broadcast drops and source-normalization warnings, but no panic or accepted
+  correctness/security/stability signature. Those logs map to existing route
+  convergence and source-binding hardening rather than a distinct issue.
+- Current consecutive no-new cycles after ISSUE-230: 1.
