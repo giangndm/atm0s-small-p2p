@@ -7,9 +7,10 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Accepted issues: 234
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 0
-- Current audit continuation: ISSUE-234 was accepted and fixed; the next review
-  starts a fresh post-ISSUE-234 cycle.
+- Current consecutive no-new-issue cycles: 1
+- Current audit continuation: post-ISSUE-234 no-new cycle 1 documented for
+  routing/path stability, stream relay setup, and graceful-stop/non-seed
+  lifecycle cleanup.
 - Fix phase status: ISSUE-001, ISSUE-003, ISSUE-004, ISSUE-005, ISSUE-006, ISSUE-007,
   ISSUE-002, ISSUE-008, ISSUE-009, ISSUE-010, ISSUE-011, ISSUE-012, ISSUE-013, ISSUE-014, ISSUE-015, ISSUE-017, ISSUE-020, ISSUE-021, ISSUE-023, ISSUE-024, ISSUE-025, ISSUE-027, ISSUE-033, ISSUE-034, ISSUE-039, ISSUE-045, ISSUE-046, ISSUE-047, ISSUE-048, ISSUE-055, ISSUE-059, ISSUE-103, ISSUE-110, ISSUE-111, ISSUE-115, ISSUE-116, ISSUE-117, ISSUE-118, ISSUE-119, ISSUE-120, ISSUE-122, ISSUE-123,
   ISSUE-124, ISSUE-125, ISSUE-126, ISSUE-127, ISSUE-128, ISSUE-129, ISSUE-130,
@@ -182,6 +183,14 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   ISSUE-004, ISSUE-051, ISSUE-063, ISSUE-117, ISSUE-149, ISSUE-156,
   ISSUE-164, ISSUE-167, ISSUE-170, ISSUE-215 through ISSUE-222, ISSUE-229,
   and ISSUE-230; no new root-cause summary change was needed.
+- Cycle after ISSUE-234 no-new cycle 1 reviewed routing/path stability,
+  stream relay setup, and graceful-stop/non-seed lifecycle cleanup with forked
+  reviewer `Planck`. Focused route hysteresis/direct-route, stream-relay,
+  peer-stopped, non-seed expiry, seed retention, and stopped-tombstone tests
+  passed. Rejected candidates mapped to ISSUE-003/RC-7, ISSUE-004, ISSUE-051,
+  ISSUE-063, ISSUE-117, ISSUE-149, ISSUE-156, ISSUE-167, ISSUE-170,
+  ISSUE-215 through ISSUE-225, ISSUE-229, and ISSUE-230; no new root-cause
+  summary change was needed.
 
 ### RC-3: Backpressure is inconsistent across async boundaries
 
