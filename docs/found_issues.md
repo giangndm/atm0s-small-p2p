@@ -11,7 +11,7 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 3
+- Current consecutive no-new-issue cycles: 4
 - Stop condition requested by user: continue until 5 consecutive cycles find no
   new accepted issue.
 
@@ -7296,6 +7296,61 @@ the source of truth for evidence and reviewer decisions.
     guards remaining.
 
 ## No-New-Issue Audit Cycles
+
+### Cycle after ISSUE-208 no-new cycle 4: metrics visualization alias duplicate review
+
+- Result: no accepted non-duplicate issue.
+- Reviewer: `Hume the 12th`, forked subagent review, confirmed
+  duplicate/no-new.
+- Source and test evidence reviewed:
+  - `src/service/metrics_service.rs`
+  - `src/service/visualization_service.rs`
+  - `src/service/alias_service.rs`
+  - `src/tests/metrics.rs`
+  - `src/tests/visualization.rs`
+  - `src/tests/alias.rs`
+  - `src/tests/fuzz.rs`
+  - `cargo test metrics_info -- --nocapture` passed with 3 tests.
+  - `cargo test visualization_info -- --nocapture` passed with 3 tests.
+  - `cargo test alias_find_after_service_drop_returns_none_not_panic -- --nocapture`
+    passed.
+  - `cargo test local_shutdown_must_stop_serving_local_aliases -- --nocapture`
+    passed.
+  - `cargo test shutdown_from_one_peer_must_not_clear_aliases_from_other_peers -- --nocapture`
+    passed.
+  - `cargo test saturated_alias_refcount_must_not_unregister_while_guards_remain -- --nocapture`
+    failed at `src/service/alias_service.rs:799:9` with the already accepted
+    ISSUE-208 saturated-refcount evidence.
+  - `RUST_LOG=error P2P_FUZZ_SEED=208301 P2P_FUZZ_NODES=9 P2P_FUZZ_STEPS=2200 cargo test fuzz_random_steady_valid_node_actions_must_not_panic_connection_tasks -- --nocapture`
+    passed.
+- Evidence summary:
+  - Metrics and visualization info correlation and batch-cap guards passed.
+  - Alias stale requester, local shutdown, and peer-scoped shutdown guards
+    passed.
+  - The saturated alias refcount test still fails, but the reviewer classified
+    it as duplicate evidence for ISSUE-208 rather than a distinct new issue.
+  - The 9-node steady valid-action fuzz pass completed without panic, failed
+    assertion, or background task failure. Duplicate-connection, closed-control,
+    connection-lost, and no-capacity logs were reviewed as expected churn
+    context.
+- Duplicate mapping:
+  - metrics and visualization forged info, scan, batch/resource, closed-service,
+    periodic scan, and scan-response backpressure candidates map to ISSUE-061,
+    ISSUE-062, ISSUE-078, ISSUE-079, ISSUE-104, ISSUE-105, ISSUE-120,
+    ISSUE-162, ISSUE-165, ISSUE-200, ISSUE-201, ISSUE-202, ISSUE-203, and
+    ISSUE-204.
+  - alias stale requester, shutdown, `Found`/`NotFound`/`Notify` generation and
+    cache, waiter/backlog/cap, timeout arithmetic, and refcount candidates map
+    to ISSUE-029, ISSUE-035, ISSUE-036, ISSUE-041, ISSUE-090, ISSUE-101,
+    ISSUE-109, ISSUE-127, ISSUE-130, ISSUE-132, ISSUE-137, ISSUE-158,
+    ISSUE-179, ISSUE-183, ISSUE-185, ISSUE-206, and ISSUE-208.
+- Root-cause summary impact: no new root cause; reviewed candidates map to
+  existing RC-1, RC-2, RC-3, RC-4, RC-5, and RC-6.
+- Smallest fix proposal: no new summary fix change; keep the mapped issue fix
+  proposals for collector request correlation, scan broadcast/response
+  coalescing, service-level caps, alias pending-request correlation, alias
+  lifecycle generations, shutdown latching, and widening the local alias guard
+  refcount for ISSUE-208.
 
 ### Cycle after ISSUE-208 no-new cycle 3: route discovery pubsub churn review
 

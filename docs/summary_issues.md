@@ -7,9 +7,9 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Accepted issues: 208
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 3
+- Current consecutive no-new-issue cycles: 4
 - Stop condition: continue until 5 consecutive cycles find no new accepted
-  issue; currently 3/5 after ISSUE-208.
+  issue; currently 4/5 after ISSUE-208.
 - Fix phase status: ISSUE-001, ISSUE-003, ISSUE-004, ISSUE-005, ISSUE-006, ISSUE-007,
   ISSUE-002, ISSUE-008, ISSUE-009, ISSUE-010, ISSUE-011, ISSUE-012, ISSUE-013, ISSUE-014, ISSUE-015, ISSUE-017, ISSUE-020, ISSUE-021, ISSUE-023, ISSUE-024, ISSUE-025, ISSUE-027, ISSUE-033, ISSUE-034, ISSUE-039, ISSUE-045, ISSUE-046, ISSUE-047, ISSUE-048, ISSUE-055, ISSUE-059, ISSUE-103, ISSUE-110, ISSUE-111, ISSUE-115, ISSUE-116, ISSUE-117, ISSUE-118, ISSUE-119, ISSUE-120, ISSUE-122, ISSUE-123,
   ISSUE-124, ISSUE-125, ISSUE-126, ISSUE-127, ISSUE-128, ISSUE-129, ISSUE-130,
@@ -3668,6 +3668,21 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Recent No-New Audit
 
+- Cycle after ISSUE-208 no-new cycle 4 reviewed metrics, visualization, alias
+  lifecycle/control, and 9-node steady fuzz. Metrics/visualization info guards,
+  alias stale requester handling, local shutdown, and peer-scoped shutdown tests
+  passed. `saturated_alias_refcount_must_not_unregister_while_guards_remain`
+  still failed at `src/service/alias_service.rs:799:9`, but reviewer
+  `Hume the 12th` confirmed it is duplicate ISSUE-208 evidence, not a new
+  issue. Steady fuzz with
+  `P2P_FUZZ_SEED=208301 P2P_FUZZ_NODES=9 P2P_FUZZ_STEPS=2200` passed.
+  Metrics/visualization candidates map to ISSUE-061, ISSUE-062, ISSUE-078,
+  ISSUE-079, ISSUE-104, ISSUE-105, ISSUE-120, ISSUE-162, ISSUE-165,
+  ISSUE-200 through ISSUE-204. Alias candidates map to ISSUE-029, ISSUE-035,
+  ISSUE-036, ISSUE-041, ISSUE-090, ISSUE-101, ISSUE-109, ISSUE-127,
+  ISSUE-130, ISSUE-132, ISSUE-137, ISSUE-158, ISSUE-179, ISSUE-183,
+  ISSUE-185, ISSUE-206, and ISSUE-208. No new root cause or fix proposal was
+  recorded.
 - Cycle after ISSUE-208 no-new cycle 3 reviewed route/discovery graceful-stop
   and duplicate-connect boundaries plus pubsub graceful-stop, heartbeat, and
   stale-event boundaries. Focused discovery/pubsub tests passed, and sanitized
