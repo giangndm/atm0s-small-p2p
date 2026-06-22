@@ -5,11 +5,11 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Audit Status
 
-- Accepted issues: 229
+- Accepted issues: 230
 - Missing issue scores: 0
 - Current consecutive no-new-issue cycles: 0
-- Current audit continuation: ISSUE-229 accepted and fixed after the
-  post-ISSUE-228 continuation.
+- Current audit continuation: ISSUE-230 accepted and fixed after the
+  post-ISSUE-229 continuation.
 - Fix phase status: ISSUE-001, ISSUE-003, ISSUE-004, ISSUE-005, ISSUE-006, ISSUE-007,
   ISSUE-002, ISSUE-008, ISSUE-009, ISSUE-010, ISSUE-011, ISSUE-012, ISSUE-013, ISSUE-014, ISSUE-015, ISSUE-017, ISSUE-020, ISSUE-021, ISSUE-023, ISSUE-024, ISSUE-025, ISSUE-027, ISSUE-033, ISSUE-034, ISSUE-039, ISSUE-045, ISSUE-046, ISSUE-047, ISSUE-048, ISSUE-055, ISSUE-059, ISSUE-103, ISSUE-110, ISSUE-111, ISSUE-115, ISSUE-116, ISSUE-117, ISSUE-118, ISSUE-119, ISSUE-120, ISSUE-122, ISSUE-123,
   ISSUE-124, ISSUE-125, ISSUE-126, ISSUE-127, ISSUE-128, ISSUE-129, ISSUE-130,
@@ -75,6 +75,8 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   ISSUE-229 is fixed by `f87c6dc`: public relayed `send_unicast` now uses
   end-to-end `UnicastWithAck` propagation instead of reporting success after
   first-hop enqueue.
+  ISSUE-230 is fixed by `2358c31`: per-connection pending unicast
+  acknowledgements are capped before writing another `UnicastWithAck` frame.
   ISSUE-043 is fixed by bounding pending pubsub publish/feedback RPC request
   maps before responder fanout.
   ISSUE-054 is fixed by rejecting zero network tick intervals before endpoint
@@ -143,7 +145,7 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   ISSUE-127, ISSUE-136, ISSUE-153,
   ISSUE-178, ISSUE-182, ISSUE-184, ISSUE-198, ISSUE-199,
   ISSUE-200, ISSUE-201, ISSUE-202, ISSUE-203, ISSUE-204, ISSUE-209,
-  ISSUE-223, ISSUE-224, ISSUE-225, ISSUE-227, ISSUE-229.
+  ISSUE-223, ISSUE-224, ISSUE-225, ISSUE-227, ISSUE-229, ISSUE-230.
 - ISSUE-209: fixed high-load fuzz coverage issue. The fuzz harness silently
   capped `P2P_FUZZ_NODES` values above 8, so intended 12-15 node fuzz cycles
   executed with only 8 nodes. The fix keeps the lower bound at two nodes while
@@ -180,6 +182,10 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   `UnicastWithAck` downstream and propagate the downstream result to the
   original upstream ack id, so final destination service failures no longer
   look like first-hop success.
+- ISSUE-230, score 68: fixed by `2358c31`. `SendUnicastWithAck` now expires
+  stale pending ack entries, rejects overflow at `MAX_PENDING_UNICAST_ACKS = 16`
+  before writing another frame, and reports `pending unicast ack queue full` to
+  the caller instead of letting the pending ack map scale with write throughput.
 - Cycle after ISSUE-225 no-new cycle 1: reviewed the issue ledger, ack-worker
   backpressure, peer-control admission, stream setup, graceful-stop cleanup,
   and route/path-jumping surfaces. A 12-node, 200-step steady valid fuzz run

@@ -12,8 +12,8 @@ must resolve.
 ## Audit Status
 
 - Current consecutive no-new-issue cycles: 0
-- Current audit continuation: ISSUE-229 accepted and fixed after the
-  post-ISSUE-228 continuation.
+- Current audit continuation: ISSUE-230 accepted and fixed after the
+  post-ISSUE-229 continuation.
 
 ## Root Cause Summary
 
@@ -63,7 +63,7 @@ the source of truth for evidence and reviewer decisions.
   ISSUE-124, ISSUE-125, ISSUE-126,
   ISSUE-127, ISSUE-136, ISSUE-147, ISSUE-153, ISSUE-157,
   ISSUE-178, ISSUE-182, ISSUE-184, ISSUE-198, ISSUE-199, ISSUE-224,
-  ISSUE-229.
+  ISSUE-229, ISSUE-230.
 - Pattern: some paths use bounded channels and drop on `try_send`, some await
   bounded sends from critical tasks, and others use unbounded queues or produce
   duplicate internal control work. Under load this causes silent data loss,
@@ -18775,4 +18775,48 @@ the source of truth for evidence and reviewer decisions.
   - `RUST_LOG=error cargo test cross_nodes:: --lib -- --nocapture`
   - `RUST_LOG=error cargo test unicast --lib -- --nocapture`
   - `rustfmt --edition 2021 --check src/ctx.rs src/peer/peer_internal.rs src/tests/cross_nodes.rs`
+  - `git diff --check`
+
+### ISSUE-230: Pending unicast acknowledgements are time-bounded but not count-bounded
+
+- Score: 68
+- Category: high-load stability / pending ack resource bound
+- Status: fixed by `2358c31` (`fix: bound pending unicast acks`).
+- Reviewer:
+  - `Helmholtz` (forked RED-team reviewer), accepted and reviewed the fix.
+- Affected code:
+  - `src/peer/peer_internal.rs`
+  - `src/peer.rs`
+- Impact: a peer connection could accumulate one pending oneshot/deadline/map
+  entry for every successfully written `UnicastWithAck` until ack receipt or
+  timeout expiry. The peer-control channel only bounded queued controls, not
+  already-drained and written ack waits. A slow or malicious peer that drains
+  frames but withholds `UnicastAck` could therefore force pending ack memory
+  and relay-side waits to scale with write throughput for the timeout window.
+- Distinctness: ISSUE-119 introduced acked direct unicast semantics but only
+  provided timeout-based cleanup. ISSUE-219 bounded stalled control writes but
+  did not cap successful in-flight ack tracking. ISSUE-224 and ISSUE-225 moved
+  local delivery off the read loop, and ISSUE-229 added relayed ack
+  propagation; none capped the pending ack map by count.
+- Failing evidence:
+  - `RUST_LOG=error cargo test pending_unicast_acks_must_be_count_bounded --lib -- --nocapture`
+  - Failure before fix:
+    - `pending unicast ack tracking must be count-bounded before timeout expiry, admitted 24 unacked sends`
+- Root cause: `PeerConnectionControl::SendUnicastWithAck` inserted into
+  `pending_unicast_acks` after each successful control-frame write without
+  checking `pending_unicast_acks.len()`. Cleanup happened only when an ack
+  arrived or the periodic timeout sweep ran.
+- Minimal fix proposal: add a per-connection `MAX_PENDING_UNICAST_ACKS`, expire
+  stale entries before checking capacity, and reject new acked unicast sends
+  with a caller-visible error before writing another frame when the map is
+  full.
+- Fix: each connection now caps pending unicast acknowledgements at 16. The
+  connection task expires stale entries before the capacity check and returns
+  `pending unicast ack queue full` through the caller oneshot without sending
+  another `UnicastWithAck` frame.
+- Fixed evidence:
+  - `RUST_LOG=error cargo test pending_unicast_acks_must_be_count_bounded --lib -- --nocapture`
+  - `RUST_LOG=error cargo test unicast --lib -- --nocapture`
+  - `RUST_LOG=error cargo test peer::tests:: --lib -- --nocapture`
+  - `rustfmt --edition 2021 --check src/peer/peer_internal.rs`
   - `git diff --check`
