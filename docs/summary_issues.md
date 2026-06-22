@@ -698,6 +698,12 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   `cargo test pubsub_publish_rpc_local -- --nocapture`,
   `cargo test pubsub_feedback_rpc_remote -- --nocapture`, and
   `cargo test pubsub_feedback_rpc_local -- --nocapture`.
+- ISSUE-074: fixed by validating `InternalMsg::PublishRpc` against the live
+  local publisher handle map before fanout or pending-RPC insertion. Stale
+  cloned publisher requesters now receive `NoDestination` and cannot invoke
+  subscriber RPC handlers after their owning `Publisher` has been dropped.
+  Verified with
+  `cargo test dropped_publisher_requester_must_not_continue_publish_rpc -- --nocapture`.
 - ISSUE-115: fixed by carrying `SubscriberHandleId` on local
   `PublishRpcAnswer` control messages and recording which local subscriber
   handles actually received each publish RPC. Stale or unrelated subscriber
