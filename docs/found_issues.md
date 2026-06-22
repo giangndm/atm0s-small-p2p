@@ -11,9 +11,10 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 0
+- Current consecutive no-new-issue cycles: 1
 - Stop condition requested by user: continue until 5 consecutive cycles find no
-  new accepted issue. Not satisfied after ISSUE-214; continue auditing.
+  new accepted issue. Not satisfied after ISSUE-214 no-new cycle 1; continue
+  auditing.
 
 ## Root Cause Summary
 
@@ -17898,3 +17899,17 @@ the source of truth for evidence and reviewer decisions.
 - Verification:
   - `RUST_LOG=error cargo test create_sync_must_prioritize_direct_routes_under_cap --lib -- --nocapture`
   - `RUST_LOG=error cargo test router::tests:: --lib -- --nocapture`
+
+### Cycle after ISSUE-214 no-new cycle 1: twelve-node post-router-fix fuzz
+
+- Result: no new accepted issue.
+- Scope: post-fix high-load fuzz after direct-route sync prioritization.
+- Evidence:
+  - `RUST_LOG=error P2P_FUZZ_NODES=12 P2P_FUZZ_STEPS=1200 P2P_FUZZ_SEED=22062115 cargo test fuzz_random_steady_valid_node_actions_must_not_panic_connection_tasks -- --nocapture`
+    passed with no panic or failed invariant.
+  - `RUST_LOG=error P2P_FUZZ_NODES=12 P2P_FUZZ_STEPS=1200 P2P_FUZZ_SEED=22062116 cargo test fuzz_random_sanitized_node_churn_actions_must_not_panic_connection_tasks -- --nocapture`
+    passed with no panic or failed invariant.
+- Observed noise: duplicate-connection shutdowns, refused outbound connects,
+  connection-lost logs, and graceful shutdown close logs remained present.
+- Root-cause summary impact: no new root cause; observed noise maps to existing
+  churn/teardown classifications unless a focused invariant fails.
