@@ -1633,7 +1633,7 @@ the source of truth for evidence and reviewer decisions.
 
 ### ISSUE-052: Out-of-range service ids panic service registration
 
-- Status: fixed by validating `P2pServiceId::as_service_index()` before
+- Fix status: fixed by validating `P2pServiceId::as_service_index()` before
   indexing the service table and rejecting out-of-range registrations without
   unwinding.
 - Category: correctness, API stability
