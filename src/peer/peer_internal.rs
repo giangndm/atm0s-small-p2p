@@ -43,6 +43,7 @@ use super::PeerConnectionControl;
 
 const OPEN_BI_TIMEOUT: Duration = Duration::from_secs(2);
 const ACCEPT_BI_INITIAL_REQ_TIMEOUT: Duration = Duration::from_secs(1);
+const ACCEPT_BI_RESPONSE_WRITE_TIMEOUT: Duration = Duration::from_millis(250);
 const MAX_PENDING_ACCEPT_BI: usize = 16;
 const LOCAL_SERVICE_DELIVERY_TIMEOUT: Duration = Duration::from_secs(1);
 const RELAY_UPSTREAM_STOP_GRACE: Duration = Duration::from_millis(20);
@@ -527,6 +528,12 @@ async fn reject_if_upstream_stopped_before_relay_setup(stream: &P2pQuicStream) -
     }
 }
 
+async fn write_stream_connect_res(stream: &mut P2pQuicStream, res: StreamConnectRes) -> anyhow::Result<()> {
+    tokio::time::timeout(ACCEPT_BI_RESPONSE_WRITE_TIMEOUT, write_object::<_, _, MAX_CONTROL_STREAM_PKT>(stream, &res))
+        .await
+        .map_err(|_| anyhow!("stream connect response write timed out"))?
+}
+
 async fn accept_bi(ingress: ConnectionId, authenticated_ingress_peer: PeerId, mut stream: P2pQuicStream, ctx: SharedCtx, _permit: OwnedSemaphorePermit) -> anyhow::Result<()> {
     let req = tokio::time::timeout(ACCEPT_BI_INITIAL_REQ_TIMEOUT, wait_object::<_, StreamConnectReq, MAX_CONTROL_STREAM_PKT>(&mut stream))
         .await
@@ -545,27 +552,27 @@ async fn accept_bi(ingress: ConnectionId, authenticated_ingress_peer: PeerId, mu
                     Ok(Ok(permit)) => permit,
                     Ok(Err(_)) => {
                         log::warn!("[PeerConnectionInternal {authenticated_ingress_peer}] stream service {service} source {effective_source} to dest {dest} => service closed");
-                        write_object::<_, _, MAX_CONTROL_STREAM_PKT>(&mut stream, &Err::<(), _>("service closed".to_string())).await?;
+                        write_stream_connect_res(&mut stream, Err("service closed".to_string())).await?;
                         return Err(anyhow!("service closed"));
                     }
                     Err(_) => {
                         log::warn!("[PeerConnectionInternal {authenticated_ingress_peer}] stream service {service} source {effective_source} to dest {dest} => service queue full");
-                        write_object::<_, _, MAX_CONTROL_STREAM_PKT>(&mut stream, &Err::<(), _>("service queue full".to_string())).await?;
+                        write_stream_connect_res(&mut stream, Err("service queue full".to_string())).await?;
                         return Err(anyhow!("service queue full"));
                     }
                 };
-                write_object::<_, _, MAX_CONTROL_STREAM_PKT>(&mut stream, &Ok::<_, String>(())).await?;
+                write_stream_connect_res(&mut stream, Ok(())).await?;
                 permit.send(P2pServiceEvent::Stream(effective_source, meta, stream));
                 Ok(())
             } else {
                 log::warn!("[PeerConnectionInternal {authenticated_ingress_peer}] stream service {service} source {effective_source} to dest {dest} => service not found");
-                write_object::<_, _, MAX_CONTROL_STREAM_PKT>(&mut stream, &Err::<(), _>("service not found".to_string())).await?;
+                write_stream_connect_res(&mut stream, Err("service not found".to_string())).await?;
                 Err(anyhow!("service not found"))
             }
         }
         Some(RouteAction::Next(next)) if next == ingress => {
             log::warn!("[PeerConnectionInternal {authenticated_ingress_peer}] reject stream relay to {dest}: next hop {next} is ingress connection");
-            write_object::<_, _, MAX_CONTROL_STREAM_PKT>(&mut stream, &Err::<(), _>("route loop".to_string())).await?;
+            write_stream_connect_res(&mut stream, Err("route loop".to_string())).await?;
             Err(anyhow!("route loop"))
         }
         Some(RouteAction::Next(next)) => {
@@ -574,7 +581,7 @@ async fn accept_bi(ingress: ConnectionId, authenticated_ingress_peer: PeerId, mu
                 reject_if_upstream_stopped_before_relay_setup(&stream).await?;
                 match alias.open_stream(service, effective_source, dest, meta).await {
                     Ok(mut next_stream) => {
-                        if let Err(err) = write_object::<_, _, MAX_CONTROL_STREAM_PKT>(&mut stream, &Ok::<_, String>(())).await {
+                        if let Err(err) = write_stream_connect_res(&mut stream, Ok(())).await {
                             log::warn!(
                                 "[PeerConnectionInternal {authenticated_ingress_peer}] stream service {service} source {effective_source} to dest {dest} => upstream ack failed after downstream open: {err}"
                             );
@@ -593,7 +600,7 @@ async fn accept_bi(ingress: ConnectionId, authenticated_ingress_peer: PeerId, mu
                     }
                     Err(err) => {
                         log::error!("[PeerConnectionInternal {authenticated_ingress_peer}] stream service {service} source {effective_source} to dest {dest} => open bi error {err}");
-                        write_object::<_, _, MAX_CONTROL_STREAM_PKT>(&mut stream, &Err::<(), _>(err.to_string())).await?;
+                        write_stream_connect_res(&mut stream, Err(err.to_string())).await?;
                         Err(err)
                     }
                 }
@@ -601,13 +608,13 @@ async fn accept_bi(ingress: ConnectionId, authenticated_ingress_peer: PeerId, mu
                 log::warn!(
                     "[PeerConnectionInternal {authenticated_ingress_peer}] new stream with service {service} source {effective_source} to dest {dest} => but connection for next {next} not found"
                 );
-                write_object::<_, _, MAX_CONTROL_STREAM_PKT>(&mut stream, &Err::<(), _>("route not found".to_string())).await?;
+                write_stream_connect_res(&mut stream, Err("route not found".to_string())).await?;
                 Err(anyhow!("route not found"))
             }
         }
         None => {
             log::warn!("[PeerConnectionInternal {authenticated_ingress_peer}] new stream with service {service} source {effective_source} to dest {dest} => but route path not found");
-            write_object::<_, _, MAX_CONTROL_STREAM_PKT>(&mut stream, &Err::<(), _>("route not found".to_string())).await?;
+            write_stream_connect_res(&mut stream, Err("route not found".to_string())).await?;
             Err(anyhow!("route not found"))
         }
     }

@@ -10,14 +10,14 @@ use std::{
 use super::create_node;
 use crate::{
     CERT_DOMAIN_NAME, ConnectionId, P2pNetworkEvent, P2pServiceEvent, PeerId, SharedKeyHandshake, SharedRouterTable,
-    msg::{P2pServiceId, StreamConnectReq},
+    msg::{P2pServiceId, StreamConnectReq, StreamConnectRes},
     quic::make_server_endpoint,
     router::RouteAction,
     secure::HandshakeProtocol,
     stream::{P2pQuicStream, wait_object, write_object},
 };
 use futures::FutureExt;
-use quinn::{Endpoint, ServerConfig, TransportConfig, VarInt};
+use quinn::{ClientConfig, Endpoint, ServerConfig, TransportConfig, VarInt};
 use rustls::pki_types::{CertificateDer, PrivatePkcs8KeyDer};
 use serde::{Deserialize, Serialize};
 use test_log::test;
@@ -37,7 +37,7 @@ struct RawConnectRes {
 fn make_small_stream_receive_endpoint(bind_addr: std::net::SocketAddr, stream_window: u32) -> anyhow::Result<Endpoint> {
     let priv_key = PrivatePkcs8KeyDer::from(super::DEFAULT_CLUSTER_KEY.to_vec());
     let cert = CertificateDer::from(super::DEFAULT_CLUSTER_CERT.to_vec());
-    let mut server_config = ServerConfig::with_single_cert(vec![cert], priv_key.into())?;
+    let mut server_config = ServerConfig::with_single_cert(vec![cert.clone()], priv_key.into())?;
     let mut transport = TransportConfig::default();
     let window = VarInt::from_u32(stream_window);
     transport.stream_receive_window(window);
@@ -46,7 +46,21 @@ fn make_small_stream_receive_endpoint(bind_addr: std::net::SocketAddr, stream_wi
     transport.max_concurrent_bidi_streams(10_000_u32.into());
     transport.max_idle_timeout(Some(Duration::from_secs(5).try_into().expect("timeout should configure")));
     server_config.transport_config(Arc::new(transport));
-    Endpoint::server(server_config, bind_addr).map_err(Into::into)
+
+    let mut certs = rustls::RootCertStore::empty();
+    certs.add(cert)?;
+    let mut client_config = ClientConfig::with_root_certificates(Arc::new(certs))?;
+    let mut client_transport = TransportConfig::default();
+    client_transport.stream_receive_window(window);
+    client_transport.receive_window(window);
+    client_transport.max_concurrent_uni_streams(10_000_u32.into());
+    client_transport.max_concurrent_bidi_streams(10_000_u32.into());
+    client_transport.max_idle_timeout(Some(Duration::from_secs(5).try_into().expect("timeout should configure")));
+    client_config.transport_config(Arc::new(client_transport));
+
+    let mut endpoint = Endpoint::server(server_config, bind_addr)?;
+    endpoint.set_default_client_config(client_config);
+    Ok(endpoint)
 }
 
 #[tokio::test]
@@ -732,6 +746,89 @@ async fn idle_inbound_stream_connects_must_be_admission_bounded() {
         rejected_or_timed_out,
         "the {ATTEMPTED_IDLE_STREAMS}th idle inbound stream-connect attempt must be rejected or time out once the stream cap is reached"
     );
+}
+
+#[tokio::test]
+async fn inbound_stream_response_write_must_not_exhaust_accept_permits() {
+    const STALLED_STREAMS: usize = 16;
+
+    let (mut node, addr) = create_node(false, 2, vec![]).await;
+    let _service = node.create_service(0.into());
+    tokio::spawn(async move { while node.recv().await.is_ok() {} });
+
+    let client_addr = UdpSocket::bind("127.0.0.1:0").expect("should bind client udp").local_addr().expect("should get client addr");
+    let client = make_small_stream_receive_endpoint(client_addr, 1).expect("should create raw client endpoint with tiny receive window");
+
+    let connection = client
+        .connect(**addr.network_address(), CERT_DOMAIN_NAME)
+        .expect("raw client should start QUIC connect")
+        .await
+        .expect("raw client should connect");
+
+    let (send, recv) = connection.open_bi().await.expect("raw client should open main control stream");
+    let mut main_stream = P2pQuicStream::new(recv, send);
+    let attacker = PeerId::from(99);
+    let secure: SharedKeyHandshake = super::DEFAULT_SECURE_KEY.into();
+    write_object::<_, _, 60000>(
+        &mut main_stream,
+        &RawConnectReq {
+            from: attacker,
+            to: addr.peer_id(),
+            auth: secure.create_request(attacker, addr.peer_id(), crate::now_ms()),
+        },
+    )
+    .await
+    .expect("raw client should send authenticated connect request");
+    let response: RawConnectRes = wait_object::<_, _, 60000>(&mut main_stream).await.expect("raw client should receive connect response");
+    secure
+        .verify_response(response.result.expect("connect response should be accepted"), addr.peer_id(), attacker, crate::now_ms())
+        .expect("raw client should verify connect response");
+
+    let mut stalled_recvs = Vec::new();
+    for i in 0..STALLED_STREAMS {
+        let (mut send, recv) = connection.open_bi().await.expect("raw client should open a stream setup lane");
+        write_object::<_, _, 60000>(
+            &mut send,
+            &StreamConnectReq {
+                source: attacker,
+                dest: addr.peer_id(),
+                service: 0.into(),
+                meta: vec![i as u8],
+            },
+        )
+        .await
+        .expect("raw client should send stream connect request");
+        send.finish().expect("raw client should finish setup request send side");
+        stalled_recvs.push(recv);
+    }
+
+    tokio::time::sleep(Duration::from_millis(500)).await;
+
+    let (send, recv) = tokio::time::timeout(Duration::from_secs(2), connection.open_bi())
+        .await
+        .expect("raw client should be able to open another stream after stale response writes are bounded")
+        .expect("raw client should open another stream");
+    let mut stream = P2pQuicStream::new(recv, send);
+    write_object::<_, _, 60000>(
+        &mut stream,
+        &StreamConnectReq {
+            source: attacker,
+            dest: addr.peer_id(),
+            service: 0.into(),
+            meta: b"after-stalled-responses".to_vec(),
+        },
+    )
+    .await
+    .expect("raw client should send later stream connect request");
+
+    let response = tokio::time::timeout(Duration::from_secs(2), wait_object::<_, StreamConnectRes, 60000>(&mut stream))
+        .await
+        .expect("later stream setup must complete or fail promptly after stale response writes are bounded");
+
+    if let Ok(response) = response {
+        assert!(response.is_ok(), "later stream setup should succeed if the stalled connection remains open");
+    }
+    drop(stalled_recvs);
 }
 
 #[tokio::test]
