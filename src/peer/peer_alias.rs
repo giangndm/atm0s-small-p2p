@@ -4,9 +4,9 @@
 use tokio::sync::{mpsc::Sender, oneshot};
 
 use crate::{
+    ConnectionId, PeerId,
     msg::{P2pServiceId, PeerMessage, UnicastAckId},
     stream::P2pQuicStream,
-    ConnectionId, PeerId,
 };
 
 use super::PeerConnectionControl;

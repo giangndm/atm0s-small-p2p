@@ -17956,3 +17956,45 @@ the source of truth for evidence and reviewer decisions.
   - `RUST_LOG=error cargo test peer_stopped_ --lib -- --nocapture`
   - `RUST_LOG=error cargo test security:: --lib -- --nocapture`
   - `rustfmt --edition 2024 --check src/ctx.rs src/peer/peer_internal.rs src/tests/security.rs`
+
+### ISSUE-216: PeerStopped dedup suppresses later lifecycle stops
+
+- Score: 54
+- Category: correctness / graceful shutdown lifecycle stability
+- Status: fixed by pending commit.
+- Reviewer: `Zeno` (forked RED-team reviewer), accepted.
+- Affected code:
+  - `src/ctx.rs`
+  - `src/peer.rs`
+  - `src/peer/peer_internal.rs`
+- Impact: after a peer gracefully stops once, a later legitimate stop from the
+  same peer id can be suppressed by `SharedCtx` dedup state. If that peer
+  restarts and reconnects with the same id, its next graceful stop may never
+  be admitted to `MainEvent::PeerStopped`, leaving route and neighbour cleanup
+  dependent on a later disconnect or timeout instead of graceful shutdown.
+- Distinctness: ISSUE-215 covered failed-admission retry after main-queue
+  backpressure, where dedup was marked before `try_send` succeeded. This issue
+  covers successful admission poisoning future peer lifecycles. ISSUE-170 is
+  forwarding storm amplification, not over-retained local dedup state.
+  ISSUE-093/ISSUE-009 cover discovery tombstones and fresh restart
+  advertisements, not peer-stop message admission dedup.
+- Failing evidence:
+  - `RUST_LOG=error cargo test peer_stopped_admission_must_not_suppress_new_peer_lifecycle --lib -- --nocapture`
+  - Failure before fix:
+    - `a PeerStopped dedup mark from an old lifecycle must not suppress a later stop after the peer reconnects`
+- Root cause: `SharedCtxInternal::received_peer_stopped_msg` is keyed only by
+  `PeerId` and is not cleared when a new connection lifecycle for that peer id
+  is registered. A successful stop admission therefore suppresses later
+  `PeerStopped` messages for the same peer id until LRU eviction.
+- Minimal fix proposal: clear the peer-stopped dedup entry when a new
+  connection lifecycle is registered for that peer id, preserving duplicate
+  suppression within one lifecycle.
+- Fix status: fixed by clearing any existing peer-stopped dedup mark for a
+  peer id when `SharedCtx` registers a new connection alias for that peer.
+  This keeps same-lifecycle duplicate suppression while allowing a restarted
+  peer to deliver a later graceful stop.
+- Verification:
+  - `RUST_LOG=error cargo test peer_stopped_admission_must_not_suppress_new_peer_lifecycle --lib -- --nocapture`
+  - `RUST_LOG=error cargo test peer_stopped_ --lib -- --nocapture`
+  - `RUST_LOG=error cargo test security:: --lib -- --nocapture`
+  - `rustfmt --edition 2024 --check src/ctx.rs src/peer.rs src/peer/peer_internal.rs src/peer/peer_alias.rs`

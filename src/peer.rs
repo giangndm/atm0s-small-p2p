@@ -8,24 +8,24 @@ use peer_internal::PeerConnectionInternal;
 use quinn::{Connecting, Connection, Incoming, RecvStream, SendStream};
 use serde::{Deserialize, Serialize};
 use tokio::sync::{
-    mpsc::{channel, error::TrySendError, Sender},
+    mpsc::{Sender, channel, error::TrySendError},
     oneshot,
 };
 
 use crate::{
+    ConnectionId, InboundPeerBindings, P2P_CONNECTION_RTT, P2P_LIVE_CONNECTION_COUNT, PeerId,
     ctx::SharedCtx,
     msg::P2pServiceId,
     now_ms,
     secure::HandshakeProtocol,
-    stream::{wait_object, write_object, P2pQuicStream},
-    ConnectionId, InboundPeerBindings, PeerId, P2P_CONNECTION_RTT, P2P_LIVE_CONNECTION_COUNT,
+    stream::{P2pQuicStream, wait_object, write_object},
 };
 #[cfg(test)]
 use crate::{P2P_CONNECTION_CONGESTION_EVENTS, P2P_CONNECTION_LOST_BYTES, P2P_CONNECTION_LOST_PKT, P2P_CONNECTION_RECV_BYTES, P2P_CONNECTION_SENT_BYTES, P2P_CONNECTION_UPTIME};
 
 use super::{
-    msg::{PeerMessage, UnicastAckId},
     MainEvent,
+    msg::{PeerMessage, UnicastAckId},
 };
 
 mod peer_alias;
@@ -347,8 +347,8 @@ mod tests {
         collections::HashMap,
         net::UdpSocket,
         sync::{
-            atomic::{AtomicBool, Ordering},
             Arc, Mutex,
+            atomic::{AtomicBool, Ordering},
         },
     };
 
@@ -359,18 +359,18 @@ mod tests {
     use tokio_util::codec::Framed;
 
     use crate::{
+        CERT_DOMAIN_NAME, InboundPeerBindings, NetworkAddress, P2pNetwork, P2pNetworkConfig, PeerAddress, PeerMainData, SharedKeyHandshake,
         discovery::PeerDiscovery,
         msg::P2pServiceId,
         neighbours::NetworkNeighbours,
         quic::make_server_endpoint,
         router::{RouteAction, SharedRouterTable},
         service::{
-            metrics_service::{encode_scan_for_test as encode_metrics_scan_for_test, MetricsService},
-            visualization_service::{encode_scan_for_test as encode_visualization_scan_for_test, VisualizationService},
             P2pService, P2pServiceEvent,
+            metrics_service::{MetricsService, encode_scan_for_test as encode_metrics_scan_for_test},
+            visualization_service::{VisualizationService, encode_scan_for_test as encode_visualization_scan_for_test},
         },
         stream::BincodeCodec,
-        InboundPeerBindings, NetworkAddress, P2pNetwork, P2pNetworkConfig, PeerAddress, PeerMainData, SharedKeyHandshake, CERT_DOMAIN_NAME,
     };
 
     const DEFAULT_CLUSTER_CERT: &[u8] = include_bytes!("../certs/dev.cluster.cert");
@@ -1028,6 +1028,24 @@ mod tests {
         let result = ctx.send_broadcast(P2pServiceId::from(1), b"lost-broadcast".to_vec()).await;
 
         assert!(result.is_err(), "send_broadcast must report an error when every peer control channel is closed, got {result:?}");
+    }
+
+    #[test]
+    fn peer_stopped_admission_must_not_suppress_new_peer_lifecycle() {
+        let local = PeerId::from(0);
+        let peer = PeerId::from(1);
+        let conn = ConnectionId::from(1);
+        let ctx = SharedCtx::new(local, SharedRouterTable::new(local));
+        let (tx, _rx) = channel(1);
+
+        assert!(ctx.try_mark_peer_stopped_msg_after(peer, || true));
+
+        ctx.register_conn(conn, PeerConnectionAlias::new(local, peer, conn, tx));
+
+        assert!(
+            ctx.try_mark_peer_stopped_msg_after(peer, || true),
+            "a PeerStopped dedup mark from an old lifecycle must not suppress a later stop after the peer reconnects"
+        );
     }
 
     #[tokio::test]

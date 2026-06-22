@@ -88,6 +88,7 @@ impl SharedCtxInternal {
     }
 
     fn register_conn(&mut self, conn: ConnectionId, alias: PeerConnectionAlias) {
+        self.clear_peer_stopped_msg(alias.to_id());
         self.conns.insert(conn, alias);
     }
 
@@ -136,6 +137,10 @@ impl SharedCtxInternal {
         } else {
             false
         }
+    }
+
+    fn clear_peer_stopped_msg(&mut self, peer_id: PeerId) {
+        self.received_peer_stopped_msg.pop(&peer_id);
     }
 }
 
