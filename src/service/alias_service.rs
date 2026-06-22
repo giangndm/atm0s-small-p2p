@@ -335,13 +335,15 @@ impl AliasServiceInternal {
             }
             AliasMessage::Scan(alias_id) => {
                 if self.local.contains_key(&alias_id) {
+                    let generation = *self.local_generations.entry(alias_id).or_default();
+                    self.outs.push_back(InternalOutput::Unicast(from, AliasMessage::NotifySet(alias_id, generation)));
                     self.outs.push_back(InternalOutput::Unicast(from, AliasMessage::Found(alias_id)));
                 }
             }
             AliasMessage::Found(alias_id) => {
                 let found = match self.find_reqs.get(&alias_id).map(|req| &req.state) {
                     Some(FindRequestState::CheckHint(_, hint_peers)) if hint_peers.contains(&from) => Some(AliasFoundLocation::Hint(from)),
-                    Some(FindRequestState::Scan(_)) => Some(AliasFoundLocation::Scan(from)),
+                    Some(FindRequestState::Scan(_)) if self.remote_lifecycle.get(&(alias_id, from)).is_some_and(|state| state.active) => Some(AliasFoundLocation::Scan(from)),
                     _ => None,
                 };
 
@@ -926,6 +928,26 @@ mod test {
     }
 
     #[test]
+    fn scan_found_must_require_advertised_alias_lifecycle() {
+        let mut ctx = TestContext::new();
+        let alias_id = AliasId(1);
+        let unadvertised_peer = PeerId(2);
+
+        let (tx, mut rx) = oneshot::channel();
+        ctx.internal.on_control(ctx.now, AliasControl::Find(alias_id, tx));
+        assert_eq!(ctx.collect_outputs(), vec![InternalOutput::Broadcast(AliasMessage::Scan(alias_id))]);
+
+        ctx.internal.on_msg(ctx.now, unadvertised_peer, AliasMessage::Found(alias_id));
+
+        assert!(rx.try_recv().is_err(), "scan lookup must not complete from a peer that never advertised active ownership of the alias");
+        assert!(!ctx.internal.cache.contains(&alias_id), "unadvertised scan Found responses must not poison the alias hint cache");
+        assert!(
+            ctx.internal.find_reqs.contains_key(&alias_id),
+            "scan lookup should remain pending until an advertised owner answers or the scan times out"
+        );
+    }
+
+    #[test]
     fn stale_not_found_must_not_evict_alias_cache_without_pending_check() {
         let mut ctx = TestContext::new();
         let alias_id = AliasId(7);
@@ -1070,15 +1092,15 @@ mod test {
         assert_eq!(ctx.collect_outputs(), vec![InternalOutput::Broadcast(AliasMessage::Scan(alias_id))]);
 
         ctx.internal.on_msg(ctx.now + 1, peer, AliasMessage::Found(alias_id));
-        assert!(ctx.internal.cache.get(&alias_id).is_some_and(|peers| peers.contains(&peer)));
+        assert!(
+            !ctx.internal.cache.get(&alias_id).is_some_and(|peers| peers.contains(&peer)),
+            "Found-only scan responses without advertised lifecycle must not create cache hints"
+        );
         assert!(!ctx.internal.remote_lifecycle.contains(&(alias_id, peer)), "Found-only cache hints do not create lifecycle entries");
 
         ctx.internal.on_peer_disconnected(ctx.now + 2, peer);
 
-        assert!(
-            !ctx.internal.cache.contains(&alias_id),
-            "disconnect must remove cache hints that were learned from Found responses without lifecycle state"
-        );
+        assert!(!ctx.internal.cache.contains(&alias_id), "disconnect must leave rejected Found-only cache hints absent");
     }
 
     #[test]
@@ -1137,6 +1159,11 @@ mod test {
         gauge!(P2P_ALIAS_LIVE_FIND_REQUEST).increment(1);
 
         let found_peer = PeerId::from(20_000);
+        ctx.internal.on_msg(ctx.now, found_peer, AliasMessage::NotifySet(alias_id, 1));
+        assert!(
+            !ctx.internal.cache.get(&alias_id).is_some_and(|peers| peers.contains(&found_peer)),
+            "test setup should keep the advertised responder out of the full hint cache"
+        );
         ctx.internal.on_msg(ctx.now, found_peer, AliasMessage::Found(alias_id));
 
         assert_eq!(rx.try_recv().expect("scan lookup should complete"), Some(AliasFoundLocation::Scan(found_peer)));

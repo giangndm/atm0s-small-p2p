@@ -11,10 +11,9 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 17
-- Current audit continuation: Fuzz phase no-new cycle 7 raised high-stress
-  configured-node randomized fuzzing to 28 nodes without a distinct reviewed
-  failure.
+- Current consecutive no-new-issue cycles: 0
+- Current audit continuation: ISSUE-239 fixed by requiring alias scan `Found`
+  responders to have active advertised lifecycle proof.
 
 ## Root Cause Summary
 
@@ -45,7 +44,7 @@ the source of truth for evidence and reviewer decisions.
   ISSUE-059, ISSUE-071, ISSUE-081 through ISSUE-089, ISSUE-095, ISSUE-099,
   ISSUE-110, ISSUE-111, ISSUE-143, ISSUE-152,
   ISSUE-154, ISSUE-155, ISSUE-158, ISSUE-166, ISSUE-171, ISSUE-175,
-  ISSUE-186, ISSUE-231, ISSUE-232, ISSUE-233, ISSUE-237.
+  ISSUE-186, ISSUE-231, ISSUE-232, ISSUE-233, ISSUE-237, ISSUE-239.
 - Pattern: replicated-KV full sync, changed repair, alias lookup, metrics,
   visualization, and pubsub flows accept stale, unsolicited, reordered, or
   mismatched responses or broadcasts because handlers do not verify
@@ -19285,6 +19284,68 @@ the source of truth for evidence and reviewer decisions.
     `cargo test stream --lib -- --nocapture`,
     `rustfmt --edition 2021 --check src/peer/peer_internal.rs src/service.rs src/tests/stream.rs`,
     and `git diff --check`.
+
+### ISSUE-239: Alias scan accepts Found from peers without advertised ownership
+
+- Status: fixed by requiring scan responders to send/hold active alias
+  lifecycle proof before `Found` completes the lookup.
+- Category: correctness, security, alias lookup integrity
+- Score: 66
+- Reviewers:
+  - `Jason the 2nd` (forked RED-team reviewer) accepted the issue as distinct
+    after inspecting `src/service/alias_service.rs`, existing alias issue
+    history, and the failing regression.
+  - `Zeno the 2nd` (forked implementation reviewer) accepted the fix after
+    inspecting the diff and rerunning focused tests.
+- Affected code:
+  - `src/service/alias_service.rs`: `AliasMessage::Found` maps every pending
+    `FindRequestState::Scan(_)` response to
+    `AliasFoundLocation::Scan(from)` and inserts the responder into the alias
+    hint cache.
+  - `src/service/alias_service.rs`: `accept_remote_lifecycle(...)` tracks
+    active `(AliasId, PeerId)` lifecycle state, but scan `Found` acceptance
+    does not consult it.
+- Impact: any connected peer that can send alias-service messages can answer a
+  broadcast scan with `Found(alias)` for an alias it never advertised or
+  registered. The requester completes the lookup, caches the unadvertised peer,
+  and later `alias.open_stream(...)` can route callers to the wrong peer. Under
+  bad-network or adversarial conditions this enables alias cache poisoning and
+  wrong stream placement even after prior unsolicited and cached-hint `Found`
+  correlation fixes.
+- Distinctness: ISSUE-090 fixed cached-hint lookup by accepting `Found` only
+  from peers that were explicitly checked. ISSUE-109 fixed unsolicited
+  `Found` without a pending lookup. ISSUE-152 fixed stale `NotFound` cache
+  eviction, and ISSUE-158 fixed stale alias lifecycle generations. ISSUE-239 is
+  the remaining scan-state trust gap: a pending broadcast scan still accepts a
+  `Found` from a peer with no active advertised alias lifecycle.
+- Root cause: alias lookup correlation validates the request phase
+  (`CheckHint` versus `Scan`) but scan completion does not bind the responder
+  to advertised alias ownership or active lifecycle state.
+- Minimal fix proposal: in `AliasMessage::Found` handling, keep the existing
+  `CheckHint` responder check unchanged, but accept scan-mode `Found` only when
+  `remote_lifecycle[(alias_id, from)]` exists and is active. Do not insert a
+  cache hint or complete waiters for unadvertised scan responders.
+- Fix: scan responders now enqueue `NotifySet(alias_id, generation)` before
+  `Found(alias_id)`, and scan-mode `Found` is accepted only when the responder
+  has active `remote_lifecycle[(alias_id, from)]`. This preserves legitimate
+  scan discovery while rejecting standalone forged `Found` replies.
+- Evidence tests:
+  - Red evidence before fix:
+    `RUST_LOG=error cargo test scan_found_must_require_advertised_alias_lifecycle --lib -- --nocapture`
+    failed at `src/service/alias_service.rs:940` because the scan lookup
+    completed from an unadvertised peer and cached it.
+  - Reviewer verification:
+    `Jason the 2nd` reran
+    `RUST_LOG=error cargo test scan_found_must_require_advertised_alias_lifecycle --lib -- --nocapture`
+    and confirmed the same failing assertion:
+    `scan lookup must not complete from a peer that never advertised active ownership of the alias`.
+  - Verification after fix:
+    `RUST_LOG=error cargo test scan_found_must_require_advertised_alias_lifecycle --lib -- --nocapture`
+    passed.
+  - Regression guards:
+    `RUST_LOG=error cargo test alias --lib -- --nocapture` passed 47/47,
+    `rustfmt --edition 2021 --check src/service/alias_service.rs` passed, and
+    `git diff --check` passed.
 
 ### Cycle after ISSUE-238 no-new cycle 1: route/discovery lifecycle and path stability review
 

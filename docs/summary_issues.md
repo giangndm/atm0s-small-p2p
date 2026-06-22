@@ -5,12 +5,11 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Audit Status
 
-- Accepted issues: 238
+- Accepted issues: 239
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 17
-- Current audit continuation: Fuzz phase no-new cycle 7 raised high-stress
-  configured-node randomized fuzzing to 28 nodes without a distinct reviewed
-  failure.
+- Current consecutive no-new-issue cycles: 0
+- Current audit continuation: ISSUE-239 fixed by requiring alias scan `Found`
+  responders to have active advertised lifecycle proof.
 - Fix phase status: ISSUE-001, ISSUE-003, ISSUE-004, ISSUE-005, ISSUE-006, ISSUE-007,
   ISSUE-002, ISSUE-008, ISSUE-009, ISSUE-010, ISSUE-011, ISSUE-012, ISSUE-013, ISSUE-014, ISSUE-015, ISSUE-017, ISSUE-020, ISSUE-021, ISSUE-023, ISSUE-024, ISSUE-025, ISSUE-027, ISSUE-033, ISSUE-034, ISSUE-039, ISSUE-045, ISSUE-046, ISSUE-047, ISSUE-048, ISSUE-055, ISSUE-059, ISSUE-103, ISSUE-110, ISSUE-111, ISSUE-115, ISSUE-116, ISSUE-117, ISSUE-118, ISSUE-119, ISSUE-120, ISSUE-122, ISSUE-123,
   ISSUE-124, ISSUE-125, ISSUE-126, ISSUE-127, ISSUE-128, ISSUE-129, ISSUE-130,
@@ -106,6 +105,14 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   peer cannot fill every local service queue slot by forging relay-only
   `defer_delivery` requests while legitimate relayed final-hop capacity and
   reserve-before-success semantics are preserved.
+  ISSUE-239 is fixed, score 66: alias scan-mode `Found` responses now require
+  active advertised `(AliasId, PeerId)` lifecycle proof before completing a
+  lookup or caching the responder. Scan responders send `NotifySet` before
+  `Found`, preserving legitimate scan discovery while rejecting standalone
+  forged `Found` replies. Reviewers `Jason the 2nd` and `Zeno the 2nd`
+  accepted the issue and implementation. Verification:
+  `RUST_LOG=error cargo test scan_found_must_require_advertised_alias_lifecycle --lib -- --nocapture`
+  and `RUST_LOG=error cargo test alias --lib -- --nocapture`.
   ISSUE-043 is fixed by bounding pending pubsub publish/feedback RPC request
   maps before responder fanout.
   ISSUE-054 is fixed by rejecting zero network tick intervals before endpoint
@@ -157,7 +164,7 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   ISSUE-110, ISSUE-111, ISSUE-143,
   ISSUE-166, ISSUE-171, ISSUE-175,
   ISSUE-186, ISSUE-205, ISSUE-206, ISSUE-231, ISSUE-232, ISSUE-233,
-  ISSUE-237.
+  ISSUE-237, ISSUE-239.
 - Pattern: replicated-KV, alias, metrics, visualization, and pubsub flows accept
   stale, unsolicited, reordered, or mismatched responses or broadcasts because
   handlers do not verify request shape, bounds, version, continuation key,
