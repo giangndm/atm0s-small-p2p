@@ -5822,6 +5822,9 @@ the source of truth for evidence and reviewer decisions.
   `cargo test pubsub_rpc_must_return_no_destination_when_all_remote_sends_fail -- --nocapture`.
   Caveat: this closes failed remote pubsub RPC send fanout only; local
   analogs/backpressure issues such as ISSUE-178 and ISSUE-124 remain separate.
+- Fix status: fixed by counting only successful local/remote RPC fanout and
+  returning `PubsubRpcError::NoDestination` without pending state when every
+  destination send fails.
 - Category: correctness, pubsub RPC stability, bad-network delivery failure
 - Score: 61/100
 - Reviewer: `Einstein the 2nd`, confirmed after `Descartes the 2nd` discovery.
