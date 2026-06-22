@@ -21,21 +21,21 @@ use tokio::{
     io::copy_bidirectional,
     select,
     sync::{
-        mpsc::{Receiver, Sender},
         OwnedSemaphorePermit, Semaphore,
+        mpsc::{Receiver, Sender},
     },
     time::Interval,
 };
 use tokio_util::codec::Framed;
 
 use crate::{
+    ConnectionId, MainEvent, P2P_CONNECTION_CONGESTION_EVENTS, P2P_CONNECTION_LOST_BYTES, P2P_CONNECTION_LOST_PKT, P2P_CONNECTION_RECV_BYTES, P2P_CONNECTION_RTT, P2P_CONNECTION_SENT_BYTES,
+    P2P_CONNECTION_UPTIME, P2pServiceEvent, PeerId, PeerMainData,
     ctx::SharedCtx,
     msg::{P2pServiceId, PeerMessage, StreamConnectReq, StreamConnectRes, UnicastAckId},
     router::RouteAction,
-    stream::{wait_object, write_object, BincodeCodec, P2pQuicStream},
+    stream::{BincodeCodec, P2pQuicStream, wait_object, write_object},
     utils::ErrorExt,
-    ConnectionId, MainEvent, P2pServiceEvent, PeerId, PeerMainData, P2P_CONNECTION_CONGESTION_EVENTS, P2P_CONNECTION_LOST_BYTES, P2P_CONNECTION_LOST_PKT, P2P_CONNECTION_RECV_BYTES,
-    P2P_CONNECTION_RTT, P2P_CONNECTION_SENT_BYTES, P2P_CONNECTION_UPTIME,
 };
 
 use super::PeerConnectionControl;
@@ -235,10 +235,29 @@ impl PeerConnectionInternal {
                 }
             }
             PeerMessage::Broadcast(source, service_id, msg_id, data) => {
-                let effective_source = self.to_id;
-                if source != effective_source {
-                    log::warn!("[PeerConnectionInternal {}] normalize broadcast source {source} to authenticated peer {}", self.remote, self.to_id);
-                }
+                let effective_source = if source == self.to_id {
+                    self.to_id
+                } else {
+                    match self.ctx.router().action(&source) {
+                        Some(RouteAction::Next(next)) if next == self.conn_id => source,
+                        Some(RouteAction::Next(next)) => {
+                            log::warn!(
+                                "[PeerConnectionInternal {}] drop relayed broadcast for source {source}: selected next hop is {next}, ingress is {}",
+                                self.remote,
+                                self.conn_id
+                            );
+                            return Ok(());
+                        }
+                        Some(RouteAction::Local) => {
+                            log::warn!("[PeerConnectionInternal {}] drop relayed broadcast claiming local source {source}", self.remote);
+                            return Ok(());
+                        }
+                        None => {
+                            log::warn!("[PeerConnectionInternal {}] normalize broadcast source {source} to authenticated peer {}", self.remote, self.to_id);
+                            self.to_id
+                        }
+                    }
+                };
 
                 if self.ctx.check_broadcast_msg(effective_source, service_id, msg_id) {
                     for conn in self.ctx.conns().into_iter().filter(|p| !self.to_id.eq(&p.to_id())) {

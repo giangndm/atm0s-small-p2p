@@ -17679,7 +17679,7 @@ the source of truth for evidence and reviewer decisions.
 
 - Score: 48
 - Category: correctness / discovery input validation
-- Status: fixed by pending commit.
+- Status: fixed by `aea4cc4` (`fix: reject non-dialable discovery rows`).
 - Reviewer: `Sartre the 13th` (forked RED-team reviewer), accepted.
 - Affected code:
   - `src/discovery.rs`
@@ -17716,3 +17716,54 @@ the source of truth for evidence and reviewer decisions.
   one-second sleep. Coder review classified this as unrelated to ISSUE-210
   because the involved test addresses are dialable `127.0.0.1:<ephemeral>`
   addresses.
+
+### ISSUE-211: Configured seeds are not gossiped to downstream peers
+
+- Score: 82
+- Category: correctness / discovery bootstrap stability
+- Status: fixed by pending commit.
+- Reviewer: `Lorentz` (forked RED-team reviewer), accepted.
+- Affected code:
+  - `src/discovery.rs`
+  - `src/peer/peer_internal.rs`
+  - `src/tests/cross_nodes.rs`
+  - `src/tests/discovery.rs`
+- Impact: a node can dial its own configured seeds but cannot share those
+  stable dial addresses with peers that bootstrap through it. In a chain such
+  as node3 -> node2 -> node1, node3 learns a relayed route to node1 but never
+  receives node1's dial address, so the topology does not converge to the
+  expected direct neighbour set.
+- Distinctness: ISSUE-055 preserves receiver-side seed authority by rejecting
+  remote sync rows for peer ids already configured as local seeds. This issue
+  covers outbound omission of trusted configured seed addresses. ISSUE-103
+  covers self-seed dial candidates, and ISSUE-181/ISSUE-210 cover local/remote
+  non-dialable advertise validation.
+- Failing evidence:
+  - `cargo test tests::discovery::discovery_remain_node -- --nocapture`
+  - Failure before fix:
+    - `left: 1`
+    - `right: 2`
+- Root cause: `PeerDiscovery::create_sync_for` gossips learned remotes and the
+  optional local advertise address, while `PeerDiscovery::remotes()` includes
+  configured seeds only for the local node's own dialing. Configured seeds are
+  therefore stable local dial candidates but never become outbound discovery
+  sync entries for downstream peers.
+- Minimal fix proposal: include configured seeds in outbound discovery sync
+  using the current sync timestamp, while filtering out the destination peer,
+  the enabled local peer id, and non-dialable seed addresses. Preserve the
+  max-entry cap and keep `apply_sync` receiver-side seed-authority checks
+  unchanged. Because this lets chained seed topologies converge into meshes,
+  preserve broadcast de-duplication by accepting a relayed broadcast's original
+  source only when the ingress connection is the selected route to that source,
+  and dropping stale relayed copies that arrive after a direct route exists.
+- Fix status: fixed by gossiping configured seeds in outbound discovery sync
+  with destination, local-peer, dialability, and cap filters, plus route-aware
+  broadcast relay source handling so mesh convergence does not deliver stale
+  duplicate broadcast copies.
+- Verification:
+  - `RUST_LOG=error cargo test tests::cross_nodes::broadcast_relay -- --nocapture`
+  - `RUST_LOG=error cargo test broadcast_dedup_must -- --nocapture`
+  - `RUST_LOG=error cargo test tests::discovery::discovery_remain_node -- --nocapture`
+  - `RUST_LOG=error cargo test create_sync_for_must -- --nocapture`
+  - `RUST_LOG=error cargo test discovery::test:: --lib -- --nocapture`
+  - `RUST_LOG=error cargo test --lib -- --nocapture`

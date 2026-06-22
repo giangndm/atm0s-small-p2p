@@ -5,10 +5,10 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Audit Status
 
-- Accepted issues: 210
+- Accepted issues: 211
 - Missing issue scores: 0
 - Current consecutive no-new-issue cycles: 0
-- Stop condition: not satisfied; discovery should continue after ISSUE-210 fix.
+- Stop condition: not satisfied; discovery should continue after ISSUE-211 fix.
 - Fix phase status: ISSUE-001, ISSUE-003, ISSUE-004, ISSUE-005, ISSUE-006, ISSUE-007,
   ISSUE-002, ISSUE-008, ISSUE-009, ISSUE-010, ISSUE-011, ISSUE-012, ISSUE-013, ISSUE-014, ISSUE-015, ISSUE-017, ISSUE-020, ISSUE-021, ISSUE-023, ISSUE-024, ISSUE-025, ISSUE-027, ISSUE-033, ISSUE-034, ISSUE-039, ISSUE-045, ISSUE-046, ISSUE-047, ISSUE-048, ISSUE-055, ISSUE-059, ISSUE-103, ISSUE-110, ISSUE-111, ISSUE-115, ISSUE-116, ISSUE-117, ISSUE-118, ISSUE-119, ISSUE-120, ISSUE-122, ISSUE-123,
   ISSUE-124, ISSUE-125, ISSUE-126, ISSUE-127, ISSUE-128, ISSUE-129, ISSUE-130,
@@ -21,6 +21,8 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   ISSUE-194, ISSUE-195, ISSUE-196, ISSUE-197, ISSUE-198, ISSUE-199,
   ISSUE-200, ISSUE-201, ISSUE-202, ISSUE-203, ISSUE-204, ISSUE-205, ISSUE-206, ISSUE-207, ISSUE-208, ISSUE-097, ISSUE-098, ISSUE-099, ISSUE-100, ISSUE-101, ISSUE-102, ISSUE-104, ISSUE-105, ISSUE-106, ISSUE-107, ISSUE-108, ISSUE-109, ISSUE-112, ISSUE-018, ISSUE-022, ISSUE-061, ISSUE-042, ISSUE-016, ISSUE-073, ISSUE-072, ISSUE-076, ISSUE-052, ISSUE-030, and ISSUE-060 have focused
   fixes committed.
+  ISSUE-211 is fixed by gossiping configured seeds in outbound discovery sync
+  and dropping stale relayed broadcast copies after mesh convergence.
   ISSUE-043 is fixed by bounding pending pubsub publish/feedback RPC request
   maps before responder fanout.
   ISSUE-054 is fixed by rejecting zero network tick intervals before endpoint
@@ -206,7 +208,7 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   ISSUE-008, ISSUE-033, ISSUE-044, ISSUE-055, ISSUE-092, ISSUE-103,
   ISSUE-112 through ISSUE-114, ISSUE-164, ISSUE-167,
   ISSUE-177, ISSUE-180, ISSUE-181, ISSUE-190, ISSUE-192, ISSUE-197,
-  ISSUE-210.
+  ISSUE-210, ISSUE-211.
 - Pattern: route/discovery inputs can include local ids, self seeds, stale
   addresses, overflowed metrics, over-hop routes, duplicate connection races,
   explicit connect addresses that are ignored by peer-id-only fast paths, or
@@ -215,7 +217,9 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   value silently wins before validation. Stream relay setup and unicast
   forwarding can also forward back to the ingress connection when route state
   forms a loop. Local advertise config and remote discovery syncs can also
-  gossip non-dialable addresses.
+  gossip non-dialable addresses. Configured seed addresses can be available for
+  local dialing but omitted from outbound discovery syncs, preventing
+  downstream bootstrap peers from converging to direct neighbours.
 - ISSUE-210: fixed remote discovery input validation issue. Unlike local
   advertise config, `PeerDiscovery::apply_sync` accepts `0.0.0.0:0` and
   port-zero remote rows as dial candidates. The fix rejects non-dialable
@@ -223,6 +227,17 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   tombstone mutation or insertion. Verification:
   `cargo test apply_sync_must_reject_non_dialable_remote_addresses -- --nocapture`
   and `cargo test discovery::test:: --lib -- --nocapture`.
+- ISSUE-211: accepted configured-seed outbound gossip issue. A node includes
+  configured seeds in local dial candidates but omits them from
+  `PeerDiscovery::create_sync_for`, so a downstream peer can learn only a
+  relayed route and never the stable seed dial address. Evidence:
+  `cargo test tests::discovery::discovery_remain_node -- --nocapture`
+  fails with node3 having one neighbour instead of two. Minimal fix proposal:
+  include configured seeds in outbound discovery sync using the current sync
+  timestamp, filtered for destination peer, local peer id, and dialable address,
+  while preserving receiver-side seed-authority checks in `apply_sync`. Mesh
+  convergence also requires route-aware broadcast relay handling so stale
+  relayed copies are dropped once a direct route to the original source exists.
 - Minimal fix proposal: sanitize before insertion: reject local/self candidates
   and over-hop routes, pin authenticated direct paths for their peer ids, use
   checked metric math, ignore stale discovery timestamps, reject duplicate

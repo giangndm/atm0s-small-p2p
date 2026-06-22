@@ -93,12 +93,18 @@ impl PeerDiscovery {
     }
 
     pub fn create_sync_for(&self, now_ms: u64, dest: &PeerId) -> PeerDiscoverySync {
-        let iter = self.local.iter().map(|(p, addr)| (*p, now_ms, addr.clone()));
+        let local_peer = self.local.as_ref().map(|(peer, _)| *peer);
+        let seeds = self
+            .seeds
+            .iter()
+            .filter(|seed| seed.peer_id() != *dest)
+            .filter(move |seed| Some(seed.peer_id()) != local_peer)
+            .filter(|seed| is_dialable_advertise_address(seed.network_address()))
+            .map(|seed| (seed.peer_id(), now_ms, seed.network_address().clone()));
+        let iter = self.local.iter().filter(|(p, _addr)| p != dest).map(|(p, addr)| (*p, now_ms, addr.clone()));
         PeerDiscoverySync(
-            self.remotes
-                .iter()
-                .filter(|(k, _)| !dest.eq(k))
-                .map(|(k, (v1, v2))| (*k, *v1, v2.clone()))
+            seeds
+                .chain(self.remotes.iter().filter(|(k, _)| !dest.eq(k)).map(|(k, (v1, v2))| (*k, *v1, v2.clone())))
                 .chain(iter)
                 .take(MAX_SYNC_ENTRIES)
                 .collect::<Vec<_>>(),
@@ -158,9 +164,9 @@ impl PeerDiscovery {
 
 #[cfg(test)]
 mod test {
-    use crate::{discovery::PeerDiscoverySync, PeerAddress, PeerId};
+    use crate::{PeerAddress, PeerId, discovery::PeerDiscoverySync};
 
-    use super::{is_dialable_advertise_address, PeerDiscovery, MAX_STOPPED_TOMBSTONES, MAX_SYNC_ENTRIES, TIMEOUT_AFTER};
+    use super::{MAX_STOPPED_TOMBSTONES, MAX_SYNC_ENTRIES, PeerDiscovery, TIMEOUT_AFTER, is_dialable_advertise_address};
 
     fn peer_addr(addr: &str) -> PeerAddress {
         addr.parse().expect("should parse peer address")
@@ -372,6 +378,75 @@ mod test {
         let sync = discovery.create_sync_for(100, &PeerId(2_000));
 
         assert_eq!(sync.0.len(), MAX_SYNC_ENTRIES, "outbound discovery syncs must cap the number of advertised entries");
+    }
+
+    #[test_log::test]
+    fn create_sync_for_must_advertise_configured_seed_to_other_peers() {
+        let seed = peer_addr("1@127.0.0.1:9000");
+        let discovery = PeerDiscovery::new(vec![seed.clone()]);
+
+        assert_eq!(
+            discovery.create_sync_for(100, &PeerId(2)),
+            PeerDiscoverySync(vec![(seed.peer_id(), 100, seed.network_address().clone())]),
+            "configured seeds should be gossiped as stable dial candidates for multi-hop bootstrap"
+        );
+    }
+
+    #[test_log::test]
+    fn create_sync_for_must_not_advertise_seed_to_itself() {
+        let seed = peer_addr("1@127.0.0.1:9000");
+        let discovery = PeerDiscovery::new(vec![seed.clone()]);
+
+        assert_eq!(
+            discovery.create_sync_for(100, &seed.peer_id()),
+            PeerDiscoverySync(vec![]),
+            "discovery syncs must not advertise a peer's own seed address back to it"
+        );
+    }
+
+    #[test_log::test]
+    fn create_sync_for_must_not_duplicate_local_peer_seed() {
+        let local_seed = peer_addr("1@127.0.0.1:9000");
+        let mut discovery = PeerDiscovery::new(vec![local_seed.clone()]);
+        discovery.enable_local(local_seed.peer_id(), local_seed.network_address().clone());
+
+        assert_eq!(
+            discovery.create_sync_for(100, &PeerId(2)),
+            PeerDiscoverySync(vec![(local_seed.peer_id(), 100, local_seed.network_address().clone())]),
+            "configured seeds matching the local peer id must not create a duplicate outbound discovery row"
+        );
+    }
+
+    #[test_log::test]
+    fn create_sync_for_must_not_advertise_non_dialable_seed() {
+        let wildcard = peer_addr("1@0.0.0.0:9000");
+        let port_zero = peer_addr("2@127.0.0.1:0");
+        let discovery = PeerDiscovery::new(vec![wildcard, port_zero]);
+
+        assert_eq!(
+            discovery.create_sync_for(100, &PeerId(3)),
+            PeerDiscoverySync(vec![]),
+            "configured seeds with non-dialable addresses must not be gossiped"
+        );
+    }
+
+    #[test_log::test]
+    fn create_sync_for_must_prioritize_configured_seed_under_cap() {
+        let seed = peer_addr("1@127.0.0.1:9000");
+        let mut discovery = PeerDiscovery::new(vec![seed.clone()]);
+
+        for id in 2..=1_101 {
+            let peer = peer_addr(&format!("{id}@127.0.0.1:{}", 9000 + id));
+            discovery.apply_sync(100, PeerDiscoverySync(vec![(peer.peer_id(), 100, peer.network_address().clone())]));
+        }
+
+        let sync = discovery.create_sync_for(100, &PeerId(2_000));
+
+        assert_eq!(sync.0.len(), MAX_SYNC_ENTRIES, "outbound discovery syncs must preserve the entry cap");
+        assert!(
+            sync.0.iter().any(|(peer, _updated, address)| *peer == seed.peer_id() && address == seed.network_address()),
+            "configured seeds should not be starved by a large learned-remote table"
+        );
     }
 
     #[test_log::test]
