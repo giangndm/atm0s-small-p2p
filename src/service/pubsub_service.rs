@@ -42,6 +42,7 @@ const MAX_REMOTE_ROLE_TOMBSTONES: usize = MAX_REMOTE_CREATED_CHANNELS * 2;
 const MAX_REMOTE_MEMBERS_PER_CHANNEL: usize = 1024;
 const MAX_HEARTBEAT_CHANNELS_PER_BATCH: usize = 1024;
 const MAX_RPC_METHOD_LEN: usize = 1024;
+const MAX_PENDING_RPC_REQUESTS: usize = 1024;
 
 #[derive(Debug, Hash, PartialEq, Eq, Clone)]
 pub enum PeerSrc {
@@ -73,6 +74,8 @@ pub enum PubsubRpcError {
     Timeout,
     #[error("NoDestination")]
     NoDestination,
+    #[error("TooManyPendingRequests")]
+    TooManyPendingRequests,
 }
 
 struct PublishRpcReq {
@@ -999,6 +1002,8 @@ impl PubsubService {
                     let req_id = RpcId::rand();
                     if state.local_subscribers.is_empty() && !state.has_active_remote_subscribers() {
                         let _ = tx.send(Err(PubsubRpcError::NoDestination));
+                    } else if self.publish_rpc_reqs.len() >= MAX_PENDING_RPC_REQUESTS {
+                        let _ = tx.send(Err(PubsubRpcError::TooManyPendingRequests));
                     } else {
                         let mut delivered = 0;
                         let mut expected_responders = HashSet::new();
@@ -1057,6 +1062,8 @@ impl PubsubService {
                     let req_id = RpcId::rand();
                     if state.local_subscribers.is_empty() && !state.has_active_remote_subscribers() {
                         let _ = tx.send(Err(PubsubRpcError::NoDestination));
+                    } else if self.publish_rpc_reqs.len() >= MAX_PENDING_RPC_REQUESTS {
+                        let _ = tx.send(Err(PubsubRpcError::TooManyPendingRequests));
                     } else {
                         let mut delivered = 0;
                         let mut expected_responders = HashSet::new();
@@ -1108,6 +1115,8 @@ impl PubsubService {
                     let req_id = RpcId::rand();
                     if state.local_publishers.is_empty() && !state.has_active_remote_publishers() {
                         let _ = tx.send(Err(PubsubRpcError::NoDestination));
+                    } else if self.feedback_rpc_reqs.len() >= MAX_PENDING_RPC_REQUESTS {
+                        let _ = tx.send(Err(PubsubRpcError::TooManyPendingRequests));
                     } else {
                         let mut delivered = 0;
                         let mut expected_responders = HashSet::new();
@@ -1166,6 +1175,8 @@ impl PubsubService {
                     let req_id = RpcId::rand();
                     if state.local_publishers.is_empty() && !state.has_active_remote_publishers() {
                         let _ = tx.send(Err(PubsubRpcError::NoDestination));
+                    } else if self.feedback_rpc_reqs.len() >= MAX_PENDING_RPC_REQUESTS {
+                        let _ = tx.send(Err(PubsubRpcError::TooManyPendingRequests));
                     } else {
                         let mut delivered = 0;
                         let mut expected_responders = HashSet::new();
@@ -1474,7 +1485,6 @@ mod test {
 
     #[tokio::test]
     async fn pending_publish_rpc_requests_must_be_bounded() {
-        const MAX_PENDING_RPCS: usize = 1024;
         let mut service = test_service();
         let channel = PubsubChannelId(1);
         let (sub_tx, _sub_rx) = subscriber_event_channel();
@@ -1484,7 +1494,7 @@ mod test {
             .await
             .expect("subscriber should be registered");
 
-        for _ in 0..=MAX_PENDING_RPCS {
+        for _ in 0..=MAX_PENDING_RPC_REQUESTS {
             let (tx, _rx) = oneshot::channel();
             service
                 .on_internal(InternalMsg::GuestPublishRpc(channel, vec![1], "hold".to_string(), tx, Duration::from_secs(3600)))
@@ -1493,7 +1503,86 @@ mod test {
         }
 
         let pending_rpcs = service.publish_rpc_reqs.len();
-        assert!(pending_rpcs <= MAX_PENDING_RPCS, "pending publish RPC requests must be bounded, got {pending_rpcs}");
+        assert!(pending_rpcs <= MAX_PENDING_RPC_REQUESTS, "pending publish RPC requests must be bounded, got {pending_rpcs}");
+    }
+
+    #[tokio::test]
+    async fn pending_publish_rpc_requests_must_be_bounded_with_draining_local_subscriber() {
+        let mut service = test_service();
+        let channel = PubsubChannelId(1);
+        let (sub_tx, mut sub_rx) = subscriber_event_channel();
+        let mut rxs = Vec::new();
+
+        service
+            .on_internal(InternalMsg::SubscriberCreated(subscriber_handle(SubscriberLocalId::rand()), channel, sub_tx))
+            .await
+            .expect("subscriber should be registered");
+
+        for idx in 0..=MAX_PENDING_RPC_REQUESTS {
+            let (tx, rx) = oneshot::channel();
+            rxs.push(rx);
+
+            service
+                .on_internal(InternalMsg::GuestPublishRpc(channel, vec![1], "hold".to_string(), tx, Duration::from_secs(3600)))
+                .await
+                .expect("publish RPC should process");
+
+            if idx < MAX_PENDING_RPC_REQUESTS {
+                sub_rx.try_recv().expect("subscriber queue should be drained");
+            }
+        }
+
+        let pending_rpcs = service.publish_rpc_reqs.len();
+        assert_eq!(rxs.pop().expect("overflow request should have a response").try_recv(), Ok(Err(PubsubRpcError::TooManyPendingRequests)));
+        assert_eq!(
+            sub_rx.try_recv(),
+            Err(tokio::sync::mpsc::error::TryRecvError::Empty),
+            "rejected RPC must not enqueue an orphan subscriber event"
+        );
+        assert!(pending_rpcs <= MAX_PENDING_RPC_REQUESTS, "pending publish RPC requests must be bounded, got {pending_rpcs}");
+    }
+
+    #[tokio::test]
+    async fn pending_feedback_rpc_requests_must_be_bounded_with_draining_local_publisher() {
+        let mut service = test_service();
+        let channel = PubsubChannelId(1);
+        let subscriber = subscriber_handle(SubscriberLocalId::rand());
+        let (pub_tx, mut pub_rx) = publisher_event_channel();
+        let (sub_tx, _sub_rx) = subscriber_event_channel();
+        let mut rxs = Vec::new();
+
+        service
+            .on_internal(InternalMsg::PublisherCreated(publisher_handle(PublisherLocalId::rand()), channel, pub_tx))
+            .await
+            .expect("publisher should be registered");
+        service
+            .on_internal(InternalMsg::SubscriberCreated(subscriber, channel, sub_tx))
+            .await
+            .expect("subscriber should be registered");
+        pub_rx.try_recv().expect("publisher should observe initial local subscriber");
+
+        for idx in 0..=MAX_PENDING_RPC_REQUESTS {
+            let (tx, rx) = oneshot::channel();
+            rxs.push(rx);
+
+            service
+                .on_internal(InternalMsg::FeedbackRpc(subscriber, channel, vec![1], "hold".to_string(), tx, Duration::from_secs(3600)))
+                .await
+                .expect("feedback RPC should process");
+
+            if idx < MAX_PENDING_RPC_REQUESTS {
+                pub_rx.try_recv().expect("publisher queue should be drained");
+            }
+        }
+
+        let pending_rpcs = service.feedback_rpc_reqs.len();
+        assert_eq!(rxs.pop().expect("overflow request should have a response").try_recv(), Ok(Err(PubsubRpcError::TooManyPendingRequests)));
+        assert_eq!(
+            pub_rx.try_recv(),
+            Err(tokio::sync::mpsc::error::TryRecvError::Empty),
+            "rejected RPC must not enqueue an orphan publisher event"
+        );
+        assert!(pending_rpcs <= MAX_PENDING_RPC_REQUESTS, "pending feedback RPC requests must be bounded, got {pending_rpcs}");
     }
 
     #[tokio::test]

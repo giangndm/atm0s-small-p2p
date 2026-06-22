@@ -1323,6 +1323,36 @@ the source of truth for evidence and reviewer decisions.
   - Failure summary: 1025 unanswered guest publish RPCs with a local subscriber
     destination leave 1025 entries in `publish_rpc_reqs`, failing the bounded
     pending-RPC assertion.
+  - Stronger current evidence:
+    `cargo test pending_publish_rpc_requests_must_be_bounded_with_draining_local_subscriber -- --nocapture`
+  - Failure summary: when the local subscriber queue is drained after every
+    delivered RPC, 1025 unanswered guest publish RPCs remain retained in
+    `publish_rpc_reqs`; the older evidence was masked by subscriber queue
+    backpressure at the same 1024 item count.
+  - Feedback mirror evidence:
+    `cargo test pending_feedback_rpc_requests_must_be_bounded_with_draining_local_publisher -- --nocapture`
+  - Failure summary: when the local publisher queue is drained after every
+    delivered feedback RPC, 1025 unanswered feedback RPCs remain retained in
+    `feedback_rpc_reqs`.
+- Root cause: pending pubsub RPC admission was gated only by destination
+  availability and downstream event/backpressure success. The pending request
+  maps had no direct item-count cap, so draining responders or successful
+  remote sends could retain unbounded unanswered RPC waiters until timeout.
+- Fix proposal: add one pending-RPC cap and reject new publish/feedback RPCs
+  with a typed overload error before fanout when the relevant pending map is
+  full.
+- Fix status: fixed by enforcing `MAX_PENDING_RPC_REQUESTS = 1024` on
+  `publish_rpc_reqs` and `feedback_rpc_reqs` before local or remote RPC fanout.
+  Overflow requests now return `PubsubRpcError::TooManyPendingRequests` and do
+  not enqueue orphan responder events. Verified with
+  `cargo test pending_publish_rpc_requests_must_be_bounded_with_draining_local_subscriber -- --nocapture`,
+  `cargo test pending_feedback_rpc_requests_must_be_bounded_with_draining_local_publisher -- --nocapture`,
+  `cargo test pending_publish_rpc_requests_must_be_bounded -- --nocapture`,
+  `cargo test pubsub_rpc_must_return_no_destination_when_all_remote_sends_fail -- --nocapture`,
+  `cargo test pubsub_publish_rpc_local -- --nocapture`,
+  `cargo test pubsub_publish_rpc_remote -- --nocapture`, and
+  `cargo fmt -- --check`. Engineer proposal: `Ptolemy the 12th`; coder review:
+  `Godel the 12th`; reviewer: `Boole the 12th`, accepted.
 
 ### ISSUE-044: Router best-path score arithmetic overflows
 
