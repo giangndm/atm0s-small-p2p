@@ -95,12 +95,12 @@ pub struct AliasServiceRequester {
 }
 
 impl AliasServiceRequester {
-    pub fn register<A: Into<AliasId>>(&self, alias: A) -> AliasGuard {
+    pub fn register<A: Into<AliasId>>(&self, alias: A) -> anyhow::Result<AliasGuard> {
         let alias: AliasId = alias.into();
         log::info!("[AliasServiceRequester] register alias {alias}");
-        try_send_alias_control(&self.tx, AliasControl::Register(alias), "requester register");
+        send_alias_control(&self.tx, AliasControl::Register(alias), "requester register")?;
 
-        AliasGuard { alias, tx: self.tx.clone() }
+        Ok(AliasGuard { alias, tx: self.tx.clone() })
     }
 
     pub async fn find<A: Into<AliasId>>(&self, alias: A) -> Option<AliasFoundLocation> {
@@ -131,17 +131,20 @@ impl AliasServiceRequester {
 }
 
 fn try_send_alias_control(tx: &Sender<AliasControl>, msg: AliasControl, context: &str) -> bool {
-    match tx.try_send(msg) {
+    match send_alias_control(tx, msg, context) {
         Ok(()) => true,
-        Err(TrySendError::Full(_)) => {
-            log::debug!("[AliasService] alias control queue full while handling {context}");
-            false
-        }
-        Err(TrySendError::Closed(_)) => {
-            log::debug!("[AliasService] alias control queue closed while handling {context}");
+        Err(err) => {
+            log::debug!("[AliasService] {err}");
             false
         }
     }
+}
+
+fn send_alias_control(tx: &Sender<AliasControl>, msg: AliasControl, context: &str) -> anyhow::Result<()> {
+    tx.try_send(msg).map_err(|err| match err {
+        TrySendError::Full(_) => anyhow!("alias control queue full while handling {context}"),
+        TrySendError::Closed(_) => anyhow!("alias control queue closed while handling {context}"),
+    })
 }
 
 enum FindRequestState {
@@ -614,15 +617,23 @@ mod test {
         AliasService::new(service)
     }
 
+    fn expect_registered(result: anyhow::Result<AliasGuard>) -> AliasGuard {
+        match result {
+            Ok(guard) => guard,
+            Err(err) => panic!("alias register should be admitted in test setup: {err}"),
+        }
+    }
+
     #[tokio::test]
     async fn alias_internal_control_backlog_must_be_bounded() {
         let service = test_service();
         let requester = service.requester();
         let mut guards = Vec::new();
 
-        for alias in 0..=ALIAS_CONTROL_QUEUE_SIZE {
-            guards.push(requester.register(AliasId(alias as u64 + 10)));
+        for alias in 0..ALIAS_CONTROL_QUEUE_SIZE {
+            guards.push(expect_registered(requester.register(AliasId(alias as u64 + 10))));
         }
+        let overflow = requester.register(AliasId(ALIAS_CONTROL_QUEUE_SIZE as u64 + 10));
 
         assert_eq!(
             service.rx.len(),
@@ -634,6 +645,7 @@ mod test {
             "pending alias internal control messages must be bounded, got {}",
             service.rx.len()
         );
+        assert!(overflow.is_err(), "overflow alias registration must report admission failure");
     }
 
     #[tokio::test]
@@ -643,7 +655,7 @@ mod test {
         let mut guards = Vec::new();
 
         for alias in 0..ALIAS_CONTROL_QUEUE_SIZE {
-            guards.push(requester.register(AliasId(alias as u64 + 10)));
+            guards.push(expect_registered(requester.register(AliasId(alias as u64 + 10))));
         }
 
         assert_eq!(service.rx.len(), ALIAS_CONTROL_QUEUE_SIZE);
@@ -661,7 +673,7 @@ mod test {
         let mut guards = Vec::new();
 
         for alias in 0..ALIAS_CONTROL_QUEUE_SIZE {
-            guards.push(requester.register(AliasId(alias as u64 + 10)));
+            guards.push(expect_registered(requester.register(AliasId(alias as u64 + 10))));
         }
 
         assert_eq!(service.rx.len(), ALIAS_CONTROL_QUEUE_SIZE);
@@ -676,7 +688,7 @@ mod test {
         let mut guards = Vec::new();
 
         for alias in 0..ALIAS_CONTROL_QUEUE_SIZE {
-            guards.push(requester.register(AliasId(alias as u64 + 10)));
+            guards.push(expect_registered(requester.register(AliasId(alias as u64 + 10))));
         }
 
         assert_eq!(service.rx.len(), ALIAS_CONTROL_QUEUE_SIZE);
@@ -685,6 +697,25 @@ mod test {
             service.rx.len(),
             ALIAS_CONTROL_QUEUE_SIZE,
             "failed unregister admission from Drop must not grow the bounded control queue"
+        );
+    }
+
+    #[tokio::test]
+    async fn alias_register_when_control_queue_full_must_not_return_live_guard() {
+        let service = test_service();
+        let requester = service.requester();
+        let mut guards = Vec::new();
+
+        for alias in 0..ALIAS_CONTROL_QUEUE_SIZE {
+            guards.push(expect_registered(requester.register(AliasId(alias as u64 + 10))));
+        }
+
+        assert_eq!(service.rx.len(), ALIAS_CONTROL_QUEUE_SIZE);
+
+        let overloaded_alias = AliasId(999_999);
+        assert!(
+            requester.register(overloaded_alias).is_err(),
+            "register must report admission failure instead of returning a dead-on-arrival guard for {overloaded_alias}"
         );
     }
 
