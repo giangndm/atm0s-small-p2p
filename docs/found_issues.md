@@ -2093,6 +2093,8 @@ the source of truth for evidence and reviewer decisions.
 
 ### ISSUE-072: Dropped service requesters can still send unicast
 
+- Status: fixed by checking the `P2pServiceRequester` liveness token before
+  requester unicast sends can reach `SharedCtx`.
 - Category: correctness, service lifecycle stability
 - Score: 70/100
 - Reviewer: `Arendt`, confirmed.
@@ -2112,9 +2114,9 @@ the source of truth for evidence and reviewer decisions.
   requesters.
 - Evidence test:
   - `cargo test dropped_service_requester_must_not_continue_sending_unicast -- --nocapture`
-  - Failure summary: after dropping node1's `P2pService`, a cloned
-    `P2pServiceRequester` sends `stale-service-unicast`, and node2's service
-    receives `P2pServiceEvent::Unicast`.
+  - Fixed summary: after dropping node1's `P2pService`, the cloned requester
+    now returns `Err` from `send_unicast`, and node2's service receives no
+    stale `P2pServiceEvent::Unicast`.
 
 ### ISSUE-073: Dropped service requesters can still open streams
 

@@ -1322,10 +1322,10 @@ async fn dropped_service_requester_must_not_continue_sending_unicast() {
     drop(service1);
 
     let data = b"stale-service-unicast".to_vec();
-    stale_requester
-        .send_unicast(addr2.peer_id(), data.clone())
-        .await
-        .expect("stale requester send should not panic");
+    assert!(
+        stale_requester.send_unicast(addr2.peer_id(), data.clone()).await.is_err(),
+        "a requester cloned from a dropped P2pService must fail instead of sending unicast messages"
+    );
 
     let delivered = tokio::time::timeout(Duration::from_millis(500), service2.recv()).await;
 

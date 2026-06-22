@@ -98,10 +98,12 @@ impl P2pServiceRequester {
     }
 
     pub async fn send_unicast(&self, dest: PeerId, data: Vec<u8>) -> anyhow::Result<()> {
+        self.ensure_live()?;
         self.ctx.send_unicast(self.service, dest, data).await
     }
 
     pub(crate) async fn send_unicast_unacked(&self, dest: PeerId, data: Vec<u8>) -> anyhow::Result<()> {
+        self.ensure_live()?;
         self.ctx.send_unicast_unacked(self.service, dest, data).await
     }
 
@@ -110,6 +112,7 @@ impl P2pServiceRequester {
     }
 
     pub async fn try_send_unicast(&self, dest: PeerId, data: Vec<u8>) -> anyhow::Result<()> {
+        self.ensure_live()?;
         self.ctx.try_send_unicast(self.service, dest, data)
     }
 
