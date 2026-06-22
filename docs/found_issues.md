@@ -3353,7 +3353,7 @@ the source of truth for evidence and reviewer decisions.
   - Failure summary: a remote `PublishRpc` with a 1,025-byte method name is
     delivered unchanged to the local subscriber, exceeding the test cap of
     1,024 bytes.
-- Fix status: `MAX_RPC_METHOD_LEN = 1024` is enforced for inbound
+- Fix status: fixed. `MAX_RPC_METHOD_LEN = 1024` is enforced for inbound
   `GuestPublishRpc`, `PublishRpc`, `GuestFeedbackRpc`, and `FeedbackRpc`.
   Oversized method names are dropped before channel lookup, membership
   authorization, or local `SubscriberEvent` / `PublisherEvent` fanout. The
