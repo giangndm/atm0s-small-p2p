@@ -7,13 +7,13 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Accepted issues: 246
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 23
-- Current audit continuation: critical-only observability/admin no-new cycle
-  25 found no new score-80+ issue across metrics and visualization scan
-  collectors, scan response trust, trusted collector configuration, pending
-  responder state, `PeerDisconnected` cleanup, resource caps, high-load scan
-  broadcasts/responses, stale or forged `Info`, and service behavior after
-  shutdown/drop.
+- Current consecutive no-new-issue cycles: 24
+- Current audit continuation: critical-only serialization/API-boundary no-new
+  cycle 26 found no new score-80+ issue across object framing helpers,
+  `BincodeCodec`, bincode deserialize paths, service-id parsing and indexing,
+  frame/object length caps, panic/unwrap paths reachable from peer-controlled
+  input, malformed raw peer messages, oversized payload handling, and public
+  API behavior under bad inputs.
 - Fix phase status: ISSUE-001, ISSUE-003, ISSUE-004, ISSUE-005, ISSUE-006, ISSUE-007,
   ISSUE-002, ISSUE-008, ISSUE-009, ISSUE-010, ISSUE-011, ISSUE-012, ISSUE-013, ISSUE-014, ISSUE-015, ISSUE-017, ISSUE-020, ISSUE-021, ISSUE-023, ISSUE-024, ISSUE-025, ISSUE-027, ISSUE-033, ISSUE-034, ISSUE-039, ISSUE-045, ISSUE-046, ISSUE-047, ISSUE-048, ISSUE-055, ISSUE-059, ISSUE-103, ISSUE-110, ISSUE-111, ISSUE-115, ISSUE-116, ISSUE-117, ISSUE-118, ISSUE-119, ISSUE-120, ISSUE-122, ISSUE-123,
   ISSUE-124, ISSUE-125, ISSUE-126, ISSUE-127, ISSUE-128, ISSUE-129, ISSUE-130,
@@ -860,6 +860,24 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   for shutdown/drop stale service/requester behavior. Direct issue-entry
   ledger check found 19 score-80+ entries and all are fixed; no reproducible
   observability/admin failure supported a distinct score-80+ issue.
+- Fuzz phase no-new cycle 26 reviewed serialization and public API boundaries.
+  Local source inspection and focused `stream::tests`, `codec`, `object`,
+  `service_id`, `invalid`, `oversize`, `panic`, `inbound_out_of_range`,
+  `stream`, `security`, `service`, two 24-node fuzz seeds, and test-list
+  coverage checks passed. The `malformed` and `raw` filters matched zero tests
+  and were not counted as evidence. Reviewer `Ptolemy the 2nd` passed
+  `object`, `service_id`, `invalid`, `peer_message_codec`, `stream`,
+  `pubsub_`, and 24-node valid fuzz checks; reviewer `malformed` also matched
+  zero tests. Rejected candidates mapped to ISSUE-024/RC-5 for peer-message
+  frame caps, ISSUE-097/098/174 for object serialization and u16 length
+  prefix bounds, ISSUE-052/053/060/091/234 and RC-6 for service-id bounds,
+  ISSUE-117/156/217/220/238 and RC-3/RC-4 for stream setup/admission,
+  ISSUE-094/RC-2/RC-5 for pubsub object serialization and malformed service
+  payload behavior, and ISSUE-061/062/200 through ISSUE-204/226/RC-5 for
+  metrics/visualization bincode `Info`/`Scan` trust and caps. Direct
+  issue-entry ledger check found 19 score-80+ entries and all are fixed; no
+  reproducible serialization/API-boundary failure supported a distinct
+  score-80+ issue.
 - Cycle after ISSUE-231 no-new cycle 1 reviewed routing/discovery/path
   stability and stream/pipe lifecycle integration with forked reviewer
   `Carver`. Focused route, discovery, stream-relay, peer-stopped, and pubsub

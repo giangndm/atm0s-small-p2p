@@ -11,13 +11,13 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 23
-- Current audit continuation: critical-only observability/admin no-new cycle
-  25 found no new score-80+ issue across metrics and visualization scan
-  collectors, scan response trust, trusted collector configuration, pending
-  responder state, `PeerDisconnected` cleanup, resource caps, high-load scan
-  broadcasts/responses, stale or forged `Info`, and service behavior after
-  shutdown/drop.
+- Current consecutive no-new-issue cycles: 24
+- Current audit continuation: critical-only serialization/API-boundary no-new
+  cycle 26 found no new score-80+ issue across object framing helpers,
+  `BincodeCodec`, bincode deserialize paths, service-id parsing and indexing,
+  frame/object length caps, panic/unwrap paths reachable from peer-controlled
+  input, malformed raw peer messages, oversized payload handling, and public
+  API behavior under bad inputs.
 
 ## Root Cause Summary
 
@@ -21847,6 +21847,71 @@ the source of truth for evidence and reviewer decisions.
 - Current consecutive no-new cycles after ISSUE-238: 35.
 - Current fuzz-phase no-new cycles after transition: 25.
 - Current focused source-review no-new cycles after fuzz phase: 11.
+
+### Fuzz phase no-new cycle 26: serialization and public API boundary review
+
+- Scope: continued critical-only review after cycle 25, focusing on
+  `src/stream.rs` object helpers, `BincodeCodec`, bincode serialize/deserialize
+  paths, `P2pServiceId` parsing/indexing, object and frame length caps,
+  panic/unwrap/expect paths reachable from untrusted peers, malformed raw peer
+  messages, oversized payload handling, stream setup object handling, and
+  public API behavior under bad inputs.
+- Reviewer: `Ptolemy the 2nd` (forked RED-team reviewer), returned
+  `NO_NEW_CRITICAL`.
+- Verification:
+  - `RUST_LOG=error cargo test stream::tests --lib`: passed 6 tests.
+  - `RUST_LOG=error cargo test codec --lib`: passed 3 tests.
+  - `RUST_LOG=error cargo test object --lib`: passed 4 tests.
+  - `RUST_LOG=error cargo test service_id --lib`: passed 4 tests.
+  - `RUST_LOG=error cargo test invalid --lib`: passed 2 tests.
+  - `RUST_LOG=error cargo test oversize --lib`: passed 2 tests.
+  - `RUST_LOG=error cargo test panic --lib`: passed 32 tests.
+  - `RUST_LOG=error cargo test inbound_out_of_range --lib`: passed 2 tests.
+  - `RUST_LOG=error cargo test stream --lib`: passed 30 tests.
+  - `RUST_LOG=error cargo test security --lib`: passed 55 tests.
+  - `RUST_LOG=error cargo test service --lib`: passed 198 tests.
+  - `RUST_LOG=error P2P_FUZZ_NODES=24 P2P_FUZZ_STEPS=900 P2P_FUZZ_SEED=47001 cargo test fuzz_random_node_actions_must_not_panic_connection_tasks --lib`:
+    passed.
+  - `RUST_LOG=error P2P_FUZZ_NODES=24 P2P_FUZZ_STEPS=900 P2P_FUZZ_SEED=47002 cargo test fuzz_random_valid_node_actions_must_not_panic_connection_tasks --lib`:
+    passed.
+  - `cargo test --lib -- --list | rg -i "codec|object|service_id|out_of_range|invalid|oversize|panic|serialize|deserialize|stream|frame|malform|raw"`:
+    reviewed focused coverage.
+  - `RUST_LOG=error cargo test malformed --lib` and
+    `RUST_LOG=error cargo test raw --lib` matched zero tests and were not
+    counted as evidence.
+- Reviewer cross-check:
+  - `RUST_LOG=error cargo test object --lib -- --nocapture`: passed.
+  - `RUST_LOG=error cargo test service_id --lib -- --nocapture`: passed.
+  - `RUST_LOG=error cargo test malformed --lib -- --nocapture`: matched zero
+    tests.
+  - `RUST_LOG=error cargo test invalid --lib -- --nocapture`: passed.
+  - `RUST_LOG=error cargo test peer_message_codec --lib -- --nocapture`:
+    passed.
+  - `RUST_LOG=error cargo test stream --lib -- --nocapture`: passed.
+  - `RUST_LOG=error cargo test pubsub_ --lib -- --nocapture`: passed.
+  - `RUST_LOG=error P2P_FUZZ_NODES=24 P2P_FUZZ_STEPS=900 P2P_FUZZ_SEED=66001 cargo test fuzz_random_valid_node_actions_must_not_panic_connection_tasks --lib -- --nocapture`:
+    passed.
+  - Direct issue-entry ledger check found
+    `critical_entries=19 critical_fixed=19 critical_open=0 open=[]`.
+- Duplicate mapping:
+  - `BincodeCodec` frame caps and oversized peer messages map to RC-5 and
+    fixed ISSUE-024.
+  - `write_object` serialization failure, actual-size validation, and u16
+    length-prefix overflow map to ISSUE-097, ISSUE-098, and ISSUE-174.
+  - Out-of-range `P2pServiceId(256)` parsing/indexing maps to ISSUE-052,
+    ISSUE-053, ISSUE-060, ISSUE-091, ISSUE-234, and RC-6.
+  - Stream setup malformed object, stalled response/write, and admission
+    behavior maps to ISSUE-117, ISSUE-156, ISSUE-217, ISSUE-220, ISSUE-238,
+    RC-3, and RC-4.
+  - Pubsub object-helper serialization and malformed service payload behavior
+    maps to ISSUE-094, RC-2, RC-5, and existing pubsub bounded/membership/RPC
+    tests.
+  - Metrics/visualization bincode `Info`/`Scan` trust and row caps map to
+    ISSUE-061, ISSUE-062, ISSUE-200 through ISSUE-204, ISSUE-226, and RC-5.
+- Ledger check: 19 score-80+ issue entries found and all are fixed.
+- Current consecutive no-new cycles after ISSUE-238: 36.
+- Current fuzz-phase no-new cycles after transition: 26.
+- Current focused source-review no-new cycles after fuzz phase: 12.
 
 ### Cycle after ISSUE-235 no-new cycle 1: transport, auth, and peer setup review
 
