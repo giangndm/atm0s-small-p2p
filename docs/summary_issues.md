@@ -7,10 +7,10 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Accepted issues: 230
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 1
-- Current audit continuation: post-ISSUE-230 no-new cycle 1 reviewed
-  requester/control admission, unicast/acked-unicast relay, stream relay/setup,
-  and 12-node steady fuzz coverage without accepting a distinct new issue.
+- Current consecutive no-new-issue cycles: 2
+- Current audit continuation: post-ISSUE-230 no-new cycle 2 reviewed
+  shared-key/authentication, base service context behavior, and replicated-KV
+  state/resource/lifecycle logic without accepting a distinct new issue.
 - Fix phase status: ISSUE-001, ISSUE-003, ISSUE-004, ISSUE-005, ISSUE-006, ISSUE-007,
   ISSUE-002, ISSUE-008, ISSUE-009, ISSUE-010, ISSUE-011, ISSUE-012, ISSUE-013, ISSUE-014, ISSUE-015, ISSUE-017, ISSUE-020, ISSUE-021, ISSUE-023, ISSUE-024, ISSUE-025, ISSUE-027, ISSUE-033, ISSUE-034, ISSUE-039, ISSUE-045, ISSUE-046, ISSUE-047, ISSUE-048, ISSUE-055, ISSUE-059, ISSUE-103, ISSUE-110, ISSUE-111, ISSUE-115, ISSUE-116, ISSUE-117, ISSUE-118, ISSUE-119, ISSUE-120, ISSUE-122, ISSUE-123,
   ISSUE-124, ISSUE-125, ISSUE-126, ISSUE-127, ISSUE-128, ISSUE-129, ISSUE-130,
@@ -203,6 +203,27 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   and
   `P2P_FUZZ_NODES=12 P2P_FUZZ_STEPS=200 P2P_FUZZ_SEED=23001 cargo test fuzz_random_steady_valid_node_actions_must_not_panic_connection_tasks -- --nocapture`
   passed. No new root cause beyond RC-3, RC-4, RC-6, and RC-7.
+- Cycle after ISSUE-230 no-new cycle 2: reviewed shared-key handshake and
+  inbound binding setup, base `P2pService`/`SharedCtx` service-id, liveness,
+  broadcast/unicast/backpressure, disconnect behavior, and replicated-KV
+  snapshot/repair/lifecycle/resource logic. Forked reviewer `Bacon` rejected
+  new issue acceptance: auth maps to ISSUE-002, ISSUE-146, ISSUE-176,
+  ISSUE-189, ISSUE-194, and ISSUE-223; service context behavior maps to
+  ISSUE-052, ISSUE-060, ISSUE-072, ISSUE-073, ISSUE-076, ISSUE-119,
+  ISSUE-120, ISSUE-198, ISSUE-199, ISSUE-224, ISSUE-225, ISSUE-227,
+  ISSUE-229, and ISSUE-230; disconnect/stopped lifecycle maps to ISSUE-136,
+  ISSUE-144, ISSUE-162, and ISSUE-215 through ISSUE-222; replicated-KV maps
+  to ISSUE-023, ISSUE-027, ISSUE-045, ISSUE-059, ISSUE-081 through ISSUE-089,
+  ISSUE-095, ISSUE-099, ISSUE-110, ISSUE-111, ISSUE-131, ISSUE-138,
+  ISSUE-140, ISSUE-141, ISSUE-143, ISSUE-154, ISSUE-162, ISSUE-171,
+  ISSUE-175, ISSUE-184, ISSUE-186, and ISSUE-196. Verification:
+  `cargo test handshake -- --nocapture`,
+  `cargo test inbound_handshake -- --nocapture`,
+  `cargo test service_requester -- --nocapture`,
+  `cargo test get_service_must_reject_out_of_range_id_without_panicking -- --nocapture`,
+  `cargo test duplicate_service_creation_must_not_panic -- --nocapture`,
+  and `cargo test replicate_kv -- --nocapture` passed. No new root cause beyond
+  RC-1, RC-2, RC-3, RC-5, RC-6, and RC-7.
 - Cycle after ISSUE-225 no-new cycle 1: reviewed the issue ledger, ack-worker
   backpressure, peer-control admission, stream setup, graceful-stop cleanup,
   and route/path-jumping surfaces. A 12-node, 200-step steady valid fuzz run

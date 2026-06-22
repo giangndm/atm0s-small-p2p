@@ -11,9 +11,10 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 0
-- Current audit continuation: ISSUE-230 accepted and fixed after the
-  post-ISSUE-229 continuation.
+- Current consecutive no-new-issue cycles: 2
+- Current audit continuation: post-ISSUE-230 no-new cycle 2 reviewed
+  shared-key/authentication, base service context behavior, and replicated-KV
+  state/resource/lifecycle logic without accepting a distinct new issue.
 
 ## Root Cause Summary
 
@@ -18855,3 +18856,42 @@ the source of truth for evidence and reviewer decisions.
   correctness/security/stability signature. Those logs map to existing route
   convergence and source-binding hardening rather than a distinct issue.
 - Current consecutive no-new cycles after ISSUE-230: 1.
+
+### Cycle after ISSUE-230 no-new cycle 2: auth, service context, and replicated-KV review
+
+- Scope: reviewed the current issue ledgers, then audited shared-key handshake
+  generation/verification, inbound peer binding and setup rejection ordering,
+  base `P2pService`/`SharedCtx` service-id/liveness/broadcast/unicast/disconnect
+  behavior, and replicated-KV remote store, snapshot, repair, lifecycle, and
+  resource-bound logic.
+- Reviewer: `Bacon` (forked RED-team reviewer), rejected new issue acceptance
+  and recommended documenting a no-new cycle.
+- Verification:
+  - `cargo test handshake -- --nocapture`
+  - `cargo test inbound_handshake -- --nocapture`
+  - `cargo test service_requester -- --nocapture`
+  - `cargo test get_service_must_reject_out_of_range_id_without_panicking -- --nocapture`
+  - `cargo test duplicate_service_creation_must_not_panic -- --nocapture`
+  - `cargo test replicate_kv -- --nocapture`
+- Duplicate mapping:
+  - Shared-key/auth/inbound binding maps to ISSUE-002, ISSUE-146, ISSUE-176,
+    ISSUE-189, ISSUE-194, and authenticated inbound admission accounting in
+    ISSUE-223.
+  - Base `P2pService` and `SharedCtx` service-id and stale-requester behavior
+    maps to ISSUE-052, ISSUE-060, ISSUE-072, ISSUE-073, and ISSUE-076.
+  - Base broadcast/unicast/backpressure maps to ISSUE-119, ISSUE-120,
+    ISSUE-198, ISSUE-199, ISSUE-224, ISSUE-225, ISSUE-227, ISSUE-229, and
+    ISSUE-230.
+  - Disconnect/stopped lifecycle maps to ISSUE-136, ISSUE-144, ISSUE-162, and
+    ISSUE-215 through ISSUE-222.
+  - Replicated-KV request correlation, malformed state, resource, and lifecycle
+    candidates map to ISSUE-023, ISSUE-027, ISSUE-045, ISSUE-059,
+    ISSUE-081 through ISSUE-089, ISSUE-095, ISSUE-099, ISSUE-110, ISSUE-111,
+    ISSUE-131, ISSUE-138, ISSUE-140, ISSUE-141, ISSUE-143, ISSUE-154,
+    ISSUE-162, ISSUE-171, ISSUE-175, ISSUE-184, ISSUE-186, and ISSUE-196.
+- Test notes: the replicated-KV focused slice passed 61 tests, covering
+  snapshot page validation, partial repair continuation, stale response
+  rejection, remote activity refresh rules, remote-store caps, bounded outbound
+  events, and graceful-stop data deletion. No new root cause beyond RC-1,
+  RC-2, RC-3, RC-5, RC-6, and RC-7 was accepted.
+- Current consecutive no-new cycles after ISSUE-230: 2.
