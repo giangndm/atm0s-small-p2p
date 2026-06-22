@@ -613,6 +613,8 @@ impl PubsubService {
                                         Self::try_send_subscriber_event(sub_tx, SubscriberEvent::PeerLeaved(PeerSrc::Remote(from_peer)));
                                     }
                                 }
+                            } else {
+                                self.remember_remote_role_tombstone(channel, from_peer, Some(generation), None);
                             }
                         }
                         PubsubMessage::SubscriberJoined(channel, generation) => {
@@ -652,6 +654,8 @@ impl PubsubService {
                                         Self::try_send_publisher_event(pub_tx, PublisherEvent::PeerLeaved(PeerSrc::Remote(from_peer)));
                                     }
                                 }
+                            } else {
+                                self.remember_remote_role_tombstone(channel, from_peer, None, Some(generation));
                             }
                         }
                         PubsubMessage::Heartbeat(channels) => {
@@ -2203,6 +2207,62 @@ mod test {
         assert!(
             !service.channels.get(&stale_channel).expect("publisher should create channel").has_remote_subscriber(remote),
             "stale subscriber join must not resurrect after inactive tombstone reclamation"
+        );
+        assert!(pub_rx.try_recv().is_err(), "stale subscriber join must not notify a later local publisher");
+    }
+
+    #[tokio::test]
+    async fn unknown_publisher_leave_must_tombstone_stale_join() {
+        let mut service = test_service();
+        let remote = PeerId::from(2);
+        let channel = PubsubChannelId(10);
+
+        service
+            .on_service(P2pServiceEvent::Unicast(remote, encode_publisher_leaved_for_test(channel, 2)))
+            .await
+            .expect("out-of-order remote publisher leave should be processed");
+        service
+            .on_service(P2pServiceEvent::Unicast(remote, encode_publisher_joined_for_test(channel)))
+            .await
+            .expect("stale publisher join should be ignored");
+
+        let (sub_tx, mut sub_rx) = subscriber_event_channel();
+        service
+            .on_internal(InternalMsg::SubscriberCreated(subscriber_handle(SubscriberLocalId::rand()), channel, sub_tx))
+            .await
+            .expect("subscriber should be registered");
+
+        assert!(
+            !service.channels.get(&channel).expect("subscriber should create channel").has_remote_publisher(remote),
+            "a newer leave for an unknown channel must tombstone and reject delayed older publisher joins"
+        );
+        assert!(sub_rx.try_recv().is_err(), "stale publisher join must not notify a later local subscriber");
+    }
+
+    #[tokio::test]
+    async fn unknown_subscriber_leave_must_tombstone_stale_join() {
+        let mut service = test_service();
+        let remote = PeerId::from(2);
+        let channel = PubsubChannelId(10);
+
+        service
+            .on_service(P2pServiceEvent::Unicast(remote, encode_subscriber_leaved_for_test(channel, 2)))
+            .await
+            .expect("out-of-order remote subscriber leave should be processed");
+        service
+            .on_service(P2pServiceEvent::Unicast(remote, encode_subscriber_joined_for_test(channel)))
+            .await
+            .expect("stale subscriber join should be ignored");
+
+        let (pub_tx, mut pub_rx) = publisher_event_channel();
+        service
+            .on_internal(InternalMsg::PublisherCreated(publisher_handle(PublisherLocalId::rand()), channel, pub_tx))
+            .await
+            .expect("publisher should be registered");
+
+        assert!(
+            !service.channels.get(&channel).expect("publisher should create channel").has_remote_subscriber(remote),
+            "a newer leave for an unknown channel must tombstone and reject delayed older subscriber joins"
         );
         assert!(pub_rx.try_recv().is_err(), "stale subscriber join must not notify a later local publisher");
     }
