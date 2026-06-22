@@ -429,6 +429,71 @@ async fn peer_stopped_must_not_block_connection_task_on_full_main_queue() {
 }
 
 #[tokio::test]
+async fn sync_must_not_block_connection_task_on_full_main_queue() {
+    let (mut node1, addr1) = create_node(true, 1, vec![]).await;
+    let service1 = node1.create_service(0.into());
+    let service1_requester = service1.requester();
+    let (mut node2, addr2) = create_node(false, 2, vec![addr1.clone()]).await;
+    let mut service2 = node2.create_service(0.into());
+
+    let conn_to_node1 = tokio::time::timeout(Duration::from_secs(3), async {
+        loop {
+            tokio::select! {
+                _ = node1.recv() => {}
+                event = node2.recv() => {
+                    if let Ok(P2pNetworkEvent::PeerConnected(conn, peer)) = event {
+                        if peer == addr1.peer_id() {
+                            return conn;
+                        }
+                    }
+                }
+            }
+        }
+    })
+    .await
+    .expect("node2 should connect to node1");
+
+    for idx in 0..10 {
+        node2
+            .main_tx
+            .try_send(MainEvent::PeerStats(
+                ConnectionId::from(3000 + idx),
+                PeerId::from(3000 + idx),
+                PeerConnectionMetric {
+                    uptime: 1,
+                    rtt: 1,
+                    sent_pkt: 1,
+                    lost_pkt: 0,
+                    lost_bytes: 0,
+                    send_bytes: 1,
+                    recv_bytes: 1,
+                    current_mtu: 1200,
+                },
+            ))
+            .expect("test should fill node2 main queue");
+    }
+
+    let conn = node1.ctx.conns().into_iter().next().expect("node1 should have a connection to node2");
+    let route = SharedRouterTable::new(addr1.peer_id()).create_sync(&addr2.peer_id());
+    let advertise = PeerDiscovery::new(vec![]).create_sync_for(100, &addr2.peer_id());
+    conn.try_send(PeerMessage::Sync { route, advertise }).expect("sync should enqueue to peer connection");
+
+    tokio::time::sleep(Duration::from_millis(100)).await;
+
+    let send = tokio::time::timeout(Duration::from_millis(500), service1_requester.send_unicast(addr2.peer_id(), b"after-sync".to_vec())).await;
+    let delivered = tokio::time::timeout(Duration::from_millis(500), service2.recv()).await;
+
+    assert!(
+        matches!(send, Ok(Ok(()))) && delivered == Ok(Some(P2pServiceEvent::Unicast(addr1.peer_id(), b"after-sync".to_vec()))),
+        "inbound Sync handling must not block later traffic on the connection when the main event queue is full; send={send:?}, delivered={delivered:?}"
+    );
+
+    drop(service1);
+    drop(service2);
+    let _ = conn_to_node1;
+}
+
+#[tokio::test]
 async fn peer_stopped_dedup_must_not_suppress_retry_after_main_queue_backpressure() {
     let (mut node1, addr1) = create_node(true, 1, vec![]).await;
     let (mut node2, _addr2) = create_node(false, 2, vec![addr1.clone()]).await;

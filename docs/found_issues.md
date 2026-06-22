@@ -18040,3 +18040,47 @@ the source of truth for evidence and reviewer decisions.
   - `RUST_LOG=error cargo test relayed_open_stream_must_not_succeed_before_downstream_accepts --lib -- --nocapture`
   - `RUST_LOG=error cargo test relay_must_not_deliver_downstream_stream_after_upstream_setup_closes --lib -- --nocapture`
   - `RUST_LOG=error cargo test stream --lib -- --nocapture`
+
+### ISSUE-218: Inbound Sync blocks later frames when the main queue is full
+
+- Score: 67
+- Category: high-load stability / route-sync backpressure correctness
+- Status: fixed by pending commit.
+- Reviewers:
+  - `Euler` (forked RED-team reviewer), found.
+  - `Anscombe` (forked candidate reviewer), accepted.
+- Affected code:
+  - `src/peer/peer_internal.rs`
+  - `src/tests/security.rs`
+- Impact: under high load or a slow main-loop consumer, a valid inbound
+  `PeerMessage::Sync` can park the peer connection task on a bounded
+  `main_tx.send(...).await`. Later traffic on the same connection, including
+  unicast, stream setup, or stop messages, cannot be read until the main queue
+  drains.
+- Distinctness: ISSUE-147 fixed dropped route syncs by changing inbound sync
+  delivery from lossy `try_send` to awaited `send().await`. ISSUE-218 is the
+  follow-up regression class: the sync is preserved, but the connection read
+  loop can now head-of-line block behind main-loop capacity.
+- Failing evidence:
+  - `RUST_LOG=error cargo test sync_must_not_block_connection_task_on_full_main_queue --lib -- --nocapture`
+  - Failure before fix:
+    - `send=Err(Elapsed(())), delivered=Err(Elapsed(()))`
+- Root cause: `PeerConnectionInternal::on_msg` handles inbound
+  `PeerMessage::Sync` with `self.main_tx.send(MainEvent::PeerData(...)).await`.
+  `main_tx` is bounded, and `run_loop` awaits `on_msg`, so a full main queue
+  stalls all later frame processing on that peer connection.
+- Minimal fix proposal: preserve ISSUE-147 by not dropping valid syncs, but
+  move bounded waiting out of the connection read loop. Record or coalesce the
+  latest pending sync per connection and deliver it asynchronously when main
+  queue capacity returns, so `on_msg` can return promptly.
+- Fix status: fixed by replacing the awaited inbound sync main-queue send with
+  one bounded coalescing delivery worker per connection. `on_msg` now records
+  the latest sync and returns promptly; the worker retries `try_send` on main
+  queue backpressure and can replace an older pending sync with a newer one.
+- Verification:
+  - `RUST_LOG=error cargo test sync_must_not_block_connection_task_on_full_main_queue --lib -- --nocapture`
+  - `RUST_LOG=error cargo test valid_sync_must_survive_full_main_event_queue --lib -- --nocapture`
+  - `RUST_LOG=error cargo test peer_stopped_must_not_block_connection_task_on_full_main_queue --lib -- --nocapture`
+  - `RUST_LOG=error cargo test security:: --lib -- --nocapture`
+  - `RUST_LOG=error cargo test inbound_handshake_must_reject_peer_claiming_local_id --lib -- --nocapture`
+  - `rustfmt --edition 2024 --check src/peer/peer_internal.rs src/tests/security.rs`

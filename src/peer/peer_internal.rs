@@ -21,19 +21,20 @@ use tokio::{
     io::copy_bidirectional,
     select,
     sync::{
-        OwnedSemaphorePermit, Semaphore,
+        Mutex, Notify, OwnedSemaphorePermit, Semaphore,
         mpsc::{Receiver, Sender, error::TrySendError},
     },
+    task::JoinHandle,
     time::Interval,
 };
 use tokio_util::codec::Framed;
 
 use crate::{
     ConnectionId, MainEvent, P2P_CONNECTION_CONGESTION_EVENTS, P2P_CONNECTION_LOST_BYTES, P2P_CONNECTION_LOST_PKT, P2P_CONNECTION_RECV_BYTES, P2P_CONNECTION_RTT, P2P_CONNECTION_SENT_BYTES,
-    P2P_CONNECTION_UPTIME, P2pServiceEvent, PeerId, PeerMainData,
+    P2P_CONNECTION_UPTIME, P2pServiceEvent, PeerDiscoverySync, PeerId, PeerMainData,
     ctx::SharedCtx,
     msg::{P2pServiceId, PeerMessage, StreamConnectReq, StreamConnectRes, UnicastAckId},
-    router::RouteAction,
+    router::{RouteAction, RouterTableSync},
     stream::{BincodeCodec, P2pQuicStream, wait_object, write_object},
     utils::ErrorExt,
 };
@@ -48,6 +49,7 @@ const RELAY_UPSTREAM_STOP_GRACE: Duration = Duration::from_millis(20);
 const UNICAST_ACK_TIMEOUT: Duration = Duration::from_secs(1);
 const MAX_CONTROL_STREAM_PKT: usize = 60000;
 const MAX_PEER_MESSAGE_FRAME: usize = 60000;
+const INBOUND_SYNC_RETRY_DELAY: Duration = Duration::from_millis(10);
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 pub struct PeerConnectionMetric {
@@ -71,9 +73,17 @@ pub struct PeerConnectionInternal {
     main_tx: Sender<MainEvent>,
     control_rx: Receiver<PeerConnectionControl>,
     pending_unicast_acks: HashMap<UnicastAckId, (tokio::sync::oneshot::Sender<anyhow::Result<()>>, Instant)>,
+    pending_inbound_sync: Arc<Mutex<Option<InboundSync>>>,
+    pending_inbound_sync_notify: Arc<Notify>,
+    pending_inbound_sync_task: JoinHandle<()>,
     pending_accept_bi: Arc<Semaphore>,
     ticker: Interval,
     started: Instant,
+}
+
+struct InboundSync {
+    route: RouterTableSync,
+    advertise: PeerDiscoverySync,
 }
 
 impl PeerConnectionInternal {
@@ -89,6 +99,16 @@ impl PeerConnectionInternal {
         control_rx: Receiver<PeerConnectionControl>,
     ) -> Self {
         let stream = P2pQuicStream::new(main_recv, main_send);
+        let pending_inbound_sync = Arc::new(Mutex::new(None));
+        let pending_inbound_sync_notify = Arc::new(Notify::new());
+        let pending_inbound_sync_task = tokio::spawn(deliver_inbound_sync_loop(
+            conn_id,
+            to_id,
+            connection.remote_address(),
+            main_tx.clone(),
+            pending_inbound_sync.clone(),
+            pending_inbound_sync_notify.clone(),
+        ));
 
         Self {
             conn_id,
@@ -100,6 +120,9 @@ impl PeerConnectionInternal {
             main_tx,
             control_rx,
             pending_unicast_acks: HashMap::new(),
+            pending_inbound_sync,
+            pending_inbound_sync_notify,
+            pending_inbound_sync_task,
             pending_accept_bi: Arc::new(Semaphore::new(MAX_PENDING_ACCEPT_BI)),
             ticker: tokio::time::interval(Duration::from_secs(1)),
             started: Instant::now(),
@@ -211,9 +234,10 @@ impl PeerConnectionInternal {
     async fn on_msg(&mut self, msg: PeerMessage) -> anyhow::Result<()> {
         match msg {
             PeerMessage::Sync { route, advertise } => {
-                if let Err(_e) = self.main_tx.send(MainEvent::PeerData(self.conn_id, self.to_id, PeerMainData::Sync { route, advertise })).await {
-                    log::warn!("[PeerConnectionInternal {}] main loop closed", self.remote);
-                }
+                let mut pending = self.pending_inbound_sync.lock().await;
+                *pending = Some(InboundSync { route, advertise });
+                drop(pending);
+                self.pending_inbound_sync_notify.notify_one();
             }
             PeerMessage::PeerStopped(peer_id) => {
                 if peer_id != self.to_id {
@@ -375,6 +399,61 @@ impl PeerConnectionInternal {
                 let _ = tx.send(Err(anyhow!("unicast ack timed out")));
             }
         }
+    }
+}
+
+impl Drop for PeerConnectionInternal {
+    fn drop(&mut self) {
+        self.pending_inbound_sync_task.abort();
+    }
+}
+
+async fn deliver_inbound_sync_loop(conn_id: ConnectionId, to_id: PeerId, remote: SocketAddr, main_tx: Sender<MainEvent>, pending: Arc<Mutex<Option<InboundSync>>>, notify: Arc<Notify>) {
+    let mut current = None;
+
+    loop {
+        if current.is_none() {
+            notify.notified().await;
+            current = pending.lock().await.take();
+            if current.is_none() {
+                continue;
+            }
+        }
+
+        let sync = current.take().expect("sync should be present");
+        let event = MainEvent::PeerData(
+            conn_id,
+            to_id,
+            PeerMainData::Sync {
+                route: sync.route,
+                advertise: sync.advertise,
+            },
+        );
+        match main_tx.try_send(event) {
+            Ok(()) => {}
+            Err(TrySendError::Closed(_)) => {
+                log::warn!("[PeerConnectionInternal {remote}] main loop closed");
+                return;
+            }
+            Err(TrySendError::Full(event)) => {
+                current = recover_sync_event(event);
+                tokio::select! {
+                    _ = tokio::time::sleep(INBOUND_SYNC_RETRY_DELAY) => {}
+                    _ = notify.notified() => {
+                        if let Some(newer) = pending.lock().await.take() {
+                            current = Some(newer);
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+fn recover_sync_event(event: MainEvent) -> Option<InboundSync> {
+    match event {
+        MainEvent::PeerData(_, _, PeerMainData::Sync { route, advertise }) => Some(InboundSync { route, advertise }),
+        _ => None,
     }
 }
 

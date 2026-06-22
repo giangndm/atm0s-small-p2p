@@ -5,10 +5,10 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Audit Status
 
-- Accepted issues: 217
+- Accepted issues: 218
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 1
-- Stop condition: not satisfied; continue auditing after post-ISSUE-217 fuzz cycle 1.
+- Current consecutive no-new-issue cycles: 0
+- Stop condition: not satisfied; continue auditing after ISSUE-218 fix commit.
 - Fix phase status: ISSUE-001, ISSUE-003, ISSUE-004, ISSUE-005, ISSUE-006, ISSUE-007,
   ISSUE-002, ISSUE-008, ISSUE-009, ISSUE-010, ISSUE-011, ISSUE-012, ISSUE-013, ISSUE-014, ISSUE-015, ISSUE-017, ISSUE-020, ISSUE-021, ISSUE-023, ISSUE-024, ISSUE-025, ISSUE-027, ISSUE-033, ISSUE-034, ISSUE-039, ISSUE-045, ISSUE-046, ISSUE-047, ISSUE-048, ISSUE-055, ISSUE-059, ISSUE-103, ISSUE-110, ISSUE-111, ISSUE-115, ISSUE-116, ISSUE-117, ISSUE-118, ISSUE-119, ISSUE-120, ISSUE-122, ISSUE-123,
   ISSUE-124, ISSUE-125, ISSUE-126, ISSUE-127, ISSUE-128, ISSUE-129, ISSUE-130,
@@ -40,7 +40,8 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   ISSUE-217 is fixed by rejecting an already-stopped upstream relay setup side
   before opening downstream, then delaying upstream success until downstream
   stream setup is accepted.
-  Post-ISSUE-217 explicit fuzz cycle passed as no-new cycle 1.
+  ISSUE-218 is fixed by moving inbound sync main-queue retry into one bounded
+  coalescing worker per connection, keeping the peer read loop unblocked.
   ISSUE-043 is fixed by bounding pending pubsub publish/feedback RPC request
   maps before responder fanout.
   ISSUE-054 is fixed by rejecting zero network tick intervals before endpoint
@@ -314,6 +315,17 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   before opening downstream, open downstream first, write upstream `Err` on
   downstream failure, and write upstream `Ok` only after downstream success.
   Implemented in `accept_bi` with a `P2pQuicStream::write_stopped` guard.
+- ISSUE-218: fixed inbound sync head-of-line blocking issue. ISSUE-147
+  preserved valid route/discovery syncs under main-queue backpressure by using
+  `self.main_tx.send(...).await`, but that awaited bounded send runs inside the
+  peer connection read loop. Evidence:
+  `cargo test sync_must_not_block_connection_task_on_full_main_queue --lib -- --nocapture`
+  fails with both a later unicast send and destination receive timing out after
+  a `Sync` frame hits a full main queue. Minimal fix proposal: preserve sync by
+  moving bounded waiting out of `on_msg`, using a per-connection pending or
+  coalesced async sync-delivery task so later frames can still be read.
+  Implemented with one coalescing inbound-sync worker per connection and a
+  single latest-sync pending slot.
 - Minimal fix proposal: sanitize before insertion: reject local/self candidates
   and over-hop routes, pin authenticated direct paths for their peer ids, use
   checked metric math, ignore stale discovery timestamps, reject duplicate
