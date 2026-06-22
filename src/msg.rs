@@ -47,6 +47,7 @@ pub struct StreamConnectReq {
     pub dest: PeerId,
     pub service: P2pServiceId,
     pub meta: Vec<u8>,
+    pub defer_delivery: bool,
 }
 
 pub type StreamConnectRes = Result<(), String>;

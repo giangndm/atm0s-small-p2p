@@ -47,6 +47,7 @@ const ACCEPT_BI_RESPONSE_WRITE_TIMEOUT: Duration = Duration::from_millis(250);
 const MAX_PENDING_ACCEPT_BI: usize = 16;
 const LOCAL_SERVICE_DELIVERY_TIMEOUT: Duration = Duration::from_secs(1);
 const RELAY_UPSTREAM_STOP_GRACE: Duration = Duration::from_millis(20);
+const RELAY_DOWNSTREAM_COMMIT_TIMEOUT: Duration = Duration::from_secs(1);
 const UNICAST_ACK_TIMEOUT: Duration = Duration::from_secs(1);
 const MAX_PENDING_UNICAST_ACKS: usize = 16;
 const CONTROL_SEND_TIMEOUT: Duration = Duration::from_millis(250);
@@ -242,12 +243,12 @@ impl PeerConnectionInternal {
                     }
                 }
             }
-            PeerConnectionControl::OpenStream(service, source, dest, meta, tx) => {
+            PeerConnectionControl::OpenStream(service, source, dest, meta, defer_delivery, tx) => {
                 let remote = self.remote;
                 let connection = self.connection.clone();
                 tokio::spawn(async move {
                     log::info!("[PeerConnectionInternal {remote}] open_bi for service {service}");
-                    let res = open_bi(connection, source, dest, service, meta).await;
+                    let res = open_bi(connection, source, dest, service, meta, defer_delivery).await;
                     if let Err(e) = &res {
                         log::error!("[PeerConnectionInternal {remote}] open_bi for service {service} error {e}");
                     } else {
@@ -609,11 +610,21 @@ async fn send_local_service_event(remote: SocketAddr, service_id: P2pServiceId, 
     }
 }
 
-async fn open_bi(connection: Connection, source: PeerId, dest: PeerId, service: P2pServiceId, meta: Vec<u8>) -> anyhow::Result<P2pQuicStream> {
+async fn open_bi(connection: Connection, source: PeerId, dest: PeerId, service: P2pServiceId, meta: Vec<u8>, defer_delivery: bool) -> anyhow::Result<P2pQuicStream> {
     tokio::time::timeout(OPEN_BI_TIMEOUT, async {
         let (send, recv) = connection.open_bi().await?;
         let mut stream = P2pQuicStream::new(recv, send);
-        write_object::<_, _, MAX_CONTROL_STREAM_PKT>(&mut stream, &StreamConnectReq { source, dest, service, meta }).await?;
+        write_object::<_, _, MAX_CONTROL_STREAM_PKT>(
+            &mut stream,
+            &StreamConnectReq {
+                source,
+                dest,
+                service,
+                meta,
+                defer_delivery,
+            },
+        )
+        .await?;
         let res = wait_object::<_, StreamConnectRes, MAX_CONTROL_STREAM_PKT>(&mut stream).await?;
         res.map(|_| stream).map_err(|e| anyhow!("{e}"))
     })
@@ -636,11 +647,23 @@ async fn write_stream_connect_res(stream: &mut P2pQuicStream, res: StreamConnect
         .map_err(|_| anyhow!("stream connect response write timed out"))?
 }
 
+async fn wait_relay_delivery_commit(stream: &mut P2pQuicStream) -> anyhow::Result<StreamConnectRes> {
+    tokio::time::timeout(RELAY_DOWNSTREAM_COMMIT_TIMEOUT, wait_object::<_, StreamConnectRes, MAX_CONTROL_STREAM_PKT>(stream))
+        .await
+        .map_err(|_| anyhow!("relay delivery commit timed out"))?
+}
+
 async fn accept_bi(ingress: ConnectionId, authenticated_ingress_peer: PeerId, mut stream: P2pQuicStream, ctx: SharedCtx, _permit: OwnedSemaphorePermit) -> anyhow::Result<()> {
     let req = tokio::time::timeout(ACCEPT_BI_INITIAL_REQ_TIMEOUT, wait_object::<_, StreamConnectReq, MAX_CONTROL_STREAM_PKT>(&mut stream))
         .await
         .map_err(|_| anyhow!("stream connect request timed out"))??;
-    let StreamConnectReq { dest, source, service, meta } = req;
+    let StreamConnectReq {
+        dest,
+        source,
+        service,
+        meta,
+        defer_delivery,
+    } = req;
     let effective_source = authenticated_ingress_peer;
     if source != effective_source {
         log::warn!("[PeerConnectionInternal {authenticated_ingress_peer}] normalize forged stream source {source} from authenticated peer {effective_source}");
@@ -664,6 +687,9 @@ async fn accept_bi(ingress: ConnectionId, authenticated_ingress_peer: PeerId, mu
                     }
                 };
                 write_stream_connect_res(&mut stream, Ok(())).await?;
+                if defer_delivery {
+                    wait_relay_delivery_commit(&mut stream).await?.map_err(|err| anyhow!("relay delivery aborted: {err}"))?;
+                }
                 permit.send(P2pServiceEvent::Stream(effective_source, meta, stream));
                 Ok(())
             } else {
@@ -681,13 +707,21 @@ async fn accept_bi(ingress: ConnectionId, authenticated_ingress_peer: PeerId, mu
             if let Some(alias) = ctx.conn(&next) {
                 log::info!("[PeerConnectionInternal {authenticated_ingress_peer}] stream service {service} source {effective_source} to dest {dest} => forward to {next}");
                 reject_if_upstream_stopped_before_relay_setup(&stream).await?;
-                match alias.open_stream(service, effective_source, dest, meta).await {
+                match alias.open_stream(service, effective_source, dest, meta, true).await {
                     Ok(mut next_stream) => {
                         if let Err(err) = write_stream_connect_res(&mut stream, Ok(())).await {
                             log::warn!(
                                 "[PeerConnectionInternal {authenticated_ingress_peer}] stream service {service} source {effective_source} to dest {dest} => upstream ack failed after downstream open: {err}"
                             );
+                            let _ = write_stream_connect_res(&mut next_stream, Err("upstream setup acknowledgement failed".to_string())).await;
                             return Err(err);
+                        }
+                        if defer_delivery {
+                            let commit = wait_relay_delivery_commit(&mut stream).await.unwrap_or_else(|err| Err(err.to_string()));
+                            write_stream_connect_res(&mut next_stream, commit.clone()).await?;
+                            commit.map_err(|err| anyhow!("relay delivery aborted: {err}"))?;
+                        } else {
+                            write_stream_connect_res(&mut next_stream, Ok(())).await?;
                         }
                         log::info!("[PeerConnectionInternal {authenticated_ingress_peer}] stream service {service} source {effective_source} to dest {dest} => start copy_bidirectional");
                         match copy_bidirectional(&mut next_stream, &mut stream).await {

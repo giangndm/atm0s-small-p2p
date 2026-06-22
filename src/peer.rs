@@ -8,7 +8,7 @@ use peer_internal::PeerConnectionInternal;
 use quinn::{Connecting, Connection, Incoming, RecvStream, SendStream};
 use serde::{Deserialize, Serialize};
 use tokio::sync::{
-    mpsc::{Sender, channel, error::TrySendError},
+    mpsc::{channel, error::TrySendError, Sender},
     oneshot,
 };
 
@@ -40,7 +40,7 @@ const PEER_SETUP_TIMEOUT: Duration = Duration::from_secs(1);
 enum PeerConnectionControl {
     Send(PeerMessage, Option<oneshot::Sender<anyhow::Result<()>>>),
     SendUnicastWithAck(UnicastAckId, PeerId, PeerId, P2pServiceId, Vec<u8>, oneshot::Sender<anyhow::Result<()>>),
-    OpenStream(P2pServiceId, PeerId, PeerId, Vec<u8>, oneshot::Sender<anyhow::Result<P2pQuicStream>>),
+    OpenStream(P2pServiceId, PeerId, PeerId, Vec<u8>, bool, oneshot::Sender<anyhow::Result<P2pQuicStream>>),
     Close,
 }
 
@@ -400,7 +400,7 @@ mod tests {
             P2pService, P2pServiceEvent,
         },
         stream::BincodeCodec,
-        InboundPeerBindings, NetworkAddress, PeerAddress, PeerMainData, P2pNetwork, P2pNetworkConfig, P2pNetworkEvent, SharedKeyHandshake, CERT_DOMAIN_NAME,
+        InboundPeerBindings, NetworkAddress, P2pNetwork, P2pNetworkConfig, P2pNetworkEvent, PeerAddress, PeerMainData, SharedKeyHandshake, CERT_DOMAIN_NAME,
     };
 
     const DEFAULT_CLUSTER_CERT: &[u8] = include_bytes!("../certs/dev.cluster.cert");

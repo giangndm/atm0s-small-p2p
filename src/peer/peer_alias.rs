@@ -4,9 +4,9 @@
 use tokio::sync::{mpsc::Sender, oneshot};
 
 use crate::{
-    ConnectionId, PeerId,
     msg::{P2pServiceId, PeerMessage, UnicastAckId},
     stream::P2pQuicStream,
+    ConnectionId, PeerId,
 };
 
 use super::PeerConnectionControl;
@@ -65,9 +65,9 @@ impl PeerConnectionAlias {
         tokio::time::timeout(UNICAST_ACK_TIMEOUT, rx).await.map_err(|_| anyhow::anyhow!("unicast ack timed out"))??
     }
 
-    pub(crate) async fn open_stream(&self, service: P2pServiceId, source: PeerId, dest: PeerId, meta: Vec<u8>) -> anyhow::Result<P2pQuicStream> {
+    pub(crate) async fn open_stream(&self, service: P2pServiceId, source: PeerId, dest: PeerId, meta: Vec<u8>, defer_delivery: bool) -> anyhow::Result<P2pQuicStream> {
         let (tx, rx) = oneshot::channel();
-        self.control_tx.try_send(PeerConnectionControl::OpenStream(service, source, dest, meta, tx))?;
+        self.control_tx.try_send(PeerConnectionControl::OpenStream(service, source, dest, meta, defer_delivery, tx))?;
         rx.await?
     }
 }

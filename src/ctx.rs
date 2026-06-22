@@ -422,7 +422,7 @@ impl SharedCtx {
             }
             RouteAction::Next(next) => {
                 let source = self.router.local_id();
-                Ok(self.conn(&next).ok_or(anyhow!("peer not found {next}"))?.open_stream(service, source, dest, meta).await?)
+                Ok(self.conn(&next).ok_or(anyhow!("peer not found {next}"))?.open_stream(service, source, dest, meta, false).await?)
             }
         }
     }

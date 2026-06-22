@@ -1,20 +1,20 @@
 use std::{
     net::UdpSocket,
     sync::{
-        Arc,
         atomic::{AtomicBool, Ordering},
+        Arc,
     },
     time::Duration,
 };
 
 use super::create_node;
 use crate::{
-    CERT_DOMAIN_NAME, ConnectionId, P2pNetworkEvent, P2pServiceEvent, PeerId, SharedKeyHandshake, SharedRouterTable,
     msg::{P2pServiceId, StreamConnectReq, StreamConnectRes},
     quic::make_server_endpoint,
     router::RouteAction,
     secure::HandshakeProtocol,
-    stream::{P2pQuicStream, wait_object, write_object},
+    stream::{wait_object, write_object, P2pQuicStream},
+    ConnectionId, P2pNetworkEvent, P2pServiceEvent, PeerId, SharedKeyHandshake, SharedRouterTable, CERT_DOMAIN_NAME,
 };
 use futures::FutureExt;
 use quinn::{ClientConfig, Endpoint, ServerConfig, TransportConfig, VarInt};
@@ -241,7 +241,7 @@ async fn stream_source_must_be_bound_to_authenticated_connection_peer() {
     let forged_source = PeerId::from(99);
     let meta = b"forged-stream-source".to_vec();
     let _opened_stream = conn
-        .open_stream(0.into(), forged_source, addr2.peer_id(), meta.clone())
+        .open_stream(0.into(), forged_source, addr2.peer_id(), meta.clone(), false)
         .await
         .expect("forged stream setup should complete on the authenticated connection");
 
@@ -302,7 +302,7 @@ async fn relayed_stream_source_must_be_bound_to_previous_hop_peer() {
     let forged_source = PeerId::from(99);
     let meta = b"forged-relay-stream-source".to_vec();
     let _opened_stream = conn
-        .open_stream(0.into(), forged_source, addr3.peer_id(), meta.clone())
+        .open_stream(0.into(), forged_source, addr3.peer_id(), meta.clone(), false)
         .await
         .expect("forged relayed stream setup should complete");
 
@@ -355,7 +355,9 @@ async fn inbound_out_of_range_stream_service_id_must_not_panic_accept_task() {
     .await
     .expect("node1 should connect to node2");
 
-    let invalid = conn.open_stream(P2pServiceId::from(256u16), addr1.peer_id(), addr2.peer_id(), b"bad-stream-service-id".to_vec()).await;
+    let invalid = conn
+        .open_stream(P2pServiceId::from(256u16), addr1.peer_id(), addr2.peer_id(), b"bad-stream-service-id".to_vec(), false)
+        .await;
 
     assert!(
         invalid.is_err(),
@@ -366,7 +368,7 @@ async fn inbound_out_of_range_stream_service_id_must_not_panic_accept_task() {
 
     let meta = b"valid-after-bad-stream-service-id".to_vec();
     let _valid_stream = conn
-        .open_stream(0.into(), addr1.peer_id(), addr2.peer_id(), meta.clone())
+        .open_stream(0.into(), addr1.peer_id(), addr2.peer_id(), meta.clone(), false)
         .await
         .expect("stream accept path must survive an inbound unknown out-of-range service id");
 
@@ -672,6 +674,7 @@ async fn relay_must_not_deliver_downstream_stream_after_upstream_setup_closes() 
             dest: addr3.peer_id(),
             service: 0.into(),
             meta: meta.clone(),
+            defer_delivery: false,
         },
     )
     .await
@@ -684,6 +687,148 @@ async fn relay_must_not_deliver_downstream_stream_after_upstream_setup_closes() 
     assert!(
         !matches!(delivered, Ok(Some(P2pServiceEvent::Stream(_, received_meta, _))) if received_meta == meta),
         "relay must not deliver a downstream stream after the upstream stream was closed before setup ack"
+    );
+}
+
+#[tokio::test]
+async fn relay_must_not_deliver_downstream_stream_when_upstream_setup_ack_stalls() {
+    let raw_addr = UdpSocket::bind("127.0.0.1:0").expect("should bind raw node1 udp").local_addr().expect("should get raw node1 addr");
+    let raw_node1 = make_small_stream_receive_endpoint(raw_addr, 1).expect("should create raw node1 endpoint");
+    let raw_node1_id = PeerId::from(1);
+
+    let (mut node2, addr2) = create_node(true, 2, vec![]).await;
+    let requester2 = node2.requester();
+    tokio::spawn(async move { while node2.recv().await.is_ok() {} });
+
+    let (mut node3, addr3) = create_node(false, 3, vec![]).await;
+    let mut service3 = node3.create_service(0.into());
+    tokio::spawn(async move { while node3.recv().await.is_ok() {} });
+
+    requester2.connect(addr3.clone()).await.expect("node2 should connect to node3");
+    tokio::time::sleep(Duration::from_millis(500)).await;
+
+    let connection = raw_node1
+        .connect(**addr2.network_address(), CERT_DOMAIN_NAME)
+        .expect("raw node1 should start QUIC connect")
+        .await
+        .expect("raw node1 should connect to node2");
+    let (send, recv) = connection.open_bi().await.expect("raw node1 should open main control stream");
+    let mut main_stream = P2pQuicStream::new(recv, send);
+    let secure: SharedKeyHandshake = super::DEFAULT_SECURE_KEY.into();
+    write_object::<_, _, 60000>(
+        &mut main_stream,
+        &RawConnectReq {
+            from: raw_node1_id,
+            to: addr2.peer_id(),
+            auth: secure.create_request(raw_node1_id, addr2.peer_id(), crate::now_ms()),
+        },
+    )
+    .await
+    .expect("raw node1 should send authenticated connect request");
+    let response: RawConnectRes = wait_object::<_, _, 60000>(&mut main_stream).await.expect("raw node1 should receive connect response");
+    secure
+        .verify_response(response.result.expect("node2 should accept raw node1"), addr2.peer_id(), raw_node1_id, crate::now_ms())
+        .expect("raw node1 should verify connect response");
+
+    let meta = b"stalled-upstream-ack-relay-stream".to_vec();
+    let (mut send, recv) = connection.open_bi().await.expect("raw node1 should open stream setup");
+    write_object::<_, _, 60000>(
+        &mut send,
+        &StreamConnectReq {
+            source: raw_node1_id,
+            dest: addr3.peer_id(),
+            service: 0.into(),
+            meta: meta.clone(),
+            defer_delivery: false,
+        },
+    )
+    .await
+    .expect("raw node1 should send stream connect request");
+    send.finish().expect("raw node1 should finish the upstream send side after setup request");
+    let _stalled_setup_response = recv;
+
+    let delivered = tokio::time::timeout(Duration::from_millis(750), service3.recv()).await;
+
+    assert!(
+        !matches!(delivered, Ok(Some(P2pServiceEvent::Stream(_, received_meta, _))) if received_meta == meta),
+        "relay must not deliver a downstream stream when the upstream setup acknowledgement cannot be written"
+    );
+}
+
+#[tokio::test]
+async fn multihop_relay_must_not_deliver_downstream_stream_when_upstream_setup_ack_stalls() {
+    let raw_addr = UdpSocket::bind("127.0.0.1:0").expect("should bind raw node1 udp").local_addr().expect("should get raw node1 addr");
+    let raw_node1 = make_small_stream_receive_endpoint(raw_addr, 1).expect("should create raw node1 endpoint");
+    let raw_node1_id = PeerId::from(1);
+
+    let (mut node2, addr2) = create_node(true, 2, vec![]).await;
+    let service2 = node2.create_service(0.into());
+    tokio::spawn(async move { while node2.recv().await.is_ok() {} });
+
+    let (mut node3, addr3) = create_node(false, 3, vec![addr2.clone()]).await;
+    let _service3 = node3.create_service(0.into());
+    tokio::spawn(async move { while node3.recv().await.is_ok() {} });
+
+    let (mut node4, addr4) = create_node(false, 4, vec![addr3.clone()]).await;
+    let mut service4 = node4.create_service(0.into());
+    tokio::spawn(async move { while node4.recv().await.is_ok() {} });
+
+    tokio::time::timeout(Duration::from_secs(5), async {
+        loop {
+            if matches!(service2.router().action(&addr4.peer_id()), Some(RouteAction::Next(_))) {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+    })
+    .await
+    .expect("node2 should learn a multihop relay route to node4");
+
+    let connection = raw_node1
+        .connect(**addr2.network_address(), CERT_DOMAIN_NAME)
+        .expect("raw node1 should start QUIC connect")
+        .await
+        .expect("raw node1 should connect to node2");
+    let (send, recv) = connection.open_bi().await.expect("raw node1 should open main control stream");
+    let mut main_stream = P2pQuicStream::new(recv, send);
+    let secure: SharedKeyHandshake = super::DEFAULT_SECURE_KEY.into();
+    write_object::<_, _, 60000>(
+        &mut main_stream,
+        &RawConnectReq {
+            from: raw_node1_id,
+            to: addr2.peer_id(),
+            auth: secure.create_request(raw_node1_id, addr2.peer_id(), crate::now_ms()),
+        },
+    )
+    .await
+    .expect("raw node1 should send authenticated connect request");
+    let response: RawConnectRes = wait_object::<_, _, 60000>(&mut main_stream).await.expect("raw node1 should receive connect response");
+    secure
+        .verify_response(response.result.expect("node2 should accept raw node1"), addr2.peer_id(), raw_node1_id, crate::now_ms())
+        .expect("raw node1 should verify connect response");
+
+    let meta = b"stalled-upstream-ack-multihop-relay-stream".to_vec();
+    let (mut send, recv) = connection.open_bi().await.expect("raw node1 should open stream setup");
+    write_object::<_, _, 60000>(
+        &mut send,
+        &StreamConnectReq {
+            source: raw_node1_id,
+            dest: addr4.peer_id(),
+            service: 0.into(),
+            meta: meta.clone(),
+            defer_delivery: false,
+        },
+    )
+    .await
+    .expect("raw node1 should send stream connect request");
+    send.finish().expect("raw node1 should finish the upstream send side after setup request");
+    let _stalled_setup_response = recv;
+
+    let delivered = tokio::time::timeout(Duration::from_millis(750), service4.recv()).await;
+
+    assert!(
+        !matches!(delivered, Ok(Some(P2pServiceEvent::Stream(_, received_meta, _))) if received_meta == meta),
+        "multihop relay must not deliver a downstream stream when the original upstream setup acknowledgement cannot be written"
     );
 }
 
@@ -794,6 +939,7 @@ async fn inbound_stream_response_write_must_not_exhaust_accept_permits() {
                 dest: addr.peer_id(),
                 service: 0.into(),
                 meta: vec![i as u8],
+                defer_delivery: false,
             },
         )
         .await
@@ -816,6 +962,7 @@ async fn inbound_stream_response_write_must_not_exhaust_accept_permits() {
             dest: addr.peer_id(),
             service: 0.into(),
             meta: b"after-stalled-responses".to_vec(),
+            defer_delivery: false,
         },
     )
     .await
