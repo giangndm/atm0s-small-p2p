@@ -5,10 +5,10 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Audit Status
 
-- Accepted issues: 222
+- Accepted issues: 223
 - Missing issue scores: 0
 - Current consecutive no-new-issue cycles: 0
-- Stop condition: not satisfied; continue auditing after ISSUE-222 fix commit.
+- Stop condition: not satisfied; continue auditing after ISSUE-223 fix commit.
 - Fix phase status: ISSUE-001, ISSUE-003, ISSUE-004, ISSUE-005, ISSUE-006, ISSUE-007,
   ISSUE-002, ISSUE-008, ISSUE-009, ISSUE-010, ISSUE-011, ISSUE-012, ISSUE-013, ISSUE-014, ISSUE-015, ISSUE-017, ISSUE-020, ISSUE-021, ISSUE-023, ISSUE-024, ISSUE-025, ISSUE-027, ISSUE-033, ISSUE-034, ISSUE-039, ISSUE-045, ISSUE-046, ISSUE-047, ISSUE-048, ISSUE-055, ISSUE-059, ISSUE-103, ISSUE-110, ISSUE-111, ISSUE-115, ISSUE-116, ISSUE-117, ISSUE-118, ISSUE-119, ISSUE-120, ISSUE-122, ISSUE-123,
   ISSUE-124, ISSUE-125, ISSUE-126, ISSUE-127, ISSUE-128, ISSUE-129, ISSUE-130,
@@ -54,6 +54,8 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   ISSUE-222 is fixed by unregistering the `SharedCtx` connection alias during
   accepted graceful-stop handling, so local fanout cannot target a peer after it
   has already been reported disconnected.
+  ISSUE-223 is fixed by excluding already-authenticated inbound aliases from the
+  unauthenticated admission cap while `PeerConnected` is backpressured.
   ISSUE-043 is fixed by bounding pending pubsub publish/feedback RPC request
   maps before responder fanout.
   ISSUE-054 is fixed by rejecting zero network tick intervals before endpoint
@@ -118,7 +120,8 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   ISSUE-124, ISSUE-125, ISSUE-126,
   ISSUE-127, ISSUE-136, ISSUE-153,
   ISSUE-178, ISSUE-182, ISSUE-184, ISSUE-198, ISSUE-199,
-  ISSUE-200, ISSUE-201, ISSUE-202, ISSUE-203, ISSUE-204, ISSUE-209.
+  ISSUE-200, ISSUE-201, ISSUE-202, ISSUE-203, ISSUE-204, ISSUE-209,
+  ISSUE-223.
 - ISSUE-209: fixed high-load fuzz coverage issue. The fuzz harness silently
   capped `P2P_FUZZ_NODES` values above 8, so intended 12-15 node fuzz cycles
   executed with only 8 nodes. The fix keeps the lower bound at two nodes while
@@ -126,6 +129,12 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   `cargo test fuzz_node_count_must_honor_high_load_configuration -- --nocapture`
   and
   `P2P_FUZZ_NODES=12 P2P_FUZZ_STEPS=1 cargo test fuzz_random_steady_valid_node_actions_must_not_panic_connection_tasks -- --nocapture`.
+- ISSUE-223, score 68: fixed by commit `770063f`. Authenticated inbound peers
+  whose `PeerConnected` events were backpressured still consumed the
+  unauthenticated inbound admission cap because neighbour accounting was only
+  updated when the main loop drained `PeerConnected`. Fix: exclude neighbours
+  with an already-registered `SharedCtx` alias from the unauthenticated
+  admission counter.
 - Pattern: some paths drop on `try_send`, some await bounded sends from
   critical tasks, and others use unbounded queues or duplicate internal control
   work. Under load this causes silent loss, head-of-line blocking, unreported

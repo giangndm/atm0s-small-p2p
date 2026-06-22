@@ -13,7 +13,7 @@ must resolve.
 
 - Current consecutive no-new-issue cycles: 0
 - Stop condition requested by user: continue until 5 consecutive cycles find no
-  new accepted issue. Not satisfied after ISSUE-222; continue auditing.
+  new accepted issue. Not satisfied after ISSUE-223; continue auditing.
 
 ## Root Cause Summary
 
@@ -18271,4 +18271,53 @@ the source of truth for evidence and reviewer decisions.
 - Verification after fix:
   - `cargo test peer_stopped_must_unregister_context_alias_immediately --lib -- --nocapture`
   - `cargo test peer_stopped_ --lib -- --nocapture`
+  - `cargo test tests::security:: --lib -- --nocapture`
+
+### ISSUE-223: Authenticated inbound peers still consume the unauthenticated admission cap
+
+- Score: 68
+- Category: admission-control correctness / backpressure stability
+- Status: fixed by commit `770063f` (`fix: release authenticated inbound admission slots`).
+- Reviewers:
+  - Forked RED-team candidate reviewer, accepted with failing test evidence.
+  - Main engineer/coder pass, accepted after focused admission and security
+    regression tests.
+- Affected code:
+  - `src/lib.rs`
+  - `src/neighbours.rs`
+  - `src/tests/security.rs`
+- Impact: when `PeerConnected` delivery to the main loop is backpressured,
+  fully authenticated inbound peers remain represented in `NetworkNeighbours`
+  as `peer_id: None` and `is_connected: false`. Sixteen authenticated inbound
+  peers can therefore exhaust `MAX_PENDING_UNAUTHENTICATED_INBOUND_CONNECTIONS`
+  and cause the 17th inbound connection to be refused as if the node were still
+  overloaded by unauthenticated clients.
+- Distinctness: ISSUE-134 covers raw unauthenticated QUIC connections before
+  authentication. ISSUE-144 covers alias cleanup when the main loop is closed
+  before `PeerConnected`. ISSUE-157 covers avoiding peer run-loop blockage when
+  `PeerConnected` is delayed. ISSUE-215 through ISSUE-222 cover graceful-stop,
+  stream setup, and stopped-alias lifecycle issues. ISSUE-223 covers admission
+  accounting for already-authenticated inbound peers while public connection
+  admission is backpressured.
+- Failing evidence:
+  - `cargo test authenticated_inbound_peers_must_not_exhaust_unauthenticated_admission_cap --lib -- --nocapture`
+  - Failure before fix:
+    - `authenticated inbound peers must stop consuming the unauthenticated admission cap before their PeerConnected events are drained: Ok(Err(aborted by peer: the server refused to accept a new connection))`
+- Root cause: `process_incoming` enforced the unauthenticated inbound cap by
+  counting neighbour entries with `peer_id == None && !is_connected`. For
+  inbound connections, `run_connection` registers an authenticated `SharedCtx`
+  alias immediately after handshake, but `NetworkNeighbours` is only marked
+  connected later when `MainEvent::PeerConnected` is processed. A full main
+  queue leaves authenticated inbound peers counted as unauthenticated.
+- Minimal fix proposal: keep `PeerConnected` ordering unchanged, but exclude
+  neighbour entries that already have a registered `SharedCtx` alias from the
+  unauthenticated admission counter. The alias registration is the local proof
+  that authentication completed.
+- Fix: `NetworkNeighbours::pending_unauthenticated_inbound_count` now accepts
+  an authentication predicate, and `P2pNetwork::process_incoming` passes a
+  `SharedCtx` alias lookup so authenticated inbound peers stop consuming the
+  unauthenticated cap before their `PeerConnected` events drain.
+- Verification after fix:
+  - `cargo test authenticated_inbound_peers_must_not_exhaust_unauthenticated_admission_cap --lib -- --nocapture`
+  - `cargo test peer_connected_must_not_block_authenticated_connection_run_loop_on_full_main_queue --lib -- --nocapture`
   - `cargo test tests::security:: --lib -- --nocapture`
