@@ -6142,7 +6142,7 @@ the source of truth for evidence and reviewer decisions.
 - Category: stability, routing/discovery freshness, high-load backpressure
 - Score: 57/100
 - Reviewer: `Archimedes the 2nd`, confirmed after `Turing the 2nd` discovery.
-- Status: fixed. `P2pNetwork` now keeps one guarded async retry task per
+- Fix status: fixed. `P2pNetwork` now keeps one guarded async retry task per
   `ConnectionId`; immediate tick delivery still uses `try_send`, but a
   full peer-control queue replaces any older pending retry with the latest
   route/discovery sync and awaits delivery in the background.
