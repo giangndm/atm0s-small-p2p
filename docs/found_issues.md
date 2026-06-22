@@ -11,13 +11,55 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 26
-- Current audit continuation: critical-only replicated-KV state-sync and repair
-  no-new cycle 28 found no new score-80+ issue across stale or unsolicited RPC
-  responses, full-sync snapshot validation and atomicity, `FetchChanged`
-  request correlation, version arithmetic, resource caps, tombstones/deletes,
-  peer-disconnect cleanup, malformed service payload handling, and high-load
-  reordering.
+- Current consecutive no-new-issue cycles: 27
+- Current audit continuation: critical-only metrics and visualization
+  no-new cycle 29 found no new score-80+ issue across scan/`Info` ingestion,
+  collector authorization, responder correlation, stale disconnect cleanup,
+  resource caps, malformed service payload handling, timeout arithmetic, and
+  high-load fuzz behavior.
+
+### Critical-only no-new cycle 29: metrics and visualization ingestion
+
+- Scope: reviewer-style critical-only pass over
+  `src/service/metrics_service.rs`, `src/service/visualization_service.rs`,
+  their focused tests, and message paths feeding metrics/visualization scan and
+  `Info` frames.
+- Focus areas: peer-controlled scan and `Info` ingestion, collector
+  authorization, pending responder correlation, stale snapshots after
+  disconnect/reconnect, row and retained-peer resource caps, malformed bincode
+  payloads, timeout arithmetic, scan-response task coalescing, service shutdown,
+  and high-load or bad-network fuzz behavior.
+- Verification:
+  - `RUST_LOG=error cargo test metrics --lib -- --nocapture`: passed 14 tests.
+  - `RUST_LOG=error cargo test visualization --lib -- --nocapture`: passed 19 tests.
+  - `RUST_LOG=error cargo test scan --lib -- --nocapture`: passed 16 tests.
+  - `RUST_LOG=error cargo test info --lib -- --nocapture`: passed 8 tests.
+  - `RUST_LOG=error cargo test stale --lib -- --nocapture`: passed 25 tests.
+  - `RUST_LOG=error cargo test bounded --lib -- --nocapture`: passed 30 tests.
+  - `RUST_LOG=error cargo test disconnect --lib -- --nocapture`: passed 16 tests.
+  - `RUST_LOG=error cargo test malformed --lib -- --nocapture`: matched 0 tests.
+  - `RUST_LOG=error P2P_FUZZ_NODES=24 P2P_FUZZ_STEPS=900 P2P_FUZZ_SEED=67001 cargo test fuzz_random_valid_node_actions_must_not_panic_connection_tasks --lib -- --nocapture`: passed.
+- Reviewer cross-check: `Einstein the 2nd` returned `NO_NEW_CRITICAL` after
+  reading the metrics and visualization services, reviewing duplicate mappings,
+  and running focused metrics, visualization, scan, pending, disconnect,
+  bounded, malformed, and stale peer stats tests.
+- Duplicate mapping:
+  - Unauthorized metrics/visualization scan disclosure maps to ISSUE-078,
+    ISSUE-079, ISSUE-226, RC-1, and RC-2.
+  - Unsolicited or stale metrics/visualization `Info` maps to ISSUE-061,
+    ISSUE-062, ISSUE-232, RC-2, and RC-6.
+  - Scan-response backpressure and duplicate scan tasks map to ISSUE-200
+    through ISSUE-204 and RC-3.
+  - Metrics/visualization row caps, retained visualization peer caps, and
+    resource-exhaustion candidates map to ISSUE-102, ISSUE-104, ISSUE-105, and
+    RC-5.
+  - Disconnect cleanup, graceful-stop visualization leave, stale peer stats,
+    and base-service close behavior map to ISSUE-064, ISSUE-068, ISSUE-128,
+    ISSUE-129, ISSUE-165, ISSUE-232, and RC-6.
+  - Malformed bincode/service payload handling maps to ISSUE-053 and existing
+    malformed-input/resource-bound reviews.
+- Result: no distinct score-80+ metrics or visualization ingestion issue had
+  concrete failing-test evidence in this cycle.
 
 ### Critical-only no-new cycle 28: replicated-KV state sync and repair
 

@@ -7,13 +7,26 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Accepted issues: 246
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 26
-- Current audit continuation: critical-only replicated-KV state-sync and repair
-  no-new cycle 28 found no new score-80+ issue across stale or unsolicited RPC
-  responses, full-sync snapshot validation and atomicity, `FetchChanged`
-  request correlation, version arithmetic, resource caps, tombstones/deletes,
-  peer-disconnect cleanup, malformed service payload handling, and high-load
-  reordering.
+- Current consecutive no-new-issue cycles: 27
+- Current audit continuation: critical-only metrics and visualization
+  no-new cycle 29 found no new score-80+ issue across scan/`Info` ingestion,
+  collector authorization, responder correlation, stale disconnect cleanup,
+  resource caps, malformed service payload handling, timeout arithmetic, and
+  high-load fuzz behavior.
+- Critical-only no-new cycle 29 reviewed metrics and visualization ingestion in
+  `metrics_service.rs` and `visualization_service.rs`. Focused metrics,
+  visualization, scan, info, stale, bounded, disconnect, malformed-payload
+  filters, and a 24-node high-load fuzz seed passed. Reviewer `Einstein the
+  2nd` returned `NO_NEW_CRITICAL`. Rejected candidates mapped to RC-1/RC-2 for
+  unauthorized scan disclosure and responder-correlation issues, RC-3 for
+  scan-response backpressure and duplicate task coalescing, RC-5 for row and
+  retained-peer caps, RC-6 for stale disconnect cleanup and base-service close
+  behavior, ISSUE-053, ISSUE-061, ISSUE-062, ISSUE-064, ISSUE-068, ISSUE-078,
+  ISSUE-079, ISSUE-102, ISSUE-104, ISSUE-105, ISSUE-128, ISSUE-129,
+  ISSUE-165, ISSUE-200 through ISSUE-204, ISSUE-226, ISSUE-232, and existing
+  metrics/visualization stale, bounded, scan, and malformed-input coverage. No
+  distinct score-80+ metrics or visualization ingestion failure had concrete
+  failing-test evidence.
 - Critical-only no-new cycle 28 reviewed replicated-KV state sync and repair in
   `replicate_kv_service.rs`, `local_storage.rs`, `remote_storage.rs`, and
   `messages.rs`. Focused replicated-KV, snapshot, `fetch_changed`,
