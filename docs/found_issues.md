@@ -17961,7 +17961,7 @@ the source of truth for evidence and reviewer decisions.
 
 - Score: 54
 - Category: correctness / graceful shutdown lifecycle stability
-- Status: fixed by pending commit.
+- Status: fixed by commit `0f4bbbf`.
 - Reviewer: `Zeno` (forked RED-team reviewer), accepted.
 - Affected code:
   - `src/ctx.rs`
