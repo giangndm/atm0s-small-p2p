@@ -12,8 +12,8 @@ must resolve.
 ## Audit Status
 
 - Current consecutive no-new-issue cycles: 0
-- Current audit continuation: ISSUE-227 accepted and fixed after the
-  post-ISSUE-226 continuation.
+- Current audit continuation: ISSUE-228 accepted and fixed after the
+  post-ISSUE-227 continuation.
 
 ## Root Cause Summary
 
@@ -106,7 +106,7 @@ the source of truth for evidence and reviewer decisions.
 
 - Representative issues: ISSUE-010, ISSUE-024, ISSUE-027, ISSUE-035,
   ISSUE-041, ISSUE-043, ISSUE-045, ISSUE-046, ISSUE-100 through ISSUE-108,
-  ISSUE-122, ISSUE-131, ISSUE-174, ISSUE-196.
+  ISSUE-122, ISSUE-131, ISSUE-174, ISSUE-196, ISSUE-228.
 - Pattern: protocol framing may limit packet size, but decoded service-level
   collections, pending maps, cache sets, tombstones, remote stores, retained
   channel state, and outbound event queues often have no item-count or lifetime
@@ -18688,4 +18688,44 @@ the source of truth for evidence and reviewer decisions.
   - `RUST_LOG=error cargo test send_broadcast_must --lib -- --nocapture`
   - `RUST_LOG=error cargo test broadcast --lib -- --nocapture`
   - `rustfmt --edition 2021 --check src/ctx.rs`
+  - `git diff --check`
+
+### ISSUE-228: Pubsub emits oversized heartbeat batches that peers drop
+
+- Score: 62
+- Category: high-load stability / pubsub membership repair
+- Status: fixed by `f9fd337` (`fix: chunk pubsub heartbeats`).
+- Reviewer:
+  - `Socrates` (forked RED-team reviewer), accepted and reviewed the fix.
+- Affected code:
+  - `src/service/pubsub_service.rs`
+  - `src/peer.rs` test helper only
+- Impact: a node with more than `MAX_HEARTBEAT_CHANNELS_PER_BATCH` local
+  pubsub channel rows emits one oversized `Heartbeat` broadcast. Receivers
+  reject heartbeats whose decoded channel count exceeds that cap, so legitimate
+  membership repair can be dropped in large pubsub deployments.
+- Distinctness: ISSUE-106 bounded inbound heartbeat processing. ISSUE-228 is
+  the matching outbound batching gap: the sender still produced a batch that
+  fixed receivers intentionally reject.
+- Failing evidence:
+  - `RUST_LOG=error cargo test pubsub_outbound_heartbeat_batches_must_respect_inbound_cap --lib -- --nocapture`
+  - Failure before fix:
+    - `outbound pubsub heartbeats must not exceed the inbound batch cap, got 1025 rows`
+- Root cause: `PubsubService::on_heartbeat_tick` collected every local channel
+  into one `Heartbeat(Vec<ChannelHeartbeat>)`, while inbound
+  `PubsubMessage::Heartbeat` rejects batches over
+  `MAX_HEARTBEAT_CHANNELS_PER_BATCH`.
+- Minimal fix proposal: keep the receiver cap unchanged and chunk outbound
+  heartbeat broadcasts into batches of at most
+  `MAX_HEARTBEAT_CHANNELS_PER_BATCH`, preserving the existing empty heartbeat
+  broadcast.
+- Fix: outbound pubsub heartbeats are now emitted in capped chunks. The
+  regression test observes outbound broadcast frames directly and asserts every
+  serialized heartbeat respects the inbound cap while preserving all channel
+  rows.
+- Fixed evidence:
+  - `RUST_LOG=error cargo test pubsub_outbound_heartbeat_batches_must_respect_inbound_cap --lib -- --nocapture`
+  - `RUST_LOG=error cargo test heartbeat --lib -- --nocapture`
+  - `RUST_LOG=error cargo test pubsub --lib -- --nocapture`
+  - `rustfmt --edition 2021 --check src/service/pubsub_service.rs`
   - `git diff --check`

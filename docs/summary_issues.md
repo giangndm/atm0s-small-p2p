@@ -5,11 +5,11 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Audit Status
 
-- Accepted issues: 227
+- Accepted issues: 228
 - Missing issue scores: 0
 - Current consecutive no-new-issue cycles: 0
-- Current audit continuation: ISSUE-227 accepted and fixed after the
-  post-ISSUE-226 continuation.
+- Current audit continuation: ISSUE-228 accepted and fixed after the
+  post-ISSUE-227 continuation.
 - Fix phase status: ISSUE-001, ISSUE-003, ISSUE-004, ISSUE-005, ISSUE-006, ISSUE-007,
   ISSUE-002, ISSUE-008, ISSUE-009, ISSUE-010, ISSUE-011, ISSUE-012, ISSUE-013, ISSUE-014, ISSUE-015, ISSUE-017, ISSUE-020, ISSUE-021, ISSUE-023, ISSUE-024, ISSUE-025, ISSUE-027, ISSUE-033, ISSUE-034, ISSUE-039, ISSUE-045, ISSUE-046, ISSUE-047, ISSUE-048, ISSUE-055, ISSUE-059, ISSUE-103, ISSUE-110, ISSUE-111, ISSUE-115, ISSUE-116, ISSUE-117, ISSUE-118, ISSUE-119, ISSUE-120, ISSUE-122, ISSUE-123,
   ISSUE-124, ISSUE-125, ISSUE-126, ISSUE-127, ISSUE-128, ISSUE-129, ISSUE-130,
@@ -70,6 +70,8 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   ISSUE-227 is fixed by `c0d7616`: awaited broadcast fanout now admits
   peer-alias sends concurrently under the existing bounded timeout instead of
   waiting one timeout per congested peer.
+  ISSUE-228 is fixed by `f9fd337`: outbound pubsub heartbeats are chunked to
+  `MAX_HEARTBEAT_CHANNELS_PER_BATCH`, matching the inbound heartbeat cap.
   ISSUE-043 is fixed by bounding pending pubsub publish/feedback RPC request
   maps before responder fanout.
   ISSUE-054 is fixed by rejecting zero network tick intervals before endpoint
@@ -280,7 +282,7 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Representative issues: ISSUE-010, ISSUE-024, ISSUE-027, ISSUE-035,
   ISSUE-041, ISSUE-043, ISSUE-045, ISSUE-046, ISSUE-100 through ISSUE-108,
-  ISSUE-122, ISSUE-131, ISSUE-174, ISSUE-196.
+  ISSUE-122, ISSUE-131, ISSUE-174, ISSUE-196, ISSUE-228.
 - Pattern: decoded service-level collections, pending maps, cache sets,
   tombstones, remote stores, retained channel state, and outbound event queues
   often have no item-count or lifetime cap.
@@ -299,6 +301,10 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   work after duplicate coalescing and local hits; overflow callers receive
   `None` without scan/check fanout or metrics increments. Verification:
   `cargo test distinct_pending_find_requests_must_be_bounded -- --nocapture`.
+- ISSUE-228, score 62: fixed by `f9fd337`. Pubsub heartbeat senders now split
+  outbound heartbeat rows into batches no larger than
+  `MAX_HEARTBEAT_CHANNELS_PER_BATCH`, so high-channel-count nodes do not emit
+  heartbeats that fixed receivers drop under the inbound cap.
 
 ### RC-6: Lifecycle cleanup and stale handles are inconsistent
 
