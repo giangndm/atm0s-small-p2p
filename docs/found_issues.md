@@ -11,11 +11,12 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 3
-- Current audit continuation: critical-only post-ISSUE-246 route, discovery,
-  and alias lifecycle review found no new score-80+ issue across route sync,
-  path stability, discovery seed/non-seed lifecycle, tombstones, alias cache,
-  pending find bounds, and peer-disconnect cleanup.
+- Current consecutive no-new-issue cycles: 4
+- Current audit continuation: critical-only post-ISSUE-246 metrics,
+  visualization, requester, and service-boundary review found no new
+  score-80+ issue across scan trust, responder correlation, stale disconnect
+  cleanup, service registration, requester liveness, service-id validation,
+  and backpressure behavior.
 
 ## Root Cause Summary
 
@@ -19857,6 +19858,40 @@ the source of truth for evidence and reviewer decisions.
   - Alias/pubsub lifecycle generation saturation remains a noncritical score
     58 candidate and is deferred under the current critical-only rule.
 - Current consecutive no-new cycles after ISSUE-246: 3.
+
+### Cycle after ISSUE-246 no-new critical cycle 4: metrics, visualization, requester, and service-boundary review
+
+- Scope: critical-only pass over metrics, visualization, requester, and
+  service-boundary behavior after the user narrowed the fix phase to score-80+
+  issues. Reviewed `src/service/metrics_service.rs`,
+  `src/service/visualization_service.rs`, `src/requester.rs`,
+  `src/service.rs`, plus `src/ctx.rs` and `src/lib.rs` as needed for service
+  creation, service-id validation, disconnect fanout, shutdown, and
+  local-delivery/backpressure context.
+- Reviewer: `Pasteur the 2nd` (forked RED-team reviewer), returned
+  `NO_NEW_CRITICAL`.
+- Verification:
+  - `RUST_LOG=error cargo test metrics --lib` passed, 14/14.
+  - `RUST_LOG=error cargo test visualization --lib` passed, 19/19.
+  - `RUST_LOG=error cargo test requester --lib` passed, 13/13.
+  - `RUST_LOG=error cargo test service --lib` passed, 198/198.
+  - Ledger check found 21 score-80+ issues and all 21 are marked fixed.
+- Duplicate mapping:
+  - Metrics and visualization scan trust, collector allowlists, unsolicited
+    `Info`, responder correlation, stale `Info` after disconnect, scan fanout
+    timeout, scan-response coalescing, and batch/remote-peer caps map to
+    ISSUE-165, ISSUE-202 through ISSUE-204, ISSUE-226, ISSUE-232, RC-1,
+    RC-2, RC-3, and RC-6.
+  - Requester bounded admission, stale network requester behavior, stale
+    service requester behavior, duplicate/rejected service creation, disabled
+    unregistered handles, and service-id validation map to ISSUE-028,
+    ISSUE-052, ISSUE-053, ISSUE-060, ISSUE-072, ISSUE-073, ISSUE-076,
+    ISSUE-091, ISSUE-125, ISSUE-234, RC-3, and RC-6.
+  - Local service delivery, all-failed broadcast reporting, disconnect
+    notification retry, graceful shutdown, and high-load backpressure behavior
+    map to ISSUE-215 through ISSUE-225, ISSUE-227, ISSUE-229, ISSUE-230,
+    RC-3, and RC-6.
+- Current consecutive no-new cycles after ISSUE-246: 4.
 
 ### Cycle after ISSUE-245 no-new cycle 1: transport, stream, requester, and service admission review
 
