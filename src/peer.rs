@@ -51,9 +51,39 @@ pub(crate) struct TestCongestedPeerAlias {
 }
 
 #[cfg(test)]
+pub(crate) struct TestPeerAlias {
+    alias: PeerConnectionAlias,
+    rx: tokio::sync::mpsc::Receiver<PeerConnectionControl>,
+}
+
+#[cfg(test)]
 impl TestCongestedPeerAlias {
     pub(crate) fn alias(&self) -> PeerConnectionAlias {
         self.alias.clone()
+    }
+}
+
+#[cfg(test)]
+impl TestPeerAlias {
+    pub(crate) fn alias(&self) -> PeerConnectionAlias {
+        self.alias.clone()
+    }
+
+    pub(crate) async fn recv_msg(&mut self) -> Option<PeerMessage> {
+        match self.rx.recv().await? {
+            PeerConnectionControl::Send(msg, _) => Some(msg),
+            PeerConnectionControl::SendUnicastWithAck(_, source, dest, service, data, _) => Some(PeerMessage::Unicast(source, dest, service, data)),
+            PeerConnectionControl::OpenStream(..) | PeerConnectionControl::Close => None,
+        }
+    }
+}
+
+#[cfg(test)]
+pub(crate) fn test_peer_alias(local_id: PeerId, to_id: PeerId, conn_id: ConnectionId) -> TestPeerAlias {
+    let (tx, rx) = channel(16);
+    TestPeerAlias {
+        alias: PeerConnectionAlias::new(local_id, to_id, conn_id, tx),
+        rx,
     }
 }
 

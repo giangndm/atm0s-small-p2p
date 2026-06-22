@@ -59,7 +59,7 @@ impl RpcId {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 struct ChannelHeartbeat {
     channel: PubsubChannelId,
     publish: bool,
@@ -542,7 +542,13 @@ impl PubsubService {
                 subscribe_generation: state.local_subscribe_generation,
             });
         }
-        self.broadcast(&PubsubMessage::Heartbeat(heartbeat)).await;
+        if heartbeat.is_empty() {
+            self.broadcast(&PubsubMessage::Heartbeat(heartbeat)).await;
+        } else {
+            for chunk in heartbeat.chunks(MAX_HEARTBEAT_CHANNELS_PER_BATCH) {
+                self.broadcast(&PubsubMessage::Heartbeat(chunk.to_vec())).await;
+            }
+        }
         Ok(())
     }
 
@@ -1376,7 +1382,13 @@ mod test {
     };
 
     use super::*;
-    use crate::{ctx::SharedCtx, msg::P2pServiceId, peer::test_congested_peer_alias, router::SharedRouterTable, ConnectionId};
+    use crate::{
+        ctx::SharedCtx,
+        msg::{P2pServiceId, PeerMessage},
+        peer::{test_congested_peer_alias, test_peer_alias},
+        router::SharedRouterTable,
+        ConnectionId,
+    };
 
     struct FailingSerialize;
 
@@ -2374,6 +2386,48 @@ mod test {
         let updated_channels = service.channels.values().filter(|state| state.has_remote_publisher(from_peer)).count();
 
         assert_eq!(updated_channels, MAX_HEARTBEAT_CHANNELS_PER_BATCH, "pubsub heartbeat batches at the cap must be accepted");
+    }
+
+    #[tokio::test]
+    async fn pubsub_outbound_heartbeat_batches_must_respect_inbound_cap() {
+        let local = PeerId::from(1);
+        let remote = PeerId::from(2);
+        let conn = ConnectionId::from(7);
+        let ctx = SharedCtx::new(local, SharedRouterTable::new(local));
+        let (base_service, _service_tx) = P2pService::build(P2pServiceId::from(0), ctx.clone());
+        let mut service = PubsubService::new(base_service);
+
+        for idx in 0..=MAX_HEARTBEAT_CHANNELS_PER_BATCH {
+            let channel = PubsubChannelId(idx as u64 + 10);
+            let (sub_tx, _sub_rx) = subscriber_event_channel();
+            service
+                .on_internal(InternalMsg::SubscriberCreated(subscriber_handle(SubscriberLocalId::rand()), channel, sub_tx))
+                .await
+                .expect("subscriber should be registered");
+        }
+
+        let mut peer = test_peer_alias(local, remote, conn);
+        ctx.register_conn(conn, peer.alias());
+
+        service.on_heartbeat_tick().await.expect("heartbeat tick should process");
+
+        let mut total_rows = 0;
+        let mut batches = 0;
+        while let Ok(Some(PeerMessage::Broadcast(_, _, _, data))) = tokio::time::timeout(Duration::from_millis(20), peer.recv_msg()).await {
+            let PubsubMessage::Heartbeat(rows) = bincode::deserialize(&data).expect("heartbeat should deserialize") else {
+                panic!("heartbeat broadcast must contain a pubsub heartbeat");
+            };
+            assert!(
+                rows.len() <= MAX_HEARTBEAT_CHANNELS_PER_BATCH,
+                "outbound pubsub heartbeats must not exceed the inbound batch cap, got {} rows",
+                rows.len()
+            );
+            total_rows += rows.len();
+            batches += 1;
+        }
+
+        assert!(batches >= 2, "outbound heartbeat should be split into multiple capped batches");
+        assert_eq!(total_rows, MAX_HEARTBEAT_CHANNELS_PER_BATCH + 1, "chunked heartbeat broadcasts must preserve every local channel row");
     }
 
     #[tokio::test]
