@@ -2043,6 +2043,10 @@ the source of truth for evidence and reviewer decisions.
   output even though the underlying connection alias/neighbour is absent. This
   is distinct from ISSUE-057's stale route installation and ISSUE-063's stale
   sync-data panic.
+- Fix status: fixed by validating `MainEvent::PeerStats` with
+  `router.is_direct_peer(conn, peer)` before exporting metrics. Unknown,
+  stale, or mismatched connection/peer pairs now return `Continue` without
+  updating `SharedCtx` metrics.
 - Evidence test:
   - `cargo test stale_peer_stats_event_must_not_publish_metrics_for_unknown_connection -- --nocapture`
   - Failure summary: processing `MainEvent::PeerStats(ConnectionId(404), ...)`
