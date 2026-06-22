@@ -2206,6 +2206,8 @@ the source of truth for evidence and reviewer decisions.
 
 ### ISSUE-076: Dropped service requesters can still send broadcast
 
+- Status: fixed by checking the `P2pServiceRequester` liveness token before
+  requester broadcast sends can reach `SharedCtx`.
 - Category: correctness, service lifecycle stability
 - Score: 69/100
 - Reviewer: `Hume`, confirmed.
@@ -2225,9 +2227,9 @@ the source of truth for evidence and reviewer decisions.
   ISSUE-073, which covers stream setup.
 - Evidence test:
   - `cargo test dropped_service_requester_must_not_continue_sending_broadcast -- --nocapture`
-  - Failure summary: after dropping node1's `P2pService`, a cloned
-    `P2pServiceRequester` sends `stale-service-broadcast`, and node2's service
-    receives `P2pServiceEvent::Broadcast`.
+  - Fixed summary: after dropping node1's `P2pService`, the cloned requester
+    now returns `Err` from `send_broadcast`, and node2's service receives no
+    stale `P2pServiceEvent::Broadcast`.
 
 ### ISSUE-077: Replicated KV zero changed batch size returns false empty success
 

@@ -108,6 +108,7 @@ impl P2pServiceRequester {
     }
 
     pub async fn send_broadcast(&self, data: Vec<u8>) -> anyhow::Result<usize> {
+        self.ensure_live()?;
         self.ctx.send_broadcast(self.service, data).await
     }
 
@@ -117,6 +118,7 @@ impl P2pServiceRequester {
     }
 
     pub async fn try_send_broadcast(&self, data: Vec<u8>) -> anyhow::Result<usize> {
+        self.ensure_live()?;
         self.ctx.try_send_broadcast(self.service, data)
     }
 
