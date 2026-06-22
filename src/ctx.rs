@@ -336,11 +336,7 @@ impl SharedCtx {
             RouteAction::Next(next) => {
                 let source = self.router.local_id();
                 let conn = self.conn(&next).ok_or(anyhow!("peer not found {next}"))?;
-                if conn.to_id() == dest {
-                    conn.send_unicast_with_ack(source, dest, service_id, data).await?;
-                } else {
-                    conn.try_send(PeerMessage::Unicast(source, dest, service_id, data))?;
-                }
+                conn.send_unicast_with_ack(source, dest, service_id, data).await?;
                 Ok(())
             }
         }

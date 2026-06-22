@@ -2,7 +2,7 @@ use std::time::Duration;
 
 use test_log::test;
 
-use crate::{P2pServiceEvent, router::RouteAction};
+use crate::{router::RouteAction, P2pServiceEvent};
 
 use super::create_node;
 
@@ -216,6 +216,44 @@ async fn unicast_must_not_report_success_when_destination_service_receiver_is_cl
     let result = service1.send_unicast(addr2.peer_id(), b"closed-destination".to_vec()).await;
 
     assert!(result.is_err(), "send_unicast must not report success when the destination service receiver is already closed");
+}
+
+#[test(tokio::test)]
+async fn relayed_unicast_must_not_report_success_when_destination_service_receiver_is_closed() {
+    let (mut node1, addr1) = create_node(false, 1, vec![]).await;
+    let service1 = node1.create_service(0.into());
+    tokio::spawn(async move { while node1.recv().await.is_ok() {} });
+
+    let (mut node2, addr2) = create_node(false, 2, vec![]).await;
+    let requester2 = node2.requester();
+    tokio::spawn(async move { while node2.recv().await.is_ok() {} });
+
+    let (mut node3, addr3) = create_node(false, 3, vec![]).await;
+    let service3 = node3.create_service(0.into());
+    drop(service3);
+    let requester3 = node3.requester();
+    tokio::spawn(async move { while node3.recv().await.is_ok() {} });
+
+    requester2.connect(addr1.clone()).await.expect("node2 should connect to node1");
+    requester3.connect(addr2).await.expect("node3 should connect to node2");
+
+    tokio::time::timeout(Duration::from_secs(3), async {
+        loop {
+            if matches!(service1.router().action(&addr3.peer_id()), Some(RouteAction::Next(_))) {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .expect("node1 should learn a relayed route to node3");
+
+    let result = service1.send_unicast(addr3.peer_id(), b"closed-relayed-destination".to_vec()).await;
+
+    assert!(
+        result.is_err(),
+        "relayed send_unicast must not report success when the final destination service receiver is already closed"
+    );
 }
 
 #[test(tokio::test)]

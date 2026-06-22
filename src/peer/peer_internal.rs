@@ -21,8 +21,8 @@ use tokio::{
     io::copy_bidirectional,
     select,
     sync::{
+        mpsc::{channel, error::TrySendError, Receiver, Sender},
         Mutex, Notify, OwnedSemaphorePermit, Semaphore,
-        mpsc::{Receiver, Sender, channel, error::TrySendError},
     },
     task::JoinHandle,
     time::Interval,
@@ -30,13 +30,13 @@ use tokio::{
 use tokio_util::codec::Framed;
 
 use crate::{
-    ConnectionId, MainEvent, P2P_CONNECTION_CONGESTION_EVENTS, P2P_CONNECTION_LOST_BYTES, P2P_CONNECTION_LOST_PKT, P2P_CONNECTION_RECV_BYTES, P2P_CONNECTION_RTT, P2P_CONNECTION_SENT_BYTES,
-    P2P_CONNECTION_UPTIME, P2pServiceEvent, PeerDiscoverySync, PeerId, PeerMainData,
     ctx::SharedCtx,
     msg::{P2pServiceId, PeerMessage, StreamConnectReq, StreamConnectRes, UnicastAckId},
     router::{RouteAction, RouterTableSync},
-    stream::{BincodeCodec, P2pQuicStream, wait_object, write_object},
+    stream::{wait_object, write_object, BincodeCodec, P2pQuicStream},
     utils::ErrorExt,
+    ConnectionId, MainEvent, P2pServiceEvent, PeerDiscoverySync, PeerId, PeerMainData, P2P_CONNECTION_CONGESTION_EVENTS, P2P_CONNECTION_LOST_BYTES, P2P_CONNECTION_LOST_PKT, P2P_CONNECTION_RECV_BYTES,
+    P2P_CONNECTION_RTT, P2P_CONNECTION_SENT_BYTES, P2P_CONNECTION_UPTIME,
 };
 
 use super::PeerConnectionControl;
@@ -406,8 +406,27 @@ impl PeerConnectionInternal {
                         }
                     }
                     UnicastRouteDecision::Forward(next) => {
-                        log::warn!("[PeerConnectionInternal {}] reject acked unicast relay to {dest}: next hop {next} is not local", self.remote);
-                        Err(anyhow!("acked unicast relay is unsupported"))
+                        if let Some(conn) = self.ctx.conn(&next) {
+                            let ctx = self.ctx.clone();
+                            let ingress = self.conn_id;
+                            let remote = self.remote;
+                            tokio::spawn(async move {
+                                let relay_result = conn.send_unicast_with_ack(effective_source, dest, service_id, data).await.map_err(|err| err.to_string());
+                                let Some(ingress_conn) = ctx.conn(&ingress) else {
+                                    log::warn!("[PeerConnectionInternal {remote}] acked unicast relay to {dest} cannot answer upstream: ingress connection {ingress} not found");
+                                    return;
+                                };
+                                match tokio::time::timeout(CONTROL_SEND_TIMEOUT, ingress_conn.send(PeerMessage::UnicastAck(ack_id, relay_result))).await {
+                                    Ok(Ok(())) => {}
+                                    Ok(Err(err)) => log::warn!("[PeerConnectionInternal {remote}] acked unicast relay to {dest} failed to answer upstream: {err}"),
+                                    Err(_) => log::warn!("[PeerConnectionInternal {remote}] acked unicast relay to {dest} timed out answering upstream"),
+                                }
+                            });
+                            return Ok(());
+                        } else {
+                            log::warn!("[PeerConnectionInternal {}] peer {next} not found for acked unicast relay to {dest}", self.remote);
+                            Err(anyhow!("peer not found"))
+                        }
                     }
                     UnicastRouteDecision::DropIngressLoop(next) => {
                         log::warn!("[PeerConnectionInternal {}] drop acked unicast relay to {dest}: next hop {next} is ingress connection", self.remote);
