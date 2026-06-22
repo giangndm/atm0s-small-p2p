@@ -4119,6 +4119,9 @@ the source of truth for evidence and reviewer decisions.
   logging to preserve the current handle-returning API. If a full or closed
   queue prevents handle registration, the returned dead-on-arrival handle
   behavior remains tracked by ISSUE-058/API correctness follow-up.
+- Fix status: fixed by bounding the pubsub internal control queue at
+  `PUBSUB_INTERNAL_CONTROL_QUEUE_SIZE` and using `try_send` admission for
+  request, lifecycle, and drop control messages.
 - Affected code:
   - `src/service/pubsub_service.rs`: `PubsubService::new` creates
     `internal_tx/internal_rx` with `tokio::sync::mpsc::unbounded_channel`.
