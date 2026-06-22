@@ -11,7 +11,7 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 2
+- Current consecutive no-new-issue cycles: 3
 - Stop condition requested by user: continue until 5 consecutive cycles find no
   new accepted issue. Not satisfied after ISSUE-225; continue auditing.
 
@@ -18490,3 +18490,36 @@ the source of truth for evidence and reviewer decisions.
   backpressure policy, RC-4 stream setup hardening, RC-6 lifecycle cleanup, and
   RC-7 route stability. Continue auditing; consecutive no-new cycles after
   ISSUE-225: 2.
+
+### Cycle after ISSUE-225 no-new cycle 3: steady/churn fuzz and lifecycle review
+
+- Scope: forked RED-team reviewer `Cicero` reviewed post-225
+  `PeerConnectionInternal` ack/local-service worker behavior, stream
+  accept/open/relay setup and response timeouts, route selection hysteresis and
+  direct-route preference, discovery seed retention, non-seed timeout/removal,
+  stopped tombstones, main-loop lifecycle validation for `PeerStopped`,
+  `PeerDisconnected`, sync and stats, and fuzz harness action coverage for
+  steady and churn-style node behavior. Main-agent local review also checked
+  fuzz coverage and graceful shutdown code.
+- Result: no new accepted issue.
+- Duplicate or reviewed mappings:
+  - Ack/local-service backpressure maps to ISSUE-224 and ISSUE-225.
+  - Main-queue sync/lifecycle backpressure maps to ISSUE-218 and ISSUE-215
+    through ISSUE-223.
+  - Outbound/control-frame stalls map to ISSUE-219 and ISSUE-164.
+  - Stream setup reliability maps to ISSUE-117, ISSUE-156, ISSUE-217, and
+    ISSUE-220.
+  - Route/path jumping maps to ISSUE-003 and RC-7.
+  - Seed/non-seed discovery lifecycle maps to existing discovery graceful-stop
+    and timeout fixes.
+- Evidence:
+  - `RUST_LOG=error P2P_FUZZ_NODES=12 P2P_FUZZ_STEPS=600 P2P_FUZZ_SEED=22503 cargo test fuzz_random_steady_valid_node_actions_must_not_panic_connection_tasks --lib -- --nocapture`
+  - `RUST_LOG=error P2P_FUZZ_NODES=12 P2P_FUZZ_STEPS=250 P2P_FUZZ_SEED=22503 cargo test fuzz_random_sanitized_node_churn_actions_must_not_panic_connection_tasks --lib -- --nocapture`
+  - Result: both passed. Shutdown/refused-connection, duplicate-connection,
+    connection-lost, and endpoint teardown logs were reviewed as existing
+    lifecycle or bounded-backpressure fallout rather than a distinct failing
+    invariant.
+- Summary/root cause review: no new root cause beyond RC-3 bounded
+  backpressure policy, RC-4 stream setup hardening, RC-6 lifecycle cleanup, and
+  RC-7 route stability. Continue auditing; consecutive no-new cycles after
+  ISSUE-225: 3.
