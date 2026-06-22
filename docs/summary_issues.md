@@ -7,9 +7,9 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Accepted issues: 208
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 4
-- Stop condition: continue until 5 consecutive cycles find no new accepted
-  issue; currently 4/5 after ISSUE-208.
+- Current consecutive no-new-issue cycles: 5
+- Stop condition: satisfied after 5 consecutive no-new cycles following
+  ISSUE-208.
 - Fix phase status: ISSUE-001, ISSUE-003, ISSUE-004, ISSUE-005, ISSUE-006, ISSUE-007,
   ISSUE-002, ISSUE-008, ISSUE-009, ISSUE-010, ISSUE-011, ISSUE-012, ISSUE-013, ISSUE-014, ISSUE-015, ISSUE-017, ISSUE-020, ISSUE-021, ISSUE-023, ISSUE-024, ISSUE-025, ISSUE-027, ISSUE-033, ISSUE-034, ISSUE-039, ISSUE-045, ISSUE-046, ISSUE-047, ISSUE-048, ISSUE-055, ISSUE-059, ISSUE-103, ISSUE-110, ISSUE-111, ISSUE-115, ISSUE-116, ISSUE-117, ISSUE-118, ISSUE-119, ISSUE-120, ISSUE-122, ISSUE-123,
   ISSUE-124, ISSUE-125, ISSUE-126, ISSUE-127, ISSUE-128, ISSUE-129, ISSUE-130,
@@ -3668,6 +3668,19 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Recent No-New Audit
 
+- Cycle after ISSUE-208 no-new cycle 5 ran the harder stop-condition fuzz pass:
+  12-node steady valid actions with
+  `P2P_FUZZ_SEED=208401 P2P_FUZZ_NODES=12 P2P_FUZZ_STEPS=3200` and 12-node
+  sanitized churn with
+  `P2P_FUZZ_SEED=208402 P2P_FUZZ_NODES=12 P2P_FUZZ_STEPS=2600`. Both passed.
+  Reviewer `Popper the 12th` confirmed no-new and approved stopping the
+  no-new audit loop for now. Route-loop/path noise maps to ISSUE-003,
+  ISSUE-180, ISSUE-197, and RC-7; duplicate/connect churn maps to ISSUE-113,
+  ISSUE-114, ISSUE-153, ISSUE-177, and RC-7; graceful-stop cleanup churn maps
+  to ISSUE-139, ISSUE-144, ISSUE-170, ISSUE-193, and RC-6; backpressure and
+  control-close noise maps to ISSUE-118, ISSUE-123 through ISSUE-127,
+  ISSUE-153, ISSUE-198 through ISSUE-204, and RC-3. No new root cause or fix
+  proposal was recorded.
 - Cycle after ISSUE-208 no-new cycle 4 reviewed metrics, visualization, alias
   lifecycle/control, and 9-node steady fuzz. Metrics/visualization info guards,
   alias stale requester handling, local shutdown, and peer-scoped shutdown tests

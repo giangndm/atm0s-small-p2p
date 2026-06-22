@@ -11,9 +11,9 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 4
+- Current consecutive no-new-issue cycles: 5
 - Stop condition requested by user: continue until 5 consecutive cycles find no
-  new accepted issue.
+  new accepted issue. Satisfied after ISSUE-208 no-new cycle 5.
 
 ## Root Cause Summary
 
@@ -7296,6 +7296,41 @@ the source of truth for evidence and reviewer decisions.
     guards remaining.
 
 ## No-New-Issue Audit Cycles
+
+### Cycle after ISSUE-208 no-new cycle 5: twelve-node fuzz stop-condition pass
+
+- Result: no accepted non-duplicate issue; 5/5 no-new stop condition reached.
+- Reviewer: `Popper the 12th`, forked subagent review, confirmed
+  duplicate/no-new and approved stopping the no-new audit loop for now.
+- Source and test evidence reviewed:
+  - `src/tests/fuzz.rs`
+  - `RUST_LOG=error P2P_FUZZ_SEED=208401 P2P_FUZZ_NODES=12 P2P_FUZZ_STEPS=3200 cargo test fuzz_random_steady_valid_node_actions_must_not_panic_connection_tasks -- --nocapture`
+    passed.
+  - `RUST_LOG=error P2P_FUZZ_SEED=208402 P2P_FUZZ_NODES=12 P2P_FUZZ_STEPS=2600 cargo test fuzz_random_sanitized_node_churn_actions_must_not_panic_connection_tasks -- --nocapture`
+    passed.
+- Evidence summary:
+  - The steady valid-action run completed with duplicate-connection,
+    peer-connection-closed-by-control, and connection-lost logs only.
+  - The sanitized churn run completed with refused connects, shutdown closes,
+    connection-lost events, deadline elapsed, route-loop stream logs, and
+    closed-by-peer/control logs only.
+  - Neither fuzz run produced a panic, failed assertion, background task
+    failure, or distinct reproducible incorrectness.
+- Duplicate mapping:
+  - route reselection/path noise and route-loop logs map to ISSUE-003,
+    ISSUE-180, ISSUE-197, and RC-7.
+  - duplicate connections and connect churn map to ISSUE-113, ISSUE-114,
+    ISSUE-153, ISSUE-177, and RC-7.
+  - graceful shutdown, stopped-peer, and cleanup churn map to ISSUE-139,
+    ISSUE-144, ISSUE-170, ISSUE-193, and RC-6.
+  - backpressure, no-capacity, and control-close noise map to ISSUE-118,
+    ISSUE-123 through ISSUE-127, ISSUE-153, ISSUE-198 through ISSUE-204, and
+    RC-3.
+- Root-cause summary impact: no new root cause; the fuzz noise maps to existing
+  RC-3, RC-6, and RC-7.
+- Smallest fix proposal: no new summary fix change; keep the mapped issue fix
+  proposals for route stability and loop rejection, duplicate-connect
+  coalescing, graceful-stop cleanup, and bounded control/backpressure paths.
 
 ### Cycle after ISSUE-208 no-new cycle 4: metrics visualization alias duplicate review
 
