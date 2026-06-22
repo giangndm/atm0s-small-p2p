@@ -50,12 +50,14 @@ impl PeerDiscovery {
         self.local = Some((peer_id, address));
     }
 
-    pub fn clear_timeout(&mut self, now_ms: u64) {
+    pub fn clear_timeout(&mut self, now_ms: u64) -> Vec<PeerId> {
+        let mut expired = Vec::new();
         self.remotes.retain(|peer, (last_updated, _addr)| {
             if timestamp_is_live(*last_updated, now_ms) {
                 true
             } else {
                 log::info!("[PeerDiscovery] remove timeout {peer}");
+                expired.push(*peer);
                 false
             }
         });
@@ -67,6 +69,7 @@ impl PeerDiscovery {
                 false
             }
         });
+        expired
     }
 
     pub fn remove_remote(&mut self, now_ms: u64, peer: &PeerId) {
@@ -356,7 +359,7 @@ mod test {
 
         assert_eq!(discovery.remotes().collect::<Vec<_>>(), vec![peer1_addr]);
 
-        discovery.clear_timeout(TIMEOUT_AFTER + 90);
+        assert_eq!(discovery.clear_timeout(TIMEOUT_AFTER + 90), vec![peer1]);
 
         assert_eq!(discovery.remotes().next(), None);
     }
@@ -371,7 +374,7 @@ mod test {
 
         assert_eq!(discovery.remotes().collect::<Vec<_>>(), vec![discovered.clone(), seed.clone()]);
 
-        discovery.clear_timeout(100 + TIMEOUT_AFTER);
+        assert_eq!(discovery.clear_timeout(100 + TIMEOUT_AFTER), vec![discovered.peer_id()]);
 
         assert_eq!(
             discovery.remotes().collect::<Vec<_>>(),

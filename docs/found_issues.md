@@ -6082,6 +6082,26 @@ the source of truth for evidence and reviewer decisions.
     address, `router.action(expired)` still returns
     `Some(Next(ConnectionId(20)))`; expected the expired non-seed peer to be
     unroutable.
+- Root cause: discovery expiry and router lifecycle were disconnected; timeout
+  cleanup removed the non-seed address but did not tell the router to drop
+  learned routes to that peer.
+- Fix proposal: return the expired discovered peer ids from
+  `PeerDiscovery::clear_timeout` and prune learned router paths to each expired
+  peer during `P2pNetwork::process_tick`, while preserving any still-live direct
+  route.
+- Fix status: fixed by routing discovery timeout removals through
+  `router.del_learned_peer`, while keeping configured seeds, live direct
+  connections, and graceful-stop tombstones unchanged. Verified with
+  `cargo test discovery_timeout_must_remove_route_to_expired_non_seed -- --nocapture`,
+  `cargo test should_remove_learned_peer_path_without_removing_direct_peer -- --nocapture`,
+  `cargo test clear_timeout -- --nocapture`,
+  `cargo test non_seed_discovered_peer_ages_out_but_seed_remains_retryable -- --nocapture`,
+  `cargo test graceful_stop_tombstone -- --nocapture`,
+  `cargo test peer_stopped_for_seed_must_not_remove_active_seed_route -- --nocapture`,
+  `cargo test stopped_peer_route_must_not_be_resurrected_by_third_party_sync -- --nocapture`,
+  `cargo test peer_stopped_route_must_not_be_resurrected_by_connection_ticker -- --nocapture`,
+  and `cargo fmt -- --check`. Engineer `Sagan the 12th` proposed the fix;
+  coder-review `Avicenna the 12th` accepted it.
 
 ### ISSUE-168: Duplicate pubsub local ids detach live publisher handles
 

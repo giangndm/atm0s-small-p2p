@@ -217,6 +217,19 @@ impl RouterTable {
         self.peers.retain(|_k, v| v.best().is_some());
     }
 
+    fn del_learned_peer(&mut self, peer: &PeerId) {
+        let direct_conns = self
+            .directs
+            .iter()
+            .filter_map(|(conn, (direct_peer, _))| direct_peer.eq(peer).then_some(*conn))
+            .collect::<BTreeSet<_>>();
+        if let Some(memory) = self.peers.get_mut(peer) {
+            memory.paths.retain(|conn, _metric| direct_conns.contains(conn));
+            Self::select_best_for(peer, memory);
+        }
+        self.peers.retain(|_k, v| v.best().is_some());
+    }
+
     fn is_direct_peer(&self, conn: &ConnectionId, peer: &PeerId) -> bool {
         self.directs.get(conn).is_some_and(|(direct_peer, _)| direct_peer == peer)
     }
@@ -360,6 +373,10 @@ impl SharedRouterTable {
 
     pub fn del_peer(&self, peer: &PeerId) {
         self.table.write().del_peer(peer);
+    }
+
+    pub fn del_learned_peer(&self, peer: &PeerId) {
+        self.table.write().del_learned_peer(peer);
     }
 
     pub fn is_direct_peer(&self, conn: &ConnectionId, peer: &PeerId) -> bool {
@@ -520,6 +537,31 @@ mod tests {
 
         assert_eq!(table.next_remote(&peer2), None);
         assert_eq!(table.next_remote(&peer1), Some((conn1, (0, 100).into())));
+    }
+
+    #[test_log::test]
+    fn should_remove_learned_peer_path_without_removing_direct_peer() {
+        let local = PeerId(0);
+        let expired = PeerId(2);
+        let relay = PeerId(3);
+        let direct_conn = ConnectionId(20);
+        let relay_conn = ConnectionId(30);
+        let mut table = RouterTable::new(local);
+
+        table.set_direct(relay_conn, relay, 10);
+        table.apply_sync(relay_conn, RouterTableSync(vec![(expired, (0, 5).into())]));
+        assert_eq!(table.action(&expired), Some(RouteAction::Next(relay_conn)));
+
+        table.del_learned_peer(&expired);
+        assert_eq!(table.action(&expired), None);
+
+        table.set_direct(direct_conn, expired, 20);
+        table.apply_sync(relay_conn, RouterTableSync(vec![(expired, (0, 5).into())]));
+        assert_eq!(table.action(&expired), Some(RouteAction::Next(direct_conn)));
+
+        table.del_learned_peer(&expired);
+        assert_eq!(table.action(&expired), Some(RouteAction::Next(direct_conn)));
+        assert!(table.is_direct_peer(&direct_conn, &expired));
     }
 
     #[test_log::test]

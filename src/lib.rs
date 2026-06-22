@@ -279,7 +279,9 @@ impl<SECURE: HandshakeProtocol> P2pNetwork<SECURE> {
     }
 
     fn process_tick(&mut self, now_ms: u64) -> anyhow::Result<P2pNetworkEvent> {
-        self.discovery.clear_timeout(now_ms);
+        for peer in self.discovery.clear_timeout(now_ms) {
+            self.router.del_learned_peer(&peer);
+        }
         self.pending_sync_tasks.retain(|_, task| !task.is_finished());
         for conn in self.neighbours.connected_conns() {
             let peer_id = conn.peer_id().expect("connected neighbours should have peer_id");
