@@ -87,8 +87,8 @@ struct PublishRpcReq {
 }
 
 impl PublishRpcReq {
-    fn deadline(&self) -> Instant {
-        self.started_at + self.timeout
+    fn deadline(&self) -> Option<Instant> {
+        self.started_at.checked_add(self.timeout)
     }
 }
 
@@ -101,8 +101,8 @@ struct FeedbackRpcReq {
 }
 
 impl FeedbackRpcReq {
-    fn deadline(&self) -> Instant {
-        self.started_at + self.timeout
+    fn deadline(&self) -> Option<Instant> {
+        self.started_at.checked_add(self.timeout)
     }
 }
 
@@ -526,8 +526,8 @@ impl PubsubService {
     fn next_rpc_deadline(&self) -> Option<Instant> {
         self.publish_rpc_reqs
             .values()
-            .map(PublishRpcReq::deadline)
-            .chain(self.feedback_rpc_reqs.values().map(FeedbackRpcReq::deadline))
+            .filter_map(PublishRpcReq::deadline)
+            .chain(self.feedback_rpc_reqs.values().filter_map(FeedbackRpcReq::deadline))
             .min()
     }
 
@@ -1523,6 +1523,27 @@ mod test {
     }
 
     #[tokio::test]
+    async fn pubsub_rpc_huge_timeout_must_not_panic_deadline_calculation() {
+        let mut service = test_service();
+        let channel = PubsubChannelId(1);
+        let (sub_tx, _sub_rx) = subscriber_event_channel();
+        let (tx, _rx) = oneshot::channel();
+
+        service
+            .on_internal(InternalMsg::SubscriberCreated(subscriber_handle(SubscriberLocalId::rand()), channel, sub_tx))
+            .await
+            .expect("subscriber should be registered");
+        service
+            .on_internal(InternalMsg::GuestPublishRpc(channel, vec![1], "hold".to_string(), tx, Duration::MAX))
+            .await
+            .expect("publish RPC should process");
+
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| service.next_rpc_deadline()));
+
+        assert!(result.is_ok(), "caller-supplied huge pubsub RPC timeouts must not panic service deadline calculation");
+    }
+
+    #[tokio::test]
     async fn pending_publish_rpc_requests_must_be_bounded_with_draining_local_subscriber() {
         let mut service = test_service();
         let channel = PubsubChannelId(1);
@@ -2453,8 +2474,10 @@ mod test {
         let local = PeerId::from(1);
         let remote = PeerId::from(2);
         let conn = ConnectionId::from(7);
-        let ctx = SharedCtx::new(local, SharedRouterTable::new(local));
-        let (base_service, _service_tx) = P2pService::build(P2pServiceId::from(0), ctx.clone());
+        let mut ctx = SharedCtx::new(local, SharedRouterTable::new(local));
+        let service_id = P2pServiceId::from(0);
+        let (mut base_service, service_tx) = P2pService::build(service_id, ctx.clone());
+        base_service.set_registered(ctx.set_service(service_id, service_tx));
         let mut service = PubsubService::new(base_service);
 
         for idx in 0..=MAX_HEARTBEAT_CHANNELS_PER_BATCH {
