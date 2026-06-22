@@ -2329,6 +2329,9 @@ the source of truth for evidence and reviewer decisions.
     `PublisherEvent::PeerLeaved(PeerSrc::Local)`, a cloned stale requester
     issues `feedback_rpc("stale", b"stale-feedback-rpc", ...)`, and the
     publisher still receives `PublisherEvent::FeedbackRpc`.
+- Fix status: fixed by validating the `SubscriberHandleId` carried by
+  `InternalMsg::FeedbackRpc` against the channel's live local subscribers
+  before delivering to publishers or creating pending RPC state.
 
 ### ISSUE-076: Dropped service requesters can still send broadcast
 

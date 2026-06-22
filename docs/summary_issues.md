@@ -704,6 +704,12 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   requesters now leave the pending request open for the legitimate responder or
   timeout. Verified with
   `cargo test dropped_subscriber_requester_must_not_answer_publish_rpc -- --nocapture`.
+- ISSUE-075: fixed by validating `InternalMsg::FeedbackRpc` against the live
+  local subscriber handle map before fanout or pending-RPC insertion. Stale
+  cloned subscriber requesters now receive `NoDestination` and cannot invoke
+  publisher RPC handlers after their owning `Subscriber` has been dropped.
+  Verified with
+  `cargo test dropped_subscriber_requester_must_not_continue_feedback_rpc -- --nocapture`.
 - ISSUE-116: fixed by carrying `PublisherHandleId` on local
   `FeedbackRpcAnswer` control messages and recording which local publisher
   handles actually received each feedback RPC. Stale or unrelated publisher
