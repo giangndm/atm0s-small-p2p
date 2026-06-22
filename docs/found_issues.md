@@ -11,9 +11,10 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 1
-- Current audit continuation: Cycle after ISSUE-238 no-new cycle 1 reviewed
-  route/discovery lifecycle and path stability; continue auditing.
+- Current consecutive no-new-issue cycles: 2
+- Current audit continuation: Cycle after ISSUE-238 no-new cycle 2 reviewed
+  metrics, visualization, and alias service state/backpressure; continue
+  auditing.
 
 ## Root Cause Summary
 
@@ -19328,6 +19329,40 @@ the source of truth for evidence and reviewer decisions.
     ISSUE-215 through ISSUE-225.
   - Bad-network/high-load lifecycle pressure maps to RC-3, RC-6, and RC-7.
 - Current consecutive no-new cycles after ISSUE-238: 1.
+
+### Cycle after ISSUE-238 no-new cycle 2: metrics, visualization, and alias service state review
+
+- Scope: reviewed `docs/found_issues.md` and `docs/summary_issues.md`, then
+  audited `src/service/metrics_service.rs`,
+  `src/service/visualization_service.rs`, `src/service/alias_service.rs`,
+  `src/service.rs`, and the metrics, visualization, and alias tests for stale
+  `Info` after disconnect/restart, unauthorized scan disclosure, pending
+  responder or waiter leaks, control queue full behavior, alias cache
+  tombstone/generation ordering, local shutdown, and bad-network/high-load
+  backpressure.
+- Reviewer: `Dalton` (forked RED-team reviewer), rejected new issue
+  acceptance and recommended documenting a no-new cycle.
+- Verification:
+  - `RUST_LOG=error cargo test alias --lib -- --nocapture`
+  - `RUST_LOG=error cargo test metrics_stale_info_after_peer_disconnected_must_be_ignored --lib -- --nocapture`
+  - `RUST_LOG=error cargo test visualization_stale_info_after_peer_disconnected_must_be_ignored --lib -- --nocapture`
+  - `RUST_LOG=error cargo test local_shutdown_must_fail_pending_alias_finds --lib -- --nocapture`
+  - `RUST_LOG=error cargo test alias_peer_disconnect_must_clear_remote_lifecycle_and_cached_hint --lib -- --nocapture`
+- Reviewer cross-check:
+  - `RUST_LOG=error cargo test alias --lib -- --nocapture`: passed, 46/46.
+  - `metric_collect`, trusted metrics scan, `discovery_new_node`, and trusted
+    visualization scan integration checks: passed.
+- Duplicate mapping:
+  - Metrics and visualization unauthorized scan disclosure maps to ISSUE-226.
+  - Metrics and visualization stale `Info` after disconnect maps to ISSUE-232.
+  - Metrics scan response transient backpressure maps to ISSUE-202.
+  - Visualization scan response coalescing/backpressure maps to ISSUE-203.
+  - Metrics duplicate response task accumulation maps to ISSUE-204.
+  - Alias control queue full behavior maps to ISSUE-127 and ISSUE-235.
+  - Alias stale `Found`/`NotFound`, cache poisoning, generation ordering,
+    disconnect/restart lifecycle, local shutdown behavior, and pending waiter
+    bounds map to ISSUE-090, ISSUE-179, ISSUE-183, ISSUE-208, and ISSUE-235.
+- Current consecutive no-new cycles after ISSUE-238: 2.
 
 ### Cycle after ISSUE-235 no-new cycle 1: transport, auth, and peer setup review
 
