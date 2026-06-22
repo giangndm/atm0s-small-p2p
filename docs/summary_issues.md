@@ -5,12 +5,12 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Audit Status
 
-- Accepted issues: 242
+- Accepted issues: 243
 - Missing issue scores: 0
 - Current consecutive no-new-issue cycles: 0
-- Current audit continuation: ISSUE-242 fixed pubsub chunked heartbeat
-  completeness. Chunk messages now carry sequence metadata and cleanup runs
-  only after every chunk in the current snapshot has been received.
+- Current audit continuation: ISSUE-243 fixed pubsub chunked heartbeat
+  pending-state growth. Chunk messages now reject snapshot counts above the
+  local chunk-count cap before allocating or extending per-peer pending state.
 - Fix phase status: ISSUE-001, ISSUE-003, ISSUE-004, ISSUE-005, ISSUE-006, ISSUE-007,
   ISSUE-002, ISSUE-008, ISSUE-009, ISSUE-010, ISSUE-011, ISSUE-012, ISSUE-013, ISSUE-014, ISSUE-015, ISSUE-017, ISSUE-020, ISSUE-021, ISSUE-023, ISSUE-024, ISSUE-025, ISSUE-027, ISSUE-033, ISSUE-034, ISSUE-039, ISSUE-045, ISSUE-046, ISSUE-047, ISSUE-048, ISSUE-055, ISSUE-059, ISSUE-103, ISSUE-110, ISSUE-111, ISSUE-115, ISSUE-116, ISSUE-117, ISSUE-118, ISSUE-119, ISSUE-120, ISSUE-122, ISSUE-123,
   ISSUE-124, ISSUE-125, ISSUE-126, ISSUE-127, ISSUE-128, ISSUE-129, ISSUE-130,
@@ -162,6 +162,17 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   `RUST_LOG=error cargo test pubsub --lib -- --nocapture`,
   `rustfmt --edition 2021 --check src/service/pubsub_service.rs`, and
   `git diff --check`.
+  ISSUE-243 is fixed, score 66: pubsub chunked heartbeats now reject
+  `chunks_count` values above `MAX_HEARTBEAT_CHUNKS_PER_SNAPSHOT`, so a peer
+  cannot grow `PendingHeartbeatChunks.seen_chunks` by sending endless sparse
+  empty chunks for one snapshot. Reviewer `Aristotle the 2nd` accepted the
+  issue as distinct from ISSUE-240, ISSUE-241, and ISSUE-242 and supplied the
+  red regression. Verification:
+  `RUST_LOG=error cargo test pubsub_sparse_heartbeat_chunk_indexes_must_not_grow_pending_unbounded --lib`,
+  `RUST_LOG=error cargo test pubsub_chunked_heartbeat --lib`,
+  `RUST_LOG=error cargo test pubsub_heartbeat --lib`,
+  `rustfmt --edition 2021 --check src/service/pubsub_service.rs`, and
+  `git diff --check`.
   ISSUE-043 is fixed by bounding pending pubsub publish/feedback RPC request
   maps before responder fanout.
   ISSUE-054 is fixed by rejecting zero network tick intervals before endpoint
@@ -213,7 +224,7 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   ISSUE-110, ISSUE-111, ISSUE-143,
   ISSUE-166, ISSUE-171, ISSUE-175,
   ISSUE-186, ISSUE-205, ISSUE-206, ISSUE-231, ISSUE-232, ISSUE-233,
-  ISSUE-237, ISSUE-239, ISSUE-240, ISSUE-241, ISSUE-242.
+  ISSUE-237, ISSUE-239, ISSUE-240, ISSUE-241, ISSUE-242, ISSUE-243.
 - Pattern: replicated-KV, alias, metrics, visualization, and pubsub flows accept
   stale, unsolicited, reordered, or mismatched responses or broadcasts because
   handlers do not verify request shape, bounds, version, continuation key,
@@ -275,6 +286,12 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   chunks for the same snapshot had arrived. Smallest fix: add `chunk_index`
   and `chunks_count`, track received chunk indexes per pending snapshot, and
   run omitted-role cleanup only when the receiver has seen the full chunk set.
+- ISSUE-243, score 66: fixed pubsub chunked heartbeat pending-state growth.
+  Root cause: the receiver bounded rows per chunk but trusted peer-supplied
+  `chunks_count` for the snapshot-level sequence space, so sparse chunk indexes
+  could grow `seen_chunks` without ever completing cleanup. Smallest fix:
+  reject `chunks_count` values above `MAX_HEARTBEAT_CHUNKS_PER_SNAPSHOT` and
+  clear that peer's pending snapshot on malformed chunk metadata.
 - ISSUE-238, score 58: fixed by `d340a7b`. A peer-controlled
   `StreamConnectReq.defer_delivery` could reserve all destination service queue
   slots while waiting for a relay commit, temporarily denying legitimate stream

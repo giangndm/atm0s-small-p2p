@@ -41,6 +41,7 @@ const MAX_REMOTE_CREATED_CHANNELS: usize = 1024;
 const MAX_REMOTE_ROLE_TOMBSTONES: usize = MAX_REMOTE_CREATED_CHANNELS * 2;
 const MAX_REMOTE_MEMBERS_PER_CHANNEL: usize = 1024;
 const MAX_HEARTBEAT_CHANNELS_PER_BATCH: usize = 1024;
+const MAX_HEARTBEAT_CHUNKS_PER_SNAPSHOT: u64 = MAX_REMOTE_CREATED_CHANNELS as u64;
 const MAX_RPC_METHOD_LEN: usize = 1024;
 const MAX_PENDING_RPC_REQUESTS: usize = 1024;
 
@@ -772,7 +773,7 @@ impl PubsubService {
                                 self.pending_heartbeat_chunks.remove(&from_peer);
                                 return Ok(());
                             }
-                            if chunks_count == 0 || chunk_index >= chunks_count {
+                            if chunks_count == 0 || chunks_count > MAX_HEARTBEAT_CHUNKS_PER_SNAPSHOT || chunk_index >= chunks_count {
                                 log::warn!("[PubsubService] heartbeat chunk from {from_peer} has invalid sequence {chunk_index}/{chunks_count}, dropping malformed snapshot");
                                 self.pending_heartbeat_chunks.remove(&from_peer);
                                 return Ok(());
@@ -2857,6 +2858,33 @@ mod test {
         assert!(
             !service.channels.get(&old_channel).expect("old channel should remain local").has_remote_publisher(from_peer),
             "cleanup must run once all chunks in an out-of-order snapshot have arrived"
+        );
+    }
+
+    #[tokio::test]
+    async fn pubsub_sparse_heartbeat_chunk_indexes_must_not_grow_pending_unbounded() {
+        let mut service = test_service();
+        let from_peer = PeerId::from(2);
+
+        for chunk_index in 0..=MAX_HEARTBEAT_CHANNELS_PER_BATCH {
+            let payload = bincode::serialize(&PubsubMessage::HeartbeatChunk {
+                snapshot_id: 1,
+                chunk_index: chunk_index as u64,
+                chunks_count: u64::MAX,
+                channels: vec![],
+                is_last: false,
+            })
+            .expect("test heartbeat chunk should serialize");
+
+            service
+                .on_service(P2pServiceEvent::Unicast(from_peer, payload))
+                .await
+                .expect("malformed sparse chunk should not grow pending forever");
+        }
+
+        assert!(
+            service.pending_heartbeat_chunks.get(&from_peer).map_or(0, |pending| pending.seen_chunks.len()) <= MAX_HEARTBEAT_CHANNELS_PER_BATCH,
+            "heartbeat pending chunk indexes must be bounded per peer"
         );
     }
 

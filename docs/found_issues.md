@@ -12,8 +12,8 @@ must resolve.
 ## Audit Status
 
 - Current consecutive no-new-issue cycles: 0
-- Current audit continuation: ISSUE-242 fixed by requiring complete pubsub
-  heartbeat chunk sequences before omitted-role cleanup.
+- Current audit continuation: ISSUE-243 fixed by bounding pubsub heartbeat
+  chunk counts before pending chunk indexes are stored.
 
 ## Root Cause Summary
 
@@ -45,7 +45,7 @@ the source of truth for evidence and reviewer decisions.
   ISSUE-110, ISSUE-111, ISSUE-143, ISSUE-152,
   ISSUE-154, ISSUE-155, ISSUE-158, ISSUE-166, ISSUE-171, ISSUE-175,
   ISSUE-186, ISSUE-231, ISSUE-232, ISSUE-233, ISSUE-237, ISSUE-239,
-  ISSUE-240, ISSUE-241, ISSUE-242.
+  ISSUE-240, ISSUE-241, ISSUE-242, ISSUE-243.
 - Pattern: replicated-KV full sync, changed repair, alias lookup, metrics,
   visualization, and pubsub flows accept stale, unsolicited, reordered, or
   mismatched responses or broadcasts because handlers do not verify
@@ -19513,6 +19513,56 @@ the source of truth for evidence and reviewer decisions.
     `RUST_LOG=error cargo test pubsub_outbound_heartbeat_batches_must_respect_inbound_cap --lib -- --nocapture`,
     `RUST_LOG=error cargo test pubsub_heartbeat --lib -- --nocapture`,
     `RUST_LOG=error cargo test pubsub --lib -- --nocapture`,
+    `rustfmt --edition 2021 --check src/service/pubsub_service.rs`, and
+    `git diff --check` passed.
+
+### ISSUE-243: Sparse pubsub heartbeat chunk indexes can grow pending state
+
+- Status: fixed by bounding heartbeat chunks per snapshot before storing chunk
+  indexes in per-peer pending state.
+- Category: security, stability, high-load/bad-network pubsub resource bounds
+- Score: 66
+- Reviewers:
+  - `Aristotle the 2nd` (forked RED-team reviewer) accepted the issue as
+    distinct from ISSUE-240, ISSUE-241, and ISSUE-242 and supplied the failing
+    regression scenario.
+- Affected code:
+  - `src/service/pubsub_service.rs`: inbound `HeartbeatChunk` validated only
+    `chunks_count != 0` and `chunk_index < chunks_count`.
+  - `src/service/pubsub_service.rs`: `PendingHeartbeatChunks.seen_chunks`
+    stored every unique accepted `chunk_index` for the peer's current snapshot.
+- Impact: a malicious or broken authenticated peer could send endless empty
+  heartbeat chunks with `chunks_count = u64::MAX` and increasing sparse
+  `chunk_index` values. Each frame stays under the per-chunk row cap, but the
+  receiver grows `seen_chunks` for that peer without completing the snapshot,
+  creating a memory-growth vector under hostile or corrupted network input.
+- Distinctness: ISSUE-240 fixed per-chunk cleanup behavior, ISSUE-241 fixed
+  stale pending state across snapshot ids, and ISSUE-242 fixed cleanup from an
+  incomplete same-snapshot chunk set. ISSUE-243 is a resource-bound gap in the
+  accepted snapshot sequence space itself.
+- Root cause: the receiver bounded rows per heartbeat frame but trusted the
+  peer-supplied total chunk count as the size of the valid snapshot sequence
+  space.
+- Minimal fix proposal: define a local `MAX_HEARTBEAT_CHUNKS_PER_SNAPSHOT`,
+  reject `chunks_count` values above it as malformed, and clear that peer's
+  pending snapshot before returning.
+- Fix: added `MAX_HEARTBEAT_CHUNKS_PER_SNAPSHOT` and reject
+  `chunks_count == 0`, `chunks_count > MAX_HEARTBEAT_CHUNKS_PER_SNAPSHOT`, or
+  `chunk_index >= chunks_count` before inserting into `seen_chunks`.
+- Evidence tests:
+  - Red evidence before fix:
+    `RUST_LOG=error cargo test pubsub_sparse_heartbeat_chunk_indexes_must_not_grow_pending_unbounded --lib`
+    failed at `src/service/pubsub_service.rs:2884` with
+    `heartbeat pending chunk indexes must be bounded per peer`.
+  - Reviewer verification:
+    `Aristotle the 2nd` supplied and accepted the same failing sparse-chunk
+    scenario as distinct.
+  - Verification after fix:
+    `RUST_LOG=error cargo test pubsub_sparse_heartbeat_chunk_indexes_must_not_grow_pending_unbounded --lib`
+    passed.
+  - Regression guards:
+    `RUST_LOG=error cargo test pubsub_chunked_heartbeat --lib`,
+    `RUST_LOG=error cargo test pubsub_heartbeat --lib`,
     `rustfmt --edition 2021 --check src/service/pubsub_service.rs`, and
     `git diff --check` passed.
 
