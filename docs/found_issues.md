@@ -4106,6 +4106,9 @@ the source of truth for evidence and reviewer decisions.
   `cargo test requester_connect_after_network_drop_returns_error_not_panic -- --nocapture`,
   `cargo test requester_try_connect_after_network_drop_must_not_panic -- --nocapture`,
   and `cargo fmt -- --check`.
+- Fix status: fixed by bounding the network requester control queue at
+  `NETWORK_CONTROL_QUEUE_SIZE` and using `try_send` admission for best-effort
+  and awaited connect commands.
 
 ### ISSUE-126: Pubsub internal control messages can accumulate without bound
 
