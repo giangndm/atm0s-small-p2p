@@ -11,10 +11,10 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 13
-- Current audit continuation: Focused source-review no-new cycle 3 reviewed
-  route/discovery lifecycle, path stability, graceful-stop cleanup, and stale
-  event guards without a distinct reviewed failure.
+- Current consecutive no-new-issue cycles: 14
+- Current audit continuation: Focused source-review no-new cycle 4 reviewed
+  stream/pipe setup, relayed delivery, unicast acknowledgement, and service
+  backpressure behavior without a distinct reviewed failure.
 
 ## Root Cause Summary
 
@@ -19837,6 +19837,57 @@ the source of truth for evidence and reviewer decisions.
     stream-route symptoms remain covered by RC-3, RC-6, RC-7, ISSUE-156,
     ISSUE-180, ISSUE-217, ISSUE-220, ISSUE-229, ISSUE-230, and ISSUE-238.
 - Current consecutive no-new cycles after ISSUE-238: 13.
+- Current fuzz-phase no-new cycles after transition: 5.
+
+### Focused source-review no-new cycle 4: stream, pipe, relay, and unicast delivery
+
+- Scope: audited the stream/pipe and delivery reliability surface after the
+  route/discovery lifecycle cross-check. Reviewed `src/stream.rs`,
+  `src/ctx.rs`, `src/peer/peer_alias.rs`, `src/peer/peer_internal.rs`, and
+  relevant `src/tests/stream.rs`, `src/tests/security.rs`, and
+  `src/tests/cross_nodes.rs` coverage for direct and relayed `open_stream`,
+  stream setup timeout, stalled request/response writes, relay downstream
+  acceptance, two-phase relayed delivery commit, upstream setup cancellation,
+  service queue backpressure, deferred local delivery reservations, unicast
+  acknowledgements, pending ack bounds, source binding, ingress relay loops,
+  stale dropped requesters, and cross-node direct/relay delivery.
+- Reviewer: `Confucius the 2nd` (forked RED-team reviewer), rejected new issue
+  acceptance because no distinct failing test evidence was found and
+  recommended documenting this as a no-new source-review cycle.
+- Verification:
+  - `RUST_LOG=error cargo test stream --lib -- --nocapture`: passed 30/30.
+  - `RUST_LOG=error cargo test relayed_open_stream --lib -- --nocapture`: passed 3/3.
+  - `RUST_LOG=error cargo test relay_must_not_deliver --lib -- --nocapture`: passed 3/3.
+  - `RUST_LOG=error cargo test unicast --lib -- --nocapture`: passed 12/12.
+  - `RUST_LOG=error cargo test open_stream_must --lib -- --nocapture`: passed 4/4.
+  - `RUST_LOG=error cargo test cross_nodes --lib -- --nocapture`: passed 9/9.
+  - `RUST_LOG=error cargo test send_broadcast --lib -- --nocapture`: passed 4/4.
+  - `RUST_LOG=error cargo test send_unicast --lib -- --nocapture`: passed 2/2.
+- Reviewer cross-check:
+  - `RUST_LOG=error cargo test stream --lib -- --nocapture`: passed 30/30.
+  - `RUST_LOG=error cargo test relayed_open_stream --lib -- --nocapture`: passed 3/3.
+  - `RUST_LOG=error cargo test relay_must_not_deliver --lib -- --nocapture`: passed 3/3.
+  - `RUST_LOG=error cargo test unicast --lib -- --nocapture`: passed 12/12.
+  - `RUST_LOG=error cargo test open_stream_must --lib -- --nocapture`: passed 4/4.
+  - `RUST_LOG=error cargo test dropped_service_requester_must_not_continue --lib -- --nocapture`: passed 3/3.
+  - `RUST_LOG=error cargo test source_must_be_bound --lib -- --nocapture`: passed 5/5.
+  - `RUST_LOG=error cargo test service_queue --lib -- --nocapture`: passed 7/7.
+- Duplicate mapping:
+  - Stream setup timeout, stalled connect response/write, and relay downstream
+    acceptance map to ISSUE-149, ISSUE-156, ISSUE-169, ISSUE-217, and RC-4.
+  - Orphan relayed stream delivery and upstream setup acknowledgement stalls
+    map to ISSUE-156 and ISSUE-217.
+  - Service queue backpressure, local delivery result reporting, and deferred
+    delivery capacity map to ISSUE-011, ISSUE-012, ISSUE-119, ISSUE-224,
+    ISSUE-225, ISSUE-238, and RC-3.
+  - Relayed `send_unicast` delivery reporting and pending acknowledgement
+    bounds map to ISSUE-229 and ISSUE-230.
+  - Forged stream/unicast source normalization maps to ISSUE-014 and ISSUE-018.
+  - Ingress relay loops and noisy route/pipe symptoms map to ISSUE-003,
+    ISSUE-180, ISSUE-197, and RC-7.
+  - Stale dropped service requesters and duplicate service boundaries map to
+    ISSUE-072, ISSUE-073, ISSUE-076, ISSUE-234, and RC-6.
+- Current consecutive no-new cycles after ISSUE-238: 14.
 - Current fuzz-phase no-new cycles after transition: 5.
 
 ### Cycle after ISSUE-235 no-new cycle 1: transport, auth, and peer setup review

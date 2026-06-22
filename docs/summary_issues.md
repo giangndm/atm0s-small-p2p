@@ -7,10 +7,10 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Accepted issues: 238
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 13
-- Current audit continuation: Focused source-review no-new cycle 3 reviewed
-  route/discovery lifecycle, path stability, graceful-stop cleanup, and stale
-  event guards without a distinct reviewed failure.
+- Current consecutive no-new-issue cycles: 14
+- Current audit continuation: Focused source-review no-new cycle 4 reviewed
+  stream/pipe setup, relayed delivery, unicast acknowledgement, and service
+  backpressure behavior without a distinct reviewed failure.
 - Fix phase status: ISSUE-001, ISSUE-003, ISSUE-004, ISSUE-005, ISSUE-006, ISSUE-007,
   ISSUE-002, ISSUE-008, ISSUE-009, ISSUE-010, ISSUE-011, ISSUE-012, ISSUE-013, ISSUE-014, ISSUE-015, ISSUE-017, ISSUE-020, ISSUE-021, ISSUE-023, ISSUE-024, ISSUE-025, ISSUE-027, ISSUE-033, ISSUE-034, ISSUE-039, ISSUE-045, ISSUE-046, ISSUE-047, ISSUE-048, ISSUE-055, ISSUE-059, ISSUE-103, ISSUE-110, ISSUE-111, ISSUE-115, ISSUE-116, ISSUE-117, ISSUE-118, ISSUE-119, ISSUE-120, ISSUE-122, ISSUE-123,
   ISSUE-124, ISSUE-125, ISSUE-126, ISSUE-127, ISSUE-128, ISSUE-129, ISSUE-130,
@@ -332,6 +332,19 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   ISSUE-167, ISSUE-170, ISSUE-180, ISSUE-190, ISSUE-192, ISSUE-211,
   ISSUE-212, ISSUE-213, ISSUE-214, ISSUE-217, ISSUE-220, ISSUE-229,
   ISSUE-230, ISSUE-238, RC-3, RC-6, and RC-7.
+- Focused source-review no-new cycle 4 reviewed stream/pipe setup, relayed
+  delivery, unicast acknowledgement, service queue backpressure, deferred
+  delivery reservations, source binding, ingress relay loops, stale dropped
+  requesters, and cross-node direct/relay delivery with forked reviewer
+  `Confucius the 2nd`. Local focused tests and reviewer cross-checks passed
+  for stream setup, relayed open, orphan relay rejection, unicast,
+  open-stream timeout/error handling, cross-node delivery, broadcast/unicast
+  backpressure, dropped requesters, source binding, and service queue pressure.
+  Rejected candidates mapped to ISSUE-003, ISSUE-011, ISSUE-012, ISSUE-014,
+  ISSUE-018, ISSUE-072, ISSUE-073, ISSUE-076, ISSUE-119, ISSUE-149,
+  ISSUE-156, ISSUE-169, ISSUE-180, ISSUE-197, ISSUE-217, ISSUE-224,
+  ISSUE-225, ISSUE-229, ISSUE-230, ISSUE-234, ISSUE-238, RC-3, RC-4,
+  RC-6, and RC-7.
 - Cycle after ISSUE-231 no-new cycle 1 reviewed routing/discovery/path
   stability and stream/pipe lifecycle integration with forked reviewer
   `Carver`. Focused route, discovery, stream-relay, peer-stopped, and pubsub
