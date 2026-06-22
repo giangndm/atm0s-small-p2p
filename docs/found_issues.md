@@ -2977,6 +2977,9 @@ the source of truth for evidence and reviewer decisions.
 - Status: fixed. `write_object` now serializes once with `bincode::serialize`
   and propagates serialization failures as `Err` before writing any frame
   bytes, instead of using `expect(...)`.
+- Fix status: fixed by serializing once in `write_object` and propagating
+  `bincode::serialize(...)` failures as `Err` before any frame bytes are
+  written.
 - Category: correctness, API stability
 - Score: 58/100
 - Reviewer: `Poincare`, confirmed.
