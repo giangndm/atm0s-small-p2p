@@ -11,10 +11,9 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 1
-- Current audit continuation: post-ISSUE-234 no-new cycle 1 documented for
-  routing/path stability, stream relay setup, and graceful-stop/non-seed
-  lifecycle cleanup.
+- Current consecutive no-new-issue cycles: 0
+- Current audit continuation: ISSUE-235 was accepted and fixed; the next review
+  starts a fresh post-ISSUE-235 cycle.
 
 ## Root Cause Summary
 
@@ -64,7 +63,7 @@ the source of truth for evidence and reviewer decisions.
   ISSUE-124, ISSUE-125, ISSUE-126,
   ISSUE-127, ISSUE-136, ISSUE-147, ISSUE-153, ISSUE-157,
   ISSUE-178, ISSUE-182, ISSUE-184, ISSUE-198, ISSUE-199, ISSUE-224,
-  ISSUE-229, ISSUE-230.
+  ISSUE-229, ISSUE-230, ISSUE-235.
 - Pattern: some paths use bounded channels and drop on `try_send`, some await
   bounded sends from critical tasks, and others use unbounded queues or produce
   duplicate internal control work. Under load this causes silent data loss,
@@ -127,7 +126,7 @@ the source of truth for evidence and reviewer decisions.
   ISSUE-148, ISSUE-150, ISSUE-151, ISSUE-161, ISSUE-165,
   ISSUE-167, ISSUE-168, ISSUE-170, ISSUE-179, ISSUE-183, ISSUE-185,
   ISSUE-187, ISSUE-188, ISSUE-193, ISSUE-195, ISSUE-208, ISSUE-222,
-  ISSUE-234.
+  ISSUE-234, ISSUE-235.
 - Pattern: requesters, services, peer aliases, channel state, and cached hints
   can outlive the owner they represent, while shutdown paths may panic, leak,
   emit false public events, or keep stale routes/cache entries. Remote
@@ -19072,6 +19071,55 @@ the source of truth for evidence and reviewer decisions.
   accepts only one test-name filter argument; each intended filter was rerun
   individually and passed.
 - Current consecutive no-new cycles after ISSUE-234: 1.
+
+### ISSUE-235: Alias registration returns a guard after admission failure
+
+- Score: 60
+- Category: API lifecycle correctness / high-load admission
+- Status: fixed by `5b0fc47` (`fix: report failed alias registration`).
+- Reviewers:
+  - `Herschel` (forked RED-team reviewer), accepted the issue as distinct and
+    scored it 60/100.
+  - `Lovelace` (forked implementation reviewer), accepted the code fix as the
+    smallest compatible fix after inspecting the diff and rerunning focused
+    tests.
+- Affected code:
+  - `src/service/alias_service.rs`: `AliasServiceRequester::register` called
+    `try_send_alias_control(...)` but ignored whether bounded control admission
+    succeeded, then returned `AliasGuard` unconditionally.
+- Impact: under high load, a full or closed alias control queue could reject
+  `AliasControl::Register` while the caller still received a live-looking
+  ownership guard. The alias was never registered, so later lookups could fail
+  even though the caller retained a guard that normally means local ownership.
+- Distinctness: ISSUE-127 bounded the alias control queue and explicitly left
+  overloaded `register -> AliasGuard` as a dead-on-arrival API caveat.
+  ISSUE-029, ISSUE-130, and ISSUE-132 cover panic or channel-close behavior,
+  not false-success registration. ISSUE-035, ISSUE-041, ISSUE-101, ISSUE-158,
+  and ISSUE-208 cover lookup state, cache bounds, freshness, or refcounts after
+  admission. ISSUE-058 and ISSUE-234 are related false-success API classes on
+  other surfaces, but not alias registration.
+- Root cause: alias registration admission was not part of the public return
+  value. The code converted a failed `try_send` into debug logging while still
+  manufacturing an ownership guard.
+- Minimal fix proposal: make alias registration fallible, preferably returning
+  `Result<AliasGuard>` so callers can distinguish backpressure from closed
+  service; create the guard only after bounded control admission succeeds.
+- Fix: `AliasServiceRequester::register` now returns
+  `anyhow::Result<AliasGuard>` and uses a shared `send_alias_control(...)`
+  helper that reports full or closed queue errors. Tests and internal call
+  sites now explicitly expect registration only in setup paths where admission
+  should succeed.
+- Evidence tests:
+  - Red evidence before fix:
+    `cargo test alias_register_when_control_queue_full_must_not_return_live_guard -- --nocapture`
+    failed at `src/service/alias_service.rs:709` because `register` returned a
+    guard even though the bounded alias control queue was full.
+  - Verification after fix:
+    `cargo test alias_register_when_control_queue_full_must_not_return_live_guard -- --nocapture`
+  - Regression guards:
+    `cargo test alias -- --nocapture`,
+    `rustfmt --edition 2021 --check src/service/alias_service.rs src/tests/alias.rs`,
+    and `git diff --check`.
 
 ### Cycle after ISSUE-231 no-new cycle 1: route, discovery, stream, and graceful-stop integration review
 

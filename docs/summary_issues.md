@@ -5,12 +5,11 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Audit Status
 
-- Accepted issues: 234
+- Accepted issues: 235
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 1
-- Current audit continuation: post-ISSUE-234 no-new cycle 1 documented for
-  routing/path stability, stream relay setup, and graceful-stop/non-seed
-  lifecycle cleanup.
+- Current consecutive no-new-issue cycles: 0
+- Current audit continuation: ISSUE-235 was accepted and fixed; the next review
+  starts a fresh post-ISSUE-235 cycle.
 - Fix phase status: ISSUE-001, ISSUE-003, ISSUE-004, ISSUE-005, ISSUE-006, ISSUE-007,
   ISSUE-002, ISSUE-008, ISSUE-009, ISSUE-010, ISSUE-011, ISSUE-012, ISSUE-013, ISSUE-014, ISSUE-015, ISSUE-017, ISSUE-020, ISSUE-021, ISSUE-023, ISSUE-024, ISSUE-025, ISSUE-027, ISSUE-033, ISSUE-034, ISSUE-039, ISSUE-045, ISSUE-046, ISSUE-047, ISSUE-048, ISSUE-055, ISSUE-059, ISSUE-103, ISSUE-110, ISSUE-111, ISSUE-115, ISSUE-116, ISSUE-117, ISSUE-118, ISSUE-119, ISSUE-120, ISSUE-122, ISSUE-123,
   ISSUE-124, ISSUE-125, ISSUE-126, ISSUE-127, ISSUE-128, ISSUE-129, ISSUE-130,
@@ -90,6 +89,9 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   ISSUE-234 is fixed by `54f1118`: duplicate or rejected service creation now
   returns a disabled service handle whose outbound service/requester paths fail
   instead of publishing as an unregistered owner.
+  ISSUE-235 is fixed by `5b0fc47`: alias registration now reports bounded
+  control admission failure instead of returning a dead-on-arrival
+  `AliasGuard`.
   ISSUE-043 is fixed by bounding pending pubsub publish/feedback RPC request
   maps before responder fanout.
   ISSUE-054 is fixed by rejecting zero network tick intervals before endpoint
@@ -199,7 +201,15 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   ISSUE-127, ISSUE-136, ISSUE-153,
   ISSUE-178, ISSUE-182, ISSUE-184, ISSUE-198, ISSUE-199,
   ISSUE-200, ISSUE-201, ISSUE-202, ISSUE-203, ISSUE-204, ISSUE-209,
-  ISSUE-223, ISSUE-224, ISSUE-225, ISSUE-227, ISSUE-229, ISSUE-230.
+  ISSUE-223, ISSUE-224, ISSUE-225, ISSUE-227, ISSUE-229, ISSUE-230,
+  ISSUE-235.
+- ISSUE-235, score 60: fixed by `5b0fc47`. `AliasServiceRequester::register`
+  now returns `Result<AliasGuard>` and creates the ownership guard only after
+  bounded alias-control admission succeeds. Verification:
+  `cargo test alias_register_when_control_queue_full_must_not_return_live_guard -- --nocapture`,
+  `cargo test alias -- --nocapture`,
+  `rustfmt --edition 2021 --check src/service/alias_service.rs src/tests/alias.rs`,
+  and `git diff --check`.
 - ISSUE-209: fixed high-load fuzz coverage issue. The fuzz harness silently
   capped `P2P_FUZZ_NODES` values above 8, so intended 12-15 node fuzz cycles
   executed with only 8 nodes. The fix keeps the lower bound at two nodes while
@@ -419,7 +429,7 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   ISSUE-148, ISSUE-150, ISSUE-151, ISSUE-161, ISSUE-165,
   ISSUE-167, ISSUE-168, ISSUE-170, ISSUE-179, ISSUE-183, ISSUE-185,
   ISSUE-187, ISSUE-188, ISSUE-193, ISSUE-195, ISSUE-208, ISSUE-222,
-  ISSUE-234.
+  ISSUE-234, ISSUE-235.
 - Pattern: requesters, services, peer aliases, channel state, and cached hints
   can outlive the owner they represent; shutdown paths can panic, leak, emit
   false public events, keep stale routes/cache entries, announce shutdown while
@@ -434,6 +444,12 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   `cargo test dropped_service_id_must_be_reusable -- --nocapture`,
   `cargo test service_requester -- --nocapture`, and
   `cargo test duplicate_service -- --nocapture`.
+- ISSUE-235, score 60: fixed by `5b0fc47`. Alias registration now reports
+  admission failure instead of returning a live-looking guard when the bounded
+  alias control queue is full or closed. This is the alias-registration version
+  of the stale/false-success handle class. Verification:
+  `cargo test alias_register_when_control_queue_full_must_not_return_live_guard -- --nocapture`
+  and `cargo test alias -- --nocapture`.
   Connection teardown can also reset metric names through the wrong metric kind
   or reset monotonic counters to zero.
 - Minimal fix proposal: add generation or liveness tokens to cloned requesters
