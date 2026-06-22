@@ -18089,7 +18089,7 @@ the source of truth for evidence and reviewer decisions.
 
 - Score: 69
 - Category: bad-network stability / live peer connection head-of-line blocking
-- Status: fixed by pending commit.
+- Status: fixed by commit `610bb4b`.
 - Reviewers:
   - `Ohm` (forked RED-team reviewer), found.
   - `Darwin` (forked candidate reviewer), accepted.
