@@ -4928,6 +4928,8 @@ the source of truth for evidence and reviewer decisions.
   setup sequence: opening the bidirectional QUIC stream, writing
   `StreamConnectReq`, and waiting for `StreamConnectRes`. A peer that withholds
   the response now causes `open_stream` to return an error instead of hanging.
+- Fix status: fixed by applying `OPEN_BI_TIMEOUT` to the full outbound stream
+  setup sequence, including the `StreamConnectRes` wait.
 - Category: bad-network stability, stream setup, timeout correctness
 - Score: 74/100
 - Reviewer: `Ptolemy the 2nd`, confirmed.
