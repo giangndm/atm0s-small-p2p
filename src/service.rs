@@ -24,24 +24,35 @@ pub enum P2pServiceEvent {
 pub struct P2pServiceRequester {
     service: P2pServiceId,
     ctx: SharedCtx,
+    service_tx: Sender<P2pServiceEvent>,
 }
 
 pub struct P2pService {
     service: P2pServiceId,
     ctx: SharedCtx,
     rx: Receiver<P2pServiceEvent>,
+    service_tx: Sender<P2pServiceEvent>,
 }
 
 impl P2pService {
     pub(super) fn build(service: P2pServiceId, ctx: SharedCtx) -> (Self, Sender<P2pServiceEvent>) {
         let (tx, rx) = channel(SERVICE_CHANNEL_SIZE);
-        (Self { service, ctx, rx }, tx)
+        (
+            Self {
+                service,
+                ctx,
+                rx,
+                service_tx: tx.clone(),
+            },
+            tx,
+        )
     }
 
     pub fn requester(&self) -> P2pServiceRequester {
         P2pServiceRequester {
             service: self.service,
             ctx: self.ctx.clone(),
+            service_tx: self.service_tx.clone(),
         }
     }
 
@@ -79,6 +90,13 @@ impl P2pService {
 }
 
 impl P2pServiceRequester {
+    fn ensure_live(&self) -> anyhow::Result<()> {
+        if self.service_tx.is_closed() {
+            anyhow::bail!("service requester is stale");
+        }
+        Ok(())
+    }
+
     pub async fn send_unicast(&self, dest: PeerId, data: Vec<u8>) -> anyhow::Result<()> {
         self.ctx.send_unicast(self.service, dest, data).await
     }
@@ -100,6 +118,7 @@ impl P2pServiceRequester {
     }
 
     pub async fn open_stream(&self, dest: PeerId, meta: Vec<u8>) -> anyhow::Result<P2pQuicStream> {
+        self.ensure_live()?;
         self.ctx.open_stream(self.service, dest, meta).await
     }
 

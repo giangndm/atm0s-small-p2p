@@ -200,10 +200,10 @@ async fn dropped_service_requester_must_not_continue_opening_streams() {
     drop(service1);
 
     let meta = b"stale-service-stream".to_vec();
-    let _opened = stale_requester
-        .open_stream(addr2.peer_id(), meta.clone())
-        .await
-        .expect("stale requester stream open should not panic");
+    assert!(
+        stale_requester.open_stream(addr2.peer_id(), meta.clone()).await.is_err(),
+        "a requester cloned from a dropped P2pService must fail instead of opening streams"
+    );
 
     let delivered = tokio::time::timeout(Duration::from_millis(500), service2.recv()).await;
 

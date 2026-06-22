@@ -2118,6 +2118,9 @@ the source of truth for evidence and reviewer decisions.
 
 ### ISSUE-073: Dropped service requesters can still open streams
 
+- Status: fixed by giving cloned `P2pServiceRequester`s a liveness token tied
+  to the owning `P2pService` receiver and rejecting stale `open_stream`
+  attempts before they can reach `SharedCtx`.
 - Category: correctness, pipe lifecycle stability
 - Score: 72/100
 - Reviewer: `Parfit`, confirmed.
@@ -2137,9 +2140,9 @@ the source of truth for evidence and reviewer decisions.
   delivery, panic, and backpressure failure modes.
 - Evidence test:
   - `cargo test dropped_service_requester_must_not_continue_opening_streams -- --nocapture`
-  - Failure summary: after dropping node1's `P2pService`, a cloned
-    `P2pServiceRequester` opens `stale-service-stream`, and node2's service
-    receives `P2pServiceEvent::Stream`.
+  - Fixed summary: after dropping node1's `P2pService`, the cloned requester
+    now returns `Err` from `open_stream`, and node2's service receives no stale
+    `P2pServiceEvent::Stream`.
 
 ### ISSUE-074: Dropped publisher requesters can still issue publish RPCs
 
