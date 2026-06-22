@@ -246,18 +246,7 @@ where
                 false
             }
             RpcRes::FetchSnapshot(Some(snapshot), version) => {
-                let Some((
-                    _,
-                    NetEvent::Unicast(
-                        _,
-                        RpcEvent::RpcReq(RpcReq::FetchSnapshot {
-                            from,
-                            to,
-                            max_version,
-                        }),
-                    ),
-                )) = self.sending_req.as_ref()
-                else {
+                let Some((_, NetEvent::Unicast(_, RpcEvent::RpcReq(RpcReq::FetchSnapshot { from, to, max_version })))) = self.sending_req.as_ref() else {
                     return false;
                 };
                 // TODO check snapshot is not empty
@@ -304,12 +293,7 @@ where
                     }
                     if let Some(to) = to.as_ref() {
                         if next_key > to {
-                            log::warn!(
-                                "[RemoteStore {:?}] reject snapshot page next_key {:?} past pending upper bound {:?}",
-                                ctx.remote,
-                                next_key,
-                                to
-                            );
+                            log::warn!("[RemoteStore {:?}] reject snapshot page next_key {:?} past pending upper bound {:?}", ctx.remote, next_key, to);
                             return false;
                         }
                     }
@@ -337,43 +321,23 @@ where
                     }
                     if let Some(prev_key) = prev_key {
                         if k <= prev_key {
-                            log::warn!(
-                                "[RemoteStore {:?}] reject unordered or duplicate snapshot key {:?} after {:?}",
-                                ctx.remote,
-                                k,
-                                prev_key
-                            );
+                            log::warn!("[RemoteStore {:?}] reject unordered or duplicate snapshot key {:?} after {:?}", ctx.remote, k, prev_key);
                             return false;
                         }
                     }
                     if k > &snapshot.biggest_key {
-                        log::warn!(
-                            "[RemoteStore {:?}] reject snapshot key {:?} past biggest_key {:?}",
-                            ctx.remote,
-                            k,
-                            snapshot.biggest_key
-                        );
+                        log::warn!("[RemoteStore {:?}] reject snapshot key {:?} past biggest_key {:?}", ctx.remote, k, snapshot.biggest_key);
                         return false;
                     }
                     if let Some(from) = from.as_ref() {
                         if k < from {
-                            log::warn!(
-                                "[RemoteStore {:?}] reject snapshot key {:?} before pending lower bound {:?}",
-                                ctx.remote,
-                                k,
-                                from
-                            );
+                            log::warn!("[RemoteStore {:?}] reject snapshot key {:?} before pending lower bound {:?}", ctx.remote, k, from);
                             return false;
                         }
                     }
                     if let Some(to) = to.as_ref() {
                         if k > to {
-                            log::warn!(
-                                "[RemoteStore {:?}] reject snapshot key {:?} past pending upper bound {:?}",
-                                ctx.remote,
-                                k,
-                                to
-                            );
+                            log::warn!("[RemoteStore {:?}] reject snapshot key {:?} past pending upper bound {:?}", ctx.remote, k, to);
                             return false;
                         }
                     }
@@ -419,18 +383,7 @@ where
                 true
             }
             RpcRes::FetchSnapshot(None, version) => {
-                let Some((
-                    _,
-                    NetEvent::Unicast(
-                        _,
-                        RpcEvent::RpcReq(RpcReq::FetchSnapshot {
-                            from,
-                            to,
-                            max_version,
-                        }),
-                    ),
-                )) = self.sending_req.as_ref()
-                else {
+                let Some((_, NetEvent::Unicast(_, RpcEvent::RpcReq(RpcReq::FetchSnapshot { from, to, max_version })))) = self.sending_req.as_ref() else {
                     return false;
                 };
                 if from.is_some() || to.is_some() || max_version.is_some() {
@@ -783,10 +736,7 @@ mod tests {
             ),
         );
 
-        assert!(
-            ctx.slots.is_empty(),
-            "snapshot slots newer than the declared snapshot version must be rejected"
-        );
+        assert!(ctx.slots.is_empty(), "snapshot slots newer than the declared snapshot version must be rejected");
         assert_eq!(ctx.outs.pop_front(), None, "invalid snapshot data must not be emitted as KvEvent::Set");
     }
 
@@ -858,10 +808,7 @@ mod tests {
             ),
         );
 
-        assert!(
-            ctx.outs.is_empty(),
-            "empty snapshot pages with next_key must be rejected because full sync cannot make progress"
-        );
+        assert!(ctx.outs.is_empty(), "empty snapshot pages with next_key must be rejected because full sync cannot make progress");
     }
 
     #[test]
@@ -891,10 +838,7 @@ mod tests {
             ),
         );
 
-        assert_eq!(
-            ctx.next_state, None,
-            "initial empty snapshot pages with nonzero version must not complete full sync"
-        );
+        assert_eq!(ctx.next_state, None, "initial empty snapshot pages with nonzero version must not complete full sync");
     }
 
     #[test]
@@ -924,14 +868,8 @@ mod tests {
             ),
         );
 
-        assert!(
-            !ctx.slots.contains_key(&2),
-            "snapshot slots beyond biggest_key must be rejected"
-        );
-        assert_eq!(
-            ctx.next_state, None,
-            "full sync must not complete after accepting a slot beyond biggest_key"
-        );
+        assert!(!ctx.slots.contains_key(&2), "snapshot slots beyond biggest_key must be rejected");
+        assert_eq!(ctx.next_state, None, "full sync must not complete after accepting a slot beyond biggest_key");
     }
 
     #[test]
@@ -949,9 +887,7 @@ mod tests {
         state.init(&mut ctx, now);
         ctx.outs.clear();
 
-        let slots = (0..=MAX_SNAPSHOT_SLOTS_PER_PAGE)
-            .map(|key| (key, Slot::new(key, Version(key as u64 + 1))))
-            .collect::<Vec<_>>();
+        let slots = (0..=MAX_SNAPSHOT_SLOTS_PER_PAGE).map(|key| (key, Slot::new(key, Version(key as u64 + 1)))).collect::<Vec<_>>();
 
         state.on_rpc_res(
             &mut ctx,
@@ -1000,14 +936,8 @@ mod tests {
             ),
         );
 
-        assert!(
-            ctx.slots.is_empty(),
-            "snapshot slots must be rejected unless they are ordered by key"
-        );
-        assert_eq!(
-            ctx.next_state, None,
-            "full sync must not complete after accepting unsorted snapshot slots"
-        );
+        assert!(ctx.slots.is_empty(), "snapshot slots must be rejected unless they are ordered by key");
+        assert_eq!(ctx.next_state, None, "full sync must not complete after accepting unsorted snapshot slots");
     }
 
     #[test]
@@ -1037,15 +967,8 @@ mod tests {
             ),
         );
 
-        assert_eq!(
-            ctx.slots,
-            BTreeMap::new(),
-            "snapshot pages with duplicate keys must be rejected"
-        );
-        assert_eq!(
-            ctx.next_state, None,
-            "full sync must not complete after accepting duplicate snapshot keys"
-        );
+        assert_eq!(ctx.slots, BTreeMap::new(), "snapshot pages with duplicate keys must be rejected");
+        assert_eq!(ctx.next_state, None, "full sync must not complete after accepting duplicate snapshot keys");
     }
 
     #[test]
@@ -1089,14 +1012,8 @@ mod tests {
             ),
         );
 
-        assert!(
-            !ctx.slots.contains_key(&4),
-            "continuation snapshot slots before the requested next_key must be rejected"
-        );
-        assert_eq!(
-            ctx.next_state, None,
-            "full sync must not complete after accepting a continuation slot before the requested next_key"
-        );
+        assert!(!ctx.slots.contains_key(&4), "continuation snapshot slots before the requested next_key must be rejected");
+        assert_eq!(ctx.next_state, None, "full sync must not complete after accepting a continuation slot before the requested next_key");
     }
 
     #[test]
@@ -1140,10 +1057,7 @@ mod tests {
             ),
         );
 
-        assert!(
-            !ctx.slots.contains_key(&2),
-            "continuation snapshot page with a different declared version must be rejected"
-        );
+        assert!(!ctx.slots.contains_key(&2), "continuation snapshot page with a different declared version must be rejected");
         assert_eq!(
             ctx.next_state, None,
             "full sync must not transition to WorkingState after accepting data newer than the locked snapshot version"
@@ -1180,10 +1094,7 @@ mod tests {
 
         state.on_rpc_res(&mut ctx, now, RpcRes::FetchSnapshot(None, Version(1)));
 
-        assert_eq!(
-            ctx.next_state, None,
-            "full sync must not treat None as completion after a partial snapshot requested a continuation"
-        );
+        assert_eq!(ctx.next_state, None, "full sync must not treat None as completion after a partial snapshot requested a continuation");
     }
 
     #[test]
@@ -1554,11 +1465,7 @@ mod tests {
 
         state.on_tick(&mut ctx, now + REQUEST_TIMEOUT + Duration::from_millis(1));
 
-        assert_eq!(
-            ctx.outs.pop_front(),
-            None,
-            "FetchChanged retry must be cancelled after broadcasts fill the missing gap"
-        );
+        assert_eq!(ctx.outs.pop_front(), None, "FetchChanged retry must be cancelled after broadcasts fill the missing gap");
     }
 
     /// After missing changed we got FetchChanged response
@@ -1633,21 +1540,9 @@ mod tests {
             }])),
         );
 
-        assert_eq!(
-            state.version,
-            Version(0),
-            "unsolicited FetchChanged success must not advance the working version"
-        );
-        assert_eq!(
-            ctx.slots,
-            BTreeMap::new(),
-            "unsolicited FetchChanged success must not mutate replicated slots"
-        );
-        assert_eq!(
-            ctx.outs.pop_front(),
-            None,
-            "unsolicited FetchChanged success must not emit local KvEvent changes"
-        );
+        assert_eq!(state.version, Version(0), "unsolicited FetchChanged success must not advance the working version");
+        assert_eq!(ctx.slots, BTreeMap::new(), "unsolicited FetchChanged success must not mutate replicated slots");
+        assert_eq!(ctx.outs.pop_front(), None, "unsolicited FetchChanged success must not emit local KvEvent changes");
     }
 
     #[test]
@@ -1671,11 +1566,7 @@ mod tests {
             BTreeMap::from([(7, Slot::new(70, Version(1)))]),
             "unsolicited FetchChanged errors must not clear existing remote slots"
         );
-        assert_eq!(
-            remote.pop_out(),
-            None,
-            "unsolicited FetchChanged errors must not emit deletes or start a full resync"
-        );
+        assert_eq!(remote.pop_out(), None, "unsolicited FetchChanged errors must not emit deletes or start a full resync");
         assert_eq!(
             remote.state,
             RemoteStoreState::Working(WorkingState::new(Version(1))),
@@ -1833,11 +1724,7 @@ mod tests {
 
         remote.on_broadcast(BroadcastEvent::Version(Version(5)));
 
-        assert_eq!(
-            remote.last_active(),
-            stale,
-            "ignored stale broadcasts must not refresh remote activity and prevent timeout cleanup"
-        );
+        assert_eq!(remote.last_active(), stale, "ignored stale broadcasts must not refresh remote activity and prevent timeout cleanup");
         assert_eq!(remote.pop_out(), None, "ignored stale broadcasts must not emit local events");
     }
 
@@ -1873,21 +1760,9 @@ mod tests {
             ])),
         );
 
-        assert_eq!(
-            state.version,
-            Version(0),
-            "FetchChanged responses with duplicate versions must not advance the working version"
-        );
-        assert_eq!(
-            ctx.slots,
-            BTreeMap::new(),
-            "FetchChanged responses with duplicate versions must not overwrite and apply one entry"
-        );
-        assert_eq!(
-            ctx.outs.pop_front(),
-            None,
-            "FetchChanged responses with duplicate versions must not emit local KvEvent changes"
-        );
+        assert_eq!(state.version, Version(0), "FetchChanged responses with duplicate versions must not advance the working version");
+        assert_eq!(ctx.slots, BTreeMap::new(), "FetchChanged responses with duplicate versions must not overwrite and apply one entry");
+        assert_eq!(ctx.outs.pop_front(), None, "FetchChanged responses with duplicate versions must not emit local KvEvent changes");
     }
 
     #[test]
@@ -1922,21 +1797,9 @@ mod tests {
             ])),
         );
 
-        assert_eq!(
-            state.version,
-            Version(0),
-            "FetchChanged responses must not apply versions beyond the requested count"
-        );
-        assert_eq!(
-            ctx.slots,
-            BTreeMap::new(),
-            "FetchChanged responses must reject extra versions outside the requested range"
-        );
-        assert_eq!(
-            ctx.outs.pop_front(),
-            None,
-            "FetchChanged responses with extra versions must not emit local KvEvent changes"
-        );
+        assert_eq!(state.version, Version(0), "FetchChanged responses must not apply versions beyond the requested count");
+        assert_eq!(ctx.slots, BTreeMap::new(), "FetchChanged responses must reject extra versions outside the requested range");
+        assert_eq!(ctx.outs.pop_front(), None, "FetchChanged responses with extra versions must not emit local KvEvent changes");
     }
 
     #[test]
@@ -2123,13 +1986,7 @@ mod tests {
 
         assert_eq!(
             ctx.outs.pop_front(),
-            Some(Event::NetEvent(NetEvent::Unicast(
-                1,
-                RpcEvent::RpcReq(RpcReq::FetchChanged {
-                    from: Version(1),
-                    count: 9
-                })
-            )))
+            Some(Event::NetEvent(NetEvent::Unicast(1, RpcEvent::RpcReq(RpcReq::FetchChanged { from: Version(1), count: 9 }))))
         );
         assert_eq!(ctx.outs.pop_front(), None);
 

@@ -533,10 +533,7 @@ async fn pubsub_must_remove_remote_subscriber_on_graceful_peer_stop() {
     })
     .await;
 
-    assert!(
-        leaved.is_ok(),
-        "pubsub must emit PeerLeaved and remove a remote subscriber when its peer gracefully stops"
-    );
+    assert!(leaved.is_ok(), "pubsub must emit PeerLeaved and remove a remote subscriber when its peer gracefully stops");
 }
 
 #[test(tokio::test)]
@@ -605,7 +602,11 @@ async fn pubsub_publish_rpc_must_respect_short_timeout() {
     let publisher_requester = publisher.requester().clone();
     let publish_task = tokio::spawn(async move { publisher_requester.publish_rpc("slow", vec![1], Duration::from_millis(20)).await });
 
-    match timeout(ttl, subscriber.recv()).await.expect("subscriber should receive publish RPC").expect("subscriber should stay open") {
+    match timeout(ttl, subscriber.recv())
+        .await
+        .expect("subscriber should receive publish RPC")
+        .expect("subscriber should stay open")
+    {
         SubscriberEvent::PublishRpc(data, _rpc_id, method, PeerSrc::Local) => {
             assert_eq!(data, vec![1]);
             assert_eq!(method, "slow");
@@ -641,7 +642,10 @@ async fn dropped_subscriber_requester_must_not_answer_publish_rpc() {
         PublisherEvent::PeerJoined(PeerSrc::Local)
     );
     assert_eq!(
-        timeout(ttl, live_subscriber.recv()).await.expect("should not timeout").expect("live subscriber should see local publisher"),
+        timeout(ttl, live_subscriber.recv())
+            .await
+            .expect("should not timeout")
+            .expect("live subscriber should see local publisher"),
         SubscriberEvent::PeerJoined(PeerSrc::Local)
     );
 
@@ -736,7 +740,10 @@ async fn dropped_publisher_requester_must_not_answer_feedback_rpc() {
         SubscriberEvent::PeerJoined(PeerSrc::Local)
     );
     assert_eq!(
-        timeout(ttl, live_publisher.recv()).await.expect("should not timeout").expect("live publisher should see local subscriber"),
+        timeout(ttl, live_publisher.recv())
+            .await
+            .expect("should not timeout")
+            .expect("live publisher should see local subscriber"),
         PublisherEvent::PeerJoined(PeerSrc::Local)
     );
 
@@ -912,14 +919,20 @@ async fn dropped_publisher_requester_must_not_continue_publishing() {
     let ttl = Duration::from_secs(1);
 
     assert_eq!(
-        timeout(ttl, subscriber.recv()).await.expect("subscriber should observe initial local publisher").expect("subscriber channel should stay open"),
+        timeout(ttl, subscriber.recv())
+            .await
+            .expect("subscriber should observe initial local publisher")
+            .expect("subscriber channel should stay open"),
         SubscriberEvent::PeerJoined(PeerSrc::Local)
     );
 
     drop(publisher);
 
     assert_eq!(
-        timeout(ttl, subscriber.recv()).await.expect("subscriber should observe dropped local publisher").expect("subscriber channel should stay open"),
+        timeout(ttl, subscriber.recv())
+            .await
+            .expect("subscriber should observe dropped local publisher")
+            .expect("subscriber channel should stay open"),
         SubscriberEvent::PeerLeaved(PeerSrc::Local)
     );
 
@@ -947,14 +960,20 @@ async fn dropped_publisher_requester_must_not_continue_publish_rpc() {
     let ttl = Duration::from_secs(1);
 
     assert_eq!(
-        timeout(ttl, subscriber.recv()).await.expect("subscriber should observe initial local publisher").expect("subscriber channel should stay open"),
+        timeout(ttl, subscriber.recv())
+            .await
+            .expect("subscriber should observe initial local publisher")
+            .expect("subscriber channel should stay open"),
         SubscriberEvent::PeerJoined(PeerSrc::Local)
     );
 
     drop(publisher);
 
     assert_eq!(
-        timeout(ttl, subscriber.recv()).await.expect("subscriber should observe dropped local publisher").expect("subscriber channel should stay open"),
+        timeout(ttl, subscriber.recv())
+            .await
+            .expect("subscriber should observe dropped local publisher")
+            .expect("subscriber channel should stay open"),
         SubscriberEvent::PeerLeaved(PeerSrc::Local)
     );
 
@@ -989,14 +1008,20 @@ async fn dropped_subscriber_requester_must_not_continue_feedback() {
     let ttl = Duration::from_secs(1);
 
     assert_eq!(
-        timeout(ttl, publisher.recv()).await.expect("publisher should observe initial local subscriber").expect("publisher channel should stay open"),
+        timeout(ttl, publisher.recv())
+            .await
+            .expect("publisher should observe initial local subscriber")
+            .expect("publisher channel should stay open"),
         PublisherEvent::PeerJoined(PeerSrc::Local)
     );
 
     drop(subscriber);
 
     assert_eq!(
-        timeout(ttl, publisher.recv()).await.expect("publisher should observe dropped local subscriber").expect("publisher channel should stay open"),
+        timeout(ttl, publisher.recv())
+            .await
+            .expect("publisher should observe dropped local subscriber")
+            .expect("publisher channel should stay open"),
         PublisherEvent::PeerLeaved(PeerSrc::Local)
     );
 
@@ -1024,14 +1049,20 @@ async fn dropped_subscriber_requester_must_not_continue_feedback_rpc() {
     let ttl = Duration::from_secs(1);
 
     assert_eq!(
-        timeout(ttl, publisher.recv()).await.expect("publisher should observe initial local subscriber").expect("publisher channel should stay open"),
+        timeout(ttl, publisher.recv())
+            .await
+            .expect("publisher should observe initial local subscriber")
+            .expect("publisher channel should stay open"),
         PublisherEvent::PeerJoined(PeerSrc::Local)
     );
 
     drop(subscriber);
 
     assert_eq!(
-        timeout(ttl, publisher.recv()).await.expect("publisher should observe dropped local subscriber").expect("publisher channel should stay open"),
+        timeout(ttl, publisher.recv())
+            .await
+            .expect("publisher should observe dropped local subscriber")
+            .expect("publisher channel should stay open"),
         PublisherEvent::PeerLeaved(PeerSrc::Local)
     );
 

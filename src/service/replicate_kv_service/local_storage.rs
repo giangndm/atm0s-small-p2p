@@ -280,7 +280,6 @@ mod tests {
     fn fetch_changed_with_overflowing_from_version_must_not_panic() {
         let mut store: LocalStore<u16, u16, u16> = LocalStore::new(10, 2);
         store.set(1, 1);
-
         while store.pop_out().is_some() {}
 
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
@@ -290,10 +289,7 @@ mod tests {
         assert!(result.is_ok(), "untrusted FetchChanged version arithmetic must not panic or wrap");
         assert_eq!(
             store.pop_out(),
-            Some(Event::NetEvent(NetEvent::Unicast(
-                2,
-                RpcEvent::RpcRes(RpcRes::FetchChanged(Err(FetchChangedError::MissingData)))
-            )))
+            Some(Event::NetEvent(NetEvent::Unicast(2, RpcEvent::RpcRes(RpcRes::FetchChanged(Err(FetchChangedError::MissingData))))))
         );
     }
 
@@ -395,16 +391,8 @@ mod tests {
 
         store.del(99);
 
-        assert_eq!(
-            store.pop_out(),
-            None,
-            "deleting a key that was never present must not broadcast or emit a delete event"
-        );
-        assert_eq!(
-            store.version,
-            Version(0),
-            "deleting a key that was never present must not advance the replicated version"
-        );
+        assert_eq!(store.pop_out(), None, "deleting a key that was never present must not broadcast or emit a delete event");
+        assert_eq!(store.version, Version(0), "deleting a key that was never present must not advance the replicated version");
     }
 
     #[test]

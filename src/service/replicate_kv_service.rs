@@ -287,14 +287,8 @@ mod tests {
         let remote_count = store.remotes.len();
         let queued_sync_requests = store.outs.len();
 
-        assert!(
-            remote_count <= MAX_REMOTE_STORES,
-            "remote stores must be bounded, got {remote_count}"
-        );
-        assert!(
-            queued_sync_requests <= MAX_REMOTE_STORES,
-            "queued full-sync requests must be bounded, got {queued_sync_requests}"
-        );
+        assert!(remote_count <= MAX_REMOTE_STORES, "remote stores must be bounded, got {remote_count}");
+        assert!(queued_sync_requests <= MAX_REMOTE_STORES, "queued full-sync requests must be bounded, got {queued_sync_requests}");
     }
 
     #[test]
@@ -306,11 +300,7 @@ mod tests {
             store.set(key as u64, key as u64);
         }
 
-        assert!(
-            store.outs.len() <= MAX_PENDING_EVENTS,
-            "replicated KV outbound event queue must be bounded, got {}",
-            store.outs.len()
-        );
+        assert!(store.outs.len() <= MAX_PENDING_EVENTS, "replicated KV outbound event queue must be bounded, got {}", store.outs.len());
     }
 
     #[tokio::test]
@@ -320,9 +310,6 @@ mod tests {
 
         let result = std::panic::AssertUnwindSafe(service.recv()).catch_unwind().await;
 
-        assert!(
-            result.is_ok(),
-            "replicated KV service must not panic while serializing caller-provided values for outbound events"
-        );
+        assert!(result.is_ok(), "replicated KV service must not panic while serializing caller-provided values for outbound events");
     }
 }

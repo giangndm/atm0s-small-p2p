@@ -61,8 +61,7 @@ impl PeerConnectionAlias {
     pub(crate) async fn send_unicast_with_ack(&self, source: PeerId, dest: PeerId, service: P2pServiceId, data: Vec<u8>) -> anyhow::Result<()> {
         let ack_id = UnicastAckId::rand();
         let (tx, rx) = oneshot::channel();
-        self.control_tx
-            .try_send(PeerConnectionControl::SendUnicastWithAck(ack_id, source, dest, service, data, tx))?;
+        self.control_tx.try_send(PeerConnectionControl::SendUnicastWithAck(ack_id, source, dest, service, data, tx))?;
         tokio::time::timeout(UNICAST_ACK_TIMEOUT, rx).await.map_err(|_| anyhow::anyhow!("unicast ack timed out"))??
     }
 

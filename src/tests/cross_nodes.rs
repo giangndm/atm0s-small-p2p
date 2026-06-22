@@ -215,10 +215,7 @@ async fn unicast_must_not_report_success_when_destination_service_receiver_is_cl
 
     let result = service1.send_unicast(addr2.peer_id(), b"closed-destination".to_vec()).await;
 
-    assert!(
-        result.is_err(),
-        "send_unicast must not report success when the destination service receiver is already closed"
-    );
+    assert!(result.is_err(), "send_unicast must not report success when the destination service receiver is already closed");
 }
 
 #[test(tokio::test)]
@@ -254,9 +251,7 @@ async fn inbound_broadcast_must_not_drop_when_service_queue_is_full() {
     let mut received = Vec::new();
     for _ in 0..expected {
         match tokio::time::timeout(Duration::from_millis(100), service2.recv()).await {
-            Ok(Some(P2pServiceEvent::Broadcast(peer, data))) if peer == addr1.peer_id() => {
-                received.push(data)
-            }
+            Ok(Some(P2pServiceEvent::Broadcast(peer, data))) if peer == addr1.peer_id() => received.push(data),
             _ => break,
         }
     }

@@ -87,13 +87,8 @@ async fn metrics_info_must_not_be_accepted_without_scan_request() {
             current_mtu: 1200,
         },
     )];
-    conn.try_send(PeerMessage::Unicast(
-        addr2.peer_id(),
-        addr1.peer_id(),
-        0.into(),
-        encode_info_for_test(forged_metrics.clone()),
-    ))
-    .expect("attacker should be able to inject a metrics info frame");
+    conn.try_send(PeerMessage::Unicast(addr2.peer_id(), addr1.peer_id(), 0.into(), encode_info_for_test(forged_metrics.clone())))
+        .expect("attacker should be able to inject a metrics info frame");
 
     let delivered = tokio::time::timeout(Duration::from_millis(500), service1.recv()).await;
 

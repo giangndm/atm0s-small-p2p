@@ -8,8 +8,8 @@ use crate::{
     discovery::PeerDiscovery,
     msg::{BroadcastMsgId, P2pServiceId, PeerMessage},
     router::RouteAction,
-    ConnectionId, ControlCmd, MainEvent, NetworkAddress, P2pNetwork, P2pNetworkConfig, P2pNetworkEvent, P2pServiceEvent, PeerAddress, PeerConnectionMetric, PeerId, PeerMainData,
-    SharedKeyHandshake, SharedRouterTable,
+    ConnectionId, ControlCmd, MainEvent, NetworkAddress, P2pNetwork, P2pNetworkConfig, P2pNetworkEvent, P2pServiceEvent, PeerAddress, PeerConnectionMetric, PeerId, PeerMainData, SharedKeyHandshake,
+    SharedRouterTable,
 };
 use futures::FutureExt;
 use quinn::{Endpoint, ServerConfig};
@@ -95,10 +95,7 @@ async fn peer_stopped_must_remove_stopped_neighbour_immediately() {
     .await
     .expect("node2 should connect to node1");
 
-    assert!(
-        node2.neighbours.has_peer(&addr1.peer_id()),
-        "test setup should have node1 marked as a connected neighbour"
-    );
+    assert!(node2.neighbours.has_peer(&addr1.peer_id()), "test setup should have node1 marked as a connected neighbour");
 
     node2
         .process_internal(100, MainEvent::PeerStopped(stopped_conn, addr1.peer_id()))
@@ -172,11 +169,7 @@ async fn peer_stopped_route_must_not_be_resurrected_by_connection_ticker() {
     node2
         .process_internal(100, MainEvent::PeerStopped(stopped_conn, addr1.peer_id()))
         .expect("peer stopped event should process");
-    assert_eq!(
-        node2.router.action(&addr1.peer_id()),
-        None,
-        "test setup should remove the stopped peer route first"
-    );
+    assert_eq!(node2.router.action(&addr1.peer_id()), None, "test setup should remove the stopped peer route first");
 
     tokio::time::sleep(Duration::from_millis(1200)).await;
 
@@ -198,13 +191,8 @@ async fn stopped_peer_route_must_not_be_resurrected_by_third_party_sync() {
     node.router.set_direct(stopped_conn, stopped, 10);
     node.router.set_direct(relay_conn, relay, 10);
 
-    node.process_internal(100, MainEvent::PeerStopped(stopped_conn, stopped))
-        .expect("stop should process");
-    assert_eq!(
-        node.router.action(&stopped),
-        None,
-        "test setup should remove the stopped peer route"
-    );
+    node.process_internal(100, MainEvent::PeerStopped(stopped_conn, stopped)).expect("stop should process");
+    assert_eq!(node.router.action(&stopped), None, "test setup should remove the stopped peer route");
 
     let remote_router = SharedRouterTable::new(relay);
     remote_router.set_direct(ConnectionId::from(40), stopped, 5);
@@ -295,10 +283,7 @@ async fn forged_peer_stopped_must_not_be_forwarded_to_other_neighbours() {
     .await
     .unwrap_or(false);
 
-    assert!(
-        !route_was_removed,
-        "a relay must not forward forged PeerStopped for an unrelated victim to other neighbours"
-    );
+    assert!(!route_was_removed, "a relay must not forward forged PeerStopped for an unrelated victim to other neighbours");
 }
 
 #[tokio::test]
@@ -421,8 +406,7 @@ async fn peer_stopped_must_not_block_connection_task_on_full_main_queue() {
     }
 
     let conn = node1.ctx.conns().into_iter().next().expect("node1 should have a connection to node2");
-    conn.try_send(PeerMessage::PeerStopped(addr1.peer_id()))
-        .expect("stop notification should enqueue to peer connection");
+    conn.try_send(PeerMessage::PeerStopped(addr1.peer_id())).expect("stop notification should enqueue to peer connection");
 
     tokio::time::sleep(Duration::from_millis(100)).await;
 
@@ -454,27 +438,18 @@ async fn peer_connected_must_not_block_authenticated_connection_run_loop_on_full
     let requester2 = node2.requester();
 
     assert!(
-        matches!(
-            tokio::time::timeout(Duration::from_secs(1), node1.recv()).await,
-            Ok(Ok(P2pNetworkEvent::Continue))
-        ),
+        matches!(tokio::time::timeout(Duration::from_secs(1), node1.recv()).await, Ok(Ok(P2pNetworkEvent::Continue))),
         "node1 should process initial tick"
     );
     assert!(
-        matches!(
-            tokio::time::timeout(Duration::from_secs(1), node2.recv()).await,
-            Ok(Ok(P2pNetworkEvent::Continue))
-        ),
+        matches!(tokio::time::timeout(Duration::from_secs(1), node2.recv()).await, Ok(Ok(P2pNetworkEvent::Continue))),
         "node2 should process initial tick"
     );
 
     requester2.try_connect(addr1.clone());
 
     assert!(
-        matches!(
-            tokio::time::timeout(Duration::from_secs(2), node2.recv()).await,
-            Ok(Ok(P2pNetworkEvent::Continue))
-        ),
+        matches!(tokio::time::timeout(Duration::from_secs(2), node2.recv()).await, Ok(Ok(P2pNetworkEvent::Continue))),
         "node2 should process the queued connect command"
     );
 
@@ -595,10 +570,7 @@ async fn peer_disconnected_must_not_block_alias_cleanup_on_full_main_queue() {
     .await
     .expect("node2 should connect to node1");
 
-    assert!(
-        node2.ctx.conn(&live_conn).is_some(),
-        "test setup should have a registered live alias"
-    );
+    assert!(node2.ctx.conn(&live_conn).is_some(), "test setup should have a registered live alias");
 
     for idx in 0..10 {
         node2
@@ -668,16 +640,10 @@ async fn stale_peer_connect_error_must_not_remove_live_neighbour() {
     .await
     .expect("node2 should connect to node1");
 
-    assert!(
-        node2.neighbours.has_peer(&addr1.peer_id()),
-        "test setup should have a live connected neighbour"
-    );
+    assert!(node2.neighbours.has_peer(&addr1.peer_id()), "test setup should have a live connected neighbour");
 
     node2
-        .process_internal(
-            100,
-            MainEvent::PeerConnectError(live_conn, Some(addr1.peer_id()), anyhow::anyhow!("stale connect error")),
-        )
+        .process_internal(100, MainEvent::PeerConnectError(live_conn, Some(addr1.peer_id()), anyhow::anyhow!("stale connect error")))
         .expect("stale connect error should process");
 
     assert!(
@@ -778,10 +744,7 @@ async fn stale_peer_stats_event_must_not_publish_metrics_for_unknown_connection(
     node.process_internal(100, MainEvent::PeerStats(stale_conn, peer, metrics))
         .expect("stale peer stats event should process");
 
-    assert!(
-        node.ctx.metrics().is_empty(),
-        "PeerStats for an unknown connection id must not be exported as live connection metrics"
-    );
+    assert!(node.ctx.metrics().is_empty(), "PeerStats for an unknown connection id must not be exported as live connection metrics");
 }
 
 #[tokio::test]
@@ -802,13 +765,9 @@ async fn peer_stats_must_validate_peer_matches_connection() {
     };
 
     node.router.set_direct(conn, real_peer, 10);
-    node.process_internal(100, MainEvent::PeerStats(conn, forged_peer, metrics))
-        .expect("stats event should process");
+    node.process_internal(100, MainEvent::PeerStats(conn, forged_peer, metrics)).expect("stats event should process");
 
-    assert!(
-        node.ctx.metrics().is_empty(),
-        "PeerStats must be ignored when the reported peer id does not match the connection owner"
-    );
+    assert!(node.ctx.metrics().is_empty(), "PeerStats must be ignored when the reported peer id does not match the connection owner");
 }
 
 #[tokio::test]
@@ -837,9 +796,7 @@ async fn peer_disconnected_must_validate_peer_matches_connection() {
 
     node.router.set_direct(conn, real_peer, 10);
 
-    let event = node
-        .process_internal(100, MainEvent::PeerDisconnected(conn, forged_peer))
-        .expect("disconnect event should process");
+    let event = node.process_internal(100, MainEvent::PeerDisconnected(conn, forged_peer)).expect("disconnect event should process");
 
     assert_eq!(
         event,
@@ -1066,10 +1023,7 @@ async fn connect_to_own_peer_address_must_fail() {
     .await
     .expect("self-connect attempt should finish");
 
-    assert!(
-        result.is_err(),
-        "connect() to the node's own advertised peer address must fail instead of creating a self connection"
-    );
+    assert!(result.is_err(), "connect() to the node's own advertised peer address must fail instead of creating a self connection");
 }
 
 #[tokio::test]
@@ -1195,9 +1149,7 @@ async fn connect_to_same_peer_id_at_different_address_must_not_report_success() 
     let wrong_peer_address = PeerAddress::new(addr1.peer_id(), wrong_address);
     let (tx, rx) = tokio::sync::oneshot::channel();
 
-    node2
-        .process_control(ControlCmd::Connect(wrong_peer_address, Some(tx)))
-        .expect("connect command should process");
+    node2.process_control(ControlCmd::Connect(wrong_peer_address, Some(tx))).expect("connect command should process");
 
     assert!(
         rx.await.expect("connect response should be sent").is_err(),
@@ -1396,10 +1348,7 @@ async fn dropped_service_id_must_be_reusable() {
         let _replacement = node.create_service(0.into());
     }));
 
-    assert!(
-        result.is_ok(),
-        "dropping a service receiver must unregister the service id or allow a replacement without panicking"
-    );
+    assert!(result.is_ok(), "dropping a service receiver must unregister the service id or allow a replacement without panicking");
 }
 
 #[tokio::test]
@@ -1410,10 +1359,7 @@ async fn out_of_range_service_id_must_not_panic() {
         let _service = node.create_service(P2pServiceId::from(256u16));
     }));
 
-    assert!(
-        result.is_ok(),
-        "creating an out-of-range service id must return a recoverable error instead of panicking"
-    );
+    assert!(result.is_ok(), "creating an out-of-range service id must return a recoverable error instead of panicking");
 }
 
 #[tokio::test]
@@ -1438,13 +1384,8 @@ async fn inbound_out_of_range_unicast_service_id_must_not_kill_connection() {
     .await
     .expect("node1 should connect to node2");
 
-    conn.try_send(PeerMessage::Unicast(
-        addr1.peer_id(),
-        addr2.peer_id(),
-        P2pServiceId::from(256u16),
-        b"bad-service-id".to_vec(),
-    ))
-    .expect("out-of-range unicast should be sent over the authenticated connection");
+    conn.try_send(PeerMessage::Unicast(addr1.peer_id(), addr2.peer_id(), P2pServiceId::from(256u16), b"bad-service-id".to_vec()))
+        .expect("out-of-range unicast should be sent over the authenticated connection");
 
     let data = b"valid-after-bad-service-id".to_vec();
     tokio::time::sleep(Duration::from_millis(50)).await;
@@ -1545,15 +1486,11 @@ async fn broadcast_dedup_must_include_authenticated_source_and_service() {
         .expect("second authenticated source should send broadcast with the same id");
 
     assert_eq!(
-        tokio::time::timeout(Duration::from_secs(1), service3.recv())
-            .await
-            .expect("first broadcast should arrive"),
+        tokio::time::timeout(Duration::from_secs(1), service3.recv()).await.expect("first broadcast should arrive"),
         Some(P2pServiceEvent::Broadcast(addr1.peer_id(), data1))
     );
     assert_eq!(
-        tokio::time::timeout(Duration::from_secs(1), service3.recv())
-            .await
-            .expect("second broadcast should arrive"),
+        tokio::time::timeout(Duration::from_secs(1), service3.recv()).await.expect("second broadcast should arrive"),
         Some(P2pServiceEvent::Broadcast(addr2.peer_id(), data2)),
         "broadcast duplicate suppression must not let one authenticated source poison the same id for another source"
     );
@@ -1569,15 +1506,11 @@ async fn broadcast_dedup_must_include_authenticated_source_and_service() {
         .expect("source should send service 1 broadcast with the same id");
 
     assert_eq!(
-        tokio::time::timeout(Duration::from_secs(1), service3.recv())
-            .await
-            .expect("service 0 broadcast should arrive"),
+        tokio::time::timeout(Duration::from_secs(1), service3.recv()).await.expect("service 0 broadcast should arrive"),
         Some(P2pServiceEvent::Broadcast(addr1.peer_id(), service0_data))
     );
     assert_eq!(
-        tokio::time::timeout(Duration::from_secs(1), service3_other.recv())
-            .await
-            .expect("service 1 broadcast should arrive"),
+        tokio::time::timeout(Duration::from_secs(1), service3_other.recv()).await.expect("service 1 broadcast should arrive"),
         Some(P2pServiceEvent::Broadcast(addr1.peer_id(), service1_data)),
         "broadcast duplicate suppression must include the destination service id"
     );

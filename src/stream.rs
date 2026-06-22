@@ -167,7 +167,11 @@ mod tests {
         where
             S: Serializer,
         {
-            let len = if self.first_pass.replace(false) { 1 } else { 32 };
+            let len = if self.first_pass.replace(false) {
+                1
+            } else {
+                32
+            };
             let mut seq = serializer.serialize_seq(Some(len))?;
             for _ in 0..len {
                 seq.serialize_element(&7u8)?;

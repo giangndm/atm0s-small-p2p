@@ -34,10 +34,7 @@ struct RawConnectRes {
     result: Result<Vec<u8>, String>,
 }
 
-fn make_small_stream_receive_endpoint(
-    bind_addr: std::net::SocketAddr,
-    stream_window: u32,
-) -> anyhow::Result<Endpoint> {
+fn make_small_stream_receive_endpoint(bind_addr: std::net::SocketAddr, stream_window: u32) -> anyhow::Result<Endpoint> {
     let priv_key = PrivatePkcs8KeyDer::from(super::DEFAULT_CLUSTER_KEY.to_vec());
     let cert = CertificateDer::from(super::DEFAULT_CLUSTER_CERT.to_vec());
     let mut server_config = ServerConfig::with_single_cert(vec![cert], priv_key.into())?;
@@ -47,11 +44,7 @@ fn make_small_stream_receive_endpoint(
     transport.receive_window(window);
     transport.max_concurrent_uni_streams(10_000_u32.into());
     transport.max_concurrent_bidi_streams(10_000_u32.into());
-    transport.max_idle_timeout(Some(
-        Duration::from_secs(5)
-            .try_into()
-            .expect("timeout should configure"),
-    ));
+    transport.max_idle_timeout(Some(Duration::from_secs(5).try_into().expect("timeout should configure")));
     server_config.transport_config(Arc::new(transport));
     Endpoint::server(server_config, bind_addr).map_err(Into::into)
 }
@@ -157,15 +150,11 @@ async fn relay_stream_must_not_forward_back_to_ingress_peer() {
 
     let node2_advertised_routes = SharedRouterTable::new(addr2.peer_id());
     node2_advertised_routes.set_direct(ConnectionId::from(200), ghost, 1);
-    node1
-        .router
-        .apply_sync(node1_to_node2, node2_advertised_routes.create_sync(&addr1.peer_id()));
+    node1.router.apply_sync(node1_to_node2, node2_advertised_routes.create_sync(&addr1.peer_id()));
 
     let node1_advertised_routes = SharedRouterTable::new(addr1.peer_id());
     node1_advertised_routes.set_direct(ConnectionId::from(100), ghost, 1);
-    node2
-        .router
-        .apply_sync(node2_to_node1, node1_advertised_routes.create_sync(&addr2.peer_id()));
+    node2.router.apply_sync(node2_to_node1, node1_advertised_routes.create_sync(&addr2.peer_id()));
 
     let result = tokio::time::timeout(Duration::from_millis(500), service1.open_stream(ghost, b"loop".to_vec()))
         .await
@@ -359,10 +348,7 @@ async fn inbound_out_of_range_stream_service_id_must_not_panic_accept_task() {
         "out-of-range stream service ids must be rejected with an error instead of panicking in the accept task"
     );
     std::panic::set_hook(previous_hook);
-    assert!(
-        !accept_task_panicked.load(Ordering::SeqCst),
-        "out-of-range stream service ids must not panic in the accept task"
-    );
+    assert!(!accept_task_panicked.load(Ordering::SeqCst), "out-of-range stream service ids must not panic in the accept task");
 
     let meta = b"valid-after-bad-stream-service-id".to_vec();
     let _valid_stream = conn
@@ -403,9 +389,7 @@ async fn open_stream_must_timeout_when_peer_withholds_connect_response() {
             let connection = connecting.await.expect("raw peer should complete QUIC connection");
             let (send, recv) = connection.accept_bi().await.expect("raw peer should accept main control stream");
             let mut main_stream = P2pQuicStream::new(recv, send);
-            let request: RawConnectReq = wait_object::<_, _, 60000>(&mut main_stream)
-                .await
-                .expect("raw peer should receive connect request");
+            let request: RawConnectReq = wait_object::<_, _, 60000>(&mut main_stream).await.expect("raw peer should receive connect request");
             secure
                 .verify_request(request.auth, request.from, request.to, crate::now_ms())
                 .expect("raw peer should verify connect request");
@@ -420,18 +404,13 @@ async fn open_stream_must_timeout_when_peer_withholds_connect_response() {
 
             let (send, recv) = connection.accept_bi().await.expect("raw peer should accept stream connect");
             let mut stream = P2pQuicStream::new(recv, send);
-            let request: StreamConnectReq = wait_object::<_, _, 60000>(&mut stream)
-                .await
-                .expect("raw peer should receive stream connect request");
+            let request: StreamConnectReq = wait_object::<_, _, 60000>(&mut stream).await.expect("raw peer should receive stream connect request");
             let _ = stream_req_tx.send(request);
             std::future::pending::<()>().await;
         }
     });
 
-    requester
-        .connect((raw_peer_id, raw_addr.into()).into())
-        .await
-        .expect("connect to raw peer should be queued");
+    requester.connect((raw_peer_id, raw_addr.into()).into()).await.expect("connect to raw peer should be queued");
 
     tokio::time::timeout(Duration::from_secs(2), async {
         loop {
@@ -475,12 +454,8 @@ async fn open_stream_must_timeout_when_connect_request_write_stalls() {
     let requester = node.requester();
     tokio::spawn(async move { while node.recv().await.is_ok() {} });
 
-    let raw_addr = UdpSocket::bind("127.0.0.1:0")
-        .expect("should bind raw peer udp")
-        .local_addr()
-        .expect("should get raw peer addr");
-    let raw_peer = make_small_stream_receive_endpoint(raw_addr, 37)
-        .expect("should create small-window raw peer endpoint");
+    let raw_addr = UdpSocket::bind("127.0.0.1:0").expect("should bind raw peer udp").local_addr().expect("should get raw peer addr");
+    let raw_peer = make_small_stream_receive_endpoint(raw_addr, 37).expect("should create small-window raw peer endpoint");
     let raw_peer_id = PeerId::from(2);
     let local_peer_id = addr.peer_id();
     let secure: SharedKeyHandshake = super::DEFAULT_SECURE_KEY.into();
@@ -488,19 +463,11 @@ async fn open_stream_must_timeout_when_connect_request_write_stalls() {
 
     let raw_task = tokio::spawn({
         async move {
-            let connecting = raw_peer
-                .accept()
-                .await
-                .expect("raw peer should accept incoming connect");
+            let connecting = raw_peer.accept().await.expect("raw peer should accept incoming connect");
             let connection = connecting.await.expect("raw peer should complete QUIC connection");
-            let (send, recv) = connection
-                .accept_bi()
-                .await
-                .expect("raw peer should accept main control stream");
+            let (send, recv) = connection.accept_bi().await.expect("raw peer should accept main control stream");
             let mut main_stream = P2pQuicStream::new(recv, send);
-            let request: RawConnectReq = wait_object::<_, _, 60000>(&mut main_stream)
-                .await
-                .expect("raw peer should receive connect request");
+            let request: RawConnectReq = wait_object::<_, _, 60000>(&mut main_stream).await.expect("raw peer should receive connect request");
             secure
                 .verify_request(request.auth, request.from, request.to, crate::now_ms())
                 .expect("raw peer should verify connect request");
@@ -513,20 +480,14 @@ async fn open_stream_must_timeout_when_connect_request_write_stalls() {
             .await
             .expect("raw peer should write connect response");
 
-            let stream = connection
-                .accept_bi()
-                .await
-                .expect("raw peer should accept stream connect");
+            let stream = connection.accept_bi().await.expect("raw peer should accept stream connect");
             let _ = stream_accepted_tx.send(());
             let _held_stream = stream;
             std::future::pending::<()>().await;
         }
     });
 
-    requester
-        .connect((raw_peer_id, raw_addr.into()).into())
-        .await
-        .expect("connect to raw peer should be queued");
+    requester.connect((raw_peer_id, raw_addr.into()).into()).await.expect("connect to raw peer should be queued");
 
     tokio::time::timeout(Duration::from_secs(2), async {
         loop {
@@ -563,10 +524,7 @@ async fn open_stream_must_timeout_when_connect_request_write_stalls() {
 
 #[tokio::test]
 async fn relay_must_not_deliver_downstream_stream_after_upstream_setup_closes() {
-    let raw_addr = UdpSocket::bind("127.0.0.1:0")
-        .expect("should bind raw node1 udp")
-        .local_addr()
-        .expect("should get raw node1 addr");
+    let raw_addr = UdpSocket::bind("127.0.0.1:0").expect("should bind raw node1 udp").local_addr().expect("should get raw node1 addr");
     let priv_key = PrivatePkcs8KeyDer::from(super::DEFAULT_CLUSTER_KEY.to_vec());
     let cert = CertificateDer::from(super::DEFAULT_CLUSTER_CERT.to_vec());
     let raw_node1 = make_server_endpoint(raw_addr, priv_key, cert).expect("should create raw node1 endpoint");
@@ -601,9 +559,7 @@ async fn relay_must_not_deliver_downstream_stream_after_upstream_setup_closes() 
     )
     .await
     .expect("raw node1 should send authenticated connect request");
-    let response: RawConnectRes = wait_object::<_, _, 60000>(&mut main_stream)
-        .await
-        .expect("raw node1 should receive connect response");
+    let response: RawConnectRes = wait_object::<_, _, 60000>(&mut main_stream).await.expect("raw node1 should receive connect response");
     secure
         .verify_response(response.result.expect("node2 should accept raw node1"), addr2.peer_id(), raw_node1_id, crate::now_ms())
         .expect("raw node1 should verify connect response");
@@ -666,9 +622,7 @@ async fn idle_inbound_stream_connects_must_be_admission_bounded() {
     )
     .await
     .expect("raw client should send authenticated connect request");
-    let response: RawConnectRes = wait_object::<_, _, 60000>(&mut main_stream)
-        .await
-        .expect("raw client should receive connect response");
+    let response: RawConnectRes = wait_object::<_, _, 60000>(&mut main_stream).await.expect("raw client should receive connect response");
     secure
         .verify_response(response.result.expect("connect response should be accepted"), addr.peer_id(), attacker, crate::now_ms())
         .expect("raw client should verify connect response");
@@ -682,13 +636,17 @@ async fn idle_inbound_stream_connects_must_be_admission_bounded() {
         idle_streams.push(stream);
     }
 
-    let rejected_or_timed_out = matches!(
-        tokio::time::timeout(Duration::from_millis(500), connection.open_bi()).await,
-        Ok(Err(_)) | Err(_)
-    );
+    let rejected_or_timed_out = matches!(tokio::time::timeout(Duration::from_millis(500), connection.open_bi()).await, Ok(Err(_)) | Err(_));
 
-    assert_eq!(idle_streams.len(), ACCEPTABLE_IDLE_STREAMS, "the stream cap should allow exactly {ACCEPTABLE_IDLE_STREAMS} idle stream-connect attempts after the main control stream");
-    assert!(rejected_or_timed_out, "the {ATTEMPTED_IDLE_STREAMS}th idle inbound stream-connect attempt must be rejected or time out once the stream cap is reached");
+    assert_eq!(
+        idle_streams.len(),
+        ACCEPTABLE_IDLE_STREAMS,
+        "the stream cap should allow exactly {ACCEPTABLE_IDLE_STREAMS} idle stream-connect attempts after the main control stream"
+    );
+    assert!(
+        rejected_or_timed_out,
+        "the {ATTEMPTED_IDLE_STREAMS}th idle inbound stream-connect attempt must be rejected or time out once the stream cap is reached"
+    );
 }
 
 #[tokio::test]
@@ -703,17 +661,13 @@ async fn unauthenticated_inbound_connections_must_be_admission_bounded() {
     let mut accepted_connections = Vec::new();
     let mut rejected_or_timed_out = 0;
     for _ in 0..ATTEMPTED_PENDING_CONNECTIONS {
-        let client_addr = UdpSocket::bind("127.0.0.1:0")
-            .expect("should bind client udp")
-            .local_addr()
-            .expect("should get client addr");
+        let client_addr = UdpSocket::bind("127.0.0.1:0").expect("should bind client udp").local_addr().expect("should get client addr");
         let priv_key = PrivatePkcs8KeyDer::from(super::DEFAULT_CLUSTER_KEY.to_vec());
         let cert = CertificateDer::from(super::DEFAULT_CLUSTER_CERT.to_vec());
         let client = make_server_endpoint(client_addr, priv_key, cert).expect("should create raw client endpoint");
         match tokio::time::timeout(
             Duration::from_secs(1),
-            client.connect(**addr.network_address(), CERT_DOMAIN_NAME)
-                .expect("raw client should start QUIC connect"),
+            client.connect(**addr.network_address(), CERT_DOMAIN_NAME).expect("raw client should start QUIC connect"),
         )
         .await
         {

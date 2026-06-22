@@ -90,10 +90,7 @@ async fn visualization_must_emit_peer_leaved_on_graceful_peer_stop() {
     })
     .await;
 
-    assert!(
-        leaved.is_ok(),
-        "visualization must emit PeerLeaved promptly after graceful PeerStopped instead of waiting for timeout"
-    );
+    assert!(leaved.is_ok(), "visualization must emit PeerLeaved promptly after graceful PeerStopped instead of waiting for timeout");
 }
 
 #[test(tokio::test)]
@@ -118,13 +115,8 @@ async fn visualization_info_must_not_be_accepted_without_scan_request() {
     .expect("node2 should connect to node1");
 
     let forged_topology = vec![(ConnectionId::from(999), PeerId::from(123), 7)];
-    conn.try_send(PeerMessage::Unicast(
-        addr2.peer_id(),
-        addr1.peer_id(),
-        0.into(),
-        encode_info_for_test(forged_topology.clone()),
-    ))
-    .expect("attacker should be able to inject a visualization info frame");
+    conn.try_send(PeerMessage::Unicast(addr2.peer_id(), addr1.peer_id(), 0.into(), encode_info_for_test(forged_topology.clone())))
+        .expect("attacker should be able to inject a visualization info frame");
 
     let delivered = tokio::time::timeout(Duration::from_millis(500), service1.recv()).await;
 
