@@ -18045,7 +18045,7 @@ the source of truth for evidence and reviewer decisions.
 
 - Score: 67
 - Category: high-load stability / route-sync backpressure correctness
-- Status: fixed by pending commit.
+- Status: fixed by commit `e3f367a`.
 - Reviewers:
   - `Euler` (forked RED-team reviewer), found.
   - `Anscombe` (forked candidate reviewer), accepted.
