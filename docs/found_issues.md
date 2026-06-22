@@ -11,9 +11,9 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 2
-- Current audit continuation: post-ISSUE-235 no-new cycle 2 documented for
-  requester/service public boundary and graceful-stop lifecycle review.
+- Current consecutive no-new-issue cycles: 0
+- Current audit continuation: ISSUE-236 accepted and fixed; no-new counter
+  reset.
 
 ## Root Cause Summary
 
@@ -90,7 +90,7 @@ the source of truth for evidence and reviewer decisions.
 - Representative issues: ISSUE-002, ISSUE-009, ISSUE-021, ISSUE-036,
   ISSUE-042, ISSUE-093, ISSUE-117, ISSUE-121, ISSUE-149,
   ISSUE-156, ISSUE-159, ISSUE-169, ISSUE-172, ISSUE-173, ISSUE-176,
-  ISSUE-220.
+  ISSUE-220, ISSUE-236.
 - Pattern: timeout checks often wrap only one await point, rely on unchecked
   timestamp arithmetic, use coarse global sweeps instead of per-operation
   deadlines, or complete one side of setup before the full end-to-end setup is
@@ -19119,6 +19119,51 @@ the source of truth for evidence and reviewer decisions.
   - Regression guards:
     `cargo test alias -- --nocapture`,
     `rustfmt --edition 2021 --check src/service/alias_service.rs src/tests/alias.rs`,
+    and `git diff --check`.
+
+### ISSUE-236: Pubsub RPC huge timeout panics deadline calculation
+
+- Status: fixed by checked pubsub RPC deadline arithmetic in `13f3a67`.
+- Category: correctness, stability
+- Score: 63/100
+- Reviewer: `McClintock`, confirmed.
+- Affected code:
+  - `src/service/pubsub_service.rs`: `PublishRpcReq::deadline` formerly used
+    `started_at + timeout`.
+  - `src/service/pubsub_service.rs`: `FeedbackRpcReq::deadline` used the same
+    unchecked arithmetic.
+  - `src/service/pubsub_service.rs`: `next_rpc_deadline` consumed those
+    deadlines while arming the pubsub service loop timer.
+- Impact: a caller can pass a huge pubsub RPC timeout and panic the pubsub
+  service loop when it computes the next deadline. Pending RPC caps limit
+  amplification, but this is still an API-triggered availability failure.
+- Distinctness: distinct from ISSUE-121, which covered coarse timeout
+  scheduling where short RPC timeouts waited for a global sweep. ISSUE-236 is
+  unchecked `Instant + Duration` arithmetic for unrepresentable large
+  deadlines.
+- Root cause: pubsub RPC deadline calculation assumed every caller-supplied
+  timeout can be represented as an `Instant`.
+- Minimal fix proposal: use `Instant::checked_add` for publish and feedback
+  RPC deadlines, and ignore unrepresentable deadlines in
+  `next_rpc_deadline()` so they behave as effectively non-expiring instead of
+  panicking.
+- Fix: `PublishRpcReq::deadline` and `FeedbackRpcReq::deadline` now return
+  `Option<Instant>` from `checked_add`, and `next_rpc_deadline` uses
+  `filter_map`. The heartbeat batch unit-test setup was also updated to
+  explicitly register its raw `P2pService` so existing registration guards do
+  not make that unrelated regression test fail.
+- Evidence tests:
+  - Red evidence before fix:
+    `cargo test pubsub_rpc_huge_timeout_must_not_panic_deadline_calculation -- --nocapture`
+    failed with `overflow when adding duration to instant`.
+  - Verification after fix:
+    `cargo test pubsub_rpc_huge_timeout_must_not_panic_deadline_calculation -- --nocapture`
+  - Regression guards:
+    `cargo test pubsub_publish_rpc_must_respect_short_timeout -- --nocapture`,
+    `cargo test pending_ -- --nocapture`,
+    `cargo test pubsub_outbound_heartbeat_batches_must_respect_inbound_cap -- --nocapture`,
+    `cargo test pubsub -- --nocapture`,
+    `rustfmt --edition 2021 --check src/service/pubsub_service.rs`,
     and `git diff --check`.
 
 ### Cycle after ISSUE-235 no-new cycle 1: transport, auth, and peer setup review
