@@ -48,6 +48,7 @@ const MAX_PENDING_ACCEPT_BI: usize = 16;
 const LOCAL_SERVICE_DELIVERY_TIMEOUT: Duration = Duration::from_secs(1);
 const RELAY_UPSTREAM_STOP_GRACE: Duration = Duration::from_millis(20);
 const UNICAST_ACK_TIMEOUT: Duration = Duration::from_secs(1);
+const MAX_PENDING_UNICAST_ACKS: usize = 16;
 const CONTROL_SEND_TIMEOUT: Duration = Duration::from_millis(250);
 const MAX_CONTROL_STREAM_PKT: usize = 60000;
 const MAX_PEER_MESSAGE_FRAME: usize = 60000;
@@ -223,6 +224,11 @@ impl PeerConnectionInternal {
                 (Err(err), None) => Err(err),
             },
             PeerConnectionControl::SendUnicastWithAck(ack_id, source, dest, service, data, tx) => {
+                self.expire_pending_unicast_acks();
+                if self.pending_unicast_acks.len() >= MAX_PENDING_UNICAST_ACKS {
+                    let _ = tx.send(Err(anyhow!("pending unicast ack queue full")));
+                    return Ok(());
+                }
                 let res = send_control_frame(&mut self.framed, self.remote, PeerMessage::UnicastWithAck(ack_id, source, dest, service, data)).await;
                 match res {
                     Ok(()) => {

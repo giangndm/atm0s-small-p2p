@@ -13,19 +13,19 @@ use tokio::sync::{
 };
 
 use crate::{
-    ConnectionId, InboundPeerBindings, P2P_CONNECTION_RTT, P2P_LIVE_CONNECTION_COUNT, PeerId,
     ctx::SharedCtx,
     msg::P2pServiceId,
     now_ms,
     secure::HandshakeProtocol,
-    stream::{P2pQuicStream, wait_object, write_object},
+    stream::{wait_object, write_object, P2pQuicStream},
+    ConnectionId, InboundPeerBindings, PeerId, P2P_CONNECTION_RTT, P2P_LIVE_CONNECTION_COUNT,
 };
 #[cfg(test)]
 use crate::{P2P_CONNECTION_CONGESTION_EVENTS, P2P_CONNECTION_LOST_BYTES, P2P_CONNECTION_LOST_PKT, P2P_CONNECTION_RECV_BYTES, P2P_CONNECTION_SENT_BYTES, P2P_CONNECTION_UPTIME};
 
 use super::{
-    MainEvent,
     msg::{PeerMessage, UnicastAckId},
+    MainEvent,
 };
 
 mod peer_alias;
@@ -377,30 +377,30 @@ mod tests {
         collections::HashMap,
         net::UdpSocket,
         sync::{
-            Arc, Mutex,
             atomic::{AtomicBool, Ordering},
+            Arc, Mutex,
         },
     };
 
-    use futures::SinkExt;
+    use futures::{SinkExt, StreamExt};
     use metrics::{Counter, CounterFn, Gauge, Histogram, Key, KeyName, Metadata, Recorder, SharedString, Unit};
     use quinn::{ClientConfig, Endpoint, ServerConfig, TransportConfig, VarInt};
     use rustls::pki_types::{CertificateDer, PrivatePkcs8KeyDer};
     use tokio_util::codec::Framed;
 
     use crate::{
-        CERT_DOMAIN_NAME, InboundPeerBindings, NetworkAddress, P2pNetwork, P2pNetworkConfig, P2pNetworkEvent, PeerAddress, PeerMainData, SharedKeyHandshake,
         discovery::PeerDiscovery,
         msg::P2pServiceId,
         neighbours::NetworkNeighbours,
         quic::make_server_endpoint,
         router::{RouteAction, SharedRouterTable},
         service::{
+            metrics_service::{encode_scan_for_test as encode_metrics_scan_for_test, MetricsService},
+            visualization_service::{encode_scan_for_test as encode_visualization_scan_for_test, VisualizationService},
             P2pService, P2pServiceEvent,
-            metrics_service::{MetricsService, encode_scan_for_test as encode_metrics_scan_for_test},
-            visualization_service::{VisualizationService, encode_scan_for_test as encode_visualization_scan_for_test},
         },
         stream::BincodeCodec,
+        InboundPeerBindings, NetworkAddress, PeerAddress, PeerMainData, P2pNetwork, P2pNetworkConfig, P2pNetworkEvent, SharedKeyHandshake, CERT_DOMAIN_NAME,
     };
 
     const DEFAULT_CLUSTER_CERT: &[u8] = include_bytes!("../certs/dev.cluster.cert");
@@ -1121,6 +1121,104 @@ mod tests {
         assert!(
             progressed.is_ok(),
             "outbound control writes must not park peer progress; the connection should process later inbound frames or close promptly"
+        );
+    }
+
+    #[tokio::test]
+    async fn pending_unicast_acks_must_be_count_bounded() {
+        const MAX_EXPECTED_PENDING_UNICAST_ACKS: usize = 16;
+
+        let _ = rustls::crypto::ring::default_provider().install_default();
+        let listen_addr = UdpSocket::bind("127.0.0.1:0").expect("should bind node udp").local_addr().expect("should read node addr");
+        let raw_addr = UdpSocket::bind("127.0.0.1:0").expect("should bind raw peer udp").local_addr().expect("should read raw peer addr");
+        let raw_peer =
+            make_server_endpoint(raw_addr, PrivatePkcs8KeyDer::from(DEFAULT_CLUSTER_KEY.to_vec()), CertificateDer::from(DEFAULT_CLUSTER_CERT.to_vec())).expect("raw peer endpoint should build");
+        let local_id = PeerId::from(1);
+        let raw_peer_id = PeerId::from(2);
+        let secure = SharedKeyHandshake::from("atm0s");
+        let (raw_framed_tx, mut raw_framed_rx) = tokio::sync::oneshot::channel();
+
+        let raw_task = tokio::spawn(async move {
+            let connecting = raw_peer.accept().await.expect("raw peer should accept transport");
+            let connection = connecting.await.expect("raw peer should complete transport");
+            let (send, recv) = connection.accept_bi().await.expect("raw peer should accept p2p control stream");
+            let mut stream = P2pQuicStream::new(recv, send);
+            let req: ConnectReq = wait_object::<_, _, MAX_CONTROL_PEER_PKT>(&mut stream).await.expect("raw peer should receive connect request");
+            secure.verify_request(req.auth, local_id, raw_peer_id, now_ms()).expect("raw peer should verify connect request");
+            write_object::<_, _, MAX_CONTROL_PEER_PKT>(
+                &mut stream,
+                &ConnectRes {
+                    result: Ok(secure.create_response(raw_peer_id, local_id, now_ms())),
+                },
+            )
+            .await
+            .expect("raw peer should write connect response");
+            let _ = raw_framed_tx.send(Framed::new(stream, BincodeCodec::<PeerMessage>::default()));
+            std::future::pending::<()>().await;
+        });
+
+        let priv_key = PrivatePkcs8KeyDer::from(DEFAULT_CLUSTER_KEY.to_vec());
+        let cert = CertificateDer::from(DEFAULT_CLUSTER_CERT.to_vec());
+        let mut node = P2pNetwork::new(P2pNetworkConfig {
+            peer_id: local_id,
+            listen_addr,
+            advertise: None,
+            inbound_peer_bindings: Default::default(),
+            priv_key,
+            cert,
+            tick_ms: 100,
+            seeds: vec![],
+            secure: SharedKeyHandshake::from("atm0s"),
+        })
+        .await
+        .expect("node should build");
+        let requester = node.requester();
+        requester.try_connect((raw_peer_id, raw_addr.into()).into());
+
+        let mut raw_framed = tokio::time::timeout(Duration::from_secs(3), async {
+            let mut raw_framed = None;
+            loop {
+                tokio::select! {
+                    framed = &mut raw_framed_rx, if raw_framed.is_none() => {
+                        raw_framed = Some(framed.expect("raw framed should be sent"));
+                    }
+                    event = node.recv() => {
+                        if let Ok(P2pNetworkEvent::PeerConnected(_, peer)) = event {
+                            assert_eq!(peer, raw_peer_id);
+                        }
+                    }
+                }
+                if node.ctx.conns().into_iter().next().is_some() && raw_framed.is_some() {
+                    return raw_framed.expect("raw framed should be available");
+                }
+            }
+        })
+        .await
+        .expect("node should connect to raw peer");
+
+        let conn = node.ctx.conns().into_iter().next().expect("node should have raw peer alias");
+        let mut sends = Vec::new();
+        for idx in 0..(MAX_EXPECTED_PENDING_UNICAST_ACKS + 8) {
+            let conn = conn.clone();
+            sends.push(tokio::spawn(
+                async move { conn.send_unicast_with_ack(local_id, raw_peer_id, P2pServiceId::from(1), vec![idx as u8]).await },
+            ));
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
+
+        let mut admitted = 0usize;
+        while let Ok(Some(Ok(PeerMessage::UnicastWithAck(..)))) = tokio::time::timeout(Duration::from_millis(25), raw_framed.next()).await {
+            admitted += 1;
+        }
+
+        for send in sends {
+            send.abort();
+        }
+        raw_task.abort();
+
+        assert!(
+            admitted <= MAX_EXPECTED_PENDING_UNICAST_ACKS,
+            "pending unicast ack tracking must be count-bounded before timeout expiry, admitted {admitted} unacked sends"
         );
     }
 
