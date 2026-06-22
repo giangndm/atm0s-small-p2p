@@ -875,6 +875,9 @@ the source of truth for evidence and reviewer decisions.
   - `cargo test pubsub_heartbeat_must_remove_stale_remote_subscriber -- --nocapture`
   - Failure summary: after node2 heartbeats `subscribe=false`, node1's
     publisher times out waiting for `PeerLeaved(Remote(node2))`.
+- Fix status: fixed by adding heartbeat-specific remote role reconciliation.
+  Heartbeats now clear inactive remote subscriber roles and treat channels
+  omitted from a peer heartbeat snapshot as inactive for that sender.
 
 ### ISSUE-027: Replicated KV stores unbounded future changed broadcasts
 

@@ -895,6 +895,11 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   `cargo test pubsub_empty_heartbeat_must_remove_omitted_stale_remote_publisher -- --nocapture`,
   `cargo test pubsub_heartbeat_must_remove_stale_remote_subscriber -- --nocapture`,
   stale leave/reset/disconnect pubsub tests, and `cargo fmt -- --check`.
+- ISSUE-026: fixed by the same heartbeat-specific pubsub role reconciliation.
+  Heartbeats now clear stale remote subscriber roles when a peer reports
+  `subscribe=false` or omits the channel from its heartbeat snapshot. Verified
+  with
+  `cargo test pubsub_heartbeat_must_remove_stale_remote_subscriber -- --nocapture`.
 - ISSUE-081: fixed by `86160e9` (`fix: validate full sync snapshot
   responses`), which rejects unbounded initial empty snapshot pages with
   nonzero versions before full sync can transition to `WorkingState`. Verified
