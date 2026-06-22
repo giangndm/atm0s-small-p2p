@@ -12,7 +12,7 @@ must resolve.
 ## Audit Status
 
 - Current consecutive no-new-issue cycles: 0
-- Current audit continuation: ISSUE-236 accepted and fixed; no-new counter
+- Current audit continuation: ISSUE-237 accepted and fixed; no-new counter
   reset.
 
 ## Root Cause Summary
@@ -44,7 +44,7 @@ the source of truth for evidence and reviewer decisions.
   ISSUE-059, ISSUE-071, ISSUE-081 through ISSUE-089, ISSUE-095, ISSUE-099,
   ISSUE-110, ISSUE-111, ISSUE-143, ISSUE-152,
   ISSUE-154, ISSUE-155, ISSUE-158, ISSUE-166, ISSUE-171, ISSUE-175,
-  ISSUE-186, ISSUE-231, ISSUE-232, ISSUE-233.
+  ISSUE-186, ISSUE-231, ISSUE-232, ISSUE-233, ISSUE-237.
 - Pattern: replicated-KV full sync, changed repair, alias lookup, metrics,
   visualization, and pubsub flows accept stale, unsolicited, reordered, or
   mismatched responses or broadcasts because handlers do not verify
@@ -19164,6 +19164,51 @@ the source of truth for evidence and reviewer decisions.
     `cargo test pubsub_outbound_heartbeat_batches_must_respect_inbound_cap -- --nocapture`,
     `cargo test pubsub -- --nocapture`,
     `rustfmt --edition 2021 --check src/service/pubsub_service.rs`,
+    and `git diff --check`.
+
+### ISSUE-237: Replicated-KV full sync accepts non-advancing snapshot cursor
+
+- Status: fixed by rejecting non-advancing full-sync snapshot cursors in
+  `abe7e37`.
+- Category: correctness, stability
+- Score: 61/100
+- Reviewer: `Euclid` accepted the issue as distinct; `Franklin` accepted the
+  implemented fix.
+- Affected code:
+  - `src/service/replicate_kv_service/remote_storage.rs` validated
+    `SnapshotData.next_key` against `biggest_key` and pending bounds, but not
+    against the last key accepted from the same non-empty snapshot page.
+  - The continuation request emitted `FetchSnapshot { from: Some(next_key),
+    ... }` even when `next_key` pointed to a key already present in the page.
+- Impact: a malformed or hostile peer can make full sync accept a page, emit
+  local `KvEvent::Set` work, and then request a continuation from the same or
+  earlier key. That can duplicate application, waste repair bandwidth, and keep
+  per-remote full sync busy without forward progress under bad-network
+  behavior.
+- Distinctness: distinct from ISSUE-037 (`next_key > biggest_key` reversed
+  bounds), ISSUE-038 (empty page with continuation), ISSUE-083 (continuation
+  slot before requested lower bound), and ISSUE-143 (stale terminal snapshot
+  completing an outstanding continuation). This case is a non-empty page whose
+  continuation cursor does not advance past the page's last accepted key.
+- Root cause: full-sync page validation checked ordering inside the page and
+  upper/lower bounds independently, but did not enforce monotonic cursor
+  progress before mutating remote slots or emitting local events.
+- Minimal fix proposal: after page ordering/bounds checks and before mutation,
+  reject `SnapshotData.next_key` when it is less than or equal to the last slot
+  key in the same non-empty page.
+- Fix: full-sync snapshot handling now tracks the last validated slot key and
+  rejects `next_key <= last_key` before writing `ctx.slots`, staged slots, or
+  outbound events.
+- Evidence tests:
+  - Red evidence before fix:
+    `cargo test full_sync_must_reject_snapshot_next_key_that_does_not_advance -- --nocapture`
+    failed because the page with keys `1, 2` and `next_key = Some(2)` was
+    accepted and stored both slots.
+  - Verification after fix:
+    `cargo test full_sync_must_reject_snapshot_next_key_that_does_not_advance -- --nocapture`
+  - Regression guards:
+    `cargo test replicate_kv -- --nocapture`,
+    `rustfmt --edition 2021 --check src/service/replicate_kv_service/remote_storage.rs`,
     and `git diff --check`.
 
 ### Cycle after ISSUE-235 no-new cycle 1: transport, auth, and peer setup review
