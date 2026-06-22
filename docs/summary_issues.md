@@ -7,12 +7,12 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Accepted issues: 246
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 21
-- Current audit continuation: critical-only package/API defaults no-new cycle
-  23 found no new score-80+ issue across Cargo manifest and features,
-  dependency feature defaults, README/examples, demo cert/key handling,
-  insecure-open-cluster opt-in, public config validation, advertise/seed
-  defaults, service/requester handles, and documented usage.
+- Current consecutive no-new-issue cycles: 22
+- Current audit continuation: critical-only shutdown/task no-new cycle 24
+  found no new score-80+ issue across graceful stop ordering, drop paths,
+  task cancellation, bounded channel shutdown, QUIC close behavior,
+  `PeerStopped`/`PeerDisconnected` emission, stale requester/service behavior,
+  and churn under bad-network/high-load conditions.
 - Fix phase status: ISSUE-001, ISSUE-003, ISSUE-004, ISSUE-005, ISSUE-006, ISSUE-007,
   ISSUE-002, ISSUE-008, ISSUE-009, ISSUE-010, ISSUE-011, ISSUE-012, ISSUE-013, ISSUE-014, ISSUE-015, ISSUE-017, ISSUE-020, ISSUE-021, ISSUE-023, ISSUE-024, ISSUE-025, ISSUE-027, ISSUE-033, ISSUE-034, ISSUE-039, ISSUE-045, ISSUE-046, ISSUE-047, ISSUE-048, ISSUE-055, ISSUE-059, ISSUE-103, ISSUE-110, ISSUE-111, ISSUE-115, ISSUE-116, ISSUE-117, ISSUE-118, ISSUE-119, ISSUE-120, ISSUE-122, ISSUE-123,
   ISSUE-124, ISSUE-125, ISSUE-126, ISSUE-127, ISSUE-128, ISSUE-129, ISSUE-130,
@@ -829,6 +829,22 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   rather than unsafe library defaults; direct issue-entry ledger check found 19
   score-80+ entries and all are fixed; no reproducible package/API/default
   failure supported a distinct score-80+ issue.
+- Fuzz phase no-new cycle 24 reviewed shutdown, drop, and task-cancellation
+  behavior with forked reviewer `Kant the 2nd`. Local `shutdown`, `dropped`,
+  `drop`, `peer_stopped`, `stream`, `service_drop`, `graceful`,
+  `disconnected`, `queue`, `reconnect`, and 28-node valid churn fuzz checks
+  passed. The reviewer passed `peer_stopped_`, `requester_`,
+  `dropped_service`, `graceful`, `shutdown`, `service_drop`, 24-node valid
+  churn fuzz, and 24-node mixed churn fuzz checks. Rejected candidates mapped
+  to RC-1/RC-6 and ISSUE-001/004/215/216/221/222 for graceful-stop ordering
+  and stopped-peer cleanup, RC-3/RC-6 and ISSUE-218/219/224/225 for
+  shutdown/full-queue backpressure, RC-6 and ISSUE-072/073/076/234/235 for
+  stale requester/service drop behavior, RC-3/RC-4/RC-6 and
+  ISSUE-217/220/238 for QUIC close, stalled setup, stream admission, and task
+  concerns, and discovery tombstone tests for seed vs non-seed graceful
+  removal. Direct issue-entry ledger check found 19 score-80+ entries and all
+  are fixed; no reproducible shutdown/drop/task-cancellation failure supported
+  a distinct score-80+ issue.
 - Cycle after ISSUE-231 no-new cycle 1 reviewed routing/discovery/path
   stability and stream/pipe lifecycle integration with forked reviewer
   `Carver`. Focused route, discovery, stream-relay, peer-stopped, and pubsub

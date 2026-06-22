@@ -11,12 +11,12 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 21
-- Current audit continuation: critical-only package/API defaults no-new cycle
-  23 found no new score-80+ issue across Cargo manifest and features,
-  dependency feature defaults, README/examples, demo cert/key handling,
-  insecure-open-cluster opt-in, public config validation, advertise/seed
-  defaults, service/requester handles, and documented usage.
+- Current consecutive no-new-issue cycles: 22
+- Current audit continuation: critical-only shutdown/task no-new cycle 24
+  found no new score-80+ issue across graceful stop ordering, drop paths,
+  task cancellation, bounded channel shutdown, QUIC close behavior,
+  `PeerStopped`/`PeerDisconnected` emission, stale requester/service behavior,
+  and churn under bad-network/high-load conditions.
 
 ## Root Cause Summary
 
@@ -21740,6 +21740,65 @@ the source of truth for evidence and reviewer decisions.
 - Ledger check: 19 score-80+ issue entries found and all are fixed.
 - Current consecutive no-new cycles after ISSUE-238: 33.
 - Current fuzz-phase no-new cycles after transition: 23.
+- Current focused source-review no-new cycles after fuzz phase: 10.
+
+### Fuzz phase no-new cycle 24: shutdown, drop, and task-cancellation review
+
+- Scope: continued critical-only review after cycle 23, focusing on
+  `P2pNetwork::shutdown`, `P2pNetwork::shutdown_gracefully`, network and
+  service drop paths, `PeerConnectionInternal` helper tasks, pending sync and
+  open-stream tasks, bounded channel closure, QUIC close behavior,
+  `PeerStopped`/`PeerDisconnected` ordering and emission, stale
+  requester/service behavior after owner drop, and churn under bad-network or
+  high-load conditions.
+- Reviewer: `Kant the 2nd` (forked RED-team reviewer), returned
+  `NO_NEW_CRITICAL`.
+- Verification:
+  - `RUST_LOG=error cargo test shutdown --lib`: passed 8 tests.
+  - `RUST_LOG=error cargo test dropped --lib`: passed 13 tests.
+  - `RUST_LOG=error cargo test drop --lib`: passed 25 tests.
+  - `RUST_LOG=error cargo test peer_stopped --lib`: passed 15 tests.
+  - `RUST_LOG=error cargo test stream --lib`: passed 30 tests.
+  - `RUST_LOG=error cargo test service_drop --lib`: passed 2 tests.
+  - `RUST_LOG=error cargo test graceful --lib`: passed 11 tests.
+  - `RUST_LOG=error cargo test disconnected --lib`: passed 8 tests.
+  - `RUST_LOG=error cargo test queue --lib`: passed 37 tests.
+  - `RUST_LOG=error cargo test reconnect --lib`: passed 1 test.
+  - `RUST_LOG=error P2P_FUZZ_NODES=28 P2P_FUZZ_STEPS=1000 P2P_FUZZ_SEED=45001 cargo test fuzz_random_valid_node_churn_actions_must_not_panic_connection_tasks --lib`:
+    passed.
+- Reviewer cross-check:
+  - `cargo test --lib -- --list | rg -i "shutdown|drop|stop|stopped|disconnect|close|leak|task|cancel|requester|service|fuzz|bounded|channel|panic|deadlock|high|load"`
+  - `RUST_LOG=error cargo test peer_stopped_ --lib -- --nocapture`: passed.
+  - `RUST_LOG=error cargo test requester_ --lib -- --nocapture`: passed.
+  - `RUST_LOG=error cargo test dropped_service --lib -- --nocapture`: passed.
+  - `RUST_LOG=error cargo test graceful --lib -- --nocapture`: passed.
+  - `RUST_LOG=error cargo test shutdown --lib -- --nocapture`: passed.
+  - `RUST_LOG=error cargo test service_drop --lib -- --nocapture`: passed.
+  - `RUST_LOG=error P2P_FUZZ_NODES=24 P2P_FUZZ_STEPS=900 P2P_FUZZ_SEED=55001 cargo test fuzz_random_valid_node_churn_actions_must_not_panic_connection_tasks --lib -- --nocapture`:
+    passed.
+  - `RUST_LOG=error P2P_FUZZ_NODES=24 P2P_FUZZ_STEPS=900 P2P_FUZZ_SEED=55002 cargo test fuzz_random_node_churn_actions_must_not_panic_connection_tasks --lib -- --nocapture`:
+    passed.
+  - Direct issue-entry ledger check found
+    `critical_entries=19 critical_fixed=19 critical_open=0 open=[]`.
+- Duplicate mapping:
+  - Graceful stop ordering, `PeerStopped` ownership, forwarding, dedup, retry,
+    public disconnect emission, and stopped-peer cleanup map to RC-1/RC-6,
+    ISSUE-001, ISSUE-004, ISSUE-215, ISSUE-216, ISSUE-221, ISSUE-222, and
+    related `peer_stopped` tests.
+  - Shutdown under full queues/backpressure maps to RC-3/RC-6, ISSUE-218,
+    ISSUE-219, ISSUE-224, ISSUE-225, and existing full-main/full-service and
+    acked-unicast backpressure tests.
+  - Requester/service behavior after network/service drop maps to RC-6,
+    ISSUE-072, ISSUE-073, ISSUE-076, ISSUE-234, ISSUE-235, and existing stale
+    requester/drop tests.
+  - QUIC close, duplicate connection close, stalled setup, stream admission,
+    and task-panic concerns map to RC-3/RC-4/RC-6, ISSUE-217, ISSUE-220,
+    ISSUE-238, and stream/shutdown/fuzz coverage.
+  - Non-seed graceful removal vs seed retention maps to discovery tombstone
+    tests and prior lifecycle no-new cycles.
+- Ledger check: 19 score-80+ issue entries found and all are fixed.
+- Current consecutive no-new cycles after ISSUE-238: 34.
+- Current fuzz-phase no-new cycles after transition: 24.
 - Current focused source-review no-new cycles after fuzz phase: 10.
 
 ### Cycle after ISSUE-235 no-new cycle 1: transport, auth, and peer setup review
