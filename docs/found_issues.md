@@ -2070,6 +2070,10 @@ the source of truth for evidence and reviewer decisions.
   Applications can receive false peer-disconnected notifications and corrupt
   their own connection state. This is distinct from the stale-event route,
   sync, and metrics issues because it affects the public event stream.
+- Fix status: fixed by validating `MainEvent::PeerDisconnected` with
+  `router.is_direct_peer(conn, peer)` before cleanup, service fanout, or public
+  `P2pNetworkEvent::PeerDisconnected` emission. Unknown, stale, or mismatched
+  connection/peer pairs now return `Continue`.
 - Evidence test:
   - `cargo test stale_peer_disconnected_event_must_not_emit_user_disconnect -- --nocapture`
   - Failure summary: processing

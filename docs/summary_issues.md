@@ -29,6 +29,8 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   ISSUE-056 is fixed by fail-fast stream-open control admission.
   ISSUE-064 is fixed by validating PeerStats direct-peer ownership before
   metrics export.
+  ISSUE-065 is fixed by validating disconnect ownership before cleanup and
+  public event emission.
   ISSUE-068 is fixed by validating PeerStats ownership before metrics export.
   ISSUE-165 is fixed by emitting visualization leaves from peer disconnects.
   ISSUE-166 is fixed by a two-generation broadcast replay dedup window.
