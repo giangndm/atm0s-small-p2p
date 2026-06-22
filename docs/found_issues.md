@@ -2247,6 +2247,8 @@ the source of truth for evidence and reviewer decisions.
 - Status: fixed by giving cloned `P2pServiceRequester`s a liveness token tied
   to the owning `P2pService` receiver and rejecting stale `open_stream`
   attempts before they can reach `SharedCtx`.
+- Fix status: fixed by checking the `P2pServiceRequester` liveness token before
+  stale requesters can open streams through `SharedCtx`.
 - Category: correctness, pipe lifecycle stability
 - Score: 72/100
 - Reviewer: `Parfit`, confirmed.
