@@ -11,12 +11,56 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 27
-- Current audit continuation: critical-only metrics and visualization
-  no-new cycle 29 found no new score-80+ issue across scan/`Info` ingestion,
-  collector authorization, responder correlation, stale disconnect cleanup,
-  resource caps, malformed service payload handling, timeout arithmetic, and
-  high-load fuzz behavior.
+- Current consecutive no-new-issue cycles: 28
+- Current audit continuation: critical-only alias/requester lifecycle
+  no-new cycle 30 found no new score-80+ issue across alias lookup
+  correlation, stale hint cleanup, requester liveness, queue admission,
+  shutdown/drop handling, malformed service payload handling, and high-load
+  churn behavior.
+
+### Critical-only no-new cycle 30: alias and requester lifecycle
+
+- Scope: reviewer-style critical-only pass over
+  `src/service/alias_service.rs`, `src/requester.rs`, `src/service.rs`, focused
+  alias/requester tests, and message paths feeding alias `NotifySet`,
+  `NotifyDel`, `Check`, `Scan`, `Found`, `NotFound`, and `Shutdown`.
+- Focus areas: stale alias hints after disconnect/restart, unauthorized or
+  unsolicited `Found`/`NotFound`, alias lookup correlation, request
+  generation/lifecycle freshness, pending find and waiter bounds, cache/hint
+  caps, requester/service liveness after drop, control-queue admission,
+  shutdown/drop cleanup, malformed bincode payloads, and high-load churn.
+- Verification:
+  - `RUST_LOG=error cargo test alias --lib -- --nocapture`: passed 47 tests.
+  - `RUST_LOG=error cargo test requester --lib -- --nocapture`: passed 13 tests.
+  - `RUST_LOG=error cargo test stale --lib -- --nocapture`: passed 25 tests.
+  - `RUST_LOG=error cargo test bounded --lib -- --nocapture`: passed 30 tests.
+  - `RUST_LOG=error cargo test pending --lib -- --nocapture`: passed 17 tests.
+  - `RUST_LOG=error cargo test shutdown --lib -- --nocapture`: passed 8 tests.
+  - `RUST_LOG=error cargo test dropped --lib -- --nocapture`: passed 13 tests.
+  - `RUST_LOG=error cargo test unsolicited --lib -- --nocapture`: passed 4 tests.
+  - `RUST_LOG=error cargo test malformed --lib -- --nocapture`: matched 0 tests.
+  - `RUST_LOG=error P2P_FUZZ_NODES=24 P2P_FUZZ_STEPS=900 P2P_FUZZ_SEED=68001 cargo test fuzz_random_valid_node_churn_actions_must_not_panic_connection_tasks --lib -- --nocapture`: passed.
+- Reviewer cross-check: `Pauli the 2nd` returned `NO_NEW_CRITICAL` after
+  reading alias/requester/service code, reviewing duplicate mappings, and
+  running focused alias, requester, dropped-service requester, bounded,
+  disconnect, pending, malformed, shutdown, and stale tests.
+- Duplicate mapping:
+  - Stale alias hints after disconnect/restart map to ISSUE-158, ISSUE-206,
+    RC-2, and RC-6.
+  - Unauthorized or unsolicited `Found`/`NotFound` maps to ISSUE-090,
+    ISSUE-109, ISSUE-152, ISSUE-239, and RC-2.
+  - Pending alias find caps, duplicate waiters, and cache/hint caps map to
+    ISSUE-035, ISSUE-041, ISSUE-101, ISSUE-127, RC-3, and RC-5.
+  - Alias registration/control queue false success maps to ISSUE-235.
+  - Requester/control queue admission and stale requester/drop behavior map to
+    ISSUE-028, ISSUE-072, ISSUE-073, ISSUE-076, ISSUE-125, ISSUE-234, RC-3,
+    and RC-6.
+  - Shutdown/drop/peer-disconnect cleanup maps to ISSUE-179, ISSUE-183,
+    ISSUE-215 through ISSUE-225, and RC-6.
+  - Malformed service payload handling maps to ISSUE-053, ISSUE-060,
+    ISSUE-091, ISSUE-234, RC-5, and RC-6.
+- Result: no distinct score-80+ alias or requester lifecycle issue had concrete
+  failing-test evidence in this cycle.
 
 ### Critical-only no-new cycle 29: metrics and visualization ingestion
 

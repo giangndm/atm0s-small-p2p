@@ -7,12 +7,27 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Accepted issues: 246
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 27
-- Current audit continuation: critical-only metrics and visualization
-  no-new cycle 29 found no new score-80+ issue across scan/`Info` ingestion,
-  collector authorization, responder correlation, stale disconnect cleanup,
-  resource caps, malformed service payload handling, timeout arithmetic, and
-  high-load fuzz behavior.
+- Current consecutive no-new-issue cycles: 28
+- Current audit continuation: critical-only alias/requester lifecycle
+  no-new cycle 30 found no new score-80+ issue across alias lookup
+  correlation, stale hint cleanup, requester liveness, queue admission,
+  shutdown/drop handling, malformed service payload handling, and high-load
+  churn behavior.
+- Critical-only no-new cycle 30 reviewed alias service and requester lifecycle
+  behavior in `alias_service.rs`, `requester.rs`, and `service.rs`. Focused
+  alias, requester, stale, bounded, pending, shutdown, dropped, unsolicited,
+  malformed-payload filters, and a 24-node churn fuzz seed passed. Reviewer
+  `Pauli the 2nd` returned `NO_NEW_CRITICAL`. Rejected candidates mapped to
+  RC-2 for `Found`/`NotFound` correlation and stale alias lifecycle issues,
+  RC-3/RC-5 for pending find, waiter, hint, cache, and queue caps, RC-6 for
+  requester liveness plus shutdown/drop/disconnect cleanup, ISSUE-028,
+  ISSUE-035, ISSUE-041, ISSUE-053, ISSUE-060, ISSUE-072, ISSUE-073,
+  ISSUE-076, ISSUE-090, ISSUE-091, ISSUE-101, ISSUE-109, ISSUE-125,
+  ISSUE-127, ISSUE-152, ISSUE-158, ISSUE-179, ISSUE-183, ISSUE-206,
+  ISSUE-215 through ISSUE-225, ISSUE-234, ISSUE-235, ISSUE-239, and existing
+  alias/requester stale, bounded, shutdown, unsolicited, and drop coverage. No
+  distinct score-80+ alias or requester lifecycle failure had concrete
+  failing-test evidence.
 - Critical-only no-new cycle 29 reviewed metrics and visualization ingestion in
   `metrics_service.rs` and `visualization_service.rs`. Focused metrics,
   visualization, scan, info, stale, bounded, disconnect, malformed-payload
