@@ -5,8 +5,8 @@ use std::{
 };
 
 use crate::{
-    CERT_DOMAIN_NAME, ConnectionId, ControlCmd, MainEvent, NetworkAddress, P2pNetwork, P2pNetworkConfig, P2pNetworkEvent, P2pServiceEvent, PeerAddress, PeerConnectionMetric, PeerId,
-    PeerMainData, SharedKeyHandshake, SharedRouterTable,
+    CERT_DOMAIN_NAME, ConnectionId, ControlCmd, MainEvent, NetworkAddress, P2pNetwork, P2pNetworkConfig, P2pNetworkEvent, P2pServiceEvent, PeerAddress, PeerConnectionMetric, PeerId, PeerMainData,
+    SharedKeyHandshake, SharedRouterTable,
     discovery::PeerDiscovery,
     msg::{BroadcastMsgId, P2pServiceId, PeerMessage},
     quic::make_server_endpoint,
@@ -543,6 +543,52 @@ async fn peer_stopped_must_not_block_connection_task_on_full_main_queue() {
 }
 
 #[tokio::test]
+async fn peer_stopped_must_not_wait_behind_full_local_service_queue() {
+    let (mut node1, addr1) = create_node(true, 1, vec![]).await;
+    let (mut node2, addr2) = create_node(false, 2, vec![addr1.clone()]).await;
+    let _service2 = node2.create_service(0.into());
+
+    let conn_to_node1 = tokio::time::timeout(Duration::from_secs(3), async {
+        loop {
+            tokio::select! {
+                _ = node1.recv() => {}
+                event = node2.recv() => {
+                    if let Ok(P2pNetworkEvent::PeerConnected(conn, peer)) = event {
+                        if peer == addr1.peer_id() {
+                            return conn;
+                        }
+                    }
+                }
+            }
+        }
+    })
+    .await
+    .expect("node2 should connect to node1");
+
+    let conn = node1.ctx.conns().into_iter().next().expect("node1 should have a connection to node2");
+    for idx in 0..11 {
+        conn.send(PeerMessage::Unicast(addr1.peer_id(), addr2.peer_id(), 0.into(), vec![idx]))
+            .await
+            .expect("unicast should enqueue to peer connection");
+    }
+    conn.send(PeerMessage::PeerStopped(addr1.peer_id()))
+        .await
+        .expect("stop notification should enqueue behind the service-backpressured unicast");
+
+    let disconnected = tokio::time::timeout(Duration::from_millis(200), async {
+        loop {
+            match node2.recv().await.expect("node2 should keep running") {
+                P2pNetworkEvent::PeerDisconnected(conn, peer) if conn == conn_to_node1 && peer == addr1.peer_id() => break,
+                _ => {}
+            }
+        }
+    })
+    .await;
+
+    assert!(disconnected.is_ok(), "PeerStopped must not wait behind a full local service queue on the same connection");
+}
+
+#[tokio::test]
 async fn sync_must_not_block_connection_task_on_full_main_queue() {
     let (mut node1, addr1) = create_node(true, 1, vec![]).await;
     let service1 = node1.create_service(0.into());
@@ -751,15 +797,8 @@ async fn peer_connected_must_not_block_authenticated_connection_run_loop_on_full
     );
 }
 
-async fn authenticate_raw_inbound(
-    node: &mut P2pNetwork<SharedKeyHandshake>,
-    node_addr: &PeerAddress,
-    remote_id: PeerId,
-) -> anyhow::Result<(Endpoint, Connection, SendStream, RecvStream)> {
-    let client_addr = UdpSocket::bind("127.0.0.1:0")
-        .expect("raw client udp should bind")
-        .local_addr()
-        .expect("raw client addr should exist");
+async fn authenticate_raw_inbound(node: &mut P2pNetwork<SharedKeyHandshake>, node_addr: &PeerAddress, remote_id: PeerId) -> anyhow::Result<(Endpoint, Connection, SendStream, RecvStream)> {
+    let client_addr = UdpSocket::bind("127.0.0.1:0").expect("raw client udp should bind").local_addr().expect("raw client addr should exist");
     let priv_key = PrivatePkcs8KeyDer::from(DEFAULT_CLUSTER_KEY.to_vec());
     let cert = CertificateDer::from(DEFAULT_CLUSTER_CERT.to_vec());
     let client = make_server_endpoint(client_addr, priv_key, cert)?;

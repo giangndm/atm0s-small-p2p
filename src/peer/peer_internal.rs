@@ -22,7 +22,7 @@ use tokio::{
     select,
     sync::{
         Mutex, Notify, OwnedSemaphorePermit, Semaphore,
-        mpsc::{Receiver, Sender, error::TrySendError},
+        mpsc::{Receiver, Sender, channel, error::TrySendError},
     },
     task::JoinHandle,
     time::Interval,
@@ -52,6 +52,7 @@ const CONTROL_SEND_TIMEOUT: Duration = Duration::from_millis(250);
 const MAX_CONTROL_STREAM_PKT: usize = 60000;
 const MAX_PEER_MESSAGE_FRAME: usize = 60000;
 const INBOUND_SYNC_RETRY_DELAY: Duration = Duration::from_millis(10);
+const LOCAL_SERVICE_DELIVERY_QUEUE_SIZE: usize = 16;
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 pub struct PeerConnectionMetric {
@@ -78,6 +79,8 @@ pub struct PeerConnectionInternal {
     pending_inbound_sync: Arc<Mutex<Option<InboundSync>>>,
     pending_inbound_sync_notify: Arc<Notify>,
     pending_inbound_sync_task: JoinHandle<()>,
+    local_service_delivery_tx: Sender<LocalServiceDelivery>,
+    local_service_delivery_task: JoinHandle<()>,
     pending_accept_bi: Arc<Semaphore>,
     ticker: Interval,
     started: Instant,
@@ -86,6 +89,12 @@ pub struct PeerConnectionInternal {
 struct InboundSync {
     route: RouterTableSync,
     advertise: PeerDiscoverySync,
+}
+
+struct LocalServiceDelivery {
+    service_id: P2pServiceId,
+    service: Sender<P2pServiceEvent>,
+    event: P2pServiceEvent,
 }
 
 impl PeerConnectionInternal {
@@ -111,6 +120,8 @@ impl PeerConnectionInternal {
             pending_inbound_sync.clone(),
             pending_inbound_sync_notify.clone(),
         ));
+        let (local_service_delivery_tx, local_service_delivery_rx) = channel(LOCAL_SERVICE_DELIVERY_QUEUE_SIZE);
+        let local_service_delivery_task = tokio::spawn(deliver_local_service_loop(connection.remote_address(), local_service_delivery_rx));
 
         Self {
             conn_id,
@@ -125,6 +136,8 @@ impl PeerConnectionInternal {
             pending_inbound_sync,
             pending_inbound_sync_notify,
             pending_inbound_sync_task,
+            local_service_delivery_tx,
+            local_service_delivery_task,
             pending_accept_bi: Arc::new(Semaphore::new(MAX_PENDING_ACCEPT_BI)),
             ticker: tokio::time::interval(Duration::from_secs(1)),
             started: Instant::now(),
@@ -320,7 +333,7 @@ impl PeerConnectionInternal {
 
                     if let Some(service) = self.ctx.get_service(&service_id) {
                         log::debug!("[PeerConnectionInternal {}] broadcast msg {msg_id} to service {service_id}", self.remote);
-                        let _ = send_local_service_event(self.remote, service_id, &service, P2pServiceEvent::Broadcast(effective_source, data)).await;
+                        self.try_queue_local_service_event(service_id, service, P2pServiceEvent::Broadcast(effective_source, data))?;
                     } else {
                         log::warn!("[PeerConnectionInternal {}] broadcast msg to unknown service {service_id}", self.remote);
                     }
@@ -341,7 +354,7 @@ impl PeerConnectionInternal {
                 match unicast_route_decision(self.ctx.router().action(&dest), self.conn_id) {
                     UnicastRouteDecision::Local => {
                         if let Some(service) = self.ctx.get_service(&service_id) {
-                            let _ = send_local_service_event(self.remote, service_id, &service, P2pServiceEvent::Unicast(effective_source, data)).await;
+                            self.try_queue_local_service_event(service_id, service, P2pServiceEvent::Unicast(effective_source, data))?;
                         } else {
                             log::warn!("[PeerConnectionInternal {}] service {service_id} not found", self.remote);
                         }
@@ -417,11 +430,25 @@ impl PeerConnectionInternal {
             }
         }
     }
+
+    fn try_queue_local_service_event(&self, service_id: P2pServiceId, service: Sender<P2pServiceEvent>, event: P2pServiceEvent) -> anyhow::Result<()> {
+        self.local_service_delivery_tx.try_send(LocalServiceDelivery { service_id, service, event }).map_err(|err| match err {
+            TrySendError::Full(_) => anyhow!("local service delivery queue full"),
+            TrySendError::Closed(_) => anyhow!("local service delivery queue closed"),
+        })
+    }
 }
 
 impl Drop for PeerConnectionInternal {
     fn drop(&mut self) {
         self.pending_inbound_sync_task.abort();
+        self.local_service_delivery_task.abort();
+    }
+}
+
+async fn deliver_local_service_loop(remote: SocketAddr, mut rx: Receiver<LocalServiceDelivery>) {
+    while let Some(delivery) = rx.recv().await {
+        let _ = send_local_service_event(remote, delivery.service_id, &delivery.service, delivery.event).await;
     }
 }
 
