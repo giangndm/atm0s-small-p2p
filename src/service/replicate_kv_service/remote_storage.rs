@@ -343,6 +343,12 @@ where
                     }
                     prev_key = Some(k);
                 }
+                if let (Some(next_key), Some(last_key)) = (snapshot.next_key.as_ref(), prev_key) {
+                    if next_key <= last_key {
+                        log::warn!("[RemoteStore {:?}] reject snapshot page next_key {:?} not advancing past last key {:?}", ctx.remote, next_key, last_key);
+                        return false;
+                    }
+                }
                 for (k, slot) in snapshot.slots.into_iter() {
                     if let Some(staged_slots) = self.staged_slots.as_mut() {
                         staged_slots.insert(k, slot);
@@ -969,6 +975,38 @@ mod tests {
 
         assert_eq!(ctx.slots, BTreeMap::new(), "snapshot pages with duplicate keys must be rejected");
         assert_eq!(ctx.next_state, None, "full sync must not complete after accepting duplicate snapshot keys");
+    }
+
+    #[test]
+    fn full_sync_must_reject_snapshot_next_key_that_does_not_advance() {
+        let mut ctx: StateCtx<u16, u16, u16> = StateCtx {
+            remote: 1,
+            slots: BTreeMap::new(),
+            outs: VecDeque::new(),
+            next_state: None,
+        };
+
+        let now = Instant::now();
+        let mut state = SyncFullState::default();
+        state.init(&mut ctx, now);
+        ctx.outs.clear();
+
+        state.on_rpc_res(
+            &mut ctx,
+            now,
+            RpcRes::FetchSnapshot(
+                Some(SnapshotData {
+                    slots: vec![(1, Slot::new(10, Version(1))), (2, Slot::new(20, Version(2)))],
+                    next_key: Some(2),
+                    biggest_key: 3,
+                }),
+                Version(3),
+            ),
+        );
+
+        assert_eq!(ctx.slots, BTreeMap::new(), "snapshot next_key must advance past the last accepted slot");
+        assert_eq!(ctx.outs.pop_front(), None, "invalid non-advancing snapshot pages must not emit KvEvent or continuation work");
+        assert_eq!(ctx.next_state, None, "full sync must not complete after accepting a non-advancing snapshot page");
     }
 
     #[test]
