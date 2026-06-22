@@ -11,9 +11,9 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 0
-- Current audit continuation: ISSUE-235 was accepted and fixed; the next review
-  starts a fresh post-ISSUE-235 cycle.
+- Current consecutive no-new-issue cycles: 1
+- Current audit continuation: post-ISSUE-235 no-new cycle 1 documented for
+  transport/auth/peer setup review.
 
 ## Root Cause Summary
 
@@ -19120,6 +19120,41 @@ the source of truth for evidence and reviewer decisions.
     `cargo test alias -- --nocapture`,
     `rustfmt --edition 2021 --check src/service/alias_service.rs src/tests/alias.rs`,
     and `git diff --check`.
+
+### Cycle after ISSUE-235 no-new cycle 1: transport, auth, and peer setup review
+
+- Scope: reviewed `docs/found_issues.md` and `docs/summary_issues.md`, then
+  audited `src/secure.rs`, `src/quic.rs`, `src/peer.rs`, and
+  `InboundPeerBindings` in `src/lib.rs` for shared-key handshake freshness,
+  replay/cache behavior, inbound identity binding, QUIC stream admission, and
+  bad-network peer setup timeouts.
+- Reviewer: `Halley` (forked RED-team reviewer), rejected new issue acceptance
+  and recommended documenting a no-new cycle.
+- Verification:
+  - `cargo test handshake -- --nocapture`
+  - `cargo test inbound_handshake -- --nocapture`
+  - `cargo test unused_unidirectional_streams_must_not_be_admitted -- --nocapture`
+  - `cargo test outbound_peer_setup_must_timeout_when_connect_request_write_stalls -- --nocapture`
+  - `cargo test inbound_peer_setup_must_timeout_when_connect_response_write_stalls -- --nocapture`
+  - `cargo test outbound_peer_setup_must_timeout_when_main_control_stream_cannot_open -- --nocapture`
+- Reviewer cross-check:
+  - `RUST_LOG=error cargo test handshake -- --nocapture`
+  - `RUST_LOG=error cargo test inbound_handshake -- --nocapture`
+  - `RUST_LOG=error cargo test unused_unidirectional_streams_must_not_be_admitted -- --nocapture`
+  - `RUST_LOG=error cargo test outbound_peer_setup_must_timeout_when_connect_request_write_stalls -- --nocapture`
+  - `RUST_LOG=error cargo test inbound_peer_setup_must_timeout_when_connect_response_write_stalls -- --nocapture`
+  - `RUST_LOG=error cargo test outbound_peer_setup_must_timeout_when_main_control_stream_cannot_open -- --nocapture`
+- Duplicate mapping:
+  - Handshake timestamp, overflow, replay, and replay-cache pressure map to
+    ISSUE-002, ISSUE-021, ISSUE-146, ISSUE-176, and ISSUE-207.
+  - Inbound peer identity binding maps to ISSUE-189 and ISSUE-194.
+  - Peer setup timeout and bad-network backpressure map to ISSUE-117,
+    ISSUE-172, ISSUE-173, and existing outbound main-control setup coverage.
+  - Unused QUIC unidirectional stream admission maps to the existing QUIC
+    uni-stream cap guard.
+- Test note: two initial timeout filters used the wrong names and matched zero
+  tests; exact filters were found with `rg` and rerun successfully.
+- Current consecutive no-new cycles after ISSUE-235: 1.
 
 ### Cycle after ISSUE-231 no-new cycle 1: route, discovery, stream, and graceful-stop integration review
 
