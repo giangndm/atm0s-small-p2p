@@ -6032,6 +6032,24 @@ the source of truth for evidence and reviewer decisions.
     immediate duplicate is rejected, then inserts 8,192 distinct ids. The same
     original id is accepted again after eviction; expected replays inside the
     configured freshness window to remain rejected.
+- Root cause: broadcast dedupe used one LRU as both the freshness window and
+  the only replay record, so cache churn could evict an accepted id while it was
+  still inside the intended replay-resistance window.
+- Fix proposal: keep bounded memory but split broadcast dedupe into current and
+  previous generations. Reject keys present in either generation, rotate the
+  current generation into previous when it reaches the configured window size,
+  and insert new keys into a fresh current generation.
+- Fix status: fixed by replacing the single broadcast LRU with a two-generation
+  `BroadcastDedupCache` keyed by `(source, service, msg_id)`. Verified with
+  `cargo test broadcast_replay_must_not_be_accepted_after_dedup_cache_eviction -- --nocapture`,
+  `cargo test peer_stopped_admission_must_deduplicate_per_stopped_peer -- --nocapture`,
+  `cargo test broadcast_dedup_must_include_authenticated_source_and_service -- --nocapture`,
+  `cargo test broadcast_dedup_must_ignore_forged_claimed_source -- --nocapture`,
+  and `cargo fmt -- --check`. `cargo test --lib -- --nocapture` was attempted
+  but interrupted after an unrelated
+  `visualization_must_emit_peer_leaved_on_graceful_peer_stop` failure and long
+  running shutdown tests. Engineer `Hubble the 12th` proposed the fix;
+  coder-review `Mendel the 12th` accepted it.
 
 ### ISSUE-167: Expired non-seed discovery entries remain routable
 

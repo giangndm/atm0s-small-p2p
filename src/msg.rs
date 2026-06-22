@@ -53,7 +53,10 @@ pub type StreamConnectRes = Result<(), String>;
 
 #[cfg(test)]
 mod tests {
-    use crate::{ctx::SharedCtx, router::SharedRouterTable};
+    use crate::{
+        ctx::{SharedCtx, BROADCAST_DEDUP_WINDOW_SIZE},
+        router::SharedRouterTable,
+    };
 
     use super::*;
 
@@ -67,7 +70,7 @@ mod tests {
         assert!(ctx.check_broadcast_msg(source, service_id, replayed));
         assert!(!ctx.check_broadcast_msg(source, service_id, replayed));
 
-        for id in 8..(8 + 8192) {
+        for id in 8..(8 + BROADCAST_DEDUP_WINDOW_SIZE as u64) {
             assert!(ctx.check_broadcast_msg(source, service_id, BroadcastMsgId(id)));
         }
 

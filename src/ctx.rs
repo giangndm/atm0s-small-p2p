@@ -15,6 +15,8 @@ use crate::{
 };
 
 const BROADCAST_ADMISSION_TIMEOUT: Duration = Duration::from_millis(25);
+pub(crate) const BROADCAST_DEDUP_WINDOW_SIZE: usize = 8192;
+const PEER_STOPPED_DEDUP_CACHE_SIZE: usize = 8192;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 struct BroadcastDedupKey {
@@ -24,10 +26,38 @@ struct BroadcastDedupKey {
 }
 
 #[derive(Debug)]
+struct BroadcastDedupCache {
+    current: LruCache<BroadcastDedupKey, ()>,
+    previous: LruCache<BroadcastDedupKey, ()>,
+}
+
+impl BroadcastDedupCache {
+    fn new() -> Self {
+        Self {
+            current: LruCache::new(BROADCAST_DEDUP_WINDOW_SIZE.try_into().expect("should ok")),
+            previous: LruCache::new(BROADCAST_DEDUP_WINDOW_SIZE.try_into().expect("should ok")),
+        }
+    }
+
+    fn check(&mut self, key: BroadcastDedupKey) -> bool {
+        if self.current.contains(&key) || self.previous.contains(&key) {
+            return false;
+        }
+
+        if self.current.len() == BROADCAST_DEDUP_WINDOW_SIZE {
+            self.previous = std::mem::replace(&mut self.current, LruCache::new(BROADCAST_DEDUP_WINDOW_SIZE.try_into().expect("should ok")));
+        }
+
+        self.current.put(key, ());
+        true
+    }
+}
+
+#[derive(Debug)]
 struct SharedCtxInternal {
     conns: HashMap<ConnectionId, PeerConnectionAlias>,
     conn_metrics: HashMap<ConnectionId, (PeerId, PeerConnectionMetric)>,
-    received_broadcast_msg: LruCache<BroadcastDedupKey, ()>,
+    received_broadcast_msg: BroadcastDedupCache,
     received_peer_stopped_msg: LruCache<PeerId, ()>,
     services: [Option<Sender<P2pServiceEvent>>; 256],
 }
@@ -91,13 +121,7 @@ impl SharedCtxInternal {
     /// if is not, it return true and save to cache list
     /// if already it return false and do nothing
     fn check_broadcast_msg(&mut self, source: PeerId, service_id: P2pServiceId, msg_id: BroadcastMsgId) -> bool {
-        let key = BroadcastDedupKey { source, service_id, msg_id };
-        if !self.received_broadcast_msg.contains(&key) {
-            self.received_broadcast_msg.get_or_insert(key, || ());
-            true
-        } else {
-            false
-        }
+        self.received_broadcast_msg.check(BroadcastDedupKey { source, service_id, msg_id })
     }
 
     fn check_peer_stopped_msg(&mut self, peer_id: PeerId) -> bool {
@@ -178,8 +202,8 @@ impl SharedCtx {
             ctx: Arc::new(RwLock::new(SharedCtxInternal {
                 conns: Default::default(),
                 conn_metrics: Default::default(),
-                received_broadcast_msg: LruCache::new(8192.try_into().expect("should ok")),
-                received_peer_stopped_msg: LruCache::new(8192.try_into().expect("should ok")),
+                received_broadcast_msg: BroadcastDedupCache::new(),
+                received_peer_stopped_msg: LruCache::new(PEER_STOPPED_DEDUP_CACHE_SIZE.try_into().expect("should ok")),
                 services: std::array::from_fn(|_| None),
             })),
             router,
