@@ -5,11 +5,11 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Audit Status
 
-- Accepted issues: 237
+- Accepted issues: 238
 - Missing issue scores: 0
 - Current consecutive no-new-issue cycles: 0
-- Current audit continuation: ISSUE-156 regression accepted and fixed after
-  ISSUE-237; no-new counter reset.
+- Current audit continuation: ISSUE-238 accepted and fixed after ISSUE-156
+  regression; no-new counter reset.
 - Fix phase status: ISSUE-001, ISSUE-003, ISSUE-004, ISSUE-005, ISSUE-006, ISSUE-007,
   ISSUE-002, ISSUE-008, ISSUE-009, ISSUE-010, ISSUE-011, ISSUE-012, ISSUE-013, ISSUE-014, ISSUE-015, ISSUE-017, ISSUE-020, ISSUE-021, ISSUE-023, ISSUE-024, ISSUE-025, ISSUE-027, ISSUE-033, ISSUE-034, ISSUE-039, ISSUE-045, ISSUE-046, ISSUE-047, ISSUE-048, ISSUE-055, ISSUE-059, ISSUE-103, ISSUE-110, ISSUE-111, ISSUE-115, ISSUE-116, ISSUE-117, ISSUE-118, ISSUE-119, ISSUE-120, ISSUE-122, ISSUE-123,
   ISSUE-124, ISSUE-125, ISSUE-126, ISSUE-127, ISSUE-128, ISSUE-129, ISSUE-130,
@@ -100,6 +100,11 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   ISSUE-156 regression evidence is fixed by `fedfa0e`: relayed stream delivery
   now uses a two-phase downstream commit so final services do not receive a
   relayed stream until the original upstream setup acknowledgement succeeds.
+  ISSUE-238 is fixed by `d340a7b`: deferred local stream delivery reservations
+  are capped per connection to `SERVICE_CHANNEL_SIZE - 1`, so one authenticated
+  peer cannot fill every local service queue slot by forging relay-only
+  `defer_delivery` requests while legitimate relayed final-hop capacity and
+  reserve-before-success semantics are preserved.
   ISSUE-043 is fixed by bounding pending pubsub publish/feedback RPC request
   maps before responder fanout.
   ISSUE-054 is fixed by rejecting zero network tick intervals before endpoint
@@ -194,6 +199,19 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   `cargo test full_sync_must_reject_snapshot_next_key_that_does_not_advance -- --nocapture`,
   `cargo test replicate_kv -- --nocapture`,
   `rustfmt --edition 2021 --check src/service/replicate_kv_service/remote_storage.rs`,
+  and `git diff --check`.
+- ISSUE-238, score 58: fixed by `d340a7b`. A peer-controlled
+  `StreamConnectReq.defer_delivery` could reserve all destination service queue
+  slots while waiting for a relay commit, temporarily denying legitimate stream
+  delivery. Root cause: relay final-hop ordering reused the service queue
+  reservation as an unbounded deferred-delivery hold. Smallest fix: keep
+  final-hop reserve-before-success behavior, but cap deferred local reservations
+  per connection to one less than the service queue capacity. Verification:
+  `cargo test direct_stream_must_not_reserve_service_queue_while_deferred_delivery_waits --lib -- --nocapture`,
+  `cargo test relayed_open_stream_does_not_succeed_when_final_service_queue_is_full --lib -- --nocapture`,
+  `cargo test concurrent_relayed_open_streams_should_use_available_final_service_capacity --lib -- --nocapture`,
+  `cargo test stream --lib -- --nocapture`,
+  `rustfmt --edition 2021 --check src/peer/peer_internal.rs src/service.rs src/tests/stream.rs`,
   and `git diff --check`.
 - Cycle after ISSUE-231 no-new cycle 1 reviewed routing/discovery/path
   stability and stream/pipe lifecycle integration with forked reviewer

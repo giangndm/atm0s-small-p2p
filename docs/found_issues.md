@@ -12,8 +12,8 @@ must resolve.
 ## Audit Status
 
 - Current consecutive no-new-issue cycles: 0
-- Current audit continuation: ISSUE-156 regression accepted and fixed after
-  ISSUE-237; no-new counter reset.
+- Current audit continuation: ISSUE-238 accepted and fixed after ISSUE-156
+  regression; no-new counter reset.
 
 ## Root Cause Summary
 
@@ -19232,6 +19232,57 @@ the source of truth for evidence and reviewer decisions.
   - Regression guards:
     `cargo test replicate_kv -- --nocapture`,
     `rustfmt --edition 2021 --check src/service/replicate_kv_service/remote_storage.rs`,
+    and `git diff --check`.
+
+### ISSUE-238: Deferred local stream delivery can reserve all service queue slots
+
+- Status: fixed by capping per-connection deferred local stream reservations in
+  `d340a7b`.
+- Category: correctness, stability under high load or bad network behavior
+- Score: 58/100
+- Reviewer: `Laplace` accepted the issue as distinct; `Popper` accepted the
+  implemented fix after rejecting narrower variants that either broke relay
+  final-hop delivery or collapsed legitimate concurrent relayed opens.
+- Affected code:
+  - `src/msg.rs` exposes `StreamConnectReq.defer_delivery` as peer-controlled
+    stream setup input.
+  - `src/peer/peer_internal.rs` reserved destination service queue capacity
+    before waiting for the deferred relay-delivery commit.
+- Impact: an authenticated direct peer could open direct local stream setup
+  lanes with `defer_delivery: true`, receive initial `Ok(())`, then withhold
+  the commit. Each lane held one local service queue permit until
+  `RELAY_DOWNSTREAM_COMMIT_TIMEOUT`, so one connection could temporarily deny
+  legitimate stream delivery to that service.
+- Distinctness: distinct from ISSUE-012 (normal full destination queue
+  rejection), ISSUE-156 regression (relay orphan delivery), and ISSUE-220
+  (stalled setup response writes holding accept permits). This is
+  peer-controlled relay-only mode consuming local service capacity before
+  delivery.
+- Root cause: the final-hop deferred-delivery handshake coupled service queue
+  reservation to peer-controlled `defer_delivery` without a separate admission
+  bound. That protected relay ordering but let malformed direct requests reserve
+  all local service capacity while waiting for a commit that might never arrive.
+- Minimal fix proposal: keep reserve-before-success semantics for deferred
+  relay final hops, but cap deferred local reservations per peer connection so
+  a single peer cannot occupy the full service queue. Tie the cap to the
+  service queue budget instead of setting it to one, preserving legitimate
+  concurrent relayed opens.
+- Fix: `PeerConnectionInternal` now limits pending deferred local deliveries to
+  `SERVICE_CHANNEL_SIZE - 1` per connection before reserving service capacity.
+  Non-deferred local streams keep the existing reserve-before-`Ok` path.
+- Evidence tests:
+  - Red evidence before fix:
+    `cargo test direct_stream_must_not_reserve_service_queue_while_deferred_delivery_waits --lib -- --nocapture`
+    failed with `Elapsed(())`, because forged deferred local streams occupied
+    all service slots and the legitimate direct stream could not receive setup
+    acknowledgement within 500 ms.
+  - Verification after fix:
+    `cargo test direct_stream_must_not_reserve_service_queue_while_deferred_delivery_waits --lib -- --nocapture`
+  - Regression guards:
+    `cargo test relayed_open_stream_does_not_succeed_when_final_service_queue_is_full --lib -- --nocapture`,
+    `cargo test concurrent_relayed_open_streams_should_use_available_final_service_capacity --lib -- --nocapture`,
+    `cargo test stream --lib -- --nocapture`,
+    `rustfmt --edition 2021 --check src/peer/peer_internal.rs src/service.rs src/tests/stream.rs`,
     and `git diff --check`.
 
 ### Cycle after ISSUE-235 no-new cycle 1: transport, auth, and peer setup review
