@@ -17917,7 +17917,7 @@ the source of truth for evidence and reviewer decisions.
 
 - Score: 66
 - Category: correctness / graceful shutdown stability under load
-- Status: fixed by pending commit.
+- Status: fixed by commit `cd2f4b7`.
 - Reviewer: `Erdos` (forked RED-team reviewer), accepted.
 - Affected code:
   - `src/peer/peer_internal.rs`
