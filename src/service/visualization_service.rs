@@ -55,7 +55,13 @@ pub struct VisualizationService {
 }
 
 fn is_peer_timed_out(now: u64, last_updated: u64, interval: Duration) -> bool {
-    now >= last_updated + interval.as_millis() as u64 * 2
+    let Ok(timeout_ms) = u64::try_from(interval.as_millis().saturating_mul(2)) else {
+        return false;
+    };
+    let Some(deadline) = last_updated.checked_add(timeout_ms) else {
+        return false;
+    };
+    now >= deadline
 }
 
 impl VisualizationService {

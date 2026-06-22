@@ -1282,6 +1282,11 @@ the source of truth for evidence and reviewer decisions.
   - Failure summary: with `last_updated = u64::MAX - 10` and a 6 ms interval,
     the timeout helper panics at `src/service/visualization_service.rs:36` with
     `attempt to add with overflow`.
+- Fix status: fixed. Visualization peer timeout deadlines now use checked
+  conversion and checked addition; unrepresentable or overflowing deadlines do
+  not panic or wrap into early expiry.
+- Fixed verification:
+  - `cargo test -q visualization_peer_timeout_deadline_must_not_overflow -- --nocapture`
 
 ### ISSUE-043: Pubsub retains unbounded unanswered RPC requests
 
