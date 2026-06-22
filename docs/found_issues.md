@@ -19398,6 +19398,58 @@ the source of truth for evidence and reviewer decisions.
 - Root-cause summary impact: no new root cause and no summary proposal change.
 - Current consecutive no-new cycles after ISSUE-239: 1.
 
+### Cycle after ISSUE-239 no-new cycle 2: transport, handshake, stream codec, requester, and fuzz review
+
+- Scope: reviewed `docs/found_issues.md` and `docs/summary_issues.md`, then
+  audited `src/secure.rs`, `src/msg.rs`, `src/stream.rs`, `src/requester.rs`,
+  `src/peer.rs`, `src/peer/peer_internal.rs`, `src/lib.rs`,
+  `src/tests/security.rs`, and `src/tests/fuzz.rs` for distinct correctness,
+  security, and stability issues around shared-key handshakes, replay-cache
+  behavior, inbound identity binding, QUIC stream admission, malformed raw
+  frames, stream setup codec bounds, requester/control admission, stale handles,
+  and fuzz action coverage.
+- Reviewer: `Meitner the 2nd` (forked RED-team reviewer), rejected new issue
+  acceptance and returned `PASS_NO_NEW`.
+- Verification:
+  - `RUST_LOG=error cargo test handshake --lib -- --nocapture`
+  - `RUST_LOG=error cargo test inbound_handshake --lib -- --nocapture`
+  - `RUST_LOG=error cargo test stream::tests --lib -- --nocapture`
+  - `RUST_LOG=error cargo test requester --lib -- --nocapture`
+  - `RUST_LOG=error cargo test unused_unidirectional_streams_must_not_be_admitted --lib -- --nocapture`
+- Reviewer cross-check:
+  - `RUST_LOG=error cargo test handshake --lib -- --nocapture`: passed 9/9.
+  - `RUST_LOG=error cargo test inbound_handshake --lib -- --nocapture`: passed 3/3.
+  - `RUST_LOG=error cargo test requester --lib -- --nocapture`: passed 13/13.
+  - `RUST_LOG=error cargo test stream --lib -- --nocapture --test-threads=1`: passed 30/30.
+  - `RUST_LOG=error P2P_FUZZ_NODES=8 P2P_FUZZ_STEPS=120 P2P_FUZZ_SEED=30011 cargo test fuzz_random_node_actions_must_not_panic_connection_tasks --lib -- --nocapture`: passed.
+  - `RUST_LOG=error cargo test wait_object --lib -- --nocapture`: matched zero tests.
+- Test note: reviewer observed an initial parallel `cargo test stream --lib
+  -- --nocapture` failure from a test helper binding an address already in use.
+  The serial rerun passed 30/30, so this was recorded as test-environment
+  contention rather than an accepted library issue.
+- Duplicate mapping:
+  - Handshake timestamp skew, overflow, replay, and replay-cache pressure map
+    to ISSUE-002, ISSUE-021, ISSUE-146, ISSUE-176, and ISSUE-207.
+  - Inbound identity binding and third-party peer claims map to ISSUE-189 and
+    ISSUE-194.
+  - Peer setup timeout and bad-network stream setup stalls map to ISSUE-117,
+    ISSUE-172, and ISSUE-173.
+  - Raw frame size, codec malformed input, and invalid service id handling map
+    to the existing stream-codec guards plus ISSUE-053, ISSUE-060, ISSUE-091,
+    and ISSUE-234.
+  - Stream relay admission, route loops, upstream/downstream commit behavior,
+    and stream setup timeout/error paths map to ISSUE-011, ISSUE-012,
+    ISSUE-013, ISSUE-018, ISSUE-056, ISSUE-149, ISSUE-156, ISSUE-169,
+    ISSUE-217, ISSUE-220, and ISSUE-238.
+  - Requester/control admission and stale handles map to ISSUE-028, ISSUE-072,
+    ISSUE-073, ISSUE-076, ISSUE-125, ISSUE-234, and ISSUE-235.
+  - Unicast/source forgery and acknowledgement pressure map to ISSUE-014,
+    ISSUE-018, ISSUE-119, ISSUE-224, ISSUE-225, ISSUE-229, and ISSUE-230.
+  - Fuzz harness configured node count and malformed/churn coverage map to
+    fixed ISSUE-209 and existing fuzz no-new cycles.
+- Root-cause summary impact: no new root cause and no summary proposal change.
+- Current consecutive no-new cycles after ISSUE-239: 2.
+
 ### Cycle after ISSUE-238 no-new cycle 1: route/discovery lifecycle and path stability review
 
 - Scope: reviewed `docs/found_issues.md` and `docs/summary_issues.md`, then

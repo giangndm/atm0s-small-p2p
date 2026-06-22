@@ -7,12 +7,13 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Accepted issues: 239
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 1
-- Current audit continuation: cycle after ISSUE-239 no-new cycle 1 reviewed
-  route/discovery, service/requester, peer lifecycle, pubsub, and
-  replicated-KV boundaries with forked reviewer `Descartes the 2nd`. Rejected
-  candidates mapped to existing RC-1/RC-2/RC-3/RC-4/RC-6/RC-7 families; no
-  accepted issue or root-cause summary change was recorded.
+- Current consecutive no-new-issue cycles: 2
+- Current audit continuation: cycle after ISSUE-239 no-new cycle 2 reviewed
+  transport, handshake, stream codec, requester/control admission, raw-wire,
+  and fuzz harness boundaries with forked reviewer `Meitner the 2nd`.
+  Rejected candidates mapped to existing handshake, malformed-input,
+  requester, stream, unicast, and fuzz coverage families; no accepted issue or
+  root-cause summary change was recorded.
 - Fix phase status: ISSUE-001, ISSUE-003, ISSUE-004, ISSUE-005, ISSUE-006, ISSUE-007,
   ISSUE-002, ISSUE-008, ISSUE-009, ISSUE-010, ISSUE-011, ISSUE-012, ISSUE-013, ISSUE-014, ISSUE-015, ISSUE-017, ISSUE-020, ISSUE-021, ISSUE-023, ISSUE-024, ISSUE-025, ISSUE-027, ISSUE-033, ISSUE-034, ISSUE-039, ISSUE-045, ISSUE-046, ISSUE-047, ISSUE-048, ISSUE-055, ISSUE-059, ISSUE-103, ISSUE-110, ISSUE-111, ISSUE-115, ISSUE-116, ISSUE-117, ISSUE-118, ISSUE-119, ISSUE-120, ISSUE-122, ISSUE-123,
   ISSUE-124, ISSUE-125, ISSUE-126, ISSUE-127, ISSUE-128, ISSUE-129, ISSUE-130,
@@ -120,6 +121,10 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   pubsub, full-sync, fetch-changed, and pending-resource focused regressions
   under reviewer `Descartes the 2nd`; no distinct issue survived duplicate
   mapping.
+  Post-ISSUE-239 no-new cycle 2 passed focused handshake, inbound-handshake,
+  requester, stream-codec, QUIC unidirectional-stream, serial stream, and
+  eight-node fuzz checks under reviewer `Meitner the 2nd`; no distinct issue
+  survived duplicate mapping.
   ISSUE-043 is fixed by bounding pending pubsub publish/feedback RPC request
   maps before responder fanout.
   ISSUE-054 is fixed by rejecting zero network tick intervals before endpoint
