@@ -11,8 +11,8 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 9
-- Current audit continuation: Fuzz phase no-new cycle 4 ran extended configured
+- Current consecutive no-new-issue cycles: 10
+- Current audit continuation: Fuzz phase no-new cycle 5 ran high-load configured
   node-count randomized fuzzing without a distinct reviewed failure.
 
 ## Root Cause Summary
@@ -19637,6 +19637,53 @@ the source of truth for evidence and reviewer decisions.
     ISSUE-091, and ISSUE-234.
 - Current consecutive no-new cycles after ISSUE-238: 9.
 - Current fuzz-phase no-new cycles after transition: 4.
+
+### Fuzz phase no-new cycle 5: high-load churn and malformed randomized fuzz batch
+
+- Scope: continued configured-node fuzzing after fuzz-phase no-new cycle 4,
+  focused on the highest-risk remaining surfaces: 20-, 22-, and 24-node
+  deterministic random runs, steady valid actions, stream-heavy valid actions,
+  valid action churn, sanitized churn, malformed/forged raw actions, raw
+  unicast injection, public requester connect/unicast/broadcast/stream
+  operations, stop/restart churn, handshake-close handling, route/open-bi
+  setup, backpressure-heavy broadcast fanout, and background task panic
+  detection.
+- Reviewer: `Boyle the 2nd` (forked RED-team reviewer), rejected new issue
+  acceptance because no distinct failing test evidence was found and
+  recommended documenting fuzz-phase no-new cycle 5.
+- Verification:
+  - `RUST_LOG=error P2P_FUZZ_NODES=24 P2P_FUZZ_STEPS=850 P2P_FUZZ_SEED=27001 cargo test fuzz_random_steady_valid_node_actions_must_not_panic_connection_tasks --lib -- --nocapture`
+  - `RUST_LOG=error P2P_FUZZ_NODES=22 P2P_FUZZ_STEPS=820 P2P_FUZZ_SEED=27002 cargo test fuzz_random_valid_node_churn_actions_must_not_panic_connection_tasks --lib -- --nocapture`
+  - `RUST_LOG=error P2P_FUZZ_NODES=20 P2P_FUZZ_STEPS=760 P2P_FUZZ_SEED=27003 cargo test fuzz_random_node_actions_must_not_panic_connection_tasks --lib -- --nocapture`
+  - `RUST_LOG=error P2P_FUZZ_NODES=22 P2P_FUZZ_STEPS=820 P2P_FUZZ_SEED=27004 cargo test fuzz_random_sanitized_node_churn_actions_must_not_panic_connection_tasks --lib -- --nocapture`
+  - `RUST_LOG=error P2P_FUZZ_NODES=20 P2P_FUZZ_STEPS=720 P2P_FUZZ_SEED=27005 cargo test fuzz_random_node_churn_actions_must_not_panic_connection_tasks --lib -- --nocapture`
+  - `RUST_LOG=error P2P_FUZZ_NODES=24 P2P_FUZZ_STEPS=780 P2P_FUZZ_SEED=27006 cargo test fuzz_random_valid_node_actions_must_not_panic_connection_tasks --lib -- --nocapture`
+- Reviewer cross-check:
+  - `RUST_LOG=error P2P_FUZZ_NODES=18 P2P_FUZZ_STEPS=620 P2P_FUZZ_SEED=270511 cargo test fuzz_random_node_actions_must_not_panic_connection_tasks --lib -- --nocapture`: passed.
+  - `RUST_LOG=error P2P_FUZZ_NODES=16 P2P_FUZZ_STEPS=620 P2P_FUZZ_SEED=270512 cargo test fuzz_random_node_churn_actions_must_not_panic_connection_tasks --lib -- --nocapture`: passed.
+  - `RUST_LOG=error P2P_FUZZ_NODES=20 P2P_FUZZ_STEPS=760 P2P_FUZZ_SEED=270513 cargo test fuzz_random_steady_valid_node_actions_must_not_panic_connection_tasks --lib -- --nocapture`: passed.
+  - `RUST_LOG=error P2P_FUZZ_NODES=18 P2P_FUZZ_STEPS=700 P2P_FUZZ_SEED=270514 cargo test fuzz_random_valid_node_churn_actions_must_not_panic_connection_tasks --lib -- --nocapture`: passed.
+- Duplicate mapping:
+  - Duplicate peer connection, connection lost, endpoint/control close, and
+    connection-churn noise maps to RC-7 and existing route/connection churn
+    issues.
+  - Peer stopped, shutdown, refused reconnect, deadline after stop/restart,
+    and graceful-stop churn maps to RC-6 and existing lifecycle families,
+    including ISSUE-215 through ISSUE-225.
+  - Handshake-close during churn maps to existing lifecycle/malformed-input
+    coverage rather than a distinct failing issue because all deterministic
+    runs completed without panic or assertion failure.
+  - `open_bi`, route setup, route-not-found, and stream-heavy noise maps to
+    RC-3/RC-7 plus existing stream setup/routing families including
+    ISSUE-156, ISSUE-180, ISSUE-217, ISSUE-220, and ISSUE-238.
+  - Local service delivery ack-ended and capacity/backpressure logs map to
+    RC-3 and existing async backpressure families, including ISSUE-224,
+    ISSUE-225, ISSUE-227, ISSUE-229, and ISSUE-230.
+  - Malformed/forged raw actions and invalid service coverage maps to existing
+    malformed-input and ownership families, including ISSUE-053, ISSUE-060,
+    ISSUE-091, and ISSUE-234.
+- Current consecutive no-new cycles after ISSUE-238: 10.
+- Current fuzz-phase no-new cycles after transition: 5.
 
 ### Cycle after ISSUE-235 no-new cycle 1: transport, auth, and peer setup review
 
