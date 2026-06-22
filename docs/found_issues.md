@@ -5917,6 +5917,11 @@ the source of truth for evidence and reviewer decisions.
     receiver is closed. `GuestPublishRpc` ignores the failed local send,
     `rx.try_recv()` remains `Err(Empty)`, and `publish_rpc_reqs` retains the
     request; expected immediate `Err(NoDestination)` and no pending RPC.
+- Fix status: fixed by counting only successful local event delivery and remote
+  fanout as RPC destinations. `GuestPublishRpc`, `PublishRpc`,
+  `GuestFeedbackRpc`, and `FeedbackRpc` now return
+  `PubsubRpcError::NoDestination` and skip pending request insertion when all
+  local or remote fanout attempts fail immediately.
 
 ### ISSUE-179: Local alias shutdown leaves pending find waiters alive
 

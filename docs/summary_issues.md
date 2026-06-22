@@ -1456,6 +1456,17 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   when the peer id is already connected. Reviewer: Helmholtz the 3rd.
 - ISSUE-178, score 57: pubsub RPC treats closed local event channels as live
   destinations. Reviewer: Russell the 3rd.
+  Root cause: RPC destination accounting used channel membership as a proxy for
+  deliverability, so closed local event channels or failed remote sends could
+  leave callers waiting on pending RPC state. Fix: count only successful local
+  event delivery and remote fanout, return `NoDestination` when delivered count
+  is zero, and skip pending request insertion. Verification:
+  `cargo test pubsub_rpc_must_return_no_destination_when_all_local_sends_fail -- --nocapture`,
+  `cargo test pubsub_rpc_must_return_no_destination_when_all_remote_sends_fail -- --nocapture`,
+  `cargo test pubsub_rpc_must_return_no_destination_when_all_local_subscriber_queues_are_full -- --nocapture`,
+  `cargo test feedback_rpc_must_return_no_destination_when_all_local_publisher_queues_are_full -- --nocapture`,
+  and
+  `cargo test guest_feedback_rpc_must_return_no_destination_when_all_local_publisher_queues_are_full -- --nocapture`.
 - ISSUE-179, score 49: local alias shutdown leaves pending find waiters alive.
   Reviewer: Socrates the 3rd.
   Root cause: local alias shutdown only broadcast `AliasMessage::Shutdown` and
