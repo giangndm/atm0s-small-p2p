@@ -36,6 +36,8 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   ISSUE-001 and ISSUE-004 are covered by the ISSUE-170 ownership-validation follow-up
   `87cf6ce`; earlier fixes are `648cfd0`, `2cbf096`, `15b788c`, and
   `4997404`.
+  ISSUE-040 is fixed by normalizing zero metrics and visualization collection
+  intervals before constructing Tokio timers.
 
 ## Root Cause Summary
 
@@ -108,12 +110,13 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 ### RC-4: Timeouts and setup cancellation are incomplete
 
 - Representative issues: ISSUE-002, ISSUE-009, ISSUE-021, ISSUE-036,
-  ISSUE-042, ISSUE-093, ISSUE-117, ISSUE-121, ISSUE-149,
+  ISSUE-040, ISSUE-042, ISSUE-093, ISSUE-117, ISSUE-121, ISSUE-149,
   ISSUE-169, ISSUE-172, ISSUE-173, ISSUE-176, ISSUE-207.
 - Pattern: timeouts wrap only one await point, rely on unchecked timestamp
   arithmetic, use coarse global sweeps, or complete one side of setup before
-  proving the end-to-end setup is still alive. Handshake tokens also lack
-  nonce/challenge binding or replay caches.
+  proving the end-to-end setup is still alive. Public timer durations can also
+  reach Tokio interval construction without non-zero validation. Handshake
+  tokens also lack nonce/challenge binding or replay caches.
 - Minimal fix proposal: use checked/saturating deadline math, wrap every
   protocol phase in an end-to-end timeout, and tie relay downstream setup to
   upstream cancellation. Bind handshake responses to fresh request nonces and
@@ -126,6 +129,12 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   arithmetic. Overflowing or unrepresentable deadlines remain not expired
   instead of panicking or wrapping into early expiry. Verification:
   `cargo test visualization_peer_timeout_deadline_must_not_overflow -- --nocapture`.
+- ISSUE-040: fixed by normalizing `Some(Duration::ZERO)` to each service's
+  default collection interval before constructing Tokio timers. Visualization
+  stores the normalized option so `None` still disables collection. Verification:
+  `cargo test metrics_service_zero_collect_interval_must_not_panic -- --nocapture`
+  and
+  `cargo test visualization_service_zero_collect_interval_must_not_panic -- --nocapture`.
 
 ### RC-5: Application-level resource limits are missing
 

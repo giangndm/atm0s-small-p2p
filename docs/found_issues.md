@@ -1239,6 +1239,26 @@ the source of truth for evidence and reviewer decisions.
   - `cargo test metrics_service_zero_collect_interval_must_not_panic -- --nocapture`
   - Failure summary: `MetricsService::new(Some(Duration::ZERO), ...)` panics at
     `src/service/metrics_service.rs:32` with `` `period` must be non-zero. ``.
+- Root cause: public collection interval options were passed directly into
+  `tokio::time::interval`, whose API requires a non-zero period. Visualization
+  also stored the raw option for timeout behavior, so a constructor-level fix
+  must preserve `None` as disabled collection while normalizing only
+  `Some(Duration::ZERO)`.
+- Minimal fix proposal: normalize `Some(Duration::ZERO)` to each service's
+  existing default collection interval before constructing the ticker, and
+  store the normalized option in visualization.
+- Fix status: fixed by normalizing zero metrics intervals to
+  `DEFAULT_COLLECTOR_INTERVAL` and zero visualization intervals to
+  `DEFAULT_COLLECT_INTERVAL`; visualization keeps `None` as the disabled
+  collection state.
+- Fix reviewers: engineer `Halley the 12th`; coder `Anscombe the 12th`;
+  reviewer `Goodall the 12th` accepted the implementation.
+- Verification after fix:
+  - `cargo test metrics_service_zero_collect_interval_must_not_panic -- --nocapture`
+  - `cargo test visualization_service_zero_collect_interval_must_not_panic -- --nocapture`
+  - `cargo test metric_collect -- --nocapture`
+  - `cargo test visualization_must_emit_peer_leaved_on_graceful_peer_stop -- --nocapture`
+  - `cargo fmt -- --check`
 
 ### ISSUE-041: Alias lookup tracks unbounded distinct pending misses
 

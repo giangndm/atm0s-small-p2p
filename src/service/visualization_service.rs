@@ -38,6 +38,7 @@ pub(crate) fn encode_scan_for_test() -> Vec<u8> {
 const SCAN_RESPONSE_SEND_TIMEOUT: Duration = Duration::from_secs(1);
 const SCAN_RESPONSE_RETRY_DELAY: Duration = Duration::from_millis(5);
 const SCAN_BROADCAST_SEND_TIMEOUT: Duration = Duration::from_secs(1);
+const DEFAULT_COLLECT_INTERVAL: Duration = Duration::from_secs(100);
 const MAX_VISUALIZATION_REMOTE_PEERS: usize = 1024;
 const MAX_TOPOLOGY_ROWS_PER_INFO: usize = 1024;
 
@@ -66,7 +67,14 @@ fn is_peer_timed_out(now: u64, last_updated: u64, interval: Duration) -> bool {
 
 impl VisualizationService {
     pub fn new(collect_interval: Option<Duration>, collect_me: bool, service: P2pService) -> Self {
-        let ticker = tokio::time::interval(collect_interval.unwrap_or(Duration::from_secs(100)));
+        let collect_interval = collect_interval.map(|interval| {
+            if interval.is_zero() {
+                DEFAULT_COLLECT_INTERVAL
+            } else {
+                interval
+            }
+        });
+        let ticker = tokio::time::interval(collect_interval.unwrap_or(DEFAULT_COLLECT_INTERVAL));
 
         Self {
             ticker,

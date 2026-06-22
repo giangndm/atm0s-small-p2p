@@ -140,7 +140,12 @@ pub struct MetricsService {
 
 impl MetricsService {
     pub fn new(collect_interval: Option<Duration>, service: P2pService, is_collector: bool) -> Self {
-        let ticker = tokio::time::interval(collect_interval.unwrap_or(Duration::from_secs(DEFAULT_COLLECTOR_INTERVAL)));
+        let collect_interval = match collect_interval {
+            Some(interval) if interval.is_zero() => Duration::from_secs(DEFAULT_COLLECTOR_INTERVAL),
+            Some(interval) => interval,
+            None => Duration::from_secs(DEFAULT_COLLECTOR_INTERVAL),
+        };
+        let ticker = tokio::time::interval(collect_interval);
 
         Self {
             is_collector,

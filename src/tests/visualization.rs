@@ -94,6 +94,18 @@ async fn visualization_must_emit_peer_leaved_on_graceful_peer_stop() {
 }
 
 #[test(tokio::test)]
+async fn visualization_service_zero_collect_interval_must_not_panic() {
+    let (mut node, _addr) = create_node(true, 1, vec![]).await;
+    let service = node.create_service(0.into());
+
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let _visualization = VisualizationService::new(Some(Duration::ZERO), false, service);
+    }));
+
+    assert!(result.is_ok(), "zero visualization collection interval must be rejected or normalized without panicking");
+}
+
+#[test(tokio::test)]
 async fn visualization_info_must_not_be_accepted_without_scan_request() {
     let (mut node1, addr1) = create_node(true, 1, vec![]).await;
     let mut service1 = VisualizationService::new(None, false, node1.create_service(0.into()));
