@@ -926,6 +926,9 @@ the source of truth for evidence and reviewer decisions.
     `cargo test requester_try_connect_after_network_drop_must_not_panic -- --nocapture`
   - Failure summary: after dropping `P2pNetwork`, `requester.try_connect(...)`
     panics at `src/requester.rs:17` with `SendError`.
+- Fix status: fixed by replacing requester control sends with bounded
+  `try_send`; awaited `connect` returns an admission error on closed queues and
+  best-effort `try_connect` logs/drops closed-queue attempts.
 
 ### ISSUE-029: Stale alias requester panics after service drop
 
