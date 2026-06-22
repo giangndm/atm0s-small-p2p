@@ -1621,6 +1621,8 @@ the source of truth for evidence and reviewer decisions.
   - Failure summary: after processing `MainEvent::PeerStopped(conn, peer)`,
     `node.neighbours.has_peer(&peer)` remains true instead of immediately
     removing the stopped non-seed neighbour.
+- Fix status: fixed by removing the stopped connection from
+  `NetworkNeighbours` during validated `MainEvent::PeerStopped` handling.
 
 ### ISSUE-052: Out-of-range service ids panic service registration
 
