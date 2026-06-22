@@ -1111,6 +1111,30 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn send_broadcast_must_not_wait_one_timeout_per_congested_peer() {
+        let ctx = SharedCtx::new(PeerId::from(0), SharedRouterTable::new(PeerId::from(0)));
+        let mut held_receivers = Vec::new();
+
+        for idx in 0..8 {
+            let (tx, rx) = channel(1);
+            tx.try_send(PeerConnectionControl::Send(PeerMessage::PeerStopped(PeerId::from(99)), None))
+                .expect("test control queue should accept first message");
+            held_receivers.push(rx);
+
+            let peer = PeerId::from(10 + idx);
+            let conn = ConnectionId::from(100 + idx);
+            ctx.register_conn(conn, PeerConnectionAlias::new(PeerId::from(0), peer, conn, tx));
+        }
+
+        let result = tokio::time::timeout(Duration::from_millis(75), ctx.send_broadcast(P2pServiceId::from(1), vec![1, 2, 3])).await;
+
+        assert!(
+            result.is_ok(),
+            "send_broadcast must use a global deadline or parallel admission instead of waiting one timeout per congested peer"
+        );
+    }
+
+    #[tokio::test]
     async fn send_broadcast_must_report_when_all_peer_channels_are_closed() {
         let ctx = SharedCtx::new(PeerId::from(0), SharedRouterTable::new(PeerId::from(0)));
         let (tx1, rx1) = channel(1);

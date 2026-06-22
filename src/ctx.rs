@@ -1,17 +1,18 @@
 use std::{collections::HashMap, sync::Arc, time::Duration};
 
 use anyhow::anyhow;
+use futures::{stream::FuturesUnordered, StreamExt};
 use lru::LruCache;
 use parking_lot::RwLock;
-use tokio::sync::mpsc::{Sender, error::TrySendError};
+use tokio::sync::mpsc::{error::TrySendError, Sender};
 
 use crate::{
-    ConnectionId, PeerId,
     msg::{BroadcastMsgId, P2pServiceId, PeerMessage},
     peer::{PeerConnectionAlias, PeerConnectionMetric},
     router::{RouteAction, SharedRouterTable},
     service::P2pServiceEvent,
     stream::P2pQuicStream,
+    ConnectionId, PeerId,
 };
 
 const BROADCAST_ADMISSION_TIMEOUT: Duration = Duration::from_millis(25);
@@ -394,10 +395,15 @@ impl SharedCtx {
             anyhow::bail!("[ShareCtx] broadcast has no connected peers");
         }
 
-        let mut accepted = 0;
+        let mut pending_sends = FuturesUnordered::new();
         for conn_alias in conns {
             let msg = PeerMessage::Broadcast(source, service_id, msg_id, data.clone());
-            match tokio::time::timeout(BROADCAST_ADMISSION_TIMEOUT, conn_alias.send(msg)).await {
+            pending_sends.push(async move { tokio::time::timeout(BROADCAST_ADMISSION_TIMEOUT, conn_alias.send(msg)).await });
+        }
+
+        let mut accepted = 0;
+        while let Some(result) = pending_sends.next().await {
+            match result {
                 Ok(Ok(())) => accepted += 1,
                 Ok(Err(err)) => log::warn!("[ShareCtx] broadcast data over peer alias failed: {err}"),
                 Err(_) => log::warn!("[ShareCtx] broadcast data over peer alias timed out"),
