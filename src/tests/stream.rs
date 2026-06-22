@@ -13,11 +13,12 @@ use crate::{
     quic::make_server_endpoint,
     router::RouteAction,
     secure::HandshakeProtocol,
+    service::SERVICE_CHANNEL_SIZE,
     stream::{wait_object, write_object, P2pQuicStream},
     ConnectionId, P2pNetworkEvent, P2pServiceEvent, PeerId, SharedKeyHandshake, SharedRouterTable, CERT_DOMAIN_NAME,
 };
 use futures::FutureExt;
-use quinn::{ClientConfig, Endpoint, ServerConfig, TransportConfig, VarInt};
+use quinn::{ClientConfig, Connection, Endpoint, ServerConfig, TransportConfig, VarInt};
 use rustls::pki_types::{CertificateDer, PrivatePkcs8KeyDer};
 use serde::{Deserialize, Serialize};
 use test_log::test;
@@ -32,6 +33,27 @@ struct RawConnectReq {
 #[derive(Deserialize, Serialize)]
 struct RawConnectRes {
     result: Result<Vec<u8>, String>,
+}
+
+async fn authenticate_raw_stream_connection(connection: &Connection, local_peer_id: PeerId, raw_peer_id: PeerId) -> P2pQuicStream {
+    let (send, recv) = connection.open_bi().await.expect("raw peer should open main control stream");
+    let mut main_stream = P2pQuicStream::new(recv, send);
+    let secure: SharedKeyHandshake = super::DEFAULT_SECURE_KEY.into();
+    write_object::<_, _, 60000>(
+        &mut main_stream,
+        &RawConnectReq {
+            from: raw_peer_id,
+            to: local_peer_id,
+            auth: secure.create_request(raw_peer_id, local_peer_id, crate::now_ms()),
+        },
+    )
+    .await
+    .expect("raw peer should send authenticated connect request");
+    let response: RawConnectRes = wait_object::<_, _, 60000>(&mut main_stream).await.expect("raw peer should receive connect response");
+    secure
+        .verify_response(response.result.expect("local peer should accept raw peer"), local_peer_id, raw_peer_id, crate::now_ms())
+        .expect("raw peer should verify connect response");
+    main_stream
 }
 
 fn make_small_stream_receive_endpoint(bind_addr: std::net::SocketAddr, stream_window: u32) -> anyhow::Result<Endpoint> {
@@ -61,6 +83,86 @@ fn make_small_stream_receive_endpoint(bind_addr: std::net::SocketAddr, stream_wi
     let mut endpoint = Endpoint::server(server_config, bind_addr)?;
     endpoint.set_default_client_config(client_config);
     Ok(endpoint)
+}
+
+#[tokio::test]
+async fn direct_stream_must_not_reserve_service_queue_while_deferred_delivery_waits() {
+    let (mut node, addr) = create_node(false, 2, vec![]).await;
+    let mut service = node.create_service(0.into());
+    tokio::spawn(async move { while node.recv().await.is_ok() {} });
+
+    let client_addr = UdpSocket::bind("127.0.0.1:0").expect("should bind raw client udp").local_addr().expect("should get raw client addr");
+    let priv_key = PrivatePkcs8KeyDer::from(super::DEFAULT_CLUSTER_KEY.to_vec());
+    let cert = CertificateDer::from(super::DEFAULT_CLUSTER_CERT.to_vec());
+    let client = make_server_endpoint(client_addr, priv_key, cert).expect("should create raw client endpoint");
+    let attacker = PeerId::from(99);
+
+    let connection = client
+        .connect(**addr.network_address(), CERT_DOMAIN_NAME)
+        .expect("raw client should start QUIC connect")
+        .await
+        .expect("raw client should connect");
+    let _main_stream = authenticate_raw_stream_connection(&connection, addr.peer_id(), attacker).await;
+
+    let mut forged_streams = Vec::new();
+    for i in 0..SERVICE_CHANNEL_SIZE {
+        let (send, recv) = connection.open_bi().await.expect("raw client should open forged stream setup");
+        let mut stream = P2pQuicStream::new(recv, send);
+        write_object::<_, _, 60000>(
+            &mut stream,
+            &StreamConnectReq {
+                source: attacker,
+                dest: addr.peer_id(),
+                service: 0.into(),
+                meta: vec![i as u8],
+                defer_delivery: true,
+            },
+        )
+        .await
+        .expect("raw client should send forged deferred direct stream request");
+
+        let response = tokio::time::timeout(Duration::from_millis(500), wait_object::<_, StreamConnectRes, 60000>(&mut stream))
+            .await
+            .expect("forged deferred direct stream must be accepted or rejected promptly")
+            .expect("forged deferred direct stream must receive a setup response");
+        if response.is_ok() {
+            forged_streams.push(stream);
+        }
+    }
+
+    let (send, recv) = connection.open_bi().await.expect("raw client should open legitimate stream setup");
+    let mut legitimate = P2pQuicStream::new(recv, send);
+    write_object::<_, _, 60000>(
+        &mut legitimate,
+        &StreamConnectReq {
+            source: attacker,
+            dest: addr.peer_id(),
+            service: 0.into(),
+            meta: b"legitimate-after-forged-defer".to_vec(),
+            defer_delivery: false,
+        },
+    )
+    .await
+    .expect("raw client should send legitimate direct stream request");
+
+    let response = tokio::time::timeout(Duration::from_millis(500), wait_object::<_, StreamConnectRes, 60000>(&mut legitimate))
+        .await
+        .expect("legitimate direct stream setup must not wait behind forged deferred reservations")
+        .expect("legitimate direct stream setup must receive a response");
+    assert!(
+        response.is_ok(),
+        "forged direct defer_delivery requests must not reserve all local service queue slots while waiting for a commit: {response:?}"
+    );
+
+    let event = tokio::time::timeout(Duration::from_millis(500), service.recv())
+        .await
+        .expect("legitimate direct stream should be delivered")
+        .expect("service channel should stay open");
+    assert!(
+        matches!(event, P2pServiceEvent::Stream(source, meta, _) if source == attacker && meta == b"legitimate-after-forged-defer".to_vec()),
+        "service should receive the legitimate direct stream after forged deferred attempts"
+    );
+    drop(forged_streams);
 }
 
 #[tokio::test]
@@ -112,6 +214,99 @@ async fn open_stream_does_not_succeed_when_destination_service_queue_is_full() {
         !matches!(result, Ok(Ok(_))),
         "open_stream must not report success when the destination service queue is full and no task can consume the accepted pipe"
     );
+}
+
+#[test(tokio::test)]
+async fn relayed_open_stream_does_not_succeed_when_final_service_queue_is_full() {
+    let (mut node1, addr1) = create_node(true, 1, vec![]).await;
+    let service1 = node1.create_service(0.into());
+    tokio::spawn(async move { while node1.recv().await.is_ok() {} });
+
+    let (mut node2, addr2) = create_node(false, 2, vec![addr1]).await;
+    let _service2 = node2.create_service(0.into());
+    tokio::spawn(async move { while node2.recv().await.is_ok() {} });
+
+    let (mut node3, addr3) = create_node(false, 3, vec![addr2]).await;
+    let _service3 = node3.create_service(0.into());
+    tokio::spawn(async move { while node3.recv().await.is_ok() {} });
+
+    tokio::time::timeout(Duration::from_secs(3), async {
+        loop {
+            if matches!(service1.router().action(&addr3.peer_id()), Some(RouteAction::Next(_))) {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .expect("node1 should learn a relay route to node3");
+
+    let mut held_streams = Vec::new();
+    for _ in 0..SERVICE_CHANNEL_SIZE {
+        let stream = tokio::time::timeout(Duration::from_secs(2), service1.open_stream(addr3.peer_id(), vec![]))
+            .await
+            .expect("relayed stream setup should not hang before the final service queue is full")
+            .expect("relayed stream setup should succeed while final service queue has capacity");
+        held_streams.push(stream);
+    }
+
+    let result = tokio::time::timeout(Duration::from_secs(2), service1.open_stream(addr3.peer_id(), vec![])).await;
+
+    assert!(
+        !matches!(result, Ok(Ok(_))),
+        "relayed open_stream must not report success when the final destination service queue is full"
+    );
+}
+
+#[test(tokio::test)]
+async fn concurrent_relayed_open_streams_should_use_available_final_service_capacity() {
+    let (mut node1, addr1) = create_node(true, 1, vec![]).await;
+    let service1 = node1.create_service(0.into());
+    tokio::spawn(async move { while node1.recv().await.is_ok() {} });
+
+    let (mut node2, addr2) = create_node(false, 2, vec![addr1]).await;
+    let _service2 = node2.create_service(0.into());
+    tokio::spawn(async move { while node2.recv().await.is_ok() {} });
+
+    let (mut node3, addr3) = create_node(false, 3, vec![addr2]).await;
+    let mut service3 = node3.create_service(0.into());
+    tokio::spawn(async move { while node3.recv().await.is_ok() {} });
+
+    tokio::time::timeout(Duration::from_secs(3), async {
+        loop {
+            if matches!(service1.router().action(&addr3.peer_id()), Some(RouteAction::Next(_))) {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .expect("node1 should learn a relay route to node3");
+
+    let requester = service1.requester();
+    let mut opens = Vec::new();
+    for i in 0..4 {
+        let requester = requester.clone();
+        let dest = addr3.peer_id();
+        opens.push(tokio::spawn(async move { requester.open_stream(dest, vec![i as u8]).await }));
+    }
+
+    let mut opened = Vec::new();
+    for open in opens {
+        let stream = tokio::time::timeout(Duration::from_secs(2), open)
+            .await
+            .expect("concurrent relayed open should not hang")
+            .expect("open task should not panic")
+            .expect("concurrent relayed open should use available final service capacity");
+        opened.push(stream);
+    }
+
+    for _ in 0..opened.len() {
+        tokio::time::timeout(Duration::from_secs(1), service3.recv())
+            .await
+            .expect("final service should receive each concurrently opened relayed stream")
+            .expect("final service should stay open");
+    }
 }
 
 #[tokio::test]

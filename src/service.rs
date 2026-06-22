@@ -13,7 +13,7 @@ pub mod pubsub_service;
 pub mod replicate_kv_service;
 pub mod visualization_service;
 
-const SERVICE_CHANNEL_SIZE: usize = 10;
+pub(crate) const SERVICE_CHANNEL_SIZE: usize = 10;
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum P2pServiceEvent {

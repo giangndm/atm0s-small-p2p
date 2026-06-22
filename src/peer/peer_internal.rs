@@ -45,6 +45,7 @@ const OPEN_BI_TIMEOUT: Duration = Duration::from_secs(2);
 const ACCEPT_BI_INITIAL_REQ_TIMEOUT: Duration = Duration::from_secs(1);
 const ACCEPT_BI_RESPONSE_WRITE_TIMEOUT: Duration = Duration::from_millis(250);
 const MAX_PENDING_ACCEPT_BI: usize = 16;
+const MAX_PENDING_DEFERRED_LOCAL_DELIVERIES: usize = crate::service::SERVICE_CHANNEL_SIZE - 1;
 const LOCAL_SERVICE_DELIVERY_TIMEOUT: Duration = Duration::from_secs(1);
 const RELAY_UPSTREAM_STOP_GRACE: Duration = Duration::from_millis(20);
 const RELAY_DOWNSTREAM_COMMIT_TIMEOUT: Duration = Duration::from_secs(1);
@@ -85,6 +86,7 @@ pub struct PeerConnectionInternal {
     local_service_delivery_ack_rx: Receiver<PeerMessage>,
     local_service_delivery_task: JoinHandle<()>,
     pending_accept_bi: Arc<Semaphore>,
+    pending_deferred_local_deliveries: Arc<Semaphore>,
     ticker: Interval,
     started: Instant,
 }
@@ -145,6 +147,7 @@ impl PeerConnectionInternal {
             local_service_delivery_ack_rx,
             local_service_delivery_task,
             pending_accept_bi: Arc::new(Semaphore::new(MAX_PENDING_ACCEPT_BI)),
+            pending_deferred_local_deliveries: Arc::new(Semaphore::new(MAX_PENDING_DEFERRED_LOCAL_DELIVERIES)),
             ticker: tokio::time::interval(Duration::from_secs(1)),
             started: Instant::now(),
         }
@@ -205,7 +208,7 @@ impl PeerConnectionInternal {
             return Ok(());
         };
         let stream = P2pQuicStream::new(recv, send);
-        tokio::spawn(accept_bi(self.conn_id, self.to_id, stream, self.ctx.clone(), permit));
+        tokio::spawn(accept_bi(self.conn_id, self.to_id, stream, self.ctx.clone(), permit, self.pending_deferred_local_deliveries.clone()));
         Ok(())
     }
 
@@ -653,7 +656,14 @@ async fn wait_relay_delivery_commit(stream: &mut P2pQuicStream) -> anyhow::Resul
         .map_err(|_| anyhow!("relay delivery commit timed out"))?
 }
 
-async fn accept_bi(ingress: ConnectionId, authenticated_ingress_peer: PeerId, mut stream: P2pQuicStream, ctx: SharedCtx, _permit: OwnedSemaphorePermit) -> anyhow::Result<()> {
+async fn accept_bi(
+    ingress: ConnectionId,
+    authenticated_ingress_peer: PeerId,
+    mut stream: P2pQuicStream,
+    ctx: SharedCtx,
+    _permit: OwnedSemaphorePermit,
+    pending_deferred_local_deliveries: Arc<Semaphore>,
+) -> anyhow::Result<()> {
     let req = tokio::time::timeout(ACCEPT_BI_INITIAL_REQ_TIMEOUT, wait_object::<_, StreamConnectReq, MAX_CONTROL_STREAM_PKT>(&mut stream))
         .await
         .map_err(|_| anyhow!("stream connect request timed out"))??;
@@ -673,6 +683,18 @@ async fn accept_bi(ingress: ConnectionId, authenticated_ingress_peer: PeerId, mu
         Some(RouteAction::Local) => {
             if let Some(service_tx) = ctx.get_service(&service) {
                 log::info!("[PeerConnectionInternal {authenticated_ingress_peer}] stream service {service} source {effective_source} to dest {dest} => process local");
+                let _deferred_permit = if defer_delivery {
+                    match pending_deferred_local_deliveries.clone().try_acquire_owned() {
+                        Ok(permit) => Some(permit),
+                        Err(_) => {
+                            log::warn!("[PeerConnectionInternal {authenticated_ingress_peer}] stream service {service} source {effective_source} to dest {dest} => deferred local delivery queue full");
+                            write_stream_connect_res(&mut stream, Err("deferred local delivery queue full".to_string())).await?;
+                            return Err(anyhow!("deferred local delivery queue full"));
+                        }
+                    }
+                } else {
+                    None
+                };
                 let permit = match tokio::time::timeout(LOCAL_SERVICE_DELIVERY_TIMEOUT, service_tx.reserve()).await {
                     Ok(Ok(permit)) => permit,
                     Ok(Err(_)) => {
