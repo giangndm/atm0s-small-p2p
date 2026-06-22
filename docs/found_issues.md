@@ -17767,3 +17767,42 @@ the source of truth for evidence and reviewer decisions.
   - `RUST_LOG=error cargo test create_sync_for_must -- --nocapture`
   - `RUST_LOG=error cargo test discovery::test:: --lib -- --nocapture`
   - `RUST_LOG=error cargo test --lib -- --nocapture`
+
+### ISSUE-212: Local advertise is starved from capped discovery syncs
+
+- Score: 64
+- Category: correctness / discovery bootstrap stability
+- Status: fixed by pending commit.
+- Reviewer: `Volta` (forked RED-team reviewer), accepted.
+- Affected code:
+  - `src/discovery.rs`
+- Impact: a node with a valid local advertise address can omit its own dial
+  address from outbound discovery syncs when its learned-remote table exceeds
+  the sync cap. Downstream peers may keep only relayed routes to that node and
+  fail to converge to direct neighbours under large or noisy discovery tables.
+- Distinctness: ISSUE-211 covered configured seed addresses being omitted from
+  outbound syncs. This issue is a post-ISSUE-211 cap-ordering gap: configured
+  seeds are now included and prioritized, but the node's own local advertise
+  row still comes after learned remotes. ISSUE-055 and ISSUE-210 are
+  receiver-side discovery validation issues, not outbound priority under cap.
+- Failing evidence:
+  - `cargo test create_sync_for_must_prioritize_local_advertise_under_cap --lib -- --nocapture`
+  - Failure before fix:
+    - `local advertise address should not be starved by a large learned-remote table`
+- Root cause: `PeerDiscovery::create_sync_for` builds outbound discovery syncs
+  as configured seeds, then learned remotes, then the optional local advertise
+  row, and applies `take(MAX_SYNC_ENTRIES)`. A full learned-remote table can
+  consume the cap before the local row is emitted.
+- Minimal fix proposal: emit the local advertise row before learned remotes,
+  while preserving configured seed priority, destination filtering, local-peer
+  seed duplicate filtering, dialability filtering, and the max-entry cap.
+- Fix status: fixed by ordering outbound discovery sync entries as configured
+  seeds, then local advertise, then learned remotes before applying
+  `MAX_SYNC_ENTRIES`. The relayed-stream source regression test now selects
+  the intended relay connection explicitly so mesh convergence does not make it
+  exercise a direct path.
+- Verification:
+  - `RUST_LOG=error cargo test create_sync_for_must --lib -- --nocapture`
+  - `RUST_LOG=error cargo test discovery::test:: --lib -- --nocapture`
+  - `RUST_LOG=error cargo test tests::stream::relayed_stream_source_must_be_bound_to_previous_hop_peer -- --nocapture`
+  - `RUST_LOG=error cargo test --lib -- --nocapture`

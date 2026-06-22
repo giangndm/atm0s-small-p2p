@@ -5,10 +5,10 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Audit Status
 
-- Accepted issues: 211
+- Accepted issues: 212
 - Missing issue scores: 0
 - Current consecutive no-new-issue cycles: 0
-- Stop condition: not satisfied; discovery should continue after ISSUE-211 fix.
+- Stop condition: not satisfied; discovery should continue after ISSUE-212 fix.
 - Fix phase status: ISSUE-001, ISSUE-003, ISSUE-004, ISSUE-005, ISSUE-006, ISSUE-007,
   ISSUE-002, ISSUE-008, ISSUE-009, ISSUE-010, ISSUE-011, ISSUE-012, ISSUE-013, ISSUE-014, ISSUE-015, ISSUE-017, ISSUE-020, ISSUE-021, ISSUE-023, ISSUE-024, ISSUE-025, ISSUE-027, ISSUE-033, ISSUE-034, ISSUE-039, ISSUE-045, ISSUE-046, ISSUE-047, ISSUE-048, ISSUE-055, ISSUE-059, ISSUE-103, ISSUE-110, ISSUE-111, ISSUE-115, ISSUE-116, ISSUE-117, ISSUE-118, ISSUE-119, ISSUE-120, ISSUE-122, ISSUE-123,
   ISSUE-124, ISSUE-125, ISSUE-126, ISSUE-127, ISSUE-128, ISSUE-129, ISSUE-130,
@@ -23,6 +23,8 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   fixes committed.
   ISSUE-211 is fixed by gossiping configured seeds in outbound discovery sync
   and dropping stale relayed broadcast copies after mesh convergence.
+  ISSUE-212 is fixed by placing local advertise before learned remotes in
+  capped outbound discovery syncs.
   ISSUE-043 is fixed by bounding pending pubsub publish/feedback RPC request
   maps before responder fanout.
   ISSUE-054 is fixed by rejecting zero network tick intervals before endpoint
@@ -208,7 +210,7 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   ISSUE-008, ISSUE-033, ISSUE-044, ISSUE-055, ISSUE-092, ISSUE-103,
   ISSUE-112 through ISSUE-114, ISSUE-164, ISSUE-167,
   ISSUE-177, ISSUE-180, ISSUE-181, ISSUE-190, ISSUE-192, ISSUE-197,
-  ISSUE-210, ISSUE-211.
+  ISSUE-210, ISSUE-211, ISSUE-212.
 - Pattern: route/discovery inputs can include local ids, self seeds, stale
   addresses, overflowed metrics, over-hop routes, duplicate connection races,
   explicit connect addresses that are ignored by peer-id-only fast paths, or
@@ -219,7 +221,9 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   forms a loop. Local advertise config and remote discovery syncs can also
   gossip non-dialable addresses. Configured seed addresses can be available for
   local dialing but omitted from outbound discovery syncs, preventing
-  downstream bootstrap peers from converging to direct neighbours.
+  downstream bootstrap peers from converging to direct neighbours. Local
+  advertise rows can also be starved by learned remotes under the outbound sync
+  cap, hiding the sender's own dial address in large discovery tables.
 - ISSUE-210: fixed remote discovery input validation issue. Unlike local
   advertise config, `PeerDiscovery::apply_sync` accepts `0.0.0.0:0` and
   port-zero remote rows as dial candidates. The fix rejects non-dialable
@@ -238,6 +242,15 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   while preserving receiver-side seed-authority checks in `apply_sync`. Mesh
   convergence also requires route-aware broadcast relay handling so stale
   relayed copies are dropped once a direct route to the original source exists.
+- ISSUE-212: accepted local-advertise cap starvation issue. After ISSUE-211,
+  `PeerDiscovery::create_sync_for` prioritizes configured seeds but still emits
+  learned remotes before the local advertise row, so a large learned-remote
+  table can consume `MAX_SYNC_ENTRIES` before the sender's own dial address is
+  included. Evidence:
+  `cargo test create_sync_for_must_prioritize_local_advertise_under_cap --lib -- --nocapture`
+  fails with the local row absent. Minimal fix proposal: emit local advertise
+  before learned remotes while preserving seed priority, destination filtering,
+  local-peer seed duplicate filtering, dialability checks, and the cap.
 - Minimal fix proposal: sanitize before insertion: reject local/self candidates
   and over-hop routes, pin authenticated direct paths for their peer ids, use
   checked metric math, ignore stale discovery timestamps, reject duplicate

@@ -1,20 +1,20 @@
 use std::{
     net::UdpSocket,
     sync::{
-        atomic::{AtomicBool, Ordering},
         Arc,
+        atomic::{AtomicBool, Ordering},
     },
     time::Duration,
 };
 
 use super::create_node;
 use crate::{
+    CERT_DOMAIN_NAME, ConnectionId, P2pNetworkEvent, P2pServiceEvent, PeerId, SharedKeyHandshake, SharedRouterTable,
     msg::{P2pServiceId, StreamConnectReq},
     quic::make_server_endpoint,
     router::RouteAction,
     secure::HandshakeProtocol,
-    stream::{wait_object, write_object, P2pQuicStream},
-    ConnectionId, P2pNetworkEvent, P2pServiceEvent, PeerId, SharedKeyHandshake, SharedRouterTable, CERT_DOMAIN_NAME,
+    stream::{P2pQuicStream, wait_object, write_object},
 };
 use futures::FutureExt;
 use quinn::{Endpoint, ServerConfig, TransportConfig, VarInt};
@@ -276,7 +276,7 @@ async fn relayed_stream_source_must_be_bound_to_previous_hop_peer() {
 
     let conn = tokio::time::timeout(Duration::from_secs(3), async {
         loop {
-            if let Some(conn) = node1_ctx.conns().into_iter().next() {
+            if let Some(conn) = node1_ctx.conns().into_iter().find(|conn| conn.to_id() == addr2.peer_id()) {
                 return conn;
             }
             tokio::time::sleep(Duration::from_millis(10)).await;

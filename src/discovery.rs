@@ -101,14 +101,9 @@ impl PeerDiscovery {
             .filter(move |seed| Some(seed.peer_id()) != local_peer)
             .filter(|seed| is_dialable_advertise_address(seed.network_address()))
             .map(|seed| (seed.peer_id(), now_ms, seed.network_address().clone()));
-        let iter = self.local.iter().filter(|(p, _addr)| p != dest).map(|(p, addr)| (*p, now_ms, addr.clone()));
-        PeerDiscoverySync(
-            seeds
-                .chain(self.remotes.iter().filter(|(k, _)| !dest.eq(k)).map(|(k, (v1, v2))| (*k, *v1, v2.clone())))
-                .chain(iter)
-                .take(MAX_SYNC_ENTRIES)
-                .collect::<Vec<_>>(),
-        )
+        let local = self.local.iter().filter(|(p, _addr)| p != dest).map(|(p, addr)| (*p, now_ms, addr.clone()));
+        let remotes = self.remotes.iter().filter(|(k, _)| !dest.eq(k)).map(|(k, (v1, v2))| (*k, *v1, v2.clone()));
+        PeerDiscoverySync(seeds.chain(local).chain(remotes).take(MAX_SYNC_ENTRIES).collect::<Vec<_>>())
     }
 
     pub fn apply_sync(&mut self, now_ms: u64, sync: PeerDiscoverySync) {
@@ -446,6 +441,26 @@ mod test {
         assert!(
             sync.0.iter().any(|(peer, _updated, address)| *peer == seed.peer_id() && address == seed.network_address()),
             "configured seeds should not be starved by a large learned-remote table"
+        );
+    }
+
+    #[test_log::test]
+    fn create_sync_for_must_prioritize_local_advertise_under_cap() {
+        let local = peer_addr("1@127.0.0.1:9000");
+        let mut discovery = PeerDiscovery::default();
+        discovery.enable_local(local.peer_id(), local.network_address().clone());
+
+        for id in 2..=1_101 {
+            let peer = peer_addr(&format!("{id}@127.0.0.1:{}", 9000 + id));
+            discovery.apply_sync(100, PeerDiscoverySync(vec![(peer.peer_id(), 100, peer.network_address().clone())]));
+        }
+
+        let sync = discovery.create_sync_for(100, &PeerId(2_000));
+
+        assert_eq!(sync.0.len(), MAX_SYNC_ENTRIES, "outbound discovery syncs must preserve the entry cap");
+        assert!(
+            sync.0.iter().any(|(peer, _updated, address)| *peer == local.peer_id() && address == local.network_address()),
+            "local advertise address should not be starved by a large learned-remote table"
         );
     }
 
