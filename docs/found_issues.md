@@ -3365,8 +3365,8 @@ the source of truth for evidence and reviewer decisions.
   - Failure summary: after creating and destroying 1,025 distinct local
     subscriber channels, the service still retains 1,025 fully empty channel
     entries, exceeding the test cap of 1,024.
-- Fix status: empty pubsub channel entries are pruned after a valid final local
-  publisher/subscriber handle removal only when local publishers, local
+- Fix status: fixed by pruning empty pubsub channel entries after a valid final
+  local publisher/subscriber handle removal only when local publishers, local
   subscribers, remote publishers, and remote subscribers are all empty. Channels
   with retained remote state, including inactive remote tombstones, are kept.
   Local publisher/subscriber generation allocation now uses service-level
