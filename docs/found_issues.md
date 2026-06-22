@@ -18084,3 +18084,48 @@ the source of truth for evidence and reviewer decisions.
   - `RUST_LOG=error cargo test security:: --lib -- --nocapture`
   - `RUST_LOG=error cargo test inbound_handshake_must_reject_peer_claiming_local_id --lib -- --nocapture`
   - `rustfmt --edition 2024 --check src/peer/peer_internal.rs src/tests/security.rs`
+
+### ISSUE-219: Live outbound main-control writes block the peer read loop
+
+- Score: 69
+- Category: bad-network stability / live peer connection head-of-line blocking
+- Status: fixed by pending commit.
+- Reviewers:
+  - `Ohm` (forked RED-team reviewer), found.
+  - `Darwin` (forked candidate reviewer), accepted.
+- Affected code:
+  - `src/peer/peer_internal.rs`
+  - `src/peer/peer_alias.rs`
+  - `src/peer.rs`
+- Impact: after authentication, a peer that stops reading its main control
+  stream can make outbound `framed.send(...)` stall inside the peer connection
+  task. While parked there, the task cannot read later inbound frames, accept
+  streams, expire unicast acknowledgements, or process graceful stop messages.
+- Distinctness: ISSUE-049/ISSUE-050/ISSUE-056 cover caller/API behavior before
+  a message is admitted to the peer-control queue. ISSUE-172/ISSUE-173 cover
+  setup-time `ConnectReq`/`ConnectRes` write stalls during authentication.
+  ISSUE-219 covers post-auth live main-control writes inside
+  `PeerConnectionInternal`.
+- Failing evidence:
+  - `RUST_LOG=error cargo test outbound_control_send_must_not_block_peer_read_loop --lib -- --nocapture`
+  - Failure before fix:
+    - `outbound control writes must not block the peer read loop from processing later inbound frames`
+- Root cause: `PeerConnectionInternal::run_loop` awaits `on_control` inside
+  the main peer `select!` loop, and `on_control` handles
+  `PeerConnectionControl::Send` by awaiting `self.framed.send(item).await`.
+  `PeerConnectionAlias::try_send` only proves admission to the local control
+  queue, not that the QUIC main stream can accept the frame.
+- Minimal fix proposal: move live outbound main-control writes out of the
+  read/control loop into a bounded writer path, or at least wrap each live
+  `framed.send(...)` with a bounded timeout and close/report failure on timeout
+  so one stuck write cannot park all peer connection progress.
+- Fix status: fixed by wrapping post-auth live main-control writes in a
+  bounded timeout. On timeout or send error, the connection task returns an
+  error and tears down the stalled connection instead of parking the peer read
+  loop. Waiting callers receive an error, and unicast ack tracking is only
+  installed after the timed send succeeds.
+- Verification:
+  - `RUST_LOG=error cargo test outbound_control_send_must_not_block_peer_read_loop --lib -- --nocapture`
+  - `RUST_LOG=error cargo test peer_stopped_ --lib -- --nocapture`
+  - `RUST_LOG=error cargo test send_unicast --lib -- --nocapture`
+  - `rustfmt --edition 2024 --check src/peer.rs src/peer/peer_internal.rs`

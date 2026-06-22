@@ -359,7 +359,7 @@ mod tests {
     use tokio_util::codec::Framed;
 
     use crate::{
-        CERT_DOMAIN_NAME, InboundPeerBindings, NetworkAddress, P2pNetwork, P2pNetworkConfig, PeerAddress, PeerMainData, SharedKeyHandshake,
+        CERT_DOMAIN_NAME, InboundPeerBindings, NetworkAddress, P2pNetwork, P2pNetworkConfig, P2pNetworkEvent, PeerAddress, PeerMainData, SharedKeyHandshake,
         discovery::PeerDiscovery,
         msg::P2pServiceId,
         neighbours::NetworkNeighbours,
@@ -995,6 +995,102 @@ mod tests {
         assert!(
             matches!(event, Ok(Some(MainEvent::PeerConnectError(_, None, _)))),
             "inbound peer setup must time out and report PeerConnectError when writing ConnectRes stalls behind peer flow control"
+        );
+    }
+
+    #[tokio::test]
+    async fn outbound_control_send_must_not_block_peer_read_loop() {
+        let _ = rustls::crypto::ring::default_provider().install_default();
+        let listen_addr = UdpSocket::bind("127.0.0.1:0").expect("should bind node udp").local_addr().expect("should read node addr");
+        let raw_addr = UdpSocket::bind("127.0.0.1:0").expect("should bind raw peer udp").local_addr().expect("should read raw peer addr");
+        let raw_peer = make_small_stream_receive_endpoint(raw_addr, 37).expect("raw peer endpoint should build");
+        let local_id = PeerId::from(1);
+        let raw_peer_id = PeerId::from(2);
+        let secure = SharedKeyHandshake::from("atm0s");
+        let (raw_framed_tx, mut raw_framed_rx) = tokio::sync::oneshot::channel();
+
+        let raw_task = tokio::spawn(async move {
+            let connecting = raw_peer.accept().await.expect("raw peer should accept transport");
+            let connection = connecting.await.expect("raw peer should complete transport");
+            let (send, recv) = connection.accept_bi().await.expect("raw peer should accept p2p control stream");
+            let mut stream = P2pQuicStream::new(recv, send);
+            let req: ConnectReq = wait_object::<_, _, MAX_CONTROL_PEER_PKT>(&mut stream).await.expect("raw peer should receive connect request");
+            secure.verify_request(req.auth, local_id, raw_peer_id, now_ms()).expect("raw peer should verify connect request");
+            write_object::<_, _, MAX_CONTROL_PEER_PKT>(
+                &mut stream,
+                &ConnectRes {
+                    result: Ok(secure.create_response(raw_peer_id, local_id, now_ms())),
+                },
+            )
+            .await
+            .expect("raw peer should write connect response");
+            let _ = raw_framed_tx.send(Framed::new(stream, BincodeCodec::<PeerMessage>::default()));
+            std::future::pending::<()>().await;
+        });
+
+        let priv_key = PrivatePkcs8KeyDer::from(DEFAULT_CLUSTER_KEY.to_vec());
+        let cert = CertificateDer::from(DEFAULT_CLUSTER_CERT.to_vec());
+        let mut node = P2pNetwork::new(P2pNetworkConfig {
+            peer_id: local_id,
+            listen_addr,
+            advertise: None,
+            inbound_peer_bindings: Default::default(),
+            priv_key,
+            cert,
+            tick_ms: 100,
+            seeds: vec![],
+            secure: SharedKeyHandshake::from("atm0s"),
+        })
+        .await
+        .expect("node should build");
+        let requester = node.requester();
+        requester.try_connect((raw_peer_id, raw_addr.into()).into());
+
+        let mut raw_framed = tokio::time::timeout(Duration::from_secs(3), async {
+            let mut raw_framed = None;
+            loop {
+                tokio::select! {
+                    framed = &mut raw_framed_rx, if raw_framed.is_none() => {
+                        raw_framed = Some(framed.expect("raw framed should be sent"));
+                    }
+                    event = node.recv() => {
+                        if let Ok(P2pNetworkEvent::PeerConnected(_, peer)) = event {
+                            assert_eq!(peer, raw_peer_id);
+                        }
+                    }
+                }
+                if node.ctx.conns().into_iter().next().is_some() && raw_framed.is_some() {
+                    return raw_framed.expect("raw framed should be available");
+                }
+            }
+        })
+        .await
+        .expect("node should connect to raw peer");
+
+        let conn = node.ctx.conns().into_iter().next().expect("node should have raw peer alias");
+        for _ in 0..10 {
+            conn.try_send(PeerMessage::Broadcast(local_id, P2pServiceId::from(1), crate::msg::BroadcastMsgId::rand(), vec![7; 59_000]))
+                .expect("large control message should enqueue");
+        }
+        tokio::time::sleep(Duration::from_millis(100)).await;
+
+        raw_framed.send(PeerMessage::PeerStopped(raw_peer_id)).await.expect("raw peer should send stop frame");
+
+        let progressed = tokio::time::timeout(Duration::from_millis(750), async {
+            loop {
+                match node.main_rx.recv().await.expect("main channel should remain open") {
+                    MainEvent::PeerStopped(_, peer) if peer == raw_peer_id => break,
+                    MainEvent::PeerDisconnected(_, peer) if peer == raw_peer_id => break,
+                    _ => {}
+                }
+            }
+        })
+        .await;
+        raw_task.abort();
+
+        assert!(
+            progressed.is_ok(),
+            "outbound control writes must not park peer progress; the connection should process later inbound frames or close promptly"
         );
     }
 

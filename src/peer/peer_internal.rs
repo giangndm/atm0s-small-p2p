@@ -47,6 +47,7 @@ const MAX_PENDING_ACCEPT_BI: usize = 16;
 const LOCAL_SERVICE_DELIVERY_TIMEOUT: Duration = Duration::from_secs(1);
 const RELAY_UPSTREAM_STOP_GRACE: Duration = Duration::from_millis(20);
 const UNICAST_ACK_TIMEOUT: Duration = Duration::from_secs(1);
+const CONTROL_SEND_TIMEOUT: Duration = Duration::from_millis(250);
 const MAX_CONTROL_STREAM_PKT: usize = 60000;
 const MAX_PEER_MESSAGE_FRAME: usize = 60000;
 const INBOUND_SYNC_RETRY_DELAY: Duration = Duration::from_millis(10);
@@ -186,25 +187,30 @@ impl PeerConnectionInternal {
 
     async fn on_control(&mut self, control: PeerConnectionControl) -> anyhow::Result<()> {
         match control {
-            PeerConnectionControl::Send(item, tx) => {
-                let res = self.framed.send(item).await.map_err(Into::into);
-                if let Some(tx) = tx {
-                    let _ = tx.send(res);
+            PeerConnectionControl::Send(item, tx) => match (send_control_frame(&mut self.framed, self.remote, item).await, tx) {
+                (Ok(()), Some(tx)) => {
+                    let _ = tx.send(Ok(()));
                     Ok(())
-                } else {
-                    res
                 }
-            }
+                (Ok(()), None) => Ok(()),
+                (Err(err), Some(tx)) => {
+                    let msg = err.to_string();
+                    let _ = tx.send(Err(anyhow!(msg.clone())));
+                    Err(anyhow!(msg))
+                }
+                (Err(err), None) => Err(err),
+            },
             PeerConnectionControl::SendUnicastWithAck(ack_id, source, dest, service, data, tx) => {
-                let res = self.framed.send(PeerMessage::UnicastWithAck(ack_id, source, dest, service, data)).await.map_err(Into::into);
+                let res = send_control_frame(&mut self.framed, self.remote, PeerMessage::UnicastWithAck(ack_id, source, dest, service, data)).await;
                 match res {
                     Ok(()) => {
                         self.pending_unicast_acks.insert(ack_id, (tx, Instant::now() + UNICAST_ACK_TIMEOUT));
                         Ok(())
                     }
                     Err(err) => {
-                        let _ = tx.send(Err(err));
-                        Ok(())
+                        let msg = err.to_string();
+                        let _ = tx.send(Err(anyhow!(msg.clone())));
+                        Err(anyhow!(msg))
                     }
                 }
             }
@@ -378,7 +384,7 @@ impl PeerConnectionInternal {
                     }
                 };
                 let ack = res.map_err(|err| err.to_string());
-                self.framed.send(PeerMessage::UnicastAck(ack_id, ack)).await?;
+                send_control_frame(&mut self.framed, self.remote, PeerMessage::UnicastAck(ack_id, ack)).await?;
             }
             PeerMessage::UnicastAck(ack_id, result) => {
                 if let Some((tx, _)) = self.pending_unicast_acks.remove(&ack_id) {
@@ -454,6 +460,14 @@ fn recover_sync_event(event: MainEvent) -> Option<InboundSync> {
     match event {
         MainEvent::PeerData(_, _, PeerMainData::Sync { route, advertise }) => Some(InboundSync { route, advertise }),
         _ => None,
+    }
+}
+
+async fn send_control_frame(framed: &mut Framed<P2pQuicStream, BincodeCodec<PeerMessage>>, remote: SocketAddr, item: PeerMessage) -> anyhow::Result<()> {
+    match tokio::time::timeout(CONTROL_SEND_TIMEOUT, framed.send(item)).await {
+        Ok(Ok(())) => Ok(()),
+        Ok(Err(err)) => Err(err.into()),
+        Err(_) => Err(anyhow!("peer control frame send to {remote} timed out")),
     }
 }
 
