@@ -11,10 +11,10 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 2
-- Current audit continuation: Cycle after ISSUE-238 no-new cycle 2 reviewed
-  metrics, visualization, and alias service state/backpressure; continue
-  auditing.
+- Current consecutive no-new-issue cycles: 3
+- Current audit continuation: Cycle after ISSUE-238 no-new cycle 3 repaired
+  stale metrics/visualization scan-response evidence harnesses after service
+  liveness registration; continue auditing.
 
 ## Root Cause Summary
 
@@ -19363,6 +19363,40 @@ the source of truth for evidence and reviewer decisions.
     disconnect/restart lifecycle, local shutdown behavior, and pending waiter
     bounds map to ISSUE-090, ISSUE-179, ISSUE-183, ISSUE-208, and ISSUE-235.
 - Current consecutive no-new cycles after ISSUE-238: 2.
+
+### Cycle after ISSUE-238 no-new cycle 3: metrics and visualization evidence harness review
+
+- Scope: reviewed the current red broad metrics and visualization suites after
+  cycle 2. The failures were in
+  `peer::tests::metrics_scan_response_must_not_be_dropped_when_peer_control_queue_is_full`
+  and
+  `peer::tests::visualization_scan_responses_must_not_accumulate_behind_full_peer_control_queue`.
+  The audit compared those tests with `P2pNetwork::create_service` and
+  `P2pServiceRequester::ensure_live` to determine whether this was a real
+  scan-response backpressure regression or stale evidence.
+- Reviewer: `Russell` (forked RED-team reviewer), classified this as stale
+  evidence after the newer service requester liveness invariant, not a new
+  accepted library issue.
+- Root cause: the peer evidence tests used `P2pService::build(...)` directly,
+  leaving `P2pService.registered = false`. Metrics and visualization
+  scan-response tasks call `P2pServiceRequester::send_unicast_unacked`, which
+  now rejects unregistered requesters before reaching peer control queue
+  admission. Production `P2pNetwork::create_service` registers the service and
+  sets the flag.
+- Minimal fix proposal applied: add a peer-test helper that registers the
+  service sender in `SharedCtx`, mirrors the `create_service` registration
+  flag, and use it in the metrics/visualization scan-response backpressure
+  evidence tests.
+- Verification:
+  - `rustfmt --edition 2021 --check src/peer.rs`
+  - `RUST_LOG=error cargo test metrics --lib -- --nocapture`
+  - `RUST_LOG=error cargo test visualization --lib -- --nocapture`
+  - `git diff --check`
+- Duplicate mapping: no accepted library issue. The original backpressure
+  evidence still maps to ISSUE-202, ISSUE-203, and ISSUE-204; the current
+  failure was a test-harness mismatch with ISSUE-234 service requester
+  liveness semantics.
+- Current consecutive no-new cycles after ISSUE-238: 3.
 
 ### Cycle after ISSUE-235 no-new cycle 1: transport, auth, and peer setup review
 
