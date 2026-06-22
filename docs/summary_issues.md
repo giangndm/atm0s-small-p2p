@@ -209,6 +209,12 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   debug builds or wrapping in release builds. This leaves local version
   exhaustion policy to ISSUE-031. Verification:
   `cargo test fetch_changed_with_overflowing_from_version_must_not_panic -- --nocapture`.
+- ISSUE-031: fixed by allocating local replicated-KV successor versions with
+  checked arithmetic. Local `set`/`del` at `Version(u64::MAX)` now no-op before
+  visible state changes or event emission; delete preserves an existing slot
+  when no successor version exists. Verification:
+  `cargo test local_set_at_max_version_must_not_overflow -- --nocapture` and
+  `cargo test local_del_at_max_version_must_not_overflow_or_remove_slot -- --nocapture`.
 - ISSUE-117: fixed by bounding inbound stream-connect setup at both transport
   and application layers. QUIC now admits at most one main control stream plus
   16 application bidirectional streams per peer direction, while

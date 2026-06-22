@@ -35,8 +35,10 @@ where
     }
 
     pub fn set(&mut self, key: K, value: V) {
-        self.version = self.version + 1;
-        let version = self.version;
+        let Some(version) = self.version.checked_next() else {
+            return;
+        };
+        self.version = version;
         let changed = Changed {
             key: key.clone(),
             version,
@@ -52,11 +54,14 @@ where
     }
 
     pub fn del(&mut self, key: K) {
-        if self.slots.remove(&key).is_none() {
+        if !self.slots.contains_key(&key) {
             return;
         }
-        self.version = self.version + 1;
-        let version = self.version;
+        let Some(version) = self.version.checked_next() else {
+            return;
+        };
+        self.version = version;
+        self.slots.remove(&key);
         let changed = Changed {
             key: key.clone(),
             version,
@@ -351,6 +356,29 @@ mod tests {
         }));
 
         assert!(result.is_ok(), "local version increment must not panic or wrap at u64::MAX");
+        assert_eq!(store.version, Version(u64::MAX), "local version must stay at max when no successor exists");
+        assert_eq!(store.slots, BTreeMap::new(), "set at max version must not create an unreplicable local slot");
+        assert_eq!(store.pop_out(), None, "set at max version must not emit unreplicable events");
+    }
+
+    #[test]
+    fn local_del_at_max_version_must_not_overflow_or_remove_slot() {
+        let mut store: LocalStore<u16, u16, u16> = LocalStore::new(10, 2);
+        store.version = Version(u64::MAX);
+        store.slots.insert(1, Slot::new(1, Version(u64::MAX)));
+
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            store.del(1);
+        }));
+
+        assert!(result.is_ok(), "local delete version increment must not panic or wrap at u64::MAX");
+        assert_eq!(store.version, Version(u64::MAX), "local version must stay at max when no successor exists");
+        assert_eq!(
+            store.slots,
+            BTreeMap::from([(1, Slot::new(1, Version(u64::MAX)))]),
+            "delete at max version must not remove an unreplicable slot"
+        );
+        assert_eq!(store.pop_out(), None, "delete at max version must not emit unreplicable events");
     }
 
     #[test]

@@ -927,6 +927,9 @@ the source of truth for evidence and reviewer decisions.
 - Category: long-running correctness, stability
 - Score: 64/100
 - Reviewer: `Sagan`, confirmed.
+- Fix status: fixed. Local `set` and `del` now allocate the next replicated
+  version with checked arithmetic and no-op at `Version(u64::MAX)` instead of
+  panicking, wrapping, or emitting unreplicable events.
 - Affected code:
   - `src/service/replicate_kv_service/local_storage.rs`: local `set` and `del`
     both advance the store with `self.version = self.version + 1`.
@@ -941,6 +944,16 @@ the source of truth for evidence and reviewer decisions.
   - Failure summary: `LocalStore::set` at `Version(u64::MAX)` panics at
     `src/service/replicate_kv_service/messages.rs:37` with
     `attempt to add with overflow`.
+- Root cause: local mutation paths used the unchecked `Version + 1` operator
+  before creating changelog entries and local events.
+- Fix: add `Version::checked_next()` and make local `set`/`del` reserve a
+  successor version before mutating visible state or emitting events. Existing
+  deletes keep the slot when no successor exists.
+- Fixed verification:
+  `cargo test local_set_at_max_version_must_not_overflow -- --nocapture`,
+  `cargo test local_del_at_max_version_must_not_overflow_or_remove_slot -- --nocapture`,
+  `cargo test service::replicate_kv_service::local_storage::tests::simple_works -- --nocapture`,
+  and `cargo fmt -- --check` pass.
 
 ### ISSUE-032: Replicated KV zero snapshot page size stalls full sync
 
