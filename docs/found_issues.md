@@ -3538,6 +3538,8 @@ the source of truth for evidence and reviewer decisions.
   `cargo test awaited_connect_must_error_while_same_peer_connect_is_pending -- --nocapture`,
   and
   `cargo test stale_pending_outgoing_peer_does_not_suppress_reconnect -- --nocapture`.
+- Fix status: fixed by checking `has_peer_connection_attempt` before starting
+  outbound connects to the same peer id.
 
 ### ISSUE-114: Inbound duplicate connections from the same peer are not coalesced
 
