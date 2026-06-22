@@ -5,15 +5,13 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Audit Status
 
-- Accepted issues: 239
+- Accepted issues: 240
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 2
-- Current audit continuation: cycle after ISSUE-239 no-new cycle 2 reviewed
-  transport, handshake, stream codec, requester/control admission, raw-wire,
-  and fuzz harness boundaries with forked reviewer `Meitner the 2nd`.
-  Rejected candidates mapped to existing handshake, malformed-input,
-  requester, stream, unicast, and fuzz coverage families; no accepted issue or
-  root-cause summary change was recorded.
+- Current consecutive no-new-issue cycles: 0
+- Current audit continuation: ISSUE-240 fixed pubsub chunked heartbeat snapshot
+  correlation. Multi-batch heartbeats now use explicit chunk messages and run
+  omitted-role cleanup only after the final chunk, preventing valid later
+  chunks from deleting roles learned from earlier chunks.
 - Fix phase status: ISSUE-001, ISSUE-003, ISSUE-004, ISSUE-005, ISSUE-006, ISSUE-007,
   ISSUE-002, ISSUE-008, ISSUE-009, ISSUE-010, ISSUE-011, ISSUE-012, ISSUE-013, ISSUE-014, ISSUE-015, ISSUE-017, ISSUE-020, ISSUE-021, ISSUE-023, ISSUE-024, ISSUE-025, ISSUE-027, ISSUE-033, ISSUE-034, ISSUE-039, ISSUE-045, ISSUE-046, ISSUE-047, ISSUE-048, ISSUE-055, ISSUE-059, ISSUE-103, ISSUE-110, ISSUE-111, ISSUE-115, ISSUE-116, ISSUE-117, ISSUE-118, ISSUE-119, ISSUE-120, ISSUE-122, ISSUE-123,
   ISSUE-124, ISSUE-125, ISSUE-126, ISSUE-127, ISSUE-128, ISSUE-129, ISSUE-130,
@@ -125,6 +123,19 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   requester, stream-codec, QUIC unidirectional-stream, serial stream, and
   eight-node fuzz checks under reviewer `Meitner the 2nd`; no distinct issue
   survived duplicate mapping.
+  ISSUE-240 is fixed, score 64: pubsub multi-batch outbound heartbeats now use
+  `HeartbeatChunk { channels, is_last }`, receivers accumulate seen channels
+  per peer across chunks, and omitted-role cleanup runs only after the final
+  chunk. `Heartbeat(Vec<_>)` remains the complete-snapshot message for empty
+  and single-batch heartbeats, and the new enum variant is appended to preserve
+  existing bincode tags. Reviewer `Archimedes the 2nd` accepted the issue.
+  Verification:
+  `RUST_LOG=error cargo test pubsub_chunked_heartbeat_must_not_remove_roles_from_previous_chunk --lib -- --nocapture`,
+  `RUST_LOG=error cargo test pubsub_heartbeat --lib -- --nocapture`,
+  `RUST_LOG=error cargo test pubsub_outbound_heartbeat_batches_must_respect_inbound_cap --lib -- --nocapture`,
+  `RUST_LOG=error cargo test pubsub --lib -- --nocapture`,
+  `rustfmt --edition 2021 --check src/service/pubsub_service.rs`, and
+  `git diff --check`.
   ISSUE-043 is fixed by bounding pending pubsub publish/feedback RPC request
   maps before responder fanout.
   ISSUE-054 is fixed by rejecting zero network tick intervals before endpoint
@@ -176,7 +187,7 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   ISSUE-110, ISSUE-111, ISSUE-143,
   ISSUE-166, ISSUE-171, ISSUE-175,
   ISSUE-186, ISSUE-205, ISSUE-206, ISSUE-231, ISSUE-232, ISSUE-233,
-  ISSUE-237, ISSUE-239.
+  ISSUE-237, ISSUE-239, ISSUE-240.
 - Pattern: replicated-KV, alias, metrics, visualization, and pubsub flows accept
   stale, unsolicited, reordered, or mismatched responses or broadcasts because
   handlers do not verify request shape, bounds, version, continuation key,
@@ -220,6 +231,13 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   `cargo test replicate_kv -- --nocapture`,
   `rustfmt --edition 2021 --check src/service/replicate_kv_service/remote_storage.rs`,
   and `git diff --check`.
+- ISSUE-240, score 64: fixed pubsub chunked heartbeat correlation. Root cause:
+  omission cleanup treated each inbound heartbeat frame as a complete peer
+  snapshot even after outbound heartbeats were split into capped batches.
+  Smallest fix: keep legacy `Heartbeat(Vec<_>)` as complete snapshots, add an
+  explicit final-marked chunk variant for multi-batch heartbeats, accumulate
+  per-peer seen channels across chunks, and run omitted cleanup only on the
+  final chunk while preserving the per-chunk inbound cap.
 - ISSUE-238, score 58: fixed by `d340a7b`. A peer-controlled
   `StreamConnectReq.defer_delivery` could reserve all destination service queue
   slots while waiting for a relay commit, temporarily denying legitimate stream

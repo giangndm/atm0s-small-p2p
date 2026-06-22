@@ -12,8 +12,8 @@ must resolve.
 ## Audit Status
 
 - Current consecutive no-new-issue cycles: 0
-- Current audit continuation: ISSUE-239 fixed by requiring alias scan `Found`
-  responders to have active advertised lifecycle proof.
+- Current audit continuation: ISSUE-240 fixed by preserving pubsub roles across
+  explicit chunked heartbeat snapshots.
 
 ## Root Cause Summary
 
@@ -44,7 +44,8 @@ the source of truth for evidence and reviewer decisions.
   ISSUE-059, ISSUE-071, ISSUE-081 through ISSUE-089, ISSUE-095, ISSUE-099,
   ISSUE-110, ISSUE-111, ISSUE-143, ISSUE-152,
   ISSUE-154, ISSUE-155, ISSUE-158, ISSUE-166, ISSUE-171, ISSUE-175,
-  ISSUE-186, ISSUE-231, ISSUE-232, ISSUE-233, ISSUE-237, ISSUE-239.
+  ISSUE-186, ISSUE-231, ISSUE-232, ISSUE-233, ISSUE-237, ISSUE-239,
+  ISSUE-240.
 - Pattern: replicated-KV full sync, changed repair, alias lookup, metrics,
   visualization, and pubsub flows accept stale, unsolicited, reordered, or
   mismatched responses or broadcasts because handlers do not verify
@@ -19346,6 +19347,61 @@ the source of truth for evidence and reviewer decisions.
   - Regression guards:
     `RUST_LOG=error cargo test alias --lib -- --nocapture` passed 47/47,
     `rustfmt --edition 2021 --check src/service/alias_service.rs` passed, and
+    `git diff --check` passed.
+
+### ISSUE-240: Chunked pubsub heartbeat removes roles from previous chunks
+
+- Status: fixed by adding explicit chunked heartbeat snapshot semantics and
+  delaying omitted-role cleanup until the final chunk.
+- Category: correctness, stability, bad-network/pubsub membership churn
+- Score: 64
+- Reviewers:
+  - `Archimedes the 2nd` (forked RED-team reviewer) accepted the issue as
+    distinct from ISSUE-106 and ISSUE-228 after inspecting the failing
+    regression and existing heartbeat split/bounds fixes.
+- Affected code:
+  - `src/service/pubsub_service.rs`: `PubsubMessage::Heartbeat(Vec<_>)`
+    represented both a complete snapshot and one outbound chunk.
+  - `src/service/pubsub_service.rs`: inbound heartbeat handling removed all
+    remote roles omitted from the current frame, so a later valid chunk could
+    delete roles learned from an earlier valid chunk from the same peer.
+- Impact: once a peer has more than `MAX_HEARTBEAT_CHANNELS_PER_BATCH`
+  channels, outbound heartbeats are split. The receiver treats each split
+  frame as a complete peer snapshot, so roles in chunk 1 are removed when chunk
+  2 arrives. Under high-load pubsub use this creates false
+  join/leave churn and noisy active path/destination behavior for services that
+  depend on remote publisher/subscriber membership.
+- Distinctness: ISSUE-106 rejects oversized inbound heartbeat batches.
+  ISSUE-228 caps outbound heartbeat batches to the inbound limit. ISSUE-240 is
+  the receiver-side snapshot-correlation gap introduced by using capped
+  batches without an explicit final-chunk marker.
+- Root cause: heartbeat omission cleanup used only the channels seen in one
+  inbound frame, but after outbound chunking one frame is no longer equivalent
+  to one complete peer heartbeat snapshot.
+- Minimal fix proposal: keep `Heartbeat(Vec<_>)` as the legacy complete
+  snapshot for empty and single-batch heartbeats. Add a chunked heartbeat
+  message with a final marker, accumulate seen channels per peer across
+  chunks, apply each bounded chunk immediately, and run omitted-role cleanup
+  only when the final chunk arrives. Clear partial chunk state on disconnect or
+  a later complete snapshot.
+- Fix: added `PubsubMessage::HeartbeatChunk { channels, is_last }`, emitted it
+  only for multi-batch heartbeats, accumulated per-peer seen channels across
+  chunks, and moved omitted-role cleanup behind the final chunk. The new enum
+  variant is appended to preserve existing bincode tags for current message
+  variants.
+- Evidence tests:
+  - Red evidence before fix:
+    `RUST_LOG=error cargo test pubsub_chunked_heartbeat_must_not_remove_roles_from_previous_chunk --lib -- --nocapture`
+    failed with `left: 1` and `right: 1025`, proving valid chunked heartbeat
+    batches removed roles learned from previous chunks.
+  - Verification after fix:
+    `RUST_LOG=error cargo test pubsub_chunked_heartbeat_must_not_remove_roles_from_previous_chunk --lib -- --nocapture`
+    passed.
+  - Regression guards:
+    `RUST_LOG=error cargo test pubsub_heartbeat --lib -- --nocapture`,
+    `RUST_LOG=error cargo test pubsub_outbound_heartbeat_batches_must_respect_inbound_cap --lib -- --nocapture`,
+    `RUST_LOG=error cargo test pubsub --lib -- --nocapture`,
+    `rustfmt --edition 2021 --check src/service/pubsub_service.rs`, and
     `git diff --check` passed.
 
 ### Cycle after ISSUE-239 no-new cycle 1: route, lifecycle, service, pubsub, and replicated-KV review
