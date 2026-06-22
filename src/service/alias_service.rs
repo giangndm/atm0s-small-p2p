@@ -30,6 +30,7 @@ const LRU_CACHE_SIZE: usize = 1_000_000;
 const ALIAS_LIFECYCLE_CACHE_SIZE: usize = 1_000_000;
 pub(crate) const ALIAS_CONTROL_QUEUE_SIZE: usize = 1024;
 const MAX_ALIAS_HINT_PEERS: usize = 1024;
+const MAX_WAITERS_PER_ALIAS: usize = 1024;
 const HINT_TIMEOUT_MS: u64 = 500;
 const SCAN_TIMEOUT_MS: u64 = 1000;
 
@@ -476,6 +477,10 @@ impl AliasServiceInternal {
                 }
 
                 if let Some(req) = self.find_reqs.get_mut(&alias_id) {
+                    if req.waits.len() >= MAX_WAITERS_PER_ALIAS {
+                        sender.send(None).print_on_err2("[AliasServiceInternal] send find waiter overflow response");
+                        return;
+                    }
                     req.waits.push(sender);
                     return;
                 }
@@ -1228,18 +1233,21 @@ mod test {
 
     #[test]
     fn duplicate_find_waiters_for_same_alias_must_be_bounded() {
-        const MAX_WAITERS_PER_ALIAS: usize = 1024;
         let mut ctx = TestContext::new();
         let alias_id = AliasId(1);
 
-        for _ in 0..=MAX_WAITERS_PER_ALIAS {
+        for _ in 0..MAX_WAITERS_PER_ALIAS {
             let (tx, _rx) = oneshot::channel();
             ctx.internal.on_control(ctx.now, AliasControl::Find(alias_id, tx));
         }
+        let (overflow_tx, mut overflow_rx) = oneshot::channel();
+        ctx.internal.on_control(ctx.now, AliasControl::Find(alias_id, overflow_tx));
 
         let waiters = ctx.internal.find_reqs.get(&alias_id).expect("find request should exist").waits.len();
 
         assert!(waiters <= MAX_WAITERS_PER_ALIAS, "duplicate find waiters for one alias must be bounded, got {waiters}");
+        assert_eq!(overflow_rx.try_recv(), Ok(None), "overflow find waiter must complete immediately with no result");
+        assert_eq!(ctx.internal.outs.len(), 1, "duplicate and overflow finds must not create extra scan fanout");
     }
 
     #[test]

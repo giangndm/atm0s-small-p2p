@@ -1058,6 +1058,9 @@ the source of truth for evidence and reviewer decisions.
 - Category: high-load stability, resource exhaustion
 - Score: 68/100
 - Reviewer: `Mencius`, confirmed.
+- Fix status: fixed. Duplicate waiters for one alias are capped at
+  `MAX_WAITERS_PER_ALIAS = 1024`; overflow `Find` callers complete immediately
+  with `None` and do not create extra scan/check fanout.
 - Affected code:
   - `src/service/alias_service.rs`: `FindRequest.waits` is an unbounded `Vec`.
   - `src/service/alias_service.rs`: duplicate `AliasControl::Find` calls for
@@ -1073,6 +1076,14 @@ the source of truth for evidence and reviewer decisions.
   - `cargo test duplicate_find_waiters_for_same_alias_must_be_bounded -- --nocapture`
   - Failure summary: 1,025 duplicate find waiters are stored for one alias,
     exceeding the test cap of 1,024.
+- Root cause: duplicate `Find` requests joined an existing `FindRequest`
+  without any per-alias waiter admission limit.
+- Fix: add `MAX_WAITERS_PER_ALIAS` and reject overflow duplicate waiters with
+  an explicit `None` response before mutating `req.waits`.
+- Fixed verification:
+  `cargo test duplicate_find_waiters_for_same_alias_must_be_bounded -- --nocapture`,
+  `cargo test alias_service::test::test_find -- --nocapture`, and
+  `cargo fmt -- --check` pass.
 
 ### ISSUE-036: Alias find timeout arithmetic overflows near maximum timestamp
 

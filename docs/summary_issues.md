@@ -123,6 +123,11 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   pending RPCs/finds, max tombstones/remotes, max queued outbound events, and
   prune empty channel state on teardown. Mutation APIs that enqueue work should
   return backpressure errors or coalesce superseded work.
+- ISSUE-035: fixed by capping duplicate alias find waiters per alias at
+  `MAX_WAITERS_PER_ALIAS = 1024`. Overflow duplicate `Find` callers complete
+  immediately with `None` and do not add another waiter or scan/check fanout.
+  Verification:
+  `cargo test duplicate_find_waiters_for_same_alias_must_be_bounded -- --nocapture`.
 
 ### RC-6: Lifecycle cleanup and stale handles are inconsistent
 
