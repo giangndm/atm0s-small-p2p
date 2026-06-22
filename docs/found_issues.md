@@ -479,6 +479,8 @@ the source of truth for evidence and reviewer decisions.
   delivery now reserves bounded destination service queue capacity before
   sending a successful `StreamConnectRes`; if the queue cannot admit the stream
   within the local delivery timeout, the opener receives an error response.
+- Fix status: fixed by reserving bounded destination service queue capacity
+  before reporting stream setup success.
 - Category: high-load stability, pipe reliability
 - Score: 78/100
 - Reviewer: `Pasteur`, confirmed.
