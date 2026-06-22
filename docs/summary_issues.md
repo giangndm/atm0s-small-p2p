@@ -20,7 +20,7 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   ISSUE-094, ISSUE-095, ISSUE-096,
   ISSUE-149, ISSUE-169, ISSUE-174, ISSUE-176, ISSUE-177, ISSUE-078, ISSUE-079, ISSUE-080, ISSUE-081, ISSUE-082, ISSUE-083, ISSUE-084, ISSUE-085, ISSUE-181, ISSUE-184, ISSUE-185, ISSUE-189, ISSUE-190, ISSUE-191, ISSUE-192, ISSUE-193,
   ISSUE-194, ISSUE-195, ISSUE-196, ISSUE-197, ISSUE-198, ISSUE-199,
-  ISSUE-200, ISSUE-201, ISSUE-202, ISSUE-203, ISSUE-204, ISSUE-205, ISSUE-206, ISSUE-207, ISSUE-097, ISSUE-098, ISSUE-099, ISSUE-100, ISSUE-101, ISSUE-102, ISSUE-104, ISSUE-105, ISSUE-106, ISSUE-107, ISSUE-108, ISSUE-109, ISSUE-112, and ISSUE-018 have focused
+  ISSUE-200, ISSUE-201, ISSUE-202, ISSUE-203, ISSUE-204, ISSUE-205, ISSUE-206, ISSUE-207, ISSUE-097, ISSUE-098, ISSUE-099, ISSUE-100, ISSUE-101, ISSUE-102, ISSUE-104, ISSUE-105, ISSUE-106, ISSUE-107, ISSUE-108, ISSUE-109, ISSUE-112, ISSUE-018, and ISSUE-022 have focused
   fixes committed.
   ISSUE-003 is fixed by `cfc8e57`;
   ISSUE-090 is fixed by the alias `Found` request-correlation guard.
@@ -284,6 +284,13 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   `Scan(alias_id)` while keeping waiters pending; local `AliasControl::Shutdown`
   behavior remains unchanged. Verification:
   `cargo test service::alias_service::test::shutdown_from_cached_hint_must_unblock_pending_find -- --nocapture`.
+- ISSUE-022: fixed by routing remote `AliasMessage::Shutdown` through the
+  peer-scoped disconnect cleanup path. A stopped peer now removes only its own
+  alias lifecycle/cache hints, shared aliases retain other peers, and unrelated
+  cached hints survive. Verification:
+  `cargo test shutdown_from_one_peer_must_not_clear_aliases_from_other_peers -- --nocapture`
+  and
+  `cargo test shutdown_from_cached_hint_must_unblock_pending_find -- --nocapture`.
 - ISSUE-150: fixed by `73c63ec` (`fix: isolate pubsub local handle ownership`).
   Pubsub destroy controls now return on unknown channels and on exact-handle
   removal misses, so stale publisher/subscriber destroy controls do not create

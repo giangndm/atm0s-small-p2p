@@ -384,28 +384,7 @@ impl AliasServiceInternal {
                 }
             }
             AliasMessage::Shutdown => {
-                let mut removed_alias_ids = vec![];
-                for (k, _v) in &mut self.cache {
-                    removed_alias_ids.push(*k);
-                }
-                for alias_id in removed_alias_ids {
-                    if let Some(_) = self.cache.pop(&alias_id) {
-                        counter!(P2P_ALIAS_CACHE_POP).increment(1);
-                    }
-                }
-
-                for (alias_id, req) in self.find_reqs.iter_mut() {
-                    match req.state {
-                        FindRequestState::CheckHint(_, ref mut hint_peers) => {
-                            hint_peers.remove(&from);
-                            if hint_peers.is_empty() {
-                                req.state = FindRequestState::Scan(now);
-                                self.outs.push_back(InternalOutput::Broadcast(AliasMessage::Scan(*alias_id)));
-                            }
-                        }
-                        FindRequestState::Scan(_) => {}
-                    }
-                }
+                self.on_peer_disconnected(now, from);
             }
         }
     }
@@ -1407,17 +1386,34 @@ mod test {
         let mut ctx = TestContext::new();
         let alias_from_peer1 = AliasId(1);
         let alias_from_peer2 = AliasId(2);
+        let shared_alias = AliasId(3);
         let peer1 = PeerId(1);
         let peer2 = PeerId(2);
 
         ctx.internal.on_msg(ctx.now, peer1, AliasMessage::NotifySet(alias_from_peer1, 1));
         ctx.internal.on_msg(ctx.now, peer2, AliasMessage::NotifySet(alias_from_peer2, 1));
+        ctx.internal.on_msg(ctx.now, peer1, AliasMessage::NotifySet(shared_alias, 1));
+        ctx.internal.on_msg(ctx.now, peer2, AliasMessage::NotifySet(shared_alias, 1));
 
         ctx.internal.on_msg(ctx.now, peer1, AliasMessage::Shutdown);
 
+        assert!(!ctx.internal.cache.contains(&alias_from_peer1), "shutdown from one peer must remove that peer's alias hints");
         assert!(
             ctx.internal.cache.contains(&alias_from_peer2),
             "shutdown from one peer must not remove alias hints learned from other peers"
+        );
+        assert!(
+            !ctx.internal.remote_lifecycle.contains(&(alias_from_peer1, peer1)),
+            "shutdown must remove lifecycle owned by the stopped peer"
+        );
+        assert!(
+            ctx.internal.remote_lifecycle.contains(&(alias_from_peer2, peer2)),
+            "shutdown must not remove lifecycle owned by other peers"
+        );
+        assert_eq!(
+            ctx.internal.cache.get(&shared_alias).cloned(),
+            Some(HashSet::from([peer2])),
+            "shutdown from one peer must only remove that peer from shared alias hints"
         );
     }
 }

@@ -748,6 +748,14 @@ the source of truth for evidence and reviewer decisions.
   - `cargo test shutdown_from_one_peer_must_not_clear_aliases_from_other_peers -- --nocapture`
   - Failure summary: an alias learned from `peer2` is removed after `peer1`
     sends `Shutdown`.
+- Fix status: fixed by handling remote `AliasMessage::Shutdown` through the
+  same peer-scoped cleanup path as a peer disconnect. Shutdown now removes only
+  the sender's alias lifecycle/cache hints, preserves hints learned from other
+  peers, and leaves local shutdown semantics unchanged.
+- Fixed verification:
+  - `cargo test -q shutdown_from_one_peer_must_not_clear_aliases_from_other_peers -- --nocapture`
+  - `cargo test -q shutdown_from_cached_hint_must_unblock_pending_find -- --nocapture`
+  - `cargo test -q alias_service -- --nocapture`
 
 ### ISSUE-023: Replicated KV `FetchChanged` version arithmetic overflows
 
