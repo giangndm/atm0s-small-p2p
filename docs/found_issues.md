@@ -11,13 +11,54 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 25
-- Current audit continuation: critical-only secure-handshake/QUIC setup
-  no-new cycle 27 found no new score-80+ issue across token freshness/replay,
-  replay-cache pressure, request/response role binding, self/third-party peer
-  identity, inbound authorization/static binding, unauthenticated admission,
-  QUIC stream admission, setup timeout/error cleanup, and stalled or malformed
-  control-stream setup.
+- Current consecutive no-new-issue cycles: 26
+- Current audit continuation: critical-only replicated-KV state-sync and repair
+  no-new cycle 28 found no new score-80+ issue across stale or unsolicited RPC
+  responses, full-sync snapshot validation and atomicity, `FetchChanged`
+  request correlation, version arithmetic, resource caps, tombstones/deletes,
+  peer-disconnect cleanup, malformed service payload handling, and high-load
+  reordering.
+
+### Critical-only no-new cycle 28: replicated-KV state sync and repair
+
+- Scope: reviewer-style critical-only pass over
+  `src/service/replicate_kv_service.rs`,
+  `src/service/replicate_kv_service/local_storage.rs`,
+  `src/service/replicate_kv_service/remote_storage.rs`, and
+  `src/service/replicate_kv_service/messages.rs`.
+- Focus areas: stale and unsolicited RPC responses, full-sync snapshot
+  validation and atomicity, `FetchChanged` correlation, version arithmetic
+  overflow, resource caps, tombstones/deletes, peer-disconnect cleanup,
+  malformed service payloads, and high-load or bad-network reordering.
+- Verification:
+  - `cargo test --lib -- --list | rg -i "replicate|kv|snapshot|changed|version|remote_store|local_store|disconnect|malformed|fuzz"` listed the focused test surface.
+  - `RUST_LOG=error cargo test replicate_kv --lib -- --nocapture`: passed 64 tests.
+  - `RUST_LOG=error cargo test snapshot --lib -- --nocapture`: passed 22 tests.
+  - `RUST_LOG=error cargo test fetch_changed --lib -- --nocapture`: passed 13 tests.
+  - `RUST_LOG=error cargo test fetch_snapshot --lib -- --nocapture`: passed 1 test.
+  - `RUST_LOG=error cargo test replicated_kv_must_delete_remote_data_when_peer_gracefully_stops --lib -- --nocapture`: passed 1 test.
+  - `RUST_LOG=error cargo test malformed --lib -- --nocapture`: matched 0 tests.
+  - `RUST_LOG=error P2P_FUZZ_NODES=24 P2P_FUZZ_STEPS=900 P2P_FUZZ_SEED=88001 cargo test fuzz_random_valid_node_actions_must_not_panic_connection_tasks --lib -- --nocapture`: passed.
+- Duplicate mapping:
+  - Stale/unsolicited replicated-KV RPC responses map to ISSUE-087,
+    ISSUE-140, ISSUE-154, ISSUE-233, and RC-2.
+  - Full-sync snapshot bounds, ordering, terminal-page validation, page caps,
+    and atomic staging map to ISSUE-038, ISSUE-059, ISSUE-081 through
+    ISSUE-085, ISSUE-110, ISSUE-131, ISSUE-138, ISSUE-237, ISSUE-245, and
+    RC-2/RC-5.
+  - `FetchChanged` repair correlation, partial responses, duplicate or
+    out-of-range versions, pending caps, and stale repair cancellation map to
+    ISSUE-023, ISSUE-027, ISSUE-088, ISSUE-089, ISSUE-141, ISSUE-154, and
+    RC-2/RC-3.
+  - Version arithmetic and local mutation overflow map to ISSUE-023,
+    ISSUE-031, ISSUE-097, ISSUE-098, ISSUE-138, and existing local-storage
+    overflow tests.
+  - Tombstones/deletes and peer-disconnect cleanup map to ISSUE-205,
+    ISSUE-206, graceful-stop replicated-KV deletion coverage, and RC-6.
+  - Resource caps and high-load reordering map to ISSUE-045, ISSUE-131,
+    ISSUE-245, RC-3, RC-5, and the replicated-KV plus 24-node fuzz coverage.
+- Result: no distinct score-80+ replicated-KV state-sync or repair issue had
+  concrete failing-test evidence in this cycle.
 
 ## Root Cause Summary
 

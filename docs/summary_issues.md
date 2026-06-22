@@ -7,13 +7,26 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Accepted issues: 246
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 25
-- Current audit continuation: critical-only secure-handshake/QUIC setup
-  no-new cycle 27 found no new score-80+ issue across token freshness/replay,
-  replay-cache pressure, request/response role binding, self/third-party peer
-  identity, inbound authorization/static binding, unauthenticated admission,
-  QUIC stream admission, setup timeout/error cleanup, and stalled or malformed
-  control-stream setup.
+- Current consecutive no-new-issue cycles: 26
+- Current audit continuation: critical-only replicated-KV state-sync and repair
+  no-new cycle 28 found no new score-80+ issue across stale or unsolicited RPC
+  responses, full-sync snapshot validation and atomicity, `FetchChanged`
+  request correlation, version arithmetic, resource caps, tombstones/deletes,
+  peer-disconnect cleanup, malformed service payload handling, and high-load
+  reordering.
+- Critical-only no-new cycle 28 reviewed replicated-KV state sync and repair in
+  `replicate_kv_service.rs`, `local_storage.rs`, `remote_storage.rs`, and
+  `messages.rs`. Focused replicated-KV, snapshot, `fetch_changed`,
+  `fetch_snapshot`, graceful-stop deletion, malformed-payload filters, and a
+  24-node high-load fuzz seed passed. Rejected candidates mapped to RC-2 for
+  stale/unsolicited RPC response and request-correlation issues, RC-3/RC-5 for
+  resource caps and bounded snapshot/repair handling, RC-6 for disconnect and
+  tombstone cleanup, ISSUE-023, ISSUE-027, ISSUE-031, ISSUE-038, ISSUE-059,
+  ISSUE-081 through ISSUE-089, ISSUE-110, ISSUE-131, ISSUE-138, ISSUE-141,
+  ISSUE-154, ISSUE-205, ISSUE-206, ISSUE-233, ISSUE-237, ISSUE-245, and
+  existing replicated-KV overflow, snapshot, repair, and graceful-stop deletion
+  tests. No distinct score-80+ replicated-KV failure had concrete failing-test
+  evidence.
 - Fix phase status: ISSUE-001, ISSUE-003, ISSUE-004, ISSUE-005, ISSUE-006, ISSUE-007,
   ISSUE-002, ISSUE-008, ISSUE-009, ISSUE-010, ISSUE-011, ISSUE-012, ISSUE-013, ISSUE-014, ISSUE-015, ISSUE-017, ISSUE-020, ISSUE-021, ISSUE-023, ISSUE-024, ISSUE-025, ISSUE-027, ISSUE-033, ISSUE-034, ISSUE-039, ISSUE-045, ISSUE-046, ISSUE-047, ISSUE-048, ISSUE-055, ISSUE-059, ISSUE-103, ISSUE-110, ISSUE-111, ISSUE-115, ISSUE-116, ISSUE-117, ISSUE-118, ISSUE-119, ISSUE-120, ISSUE-122, ISSUE-123,
   ISSUE-124, ISSUE-125, ISSUE-126, ISSUE-127, ISSUE-128, ISSUE-129, ISSUE-130,
