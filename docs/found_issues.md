@@ -11,7 +11,7 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 1
+- Current consecutive no-new-issue cycles: 2
 - Stop condition requested by user: continue until 5 consecutive cycles find no
   new accepted issue.
 
@@ -7296,6 +7296,50 @@ the source of truth for evidence and reviewer decisions.
     guards remaining.
 
 ## No-New-Issue Audit Cycles
+
+### Cycle after ISSUE-208 no-new cycle 2: replicated-KV stream boundary review
+
+- Result: no accepted non-duplicate issue.
+- Reviewer: `Poincare the 12th`, forked subagent review, confirmed
+  duplicate/no-new.
+- Source and test evidence reviewed:
+  - `src/service/replicate_kv_service.rs`
+  - `src/service/replicate_kv_service/local_storage.rs`
+  - `src/service/replicate_kv_service/remote_storage.rs`
+  - `src/service/replicate_kv_service/messages.rs`
+  - `src/stream.rs`
+  - `src/peer/peer_internal.rs`
+  - `src/tests/stream.rs`
+  - `cargo test open_stream_must_timeout_when_peer_withholds_connect_response -- --nocapture`
+    passed.
+  - `cargo test open_stream_must_timeout_when_connect_request_write_stalls -- --nocapture`
+    passed.
+  - `cargo test relay_must_not_deliver_downstream_stream_after_upstream_setup_closes -- --nocapture`
+    passed.
+  - `cargo test replicate -- --nocapture` passed with 61 tests.
+  - `RUST_LOG=error P2P_FUZZ_SEED=208101 P2P_FUZZ_NODES=8 P2P_FUZZ_STEPS=1800 cargo test fuzz_random_steady_valid_node_actions_must_not_panic_connection_tasks -- --nocapture`
+    passed.
+- Evidence summary:
+  - The focused stream setup timeout and relay cancellation regressions passed,
+    so this cycle did not expose a new stream lifecycle failure.
+  - The replicated-KV test slice passed its snapshot bounds, changed repair,
+    overflow, cap, and graceful-stop cleanup coverage.
+  - The steady valid-node fuzz pass completed without panic, failed assertion,
+    or background task failure. Connection-closed, duplicate-connection, and
+    connection-lost logs were reviewed as expected churn context.
+- Duplicate mapping:
+  - replicated-KV malformed snapshot, changed repair, version arithmetic, and
+    cap candidates map to ISSUE-034, ISSUE-047, ISSUE-081 through ISSUE-089,
+    ISSUE-110, ISSUE-138, ISSUE-141, ISSUE-143, ISSUE-154, ISSUE-171,
+    ISSUE-175, ISSUE-184, and ISSUE-186.
+  - stream setup and lifecycle candidates map to ISSUE-011, ISSUE-012,
+    ISSUE-013, ISSUE-018, ISSUE-053/091, ISSUE-117, ISSUE-149, ISSUE-156,
+    ISSUE-169, ISSUE-180, and ISSUE-182.
+- Root-cause summary impact: no new root cause; reviewed candidates map to
+  existing RC-2, RC-3, RC-4, RC-6, and RC-7.
+- Smallest fix proposal: no new summary fix change; keep the mapped issue fix
+  proposals for request correlation, bounded repair state, end-to-end stream
+  setup timeouts, relay rollback, and route-loop rejection.
 
 ### Cycle after ISSUE-208 no-new cycle 1: network lifecycle requester duplicate review
 
