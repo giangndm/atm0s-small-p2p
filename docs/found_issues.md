@@ -12,8 +12,8 @@ must resolve.
 ## Audit Status
 
 - Current consecutive no-new-issue cycles: 0
-- Current audit continuation: ISSUE-240 fixed by preserving pubsub roles across
-  explicit chunked heartbeat snapshots.
+- Current audit continuation: ISSUE-241 fixed by binding pubsub chunked
+  heartbeat pending state to a snapshot id.
 
 ## Root Cause Summary
 
@@ -45,7 +45,7 @@ the source of truth for evidence and reviewer decisions.
   ISSUE-110, ISSUE-111, ISSUE-143, ISSUE-152,
   ISSUE-154, ISSUE-155, ISSUE-158, ISSUE-166, ISSUE-171, ISSUE-175,
   ISSUE-186, ISSUE-231, ISSUE-232, ISSUE-233, ISSUE-237, ISSUE-239,
-  ISSUE-240.
+  ISSUE-240, ISSUE-241.
 - Pattern: replicated-KV full sync, changed repair, alias lookup, metrics,
   visualization, and pubsub flows accept stale, unsolicited, reordered, or
   mismatched responses or broadcasts because handlers do not verify
@@ -19400,6 +19400,63 @@ the source of truth for evidence and reviewer decisions.
   - Regression guards:
     `RUST_LOG=error cargo test pubsub_heartbeat --lib -- --nocapture`,
     `RUST_LOG=error cargo test pubsub_outbound_heartbeat_batches_must_respect_inbound_cap --lib -- --nocapture`,
+    `RUST_LOG=error cargo test pubsub --lib -- --nocapture`,
+    `rustfmt --edition 2021 --check src/service/pubsub_service.rs`, and
+    `git diff --check` passed.
+
+### ISSUE-241: Incomplete chunked pubsub heartbeat leaks into later snapshots
+
+- Status: fixed by adding a heartbeat chunk snapshot id and resetting pending
+  chunk state when a peer starts a later chunked snapshot.
+- Category: correctness, stability, bad-network/pubsub membership churn
+- Score: 60
+- Reviewers:
+  - `Erdos the 2nd` (forked RED-team reviewer) accepted the issue as distinct
+    from ISSUE-240 and confirmed the failing regression.
+- Affected code:
+  - `src/service/pubsub_service.rs`: `pending_heartbeat_chunks[from_peer]` was
+    cleared only by a complete `Heartbeat`, oversized chunk, final chunk, or
+    disconnect.
+  - `src/service/pubsub_service.rs`: `HeartbeatChunk` carried only `is_last`,
+    so a later multi-batch heartbeat had no snapshot/session identity and
+    extended stale pending state from an earlier incomplete heartbeat.
+- Impact: if one multi-batch heartbeat is only partially delivered or admitted,
+  a later complete multi-batch heartbeat from the same peer can inherit the old
+  pending `seen_channels`. The final cleanup then preserves remote roles that
+  were omitted from the later complete snapshot, causing stale pubsub
+  membership and noisy join/leave or destination behavior under backpressure,
+  churn, or bad network conditions.
+- Distinctness: ISSUE-240 fixed cleanup being run per valid chunk within one
+  complete multi-batch snapshot. ISSUE-241 is the next lifecycle gap: pending
+  state from an abandoned snapshot can contaminate a later snapshot because
+  chunk messages lacked a snapshot/session id.
+- Root cause: the receiver correlated chunks only by peer id, not by heartbeat
+  snapshot, so abandoned partial snapshots and later snapshots shared one
+  accumulator.
+- Minimal fix proposal: add a snapshot id to `HeartbeatChunk`, generate a new
+  id for each outbound multi-batch heartbeat tick, store that id with the
+  receiver's pending chunk state, and reset the pending set when a chunk from a
+  newer snapshot id arrives. Continue clearing pending state on complete
+  `Heartbeat`, oversized chunk, final chunk, and disconnect.
+- Fix: `HeartbeatChunk` now carries `snapshot_id`. `PubsubService` increments a
+  local snapshot id for each multi-batch heartbeat. Receivers store
+  `PendingHeartbeatChunks { snapshot_id, seen_channels }`, discard stale
+  accumulated channels when the snapshot id changes, and run omitted-role
+  cleanup using only the current snapshot's seen set.
+- Evidence tests:
+  - Red evidence before fix:
+    `RUST_LOG=error cargo test pubsub_new_chunked_heartbeat_must_not_reuse_stale_pending_seen_channels --lib -- --nocapture`
+    failed at `src/service/pubsub_service.rs:2666` with
+    `a later complete chunked heartbeat must remove roles that were only seen in an earlier incomplete snapshot`.
+  - Reviewer verification:
+    `Erdos the 2nd` reran the same command and confirmed the failing assertion.
+  - Verification after fix:
+    `RUST_LOG=error cargo test pubsub_new_chunked_heartbeat_must_not_reuse_stale_pending_seen_channels --lib -- --nocapture`
+    passed.
+  - Regression guards:
+    `RUST_LOG=error cargo test pubsub_chunked_heartbeat_must_not_remove_roles_from_previous_chunk --lib -- --nocapture`,
+    `RUST_LOG=error cargo test pubsub_outbound_heartbeat_batches_must_respect_inbound_cap --lib -- --nocapture`,
+    `RUST_LOG=error cargo test pubsub_heartbeat --lib -- --nocapture`,
     `RUST_LOG=error cargo test pubsub --lib -- --nocapture`,
     `rustfmt --edition 2021 --check src/service/pubsub_service.rs`, and
     `git diff --check` passed.

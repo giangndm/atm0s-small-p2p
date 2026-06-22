@@ -5,13 +5,13 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Audit Status
 
-- Accepted issues: 240
+- Accepted issues: 241
 - Missing issue scores: 0
 - Current consecutive no-new-issue cycles: 0
-- Current audit continuation: ISSUE-240 fixed pubsub chunked heartbeat snapshot
-  correlation. Multi-batch heartbeats now use explicit chunk messages and run
-  omitted-role cleanup only after the final chunk, preventing valid later
-  chunks from deleting roles learned from earlier chunks.
+- Current audit continuation: ISSUE-241 fixed pubsub chunked heartbeat
+  snapshot lifecycle. Chunk messages now carry a snapshot id, so an abandoned
+  partial heartbeat cannot keep stale seen-channel state alive across a later
+  complete multi-batch heartbeat.
 - Fix phase status: ISSUE-001, ISSUE-003, ISSUE-004, ISSUE-005, ISSUE-006, ISSUE-007,
   ISSUE-002, ISSUE-008, ISSUE-009, ISSUE-010, ISSUE-011, ISSUE-012, ISSUE-013, ISSUE-014, ISSUE-015, ISSUE-017, ISSUE-020, ISSUE-021, ISSUE-023, ISSUE-024, ISSUE-025, ISSUE-027, ISSUE-033, ISSUE-034, ISSUE-039, ISSUE-045, ISSUE-046, ISSUE-047, ISSUE-048, ISSUE-055, ISSUE-059, ISSUE-103, ISSUE-110, ISSUE-111, ISSUE-115, ISSUE-116, ISSUE-117, ISSUE-118, ISSUE-119, ISSUE-120, ISSUE-122, ISSUE-123,
   ISSUE-124, ISSUE-125, ISSUE-126, ISSUE-127, ISSUE-128, ISSUE-129, ISSUE-130,
@@ -136,6 +136,19 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   `RUST_LOG=error cargo test pubsub --lib -- --nocapture`,
   `rustfmt --edition 2021 --check src/service/pubsub_service.rs`, and
   `git diff --check`.
+  ISSUE-241 is fixed, score 60: pubsub chunked heartbeat pending state is now
+  keyed by a heartbeat `snapshot_id`. A later multi-batch heartbeat resets any
+  stale pending seen-channel accumulator from an abandoned earlier snapshot,
+  so omitted-role cleanup uses only channels seen in the current complete
+  snapshot. Reviewer `Erdos the 2nd` accepted the issue and confirmed the red
+  regression. Verification:
+  `RUST_LOG=error cargo test pubsub_new_chunked_heartbeat_must_not_reuse_stale_pending_seen_channels --lib -- --nocapture`,
+  `RUST_LOG=error cargo test pubsub_chunked_heartbeat_must_not_remove_roles_from_previous_chunk --lib -- --nocapture`,
+  `RUST_LOG=error cargo test pubsub_outbound_heartbeat_batches_must_respect_inbound_cap --lib -- --nocapture`,
+  `RUST_LOG=error cargo test pubsub_heartbeat --lib -- --nocapture`,
+  `RUST_LOG=error cargo test pubsub --lib -- --nocapture`,
+  `rustfmt --edition 2021 --check src/service/pubsub_service.rs`, and
+  `git diff --check`.
   ISSUE-043 is fixed by bounding pending pubsub publish/feedback RPC request
   maps before responder fanout.
   ISSUE-054 is fixed by rejecting zero network tick intervals before endpoint
@@ -187,7 +200,7 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   ISSUE-110, ISSUE-111, ISSUE-143,
   ISSUE-166, ISSUE-171, ISSUE-175,
   ISSUE-186, ISSUE-205, ISSUE-206, ISSUE-231, ISSUE-232, ISSUE-233,
-  ISSUE-237, ISSUE-239, ISSUE-240.
+  ISSUE-237, ISSUE-239, ISSUE-240, ISSUE-241.
 - Pattern: replicated-KV, alias, metrics, visualization, and pubsub flows accept
   stale, unsolicited, reordered, or mismatched responses or broadcasts because
   handlers do not verify request shape, bounds, version, continuation key,
@@ -238,6 +251,12 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   explicit final-marked chunk variant for multi-batch heartbeats, accumulate
   per-peer seen channels across chunks, and run omitted cleanup only on the
   final chunk while preserving the per-chunk inbound cap.
+- ISSUE-241, score 60: fixed pubsub chunked heartbeat snapshot lifecycle.
+  Root cause: the chunk accumulator was keyed only by peer id, so an abandoned
+  partial snapshot could leak its seen-channel set into a later complete
+  snapshot. Smallest fix: add a chunk `snapshot_id`, increment it per outbound
+  multi-batch heartbeat, store it with pending receiver state, and clear stale
+  seen channels when the snapshot id changes.
 - ISSUE-238, score 58: fixed by `d340a7b`. A peer-controlled
   `StreamConnectReq.defer_delivery` could reserve all destination service queue
   slots while waiting for a relay commit, temporarily denying legitimate stream
