@@ -128,6 +128,11 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   immediately with `None` and do not add another waiter or scan/check fanout.
   Verification:
   `cargo test duplicate_find_waiters_for_same_alias_must_be_bounded -- --nocapture`.
+- ISSUE-041: fixed by capping distinct pending alias finds at
+  `MAX_PENDING_FIND_REQUESTS = 1024`. The cap applies only to new remote lookup
+  work after duplicate coalescing and local hits; overflow callers receive
+  `None` without scan/check fanout or metrics increments. Verification:
+  `cargo test distinct_pending_find_requests_must_be_bounded -- --nocapture`.
 
 ### RC-6: Lifecycle cleanup and stale handles are inconsistent
 

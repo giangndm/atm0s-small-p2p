@@ -31,6 +31,7 @@ const ALIAS_LIFECYCLE_CACHE_SIZE: usize = 1_000_000;
 pub(crate) const ALIAS_CONTROL_QUEUE_SIZE: usize = 1024;
 const MAX_ALIAS_HINT_PEERS: usize = 1024;
 const MAX_WAITERS_PER_ALIAS: usize = 1024;
+const MAX_PENDING_FIND_REQUESTS: usize = 1024;
 const HINT_TIMEOUT_MS: u64 = 500;
 const SCAN_TIMEOUT_MS: u64 = 1000;
 
@@ -487,6 +488,8 @@ impl AliasServiceInternal {
 
                 if self.local.contains_key(&alias_id) {
                     sender.send(Some(AliasFoundLocation::Local)).print_on_err2("[AliasServiceInternal] send query response");
+                } else if self.find_reqs.len() >= MAX_PENDING_FIND_REQUESTS {
+                    sender.send(None).print_on_err2("[AliasServiceInternal] send find backlog overflow response");
                 } else if let Some(slot) = self.cache.get(&alias_id) {
                     for peer in slot {
                         self.outs.push_back(InternalOutput::Unicast(*peer, AliasMessage::Check(alias_id)));
@@ -1252,19 +1255,33 @@ mod test {
 
     #[test]
     fn distinct_pending_find_requests_must_be_bounded() {
-        const MAX_PENDING_FINDS: usize = 1024;
         let mut ctx = TestContext::new();
 
-        for id in 0..=MAX_PENDING_FINDS {
+        for id in 0..MAX_PENDING_FIND_REQUESTS {
             let (tx, _rx) = oneshot::channel();
             ctx.internal.on_control(ctx.now, AliasControl::Find(AliasId(id as u64), tx));
         }
+        let (duplicate_tx, mut duplicate_rx) = oneshot::channel();
+        ctx.internal.on_control(ctx.now, AliasControl::Find(AliasId(0), duplicate_tx));
+        let (overflow_tx, mut overflow_rx) = oneshot::channel();
+        ctx.internal.on_control(ctx.now, AliasControl::Find(AliasId(MAX_PENDING_FIND_REQUESTS as u64), overflow_tx));
+        let local_alias = AliasId((MAX_PENDING_FIND_REQUESTS + 1) as u64);
+        ctx.internal.local.insert(local_alias, 1);
+        let (local_tx, mut local_rx) = oneshot::channel();
+        ctx.internal.on_control(ctx.now, AliasControl::Find(local_alias, local_tx));
 
         let pending_finds = ctx.internal.find_reqs.len();
         let pending_scans = ctx.internal.outs.len();
 
-        assert!(pending_finds <= MAX_PENDING_FINDS, "pending alias find requests must be bounded, got {pending_finds}");
-        assert!(pending_scans <= MAX_PENDING_FINDS, "pending alias scan fanout must be bounded, got {pending_scans}");
+        assert_eq!(pending_finds, MAX_PENDING_FIND_REQUESTS, "pending alias find requests must be bounded");
+        assert_eq!(pending_scans, MAX_PENDING_FIND_REQUESTS, "pending alias scan fanout must be bounded");
+        assert!(
+            matches!(duplicate_rx.try_recv(), Err(oneshot::error::TryRecvError::Empty)),
+            "duplicate find should join the existing request"
+        );
+        assert_eq!(ctx.internal.find_reqs.get(&AliasId(0)).expect("duplicate request should still exist").waits.len(), 2);
+        assert_eq!(overflow_rx.try_recv(), Ok(None), "overflow distinct find must complete immediately with no result");
+        assert_eq!(local_rx.try_recv(), Ok(Some(AliasFoundLocation::Local)), "pending-find cap must not reject immediate local hits");
     }
 
     #[test]

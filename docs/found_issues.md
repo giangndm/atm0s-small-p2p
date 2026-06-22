@@ -1212,6 +1212,10 @@ the source of truth for evidence and reviewer decisions.
 - Category: high-load stability, bad-network stability
 - Score: 68/100
 - Reviewer: `Hubble`, confirmed.
+- Fix status: fixed. Distinct pending alias finds are capped at
+  `MAX_PENDING_FIND_REQUESTS = 1024`; overflow callers complete immediately
+  with `None` without adding scan/check fanout, while duplicate callers for
+  already pending aliases still coalesce under `MAX_WAITERS_PER_ALIAS`.
 - Affected code:
   - `src/service/alias_service.rs`: `AliasServiceInternal::find_reqs` stores
     pending lookups in a `HashMap<AliasId, FindRequest>` with no admission
@@ -1228,6 +1232,16 @@ the source of truth for evidence and reviewer decisions.
   - `cargo test distinct_pending_find_requests_must_be_bounded -- --nocapture`
   - Failure summary: 1025 unique missing alias lookups leave 1025 pending
     `find_reqs`, failing the bounded-pending-request assertion.
+- Root cause: new alias misses entered `find_reqs` and queued scan fanout
+  without a distinct-pending admission limit.
+- Fix: add `MAX_PENDING_FIND_REQUESTS` and reject new remote lookup work at the
+  cap with an explicit `None` response. The cap is checked after duplicate
+  coalescing and local alias hits, so it only blocks requests that would create
+  new pending remote lookup state.
+- Fixed verification:
+  `cargo test distinct_pending_find_requests_must_be_bounded -- --nocapture`,
+  `cargo test duplicate_find_waiters_for_same_alias_must_be_bounded -- --nocapture`,
+  and `cargo fmt -- --check` pass.
 
 ### ISSUE-042: Visualization peer timeout arithmetic overflows
 
