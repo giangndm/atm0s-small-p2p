@@ -548,6 +548,8 @@ the source of truth for evidence and reviewer decisions.
   Relayed broadcasts now expose the previous hop rather than a message-body
   original source; end-to-end original broadcaster identity requires a later
   authenticated forwarding protocol.
+- Fix status: fixed by normalizing inbound and relayed broadcast sender ids to
+  the authenticated immediate peer before local delivery and forwarding.
 - Category: security, correctness
 - Score: 94/100
 - Reviewer: `Carson`, confirmed. Also confirmed by external review subagent
