@@ -1227,7 +1227,7 @@ mod tests {
         ctx.register_conn(conn, PeerConnectionAlias::new(PeerId::from(0), peer, conn, tx));
 
         let (base_service, service_tx) = P2pService::build(P2pServiceId::from(9), ctx);
-        let mut metrics = MetricsService::new(None, base_service, false);
+        let mut metrics = MetricsService::new(None, base_service, false).with_trusted_scan_collectors([peer]);
         service_tx
             .send(P2pServiceEvent::Broadcast(peer, encode_metrics_scan_for_test()))
             .await
@@ -1270,7 +1270,7 @@ mod tests {
         ctx.register_conn(conn, PeerConnectionAlias::new(PeerId::from(0), peer, conn, tx));
 
         let (base_service, service_tx) = P2pService::build(P2pServiceId::from(10), ctx);
-        let mut visualization = VisualizationService::new(None, false, base_service);
+        let mut visualization = VisualizationService::new(None, false, base_service).with_trusted_scan_collectors([peer]);
         for _ in 0..8 {
             service_tx
                 .send(P2pServiceEvent::Broadcast(peer, encode_visualization_scan_for_test()))
@@ -1314,7 +1314,7 @@ mod tests {
         ctx.register_conn(conn, PeerConnectionAlias::new(PeerId::from(0), peer, conn, tx));
 
         let (base_service, service_tx) = P2pService::build(P2pServiceId::from(11), ctx);
-        let mut metrics = MetricsService::new(None, base_service, false);
+        let mut metrics = MetricsService::new(None, base_service, false).with_trusted_scan_collectors([peer]);
         for _ in 0..8 {
             service_tx
                 .send(P2pServiceEvent::Broadcast(peer, encode_metrics_scan_for_test()))

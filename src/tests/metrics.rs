@@ -16,7 +16,7 @@ async fn metric_collect() {
     tokio::spawn(async move { while node1.recv().await.is_ok() {} });
 
     let (mut node2, _) = create_node(true, 2, vec![addr1.clone()]).await;
-    let mut service2 = MetricsService::new(None, node2.create_service(0.into()), false);
+    let mut service2 = MetricsService::new(None, node2.create_service(0.into()), false).with_trusted_scan_collectors([addr1.peer_id()]);
     tokio::spawn(async move { while node2.recv().await.is_ok() {} });
     tokio::spawn(async move { while service2.recv().await.is_ok() {} });
 
@@ -133,5 +133,73 @@ async fn metrics_scan_must_not_disclose_metrics_to_non_collector() {
     assert!(
         !matches!(delivered, Ok(Some(P2pServiceEvent::Unicast(peer, _))) if peer == addr1.peer_id()),
         "metrics service must not disclose metric Info frames to arbitrary peers that send Scan"
+    );
+}
+
+#[test(tokio::test)]
+async fn metrics_broadcast_scan_must_not_disclose_metrics_to_non_collector() {
+    let (mut node1, addr1) = create_node(true, 1, vec![]).await;
+    let mut metrics1 = MetricsService::new(None, node1.create_service(0.into()), false);
+    tokio::spawn(async move { while node1.recv().await.is_ok() {} });
+    tokio::spawn(async move { while metrics1.recv().await.is_ok() {} });
+
+    let (mut node2, addr2) = create_node(false, 2, vec![addr1.clone()]).await;
+    let node2_ctx = node2.ctx.clone();
+    let mut service2 = node2.create_service(0.into());
+    tokio::spawn(async move { while node2.recv().await.is_ok() {} });
+
+    let conn = tokio::time::timeout(Duration::from_secs(3), async {
+        loop {
+            if let Some(conn) = node2_ctx.conns().into_iter().next() {
+                return conn;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .expect("node2 should connect to node1");
+
+    conn.try_send(PeerMessage::Broadcast(addr2.peer_id(), 0.into(), crate::msg::BroadcastMsgId::rand(), encode_scan_for_test()))
+        .expect("attacker should be able to inject a metrics broadcast scan frame");
+
+    let delivered = tokio::time::timeout(Duration::from_millis(500), service2.recv()).await;
+
+    assert!(
+        !matches!(delivered, Ok(Some(P2pServiceEvent::Unicast(peer, _))) if peer == addr1.peer_id()),
+        "metrics service must not disclose metric Info frames to arbitrary peers that broadcast Scan"
+    );
+}
+
+#[test(tokio::test)]
+async fn metrics_broadcast_scan_discloses_metrics_to_trusted_collector() {
+    let (mut node1, addr1) = create_node(true, 1, vec![]).await;
+    let (mut node2, addr2) = create_node(false, 2, vec![addr1.clone()]).await;
+    let node2_ctx = node2.ctx.clone();
+
+    let mut metrics1 = MetricsService::new(None, node1.create_service(0.into()), false).with_trusted_scan_collectors([addr2.peer_id()]);
+    let mut service2 = node2.create_service(0.into());
+    tokio::spawn(async move { while node1.recv().await.is_ok() {} });
+    tokio::spawn(async move { while metrics1.recv().await.is_ok() {} });
+    tokio::spawn(async move { while node2.recv().await.is_ok() {} });
+
+    let conn = tokio::time::timeout(Duration::from_secs(3), async {
+        loop {
+            if let Some(conn) = node2_ctx.conns().into_iter().next() {
+                return conn;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .expect("node2 should connect to node1");
+
+    conn.try_send(PeerMessage::Broadcast(addr2.peer_id(), 0.into(), crate::msg::BroadcastMsgId::rand(), encode_scan_for_test()))
+        .expect("trusted collector should be able to inject a metrics broadcast scan frame");
+
+    let delivered = tokio::time::timeout(Duration::from_secs(1), service2.recv()).await;
+
+    assert!(
+        matches!(delivered, Ok(Some(P2pServiceEvent::Unicast(peer, _))) if peer == addr1.peer_id()),
+        "metrics service must disclose metric Info frames to configured trusted collectors"
     );
 }

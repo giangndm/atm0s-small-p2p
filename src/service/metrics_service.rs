@@ -132,6 +132,7 @@ pub struct MetricsService {
     service: P2pService,
     ticker: Interval,
     outs: VecDeque<MetricsServiceEvent>,
+    trusted_scan_collectors: HashSet<PeerId>,
     pending_scan_responses: HashSet<PeerId>,
     pending_info_responders: HashSet<PeerId>,
     scan_response_tasks: FuturesUnordered<JoinHandle<PeerId>>,
@@ -152,6 +153,7 @@ impl MetricsService {
             ticker,
             service,
             outs: VecDeque::new(),
+            trusted_scan_collectors: HashSet::new(),
             pending_scan_responses: HashSet::new(),
             pending_info_responders: HashSet::new(),
             scan_response_tasks: FuturesUnordered::new(),
@@ -159,8 +161,16 @@ impl MetricsService {
         }
     }
 
+    pub fn with_trusted_scan_collectors<I>(mut self, collectors: I) -> Self
+    where
+        I: IntoIterator<Item = PeerId>,
+    {
+        self.trusted_scan_collectors = collectors.into_iter().collect();
+        self
+    }
+
     fn on_scan(&mut self, from: PeerId) {
-        if self.is_collector || !self.pending_scan_responses.insert(from) {
+        if self.is_collector || !self.trusted_scan_collectors.contains(&from) || !self.pending_scan_responses.insert(from) {
             return;
         }
 

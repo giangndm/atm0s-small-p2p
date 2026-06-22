@@ -13,12 +13,12 @@ use super::create_node;
 #[test(tokio::test)]
 async fn discovery_new_node() {
     let (mut node1, addr1) = create_node(true, 1, vec![]).await;
-    let mut service1 = VisualizationService::new(None, false, node1.create_service(0.into()));
+    let (mut node2, addr2) = create_node(false, 2, vec![addr1.clone()]).await;
+
+    let mut service1 = VisualizationService::new(None, false, node1.create_service(0.into())).with_trusted_scan_collectors([addr2.peer_id()]);
+    let mut service2 = VisualizationService::new(Some(Duration::from_secs(1)), false, node2.create_service(0.into()));
     tokio::spawn(async move { while node1.recv().await.is_ok() {} });
     tokio::spawn(async move { while service1.recv().await.is_ok() {} });
-
-    let (mut node2, addr2) = create_node(false, 2, vec![addr1.clone()]).await;
-    let mut service2 = VisualizationService::new(Some(Duration::from_secs(1)), false, node2.create_service(0.into()));
     tokio::spawn(async move { while node2.recv().await.is_ok() {} });
 
     tokio::time::sleep(Duration::from_secs(1)).await;
@@ -52,10 +52,9 @@ async fn discovery_new_node() {
 #[test(tokio::test)]
 async fn visualization_must_emit_peer_leaved_on_graceful_peer_stop() {
     let (mut node1, addr1) = create_node(true, 1, vec![]).await;
-    let mut service1 = VisualizationService::new(Some(Duration::from_secs(1)), false, node1.create_service(0.into()));
-
     let (mut node2, addr2) = create_node(false, 2, vec![addr1.clone()]).await;
-    let mut service2 = VisualizationService::new(Some(Duration::from_secs(1)), false, node2.create_service(0.into()));
+    let mut service1 = VisualizationService::new(Some(Duration::from_secs(1)), false, node1.create_service(0.into())).with_trusted_scan_collectors([addr2.peer_id()]);
+    let mut service2 = VisualizationService::new(Some(Duration::from_secs(1)), false, node2.create_service(0.into())).with_trusted_scan_collectors([addr1.peer_id()]);
 
     tokio::time::timeout(Duration::from_secs(5), async {
         loop {
@@ -173,5 +172,73 @@ async fn visualization_scan_must_not_disclose_topology_to_non_collector() {
     assert!(
         !matches!(delivered, Ok(Some(P2pServiceEvent::Unicast(peer, _))) if peer == addr1.peer_id()),
         "visualization service must not disclose topology Info frames to arbitrary peers that send Scan"
+    );
+}
+
+#[test(tokio::test)]
+async fn visualization_broadcast_scan_must_not_disclose_topology_to_non_collector() {
+    let (mut node1, addr1) = create_node(true, 1, vec![]).await;
+    let mut visualization1 = VisualizationService::new(None, false, node1.create_service(0.into()));
+    tokio::spawn(async move { while node1.recv().await.is_ok() {} });
+    tokio::spawn(async move { while visualization1.recv().await.is_ok() {} });
+
+    let (mut node2, addr2) = create_node(false, 2, vec![addr1.clone()]).await;
+    let node2_ctx = node2.ctx.clone();
+    let mut service2 = node2.create_service(0.into());
+    tokio::spawn(async move { while node2.recv().await.is_ok() {} });
+
+    let conn = tokio::time::timeout(Duration::from_secs(3), async {
+        loop {
+            if let Some(conn) = node2_ctx.conns().into_iter().next() {
+                return conn;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .expect("node2 should connect to node1");
+
+    conn.try_send(PeerMessage::Broadcast(addr2.peer_id(), 0.into(), crate::msg::BroadcastMsgId::rand(), encode_scan_for_test()))
+        .expect("attacker should be able to inject a visualization broadcast scan frame");
+
+    let delivered = tokio::time::timeout(Duration::from_millis(500), service2.recv()).await;
+
+    assert!(
+        !matches!(delivered, Ok(Some(P2pServiceEvent::Unicast(peer, _))) if peer == addr1.peer_id()),
+        "visualization service must not disclose topology Info frames to arbitrary peers that broadcast Scan"
+    );
+}
+
+#[test(tokio::test)]
+async fn visualization_broadcast_scan_discloses_topology_to_trusted_collector() {
+    let (mut node1, addr1) = create_node(true, 1, vec![]).await;
+    let (mut node2, addr2) = create_node(false, 2, vec![addr1.clone()]).await;
+    let node2_ctx = node2.ctx.clone();
+
+    let mut visualization1 = VisualizationService::new(None, false, node1.create_service(0.into())).with_trusted_scan_collectors([addr2.peer_id()]);
+    let mut service2 = node2.create_service(0.into());
+    tokio::spawn(async move { while node1.recv().await.is_ok() {} });
+    tokio::spawn(async move { while visualization1.recv().await.is_ok() {} });
+    tokio::spawn(async move { while node2.recv().await.is_ok() {} });
+
+    let conn = tokio::time::timeout(Duration::from_secs(3), async {
+        loop {
+            if let Some(conn) = node2_ctx.conns().into_iter().next() {
+                return conn;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .expect("node2 should connect to node1");
+
+    conn.try_send(PeerMessage::Broadcast(addr2.peer_id(), 0.into(), crate::msg::BroadcastMsgId::rand(), encode_scan_for_test()))
+        .expect("trusted collector should be able to inject a visualization broadcast scan frame");
+
+    let delivered = tokio::time::timeout(Duration::from_secs(1), service2.recv()).await;
+
+    assert!(
+        matches!(delivered, Ok(Some(P2pServiceEvent::Unicast(peer, _))) if peer == addr1.peer_id()),
+        "visualization service must disclose topology Info frames to configured trusted collectors"
     );
 }
