@@ -11,7 +11,7 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 342
+- Current consecutive no-new-issue cycles: 0
 - Stop condition requested by user: continue until 5 consecutive cycles find no
   new accepted issue.
 
@@ -123,7 +123,7 @@ the source of truth for evidence and reviewer decisions.
   ISSUE-128 through ISSUE-132, ISSUE-135, ISSUE-139, ISSUE-142, ISSUE-144,
   ISSUE-148, ISSUE-150, ISSUE-151, ISSUE-161, ISSUE-165,
   ISSUE-167, ISSUE-168, ISSUE-170, ISSUE-179, ISSUE-183, ISSUE-185,
-  ISSUE-187, ISSUE-188, ISSUE-193, ISSUE-195.
+  ISSUE-187, ISSUE-188, ISSUE-193, ISSUE-195, ISSUE-208.
 - Pattern: requesters, services, peer aliases, channel state, and cached hints
   can outlive the owner they represent, while shutdown paths may panic, leak,
   emit false public events, or keep stale routes/cache entries. Remote
@@ -145,7 +145,8 @@ the source of truth for evidence and reviewer decisions.
   should retain bounded remote membership state even before local handles exist
   and replay it when the first local handle is created. Metric teardown should
   use the same metric kind as live emission for every metric name and must not
-  reset monotonic counters.
+  reset monotonic counters. Local guard/reference counts should use a counter
+  type that can represent all admitted handles and must not saturate silently.
 
 ### RC-7: Routing and discovery accept unstable or self-referential topology
 
@@ -7260,6 +7261,39 @@ the source of truth for evidence and reviewer decisions.
     pass.
   - Baseline guard:
     `cargo test test_handshake_flow -- --nocapture` passes.
+
+### ISSUE-208: Saturated alias refcount unregisters aliases while guards remain
+
+- Category: correctness, high-load stability
+- Score: 61/100
+- Reviewer: `Sartre the 12th`, confirmed.
+- Affected code:
+  - `src/service/alias_service.rs`: `AliasServiceInternal.local` stores local
+    alias guard counts as `HashMap<AliasId, u8>`.
+  - `src/service/alias_service.rs`: `AliasControl::Register` uses
+    `saturating_add(1)`, silently truncating ownership once more than 255
+    guards exist for one alias.
+  - `src/service/alias_service.rs`: `AliasControl::Unregister` removes the
+    alias and broadcasts `NotifyDel` when the truncated count reaches zero.
+- Impact: after more than 255 live guards are registered for the same alias,
+  dropping only 255 guards can remove the alias even though later guards still
+  exist. Local `find` stops reporting the alias, remote peers can receive a
+  false deletion, and alias ownership is corrupted under high local fanout.
+  This is distinct from ISSUE-019: ISSUE-019 covered the old arithmetic
+  overflow/panic/wrap, while this issue covers the current silent saturation
+  behavior after that panic was avoided.
+- Root cause: local alias ownership uses an undersized saturating counter
+  instead of a counter type that represents every admitted guard.
+- Minimal fix proposal: change `AliasServiceInternal.local` from
+  `HashMap<AliasId, u8>` to a wider count such as `usize` or `u16`; increment
+  without silent saturation and remove/broadcast `NotifyDel` only when the
+  exact tracked count reaches zero.
+- Evidence test:
+  - `cargo test saturated_alias_refcount_must_not_unregister_while_guards_remain -- --nocapture`
+  - Failure summary: after 300 `Register` controls and 255 `Unregister`
+    controls, the test panics at `src/service/alias_service.rs:799:9` because
+    `ctx.internal.local` no longer contains the alias despite 45 logical
+    guards remaining.
 
 ## No-New-Issue Audit Cycles
 

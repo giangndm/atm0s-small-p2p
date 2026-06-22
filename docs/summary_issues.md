@@ -5,11 +5,11 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Audit Status
 
-- Accepted issues: 207
+- Accepted issues: 208
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 342
+- Current consecutive no-new-issue cycles: 0
 - Stop condition: continue until 5 consecutive cycles find no new accepted
-  issue; currently beyond 5/5 and continuing fuzz/audit passes.
+  issue; currently 0/5 after ISSUE-208.
 - Fix phase status: ISSUE-001, ISSUE-003, ISSUE-004, ISSUE-005, ISSUE-006, ISSUE-007,
   ISSUE-002, ISSUE-008, ISSUE-009, ISSUE-010, ISSUE-011, ISSUE-012, ISSUE-013, ISSUE-014, ISSUE-015, ISSUE-017, ISSUE-020, ISSUE-021, ISSUE-023, ISSUE-024, ISSUE-025, ISSUE-027, ISSUE-033, ISSUE-034, ISSUE-039, ISSUE-045, ISSUE-046, ISSUE-047, ISSUE-048, ISSUE-055, ISSUE-059, ISSUE-103, ISSUE-110, ISSUE-111, ISSUE-115, ISSUE-116, ISSUE-117, ISSUE-118, ISSUE-119, ISSUE-120, ISSUE-122, ISSUE-123,
   ISSUE-124, ISSUE-125, ISSUE-126, ISSUE-127, ISSUE-128, ISSUE-129, ISSUE-130,
@@ -149,7 +149,7 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   ISSUE-128 through ISSUE-132, ISSUE-135, ISSUE-139, ISSUE-142, ISSUE-144,
   ISSUE-148, ISSUE-150, ISSUE-151, ISSUE-161, ISSUE-165,
   ISSUE-167, ISSUE-168, ISSUE-170, ISSUE-179, ISSUE-183, ISSUE-185,
-  ISSUE-187, ISSUE-188, ISSUE-193, ISSUE-195.
+  ISSUE-187, ISSUE-188, ISSUE-193, ISSUE-195, ISSUE-208.
 - Pattern: requesters, services, peer aliases, channel state, and cached hints
   can outlive the owner they represent; shutdown paths can panic, leak, emit
   false public events, keep stale routes/cache entries, announce shutdown while
@@ -167,7 +167,9 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   event API. Retain bounded pubsub remote membership even before local handles
   exist, then replay it when local handles are created. Keep each metric name on
   one metric kind during live emission and teardown resets, and do not reset
-  monotonic counters during teardown.
+  monotonic counters during teardown. Local guard/reference counts should use a
+  counter type that can represent all admitted handles and must not saturate
+  silently.
 
 ### RC-7: Routing/discovery accepts unstable topology
 
@@ -1514,6 +1516,9 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   id. Reviewer: Curie the 6th.
 - ISSUE-207, score 58: shared-key replay cache exhaustion can reject unrelated
   fresh valid handshakes. Reviewer: Turing the 7th.
+- ISSUE-208, score 61: saturated alias guard refcounts can unregister an alias
+  while live guards still remain after more than 255 registrations. Reviewer:
+  Sartre the 12th.
 
 ## Next Candidate To Validate
 

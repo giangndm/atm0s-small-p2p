@@ -784,6 +784,25 @@ mod test {
     }
 
     #[test]
+    fn saturated_alias_refcount_must_not_unregister_while_guards_remain() {
+        let mut ctx = TestContext::new();
+        let alias_id = AliasId(1);
+
+        for _ in 0..300 {
+            ctx.internal.on_control(ctx.now, AliasControl::Register(alias_id));
+        }
+
+        for _ in 0..255 {
+            ctx.internal.on_control(ctx.now, AliasControl::Unregister(alias_id));
+        }
+
+        assert!(
+            ctx.internal.local.contains_key(&alias_id),
+            "more than 255 live alias guards must not be truncated to 255 and unregister the alias while guards still remain"
+        );
+    }
+
+    #[test]
     fn test_find_local_alias() {
         let mut ctx = TestContext::new();
         let alias_id = AliasId(1);
