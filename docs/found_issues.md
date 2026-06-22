@@ -11,12 +11,11 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 17
-- Current audit continuation: critical-only public API/config no-new cycle 19
-  found no new score-80+ issue across shared-key handshake freshness and
-  replay, inbound peer bindings, self/duplicate connect handling, zero tick
-  config, non-dialable advertise/seed addresses, QUIC stream admission, stalled
-  setup timeouts, stale requester behavior, examples, and README defaults.
+- Current consecutive no-new-issue cycles: 18
+- Current audit continuation: critical-only channel/resource no-new cycle 20
+  found no new score-80+ issue across bounded and unbounded channel usage,
+  task loops, pending maps, drop/shutdown paths, queue backpressure, and
+  peer-controlled collection growth.
 
 ## Root Cause Summary
 
@@ -21499,6 +21498,56 @@ the source of truth for evidence and reviewer decisions.
 - Ledger check: 19 score-80+ issue entries found and all are fixed.
 - Current consecutive no-new cycles after ISSUE-238: 29.
 - Current fuzz-phase no-new cycles after transition: 19.
+- Current focused source-review no-new cycles after fuzz phase: 10.
+
+### Fuzz phase no-new cycle 20: channel, task, and resource-boundary review
+
+- Scope: continued critical-only review after cycle 19, focusing on bounded and
+  unbounded mpsc usage, task loops, pending maps/sets, drop and shutdown paths,
+  channel backpressure, select loops, and peer-controlled collection growth in
+  `src/ctx.rs`, `src/peer.rs`, `src/peer/peer_internal.rs`, `src/service.rs`,
+  `src/service/pubsub_service.rs`, `src/service/metrics_service.rs`,
+  `src/service/visualization_service.rs`, and `src/service/alias_service.rs`.
+- Reviewer: `Copernicus the 2nd` (forked RED-team reviewer), returned
+  `NO_NEW_CRITICAL`.
+- Verification:
+  - `RUST_LOG=error cargo test pending --lib`: passed 17 tests.
+  - `RUST_LOG=error cargo test backpressure --lib`: passed 3 tests.
+  - `RUST_LOG=error cargo test queue --lib`: passed 37 tests.
+  - `RUST_LOG=error cargo test bounded --lib`: passed 30 tests.
+  - `RUST_LOG=error P2P_FUZZ_NODES=36 P2P_FUZZ_STEPS=1200 P2P_FUZZ_SEED=41001 cargo test fuzz_random_valid_node_actions_must_not_panic_connection_tasks --lib`:
+    passed.
+- Reviewer cross-check:
+  - `cargo test --lib -- --list | rg -i "bounded|queue full|queue_is_full|must_not_drop|backpressure|pending|admission|disconnect|shutdown|drop|scan|heartbeat|unicast_ack|stream.*queue|unauthenticated"`
+  - `RUST_LOG=error cargo test bounded --lib`: passed.
+  - `RUST_LOG=error cargo test queue_full --lib`: passed.
+  - `RUST_LOG=error cargo test must_not_drop --lib`: passed.
+  - `RUST_LOG=error cargo test drop --lib`: passed.
+  - `RUST_LOG=error cargo test shutdown --lib`: passed.
+  - `RUST_LOG=error cargo test backpressure --lib`: passed.
+  - `RUST_LOG=error cargo test pending_unicast_ack --lib`: passed.
+  - `RUST_LOG=error cargo test peer_disconnected_notification_must_retry_when_service_queue_full --lib`:
+    passed.
+  - `RUST_LOG=error cargo test pubsub_sparse_heartbeat_chunk_indexes_must_not_grow_pending_unbounded --lib`:
+    passed.
+  - `RUST_LOG=error P2P_FUZZ_NODES=34 P2P_FUZZ_STEPS=1000 P2P_FUZZ_SEED=41001 cargo test fuzz_random_valid_node_actions_must_not_panic_connection_tasks --lib`:
+    passed.
+- Duplicate mapping:
+  - Bounded and unbounded channel usage, send admission, and backpressure map
+    to RC-3 plus existing main-queue, peer-control, broadcast-admission, local
+    service delivery, pending unicast ack, alias/pubsub internal-control, and
+    requester backlog coverage.
+  - Peer-controlled collection growth maps to RC-5 plus existing pubsub
+    channel/member/tombstone/heartbeat/RPC caps, alias hint/find caps,
+    metrics and visualization info caps, discovery tombstone caps, and
+    replicated-KV pending/snapshot caps.
+  - Drop, shutdown, stale handle, and disconnected-peer cleanup behavior maps
+    to RC-6 plus existing stale service/requester, alias shutdown,
+    peer-disconnect retry, graceful shutdown, and disconnected cleanup
+    coverage.
+- Ledger check: 19 score-80+ issue entries found and all are fixed.
+- Current consecutive no-new cycles after ISSUE-238: 30.
+- Current fuzz-phase no-new cycles after transition: 20.
 - Current focused source-review no-new cycles after fuzz phase: 10.
 
 ### Cycle after ISSUE-235 no-new cycle 1: transport, auth, and peer setup review

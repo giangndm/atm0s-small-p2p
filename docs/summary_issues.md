@@ -7,12 +7,11 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Accepted issues: 246
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 17
-- Current audit continuation: critical-only public API/config no-new cycle 19
-  found no new score-80+ issue across shared-key handshake freshness and
-  replay, inbound peer bindings, self/duplicate connect handling, zero tick
-  config, non-dialable advertise/seed addresses, QUIC stream admission, stalled
-  setup timeouts, stale requester behavior, examples, and README defaults.
+- Current consecutive no-new-issue cycles: 18
+- Current audit continuation: critical-only channel/resource no-new cycle 20
+  found no new score-80+ issue across bounded and unbounded channel usage,
+  task loops, pending maps, drop/shutdown paths, queue backpressure, and
+  peer-controlled collection growth.
 - Fix phase status: ISSUE-001, ISSUE-003, ISSUE-004, ISSUE-005, ISSUE-006, ISSUE-007,
   ISSUE-002, ISSUE-008, ISSUE-009, ISSUE-010, ISSUE-011, ISSUE-012, ISSUE-013, ISSUE-014, ISSUE-015, ISSUE-017, ISSUE-020, ISSUE-021, ISSUE-023, ISSUE-024, ISSUE-025, ISSUE-027, ISSUE-033, ISSUE-034, ISSUE-039, ISSUE-045, ISSUE-046, ISSUE-047, ISSUE-048, ISSUE-055, ISSUE-059, ISSUE-103, ISSUE-110, ISSUE-111, ISSUE-115, ISSUE-116, ISSUE-117, ISSUE-118, ISSUE-119, ISSUE-120, ISSUE-122, ISSUE-123,
   ISSUE-124, ISSUE-125, ISSUE-126, ISSUE-127, ISSUE-128, ISSUE-129, ISSUE-130,
@@ -769,6 +768,17 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   defaults. Direct issue-entry ledger check found 19 score-80+ entries and all
   are fixed; no reproducible public API/config/transport failure supported a
   distinct score-80+ issue.
+- Fuzz phase no-new cycle 20 reviewed channel, task, and resource-boundary
+  behavior with forked reviewer `Copernicus the 2nd`. Local `pending`,
+  `backpressure`, `queue`, `bounded`, and 36-node valid-action fuzz checks
+  passed. The reviewer passed bounded, queue-full, must-not-drop, drop,
+  shutdown, backpressure, pending-unicast-ack, peer-disconnect retry,
+  sparse-heartbeat, and 34-node valid-action fuzz checks. Rejected candidates
+  mapped to RC-3 for send admission and queue backpressure, RC-5 for
+  peer-controlled collection caps, and RC-6 for drop/shutdown/stale-handle
+  cleanup. Direct issue-entry ledger check found 19 score-80+ entries and all
+  are fixed; no reproducible channel/resource failure supported a distinct
+  score-80+ issue.
 - Cycle after ISSUE-231 no-new cycle 1 reviewed routing/discovery/path
   stability and stream/pipe lifecycle integration with forked reviewer
   `Carver`. Focused route, discovery, stream-relay, peer-stopped, and pubsub
