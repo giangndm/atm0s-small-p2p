@@ -167,7 +167,7 @@ enum InternalOutput {
 }
 
 struct AliasServiceInternal {
-    local: HashMap<AliasId, u8>,
+    local: HashMap<AliasId, usize>,
     local_generations: HashMap<AliasId, u64>,
     shutting_down: bool,
     cache: LruCache<AliasId, HashSet<PeerId>>,
@@ -437,7 +437,7 @@ impl AliasServiceInternal {
                     self.increment_local_generation(alias_id)
                 };
                 let ref_count = self.local.entry(alias_id).or_default();
-                *ref_count = ref_count.saturating_add(1);
+                *ref_count = ref_count.checked_add(1).expect("alias local refcount overflow");
                 if let Some(req) = self.find_reqs.remove(&alias_id) {
                     gauge!(P2P_ALIAS_LIVE_FIND_REQUEST).decrement(1);
                     for tx in req.waits {

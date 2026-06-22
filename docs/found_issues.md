@@ -7294,6 +7294,20 @@ the source of truth for evidence and reviewer decisions.
     controls, the test panics at `src/service/alias_service.rs:799:9` because
     `ctx.internal.local` no longer contains the alias despite 45 logical
     guards remaining.
+- Fix status: fixed by widening `AliasServiceInternal.local` refcounts from
+  `u8` to `usize` and replacing silent saturating registration increments with
+  checked increments. The alias remains registered until the exact tracked
+  guard count reaches zero. Verified with
+  `cargo test saturated_alias_refcount_must_not_unregister_while_guards_remain -- --nocapture`,
+  `cargo test registering_same_alias_many_times_must_not_overflow_refcount -- --nocapture`,
+  `cargo test test_unregister_alias -- --nocapture`,
+  `cargo test alias_multi_guards -- --nocapture`,
+  `cargo test local_shutdown_must_stop_serving_local_aliases -- --nocapture`,
+  `cargo test shutdown_from_one_peer_must_not_clear_aliases_from_other_peers -- --nocapture`,
+  and `cargo fmt -- --check`. The broad
+  `cargo test alias_service -- --nocapture` slice was interrupted after
+  `alias_run_loop_after_base_service_close_must_not_panic` ran for over 90s;
+  all completed alias-service tests before that point had passed.
 
 ## No-New-Issue Audit Cycles
 
