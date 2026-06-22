@@ -12,8 +12,8 @@ must resolve.
 ## Audit Status
 
 - Current consecutive no-new-issue cycles: 0
-- Current audit continuation: ISSUE-228 accepted and fixed after the
-  post-ISSUE-227 continuation.
+- Current audit continuation: ISSUE-229 accepted and fixed after the
+  post-ISSUE-228 continuation.
 
 ## Root Cause Summary
 
@@ -62,7 +62,8 @@ the source of truth for evidence and reviewer decisions.
 - Representative issues: ISSUE-049, ISSUE-050, ISSUE-056, ISSUE-123,
   ISSUE-124, ISSUE-125, ISSUE-126,
   ISSUE-127, ISSUE-136, ISSUE-147, ISSUE-153, ISSUE-157,
-  ISSUE-178, ISSUE-182, ISSUE-184, ISSUE-198, ISSUE-199, ISSUE-224.
+  ISSUE-178, ISSUE-182, ISSUE-184, ISSUE-198, ISSUE-199, ISSUE-224,
+  ISSUE-229.
 - Pattern: some paths use bounded channels and drop on `try_send`, some await
   bounded sends from critical tasks, and others use unbounded queues or produce
   duplicate internal control work. Under load this causes silent data loss,
@@ -18728,4 +18729,50 @@ the source of truth for evidence and reviewer decisions.
   - `RUST_LOG=error cargo test heartbeat --lib -- --nocapture`
   - `RUST_LOG=error cargo test pubsub --lib -- --nocapture`
   - `rustfmt --edition 2021 --check src/service/pubsub_service.rs`
+  - `git diff --check`
+
+### ISSUE-229: Relayed `send_unicast` reports success before destination delivery
+
+- Score: 68
+- Category: correctness / bad-network unicast delivery reporting
+- Status: fixed by `f87c6dc` (`fix: ack relayed unicast delivery`).
+- Reviewer:
+  - `Ptolemy` (forked RED-team reviewer), accepted and reviewed the fix.
+- Affected code:
+  - `src/ctx.rs`
+  - `src/peer/peer_internal.rs`
+  - `src/tests/cross_nodes.rs`
+- Impact: public `send_unicast` used destination acknowledgements only when
+  the next hop was the final destination. For relayed destinations it returned
+  `Ok(())` after enqueueing an unacked frame to the relay. Downstream route
+  misses, relay loops, missing next-hop connections, or final service
+  closed/full failures were only logged by later nodes and were invisible to
+  the original caller.
+- Distinctness: ISSUE-050 fixed relay caller blocking on a full peer-control
+  queue but intentionally kept relayed `send_unicast` fire-and-forget.
+  ISSUE-119 fixed false success for direct next-hop destinations only.
+  ISSUE-197 fixed unicast relay ingress-loop forwarding. ISSUE-198 and
+  ISSUE-199 cover broadcast result reporting, not relayed unicast delivery
+  acknowledgements.
+- Failing evidence:
+  - `RUST_LOG=error cargo test relayed_unicast_must_not_report_success_when_destination_service_receiver_is_closed --lib -- --nocapture`
+  - Failure before fix:
+    - `relayed send_unicast must not report success when the final destination service receiver is already closed`
+- Root cause: the direct path used `PeerMessage::UnicastWithAck` and waited for
+  `UnicastAck`, but the relayed path downgraded to unacked
+  `PeerMessage::Unicast`. Relay handlers could only log/drop downstream
+  failures, and `UnicastWithAck` relay forwarding was explicitly unsupported.
+- Minimal fix proposal: keep fire-and-forget semantics for `try_send_unicast`
+  and internal unacked sends, but make public awaited `send_unicast` use acked
+  unicast for relayed destinations too. Relay nodes should forward
+  `UnicastWithAck` downstream and propagate the downstream result back to the
+  upstream ack id.
+- Fix: public `send_unicast` now uses `send_unicast_with_ack` for every routed
+  next hop. Relay nodes forward acked unicasts in a bounded spawned relay task
+  and answer the ingress connection with the downstream `UnicastAck` result.
+- Fixed evidence:
+  - `RUST_LOG=error cargo test relayed_unicast_must_not_report_success_when_destination_service_receiver_is_closed --lib -- --nocapture`
+  - `RUST_LOG=error cargo test cross_nodes:: --lib -- --nocapture`
+  - `RUST_LOG=error cargo test unicast --lib -- --nocapture`
+  - `rustfmt --edition 2021 --check src/ctx.rs src/peer/peer_internal.rs src/tests/cross_nodes.rs`
   - `git diff --check`
