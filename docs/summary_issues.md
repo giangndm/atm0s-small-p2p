@@ -7,11 +7,11 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Accepted issues: 246
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 18
-- Current audit continuation: critical-only channel/resource no-new cycle 20
-  found no new score-80+ issue across bounded and unbounded channel usage,
-  task loops, pending maps, drop/shutdown paths, queue backpressure, and
-  peer-controlled collection growth.
+- Current consecutive no-new-issue cycles: 19
+- Current audit continuation: critical-only serialization/framing no-new cycle
+  21 found no new score-80+ issue across bincode framing, object length
+  prefixes, malformed input, service-id parsing, stream setup frames,
+  handshake frames, public API panic paths, and frame allocation bounds.
 - Fix phase status: ISSUE-001, ISSUE-003, ISSUE-004, ISSUE-005, ISSUE-006, ISSUE-007,
   ISSUE-002, ISSUE-008, ISSUE-009, ISSUE-010, ISSUE-011, ISSUE-012, ISSUE-013, ISSUE-014, ISSUE-015, ISSUE-017, ISSUE-020, ISSUE-021, ISSUE-023, ISSUE-024, ISSUE-025, ISSUE-027, ISSUE-033, ISSUE-034, ISSUE-039, ISSUE-045, ISSUE-046, ISSUE-047, ISSUE-048, ISSUE-055, ISSUE-059, ISSUE-103, ISSUE-110, ISSUE-111, ISSUE-115, ISSUE-116, ISSUE-117, ISSUE-118, ISSUE-119, ISSUE-120, ISSUE-122, ISSUE-123,
   ISSUE-124, ISSUE-125, ISSUE-126, ISSUE-127, ISSUE-128, ISSUE-129, ISSUE-130,
@@ -779,6 +779,21 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   cleanup. Direct issue-entry ledger check found 19 score-80+ entries and all
   are fixed; no reproducible channel/resource failure supported a distinct
   score-80+ issue.
+- Fuzz phase no-new cycle 21 reviewed serialization, framing, and public API
+  panic/DoS boundaries with forked reviewer `Mencius the 2nd`. Local `codec`,
+  `service_id`, `panic`, `invalid`, `oversize`, `object`, `handshake`,
+  `stream`, and 20-node malformed-action fuzz checks passed; the `malformed`
+  filter matched zero tests and was replaced by exact nearby invalid/oversize
+  coverage. The reviewer passed stream, service-id, inbound-handshake,
+  oversized, handshake, codec, and 34-node valid-action fuzz checks plus static
+  sweeps over object framing, bincode, service ids, frame limits, and
+  production panic paths. Rejected candidates mapped to RC-5 for capped bincode
+  frames, RC-4/RC-5 for object length-prefix and serialization failures, RC-6
+  for service-id parsing, RC-1 for malformed peer-message identity, and fixed
+  pubsub heartbeat enum/chunking issues for compatibility concerns. Direct
+  issue-entry ledger check found 19 score-80+ entries and all are fixed; no
+  reproducible serialization/framing failure supported a distinct score-80+
+  issue.
 - Cycle after ISSUE-231 no-new cycle 1 reviewed routing/discovery/path
   stability and stream/pipe lifecycle integration with forked reviewer
   `Carver`. Focused route, discovery, stream-relay, peer-stopped, and pubsub

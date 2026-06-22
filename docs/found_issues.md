@@ -11,11 +11,11 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 18
-- Current audit continuation: critical-only channel/resource no-new cycle 20
-  found no new score-80+ issue across bounded and unbounded channel usage,
-  task loops, pending maps, drop/shutdown paths, queue backpressure, and
-  peer-controlled collection growth.
+- Current consecutive no-new-issue cycles: 19
+- Current audit continuation: critical-only serialization/framing no-new cycle
+  21 found no new score-80+ issue across bincode framing, object length
+  prefixes, malformed input, service-id parsing, stream setup frames,
+  handshake frames, public API panic paths, and frame allocation bounds.
 
 ## Root Cause Summary
 
@@ -21548,6 +21548,60 @@ the source of truth for evidence and reviewer decisions.
 - Ledger check: 19 score-80+ issue entries found and all are fixed.
 - Current consecutive no-new cycles after ISSUE-238: 30.
 - Current fuzz-phase no-new cycles after transition: 20.
+- Current focused source-review no-new cycles after fuzz phase: 10.
+
+### Fuzz phase no-new cycle 21: serialization, framing, and public API panic review
+
+- Scope: continued critical-only review after cycle 20, focusing on bincode
+  framing, `wait_object` and `write_object`, peer and stream frame size
+  limits, service-id parsing, public constructors/config, malformed peer
+  messages, production `unwrap`/`expect` paths, and unbounded allocation before
+  validation in `src/msg.rs`, `src/stream.rs`, `src/secure.rs`, `src/peer.rs`,
+  `src/peer/peer_internal.rs`, `src/lib.rs`, `src/quic.rs`, and service
+  serialization helpers.
+- Reviewer: `Mencius the 2nd` (forked RED-team reviewer), returned
+  `NO_NEW_CRITICAL`.
+- Verification:
+  - `RUST_LOG=error cargo test codec --lib`: passed 3 tests.
+  - `RUST_LOG=error cargo test malformed --lib`: matched 0 tests; replaced by
+    exact nearby malformed/invalid coverage below.
+  - `RUST_LOG=error cargo test service_id --lib`: passed 4 tests.
+  - `RUST_LOG=error cargo test panic --lib`: passed 32 tests.
+  - `RUST_LOG=error cargo test invalid --lib`: passed 2 tests.
+  - `RUST_LOG=error cargo test oversize --lib`: passed 2 tests.
+  - `RUST_LOG=error cargo test object --lib`: passed 4 tests.
+  - `RUST_LOG=error cargo test handshake --lib`: passed 10 tests.
+  - `RUST_LOG=error cargo test stream --lib`: passed 30 tests.
+  - `RUST_LOG=error P2P_FUZZ_NODES=20 P2P_FUZZ_STEPS=900 P2P_FUZZ_SEED=42001 cargo test fuzz_random_node_actions_must_not_panic_connection_tasks --lib`:
+    passed.
+- Reviewer cross-check:
+  - `RUST_LOG=error cargo test stream --lib`: passed.
+  - `RUST_LOG=error cargo test service_id --lib`: passed.
+  - `RUST_LOG=error cargo test inbound_handshake --lib`: passed.
+  - `RUST_LOG=error cargo test oversized --lib`: passed.
+  - `RUST_LOG=error cargo test handshake --lib`: passed.
+  - `RUST_LOG=error cargo test codec --lib`: passed.
+  - `RUST_LOG=error P2P_FUZZ_NODES=34 P2P_FUZZ_STEPS=1000 P2P_FUZZ_SEED=42001 cargo test fuzz_random_valid_node_actions_must_not_panic_connection_tasks --lib`:
+    passed.
+  - Static sweeps covered `wait_object`, `write_object`, `bincode`, service
+    ids, frame limits, and production `unwrap`/`expect`.
+- Duplicate mapping:
+  - Bincode frame and oversized peer-message paths map to RC-5 and fixed
+    stream codec coverage.
+  - `wait_object`/`write_object` panic, oversize, and length-prefix candidates
+    map to RC-4/RC-5 and existing stream serialization/length-prefix tests.
+  - Service-id parsing and out-of-range behavior maps to RC-6 and fixed
+    service-id tests.
+  - Malformed peer-message trust and source identity maps to RC-1 and fixed
+    forged-source and handshake-binding families.
+  - Message enum compatibility concerns map to fixed pubsub heartbeat enum and
+    chunking issues, not a distinct current score-80+ runtime failure.
+  - Unbounded allocation before validation was not reproduced; peer frames are
+    capped before decode and control-stream objects reject lengths above their
+    `MAX_CONTROL_*` limits.
+- Ledger check: 19 score-80+ issue entries found and all are fixed.
+- Current consecutive no-new cycles after ISSUE-238: 31.
+- Current fuzz-phase no-new cycles after transition: 21.
 - Current focused source-review no-new cycles after fuzz phase: 10.
 
 ### Cycle after ISSUE-235 no-new cycle 1: transport, auth, and peer setup review
