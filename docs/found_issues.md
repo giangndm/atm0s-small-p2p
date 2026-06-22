@@ -12,8 +12,8 @@ must resolve.
 ## Audit Status
 
 - Current consecutive no-new-issue cycles: 0
-- Current audit continuation: ISSUE-237 accepted and fixed; no-new counter
-  reset.
+- Current audit continuation: ISSUE-156 regression accepted and fixed after
+  ISSUE-237; no-new counter reset.
 
 ## Root Cause Summary
 
@@ -5558,6 +5558,14 @@ the source of truth for evidence and reviewer decisions.
   failure/EOF rather than a second setup response; a full two-phase relay
   handshake would be needed to preserve downstream setup errors without
   reintroducing pre-ack orphan delivery.
+- Regression status: fixed again by `fedfa0e` after stronger bad-network
+  evidence showed that flow-control-stalled upstream setup acknowledgements
+  could still orphan downstream streams. Relayed `StreamConnectReq` messages now
+  carry `defer_delivery`; the final destination writes initial acceptance but
+  defers `P2pServiceEvent::Stream` delivery until the relay commits. Each relay
+  hop writes upstream success only after downstream acceptance, then propagates
+  the upstream commit or abort to the next hop before starting
+  `copy_bidirectional`.
 - Evidence test:
   - `cargo test relay_must_not_deliver_downstream_stream_after_upstream_setup_closes -- --nocapture`
   - Current status: passes after the relay setup ordering change.
@@ -5566,6 +5574,21 @@ the source of truth for evidence and reviewer decisions.
     response side before node2 writes setup success. Node3 still receives
     `P2pServiceEvent::Stream(PeerId(1), b"orphan-relay-stream", _)`; expected
     the relay not to deliver a downstream stream after upstream setup closed.
+  - Regression red evidence before `fedfa0e`:
+    `RUST_LOG=error cargo test relay_must_not_deliver_downstream_stream_when_upstream_setup_ack_stalls --lib -- --nocapture`
+    failed because node3 received a relayed stream while node2 could not write
+    the upstream setup acknowledgement to a flow-control-stalled raw node1.
+  - Regression reviewer: `Ramanujan` accepted this as valid current bug evidence
+    and classified it as ISSUE-156 reopened/duplicate evidence with score
+    66/100; `Curie` accepted the two-phase relay commit implementation.
+  - Regression verification after `fedfa0e`:
+    `RUST_LOG=error cargo test relay_must_not_deliver_downstream_stream_when_upstream_setup_ack_stalls --lib -- --nocapture`,
+    `RUST_LOG=error cargo test multihop_relay_must_not_deliver_downstream_stream_when_upstream_setup_ack_stalls --lib -- --nocapture`,
+    `RUST_LOG=error cargo test relayed_open_stream_must_not_succeed_before_downstream_accepts --lib -- --nocapture`,
+    `RUST_LOG=error cargo test relay_must_not_deliver_downstream_stream_after_upstream_setup_closes --lib -- --nocapture`,
+    `RUST_LOG=error cargo test stream --lib -- --nocapture`,
+    `rustfmt --edition 2021 --check src/msg.rs src/peer.rs src/peer/peer_alias.rs src/peer/peer_internal.rs src/ctx.rs src/tests/stream.rs`,
+    and `git diff --check`.
 
 ### ISSUE-157: PeerConnected backpressure stalls authenticated peer run loop
 
