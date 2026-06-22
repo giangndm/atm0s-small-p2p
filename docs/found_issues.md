@@ -195,6 +195,9 @@ the source of truth for evidence and reviewer decisions.
   `MainEvent::PeerStopped(conn, peer)` is ignored unless `conn` is the direct
   route owner for `peer`. Graceful shutdown still removes stopped non-seed
   direct peers promptly, while seed discovery remains retryable.
+- Fix status: fixed by the authenticated stopped-peer ownership validation
+  described above; third-party `PeerStopped` claims are ignored before route
+  removal or forwarding.
 - Category: security, correctness
 - Score: 92/100
 - Reviewer: `Leibniz`, confirmed. Also confirmed by `Bernoulli`, `Wegener`,
