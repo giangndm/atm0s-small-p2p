@@ -3395,7 +3395,7 @@ the source of truth for evidence and reviewer decisions.
   - Failure summary: a single unsolicited `Found(alias)` with no pending lookup
     creates a cache entry for that alias; expected unsolicited `Found` messages
     to be ignored.
-- Fix status: current `AliasMessage::Found` handling correlates the response
+- Fix status: fixed by correlating `AliasMessage::Found` responses
   with an active find request before inserting cache hints. During
   `FindRequestState::CheckHint`, only a `Found` from a checked hint peer can
   insert the cache hint; unchecked peers are ignored. During an active `Scan`,
