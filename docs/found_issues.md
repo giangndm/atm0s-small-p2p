@@ -17869,8 +17869,7 @@ the source of truth for evidence and reviewer decisions.
 - Score: 58
 - Category: correctness / routing convergence stability
 - Status: fixed by ISSUE-214 implementation commit.
-- Reviewer: main-agent RED review; forked subagent tool was unavailable in
-  this turn, so the issue is backed by focused failing test evidence.
+- Reviewer: `Godel` (forked reviewer), accepted after process-repair review.
 - Affected code:
   - `src/router.rs`
 - Impact: when a router has more than `MAX_SYNC_ENTRIES` eligible routes,
@@ -17899,6 +17898,7 @@ the source of truth for evidence and reviewer decisions.
 - Verification:
   - `RUST_LOG=error cargo test create_sync_must_prioritize_direct_routes_under_cap --lib -- --nocapture`
   - `RUST_LOG=error cargo test router::tests:: --lib -- --nocapture`
+  - `rustfmt --edition 2024 --check src/router.rs`
 
 ### Cycle after ISSUE-214 no-new cycle 1: twelve-node post-router-fix fuzz
 
