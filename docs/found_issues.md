@@ -3988,6 +3988,8 @@ the source of truth for evidence and reviewer decisions.
   `LOCAL_SUBSCRIBER_EVENT_QUEUE_SIZE = 1024`, and subscriber-event fanout uses
   nonblocking `try_send` so full or closed local queues are treated as failed
   deliveries instead of accumulating unbounded backlog.
+- Fix status: fixed by bounding local subscriber event queues and using
+  nonblocking subscriber-event fanout.
 - Category: high-load stability, resource exhaustion, pubsub reliability
 - Score: 72/100
 - Reviewer: `Heisenberg the 2nd`, confirmed.
