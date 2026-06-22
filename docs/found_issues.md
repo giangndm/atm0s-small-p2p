@@ -11,9 +11,9 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 5
-- Stop condition requested by user: continue until 5 consecutive cycles find no
-  new accepted issue. Satisfied after ISSUE-225 cycle 5.
+- Current consecutive no-new-issue cycles: 0
+- Stop condition requested by user: stop after fixing the highest-impact
+  currently accepted issue, ISSUE-226.
 
 ## Root Cause Summary
 
@@ -18587,3 +18587,61 @@ the source of truth for evidence and reviewer decisions.
   backpressure policy, RC-4 stream setup hardening, RC-6 lifecycle cleanup, and
   RC-7 route stability. The requested five consecutive no-new cycles after
   ISSUE-225 are complete.
+
+### ISSUE-226: Broadcast collector scans disclose metrics and topology to non-collectors
+
+- Score: 73
+- Category: security / service authorization
+- Status: fixed by `a736bae` (`fix: authorize collector scan responses`).
+- Reviewers:
+  - `Kuhn` (forked RED-team reviewer), found independently.
+  - `Turing` (forked candidate reviewer), accepted.
+  - `Parfit` (forked implementation reviewer), accepted the fix.
+- Affected code:
+  - `src/service/metrics_service.rs`
+  - `src/service/visualization_service.rs`
+  - `src/tests/metrics.rs`
+  - `src/tests/visualization.rs`
+- Impact: any connected peer can broadcast a serialized collector `Scan` on
+  service 0 and receive unicast `Info` responses from non-collector metrics or
+  visualization services. That leaks connection metrics and topology
+  information to a peer that is not configured as a collector.
+- Distinctness: ISSUE-061 and ISSUE-062 fixed forged or unsolicited `Info`
+  acceptance. ISSUE-078 and ISSUE-079 fixed unicast `Scan` disclosure by
+  ignoring unicast `Scan` frames. ISSUE-200 through ISSUE-204 cover scan
+  broadcast/response backpressure and duplicate work. ISSUE-226 is the
+  remaining broadcast `Scan` authorization gap: broadcast scans are still
+  treated as trusted collector requests solely because they arrived over an
+  authenticated peer connection.
+- Failing evidence:
+  - `RUST_LOG=error cargo test metrics_broadcast_scan_must_not_disclose_metrics_to_non_collector --lib -- --nocapture`
+  - Failure before fix:
+    - `metrics service must not disclose metric Info frames to arbitrary peers that broadcast Scan`
+  - `RUST_LOG=error cargo test visualization_broadcast_scan_must_not_disclose_topology_to_non_collector --lib -- --nocapture`
+  - Failure before fix:
+    - `visualization service must not disclose topology Info frames to arbitrary peers that broadcast Scan`
+- Root cause: metrics and visualization distinguish collector behavior only
+  locally (`is_collector` for metrics and `collect_interval` for
+  visualization). The wire `Scan` message carries no authenticated collector
+  role, nonce, or allowlist binding. Receivers ignore unicast `Scan`, but still
+  call `on_scan(from)` for any broadcast `Scan`, and `on_scan` replies with
+  private `Info` by unicast to `from`.
+- Minimal fix proposal: require explicit collector authorization before
+  answering broadcast `Scan`. Since current messages have no authenticated
+  collector role, make inbound scan responses deny-by-default and add a small
+  trusted-collector allowlist constructor for deployments/tests that need
+  remote collection.
+- Fix: metrics and visualization services now keep an explicit
+  `trusted_scan_collectors` allowlist. Existing constructors default to an
+  empty allowlist, so inbound broadcast `Scan` is denied by default. Configured
+  deployments can opt in with `with_trusted_scan_collectors(...)`; legitimate
+  collection and scan-response backpressure tests were updated to use that
+  explicit trust.
+- Fixed evidence:
+  - `RUST_LOG=error cargo test metrics_broadcast_scan_must_not_disclose_metrics_to_non_collector --lib -- --nocapture`
+  - `RUST_LOG=error cargo test visualization_broadcast_scan_must_not_disclose_topology_to_non_collector --lib -- --nocapture`
+  - `RUST_LOG=error cargo test metrics --lib -- --nocapture`
+  - `RUST_LOG=error cargo test visualization --lib -- --nocapture`
+  - `RUST_LOG=error cargo test scan_response --lib -- --nocapture`
+  - `rustfmt --edition 2021 --check src/service/metrics_service.rs src/service/visualization_service.rs src/tests/metrics.rs src/tests/visualization.rs`
+  - `git diff --check`

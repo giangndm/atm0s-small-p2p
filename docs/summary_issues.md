@@ -5,10 +5,11 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Audit Status
 
-- Accepted issues: 225
+- Accepted issues: 226
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 5
-- Stop condition: satisfied after ISSUE-225 no-new cycle 5.
+- Current consecutive no-new-issue cycles: 0
+- Stop condition: stop after fixing the highest-impact currently accepted
+  issue, ISSUE-226.
 - Fix phase status: ISSUE-001, ISSUE-003, ISSUE-004, ISSUE-005, ISSUE-006, ISSUE-007,
   ISSUE-002, ISSUE-008, ISSUE-009, ISSUE-010, ISSUE-011, ISSUE-012, ISSUE-013, ISSUE-014, ISSUE-015, ISSUE-017, ISSUE-020, ISSUE-021, ISSUE-023, ISSUE-024, ISSUE-025, ISSUE-027, ISSUE-033, ISSUE-034, ISSUE-039, ISSUE-045, ISSUE-046, ISSUE-047, ISSUE-048, ISSUE-055, ISSUE-059, ISSUE-103, ISSUE-110, ISSUE-111, ISSUE-115, ISSUE-116, ISSUE-117, ISSUE-118, ISSUE-119, ISSUE-120, ISSUE-122, ISSUE-123,
   ISSUE-124, ISSUE-125, ISSUE-126, ISSUE-127, ISSUE-128, ISSUE-129, ISSUE-130,
@@ -62,6 +63,10 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   ISSUE-225 is fixed by queuing acked local unicast delivery into the same
   bounded per-connection worker and emitting `UnicastAck` only after local
   service admission succeeds or fails.
+  ISSUE-226 is fixed by `a736bae`: metrics and visualization now deny inbound
+  broadcast scan responses by default unless the sender is configured in
+  `trusted_scan_collectors`; legitimate collectors opt in with
+  `with_trusted_scan_collectors(...)`.
   ISSUE-043 is fixed by bounding pending pubsub publish/feedback RPC request
   maps before responder fanout.
   ISSUE-054 is fixed by rejecting zero network tick intervals before endpoint
@@ -91,7 +96,7 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 - Representative issues: ISSUE-001, ISSUE-004, ISSUE-014, ISSUE-015,
   ISSUE-018, ISSUE-020, ISSUE-039, ISSUE-048, ISSUE-066, ISSUE-067,
   ISSUE-068, ISSUE-090, ISSUE-115, ISSUE-116, ISSUE-145, ISSUE-189,
-  ISSUE-194.
+  ISSUE-194, ISSUE-226.
 - Pattern: message payloads and internal events carry peer ids, RPC ids, or
   source identities that are trusted without binding them to the live
   authenticated connection, local handle, expected responder, channel role, or
@@ -102,6 +107,9 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   self-identity and unauthorized third-party peer admission before aliases are
   registered, and store expected responder/handle metadata before accepting
   answers.
+- ISSUE-226, score 73: fixed by `a736bae`. Metrics and visualization receivers
+  now bind broadcast scan responses to an explicit trusted-collector allowlist;
+  default constructors deny inbound scan responses.
 
 ### RC-2: Protocol state machines lack correlation/freshness checks
 
