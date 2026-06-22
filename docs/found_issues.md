@@ -590,6 +590,16 @@ the source of truth for evidence and reviewer decisions.
   - `cargo test connect_must_fail_when_remote_peer_id_does_not_match_address -- --nocapture`
   - Failure summary: `connect(99@node1_addr)` returns `Ok(())` before the
     remote endpoint proves it is peer 99.
+- Fix status: fixed. Awaited `connect()` calls now keep a pending responder
+  keyed by the outbound connection id and complete it only after authenticated
+  `PeerConnected` success or `PeerConnectError` failure. Best-effort
+  `try_connect()` still only queues the outbound attempt, and duplicate pending
+  awaited connects continue to return an immediate error.
+- Fixed verification:
+  - `cargo test -q connect_must_fail_when_remote_peer_id_does_not_match_address -- --nocapture`
+  - `cargo test -q awaited_connect_must_error_while_same_peer_connect_is_pending -- --nocapture`
+  - `cargo test -q connect_to_same_peer_id_at_different_address_must_not_report_success -- --nocapture`
+  - `cargo test -q concurrent_connects_to_same_peer_must_be_coalesced -- --nocapture`
 
 ### ISSUE-017: Broadcast duplicate suppression is keyed only by message id
 

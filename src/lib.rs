@@ -191,6 +191,7 @@ pub struct P2pNetwork<SECURE> {
     router: SharedRouterTable,
     discovery: PeerDiscovery,
     pending_sync_tasks: HashMap<ConnectionId, JoinHandle<()>>,
+    pending_connects: HashMap<ConnectionId, oneshot::Sender<anyhow::Result<()>>>,
     ctx: SharedCtx,
     secure: Arc<SECURE>,
     inbound_peer_bindings: Arc<InboundPeerBindings>,
@@ -222,6 +223,7 @@ impl<SECURE: HandshakeProtocol> P2pNetwork<SECURE> {
             router,
             discovery,
             pending_sync_tasks: HashMap::new(),
+            pending_connects: HashMap::new(),
             secure: Arc::new(cfg.secure),
             inbound_peer_bindings: Arc::new(cfg.inbound_peer_bindings),
         })
@@ -335,10 +337,17 @@ impl<SECURE: HandshakeProtocol> P2pNetwork<SECURE> {
                 log::info!("[P2pNetwork] connection {conn} connected to {peer}");
                 let Some(alias) = self.ctx.conn(&conn) else {
                     log::warn!("[P2pNetwork] ignore peer connected for {peer} from unknown connection {conn}");
+                    if let Some(tx) = self.pending_connects.remove(&conn) {
+                        tx.send(Err(anyhow!("connected event for unknown connection {conn}"))).print_on_err2("[P2pNetwork] send connect answer");
+                    }
                     return Ok(P2pNetworkEvent::Continue);
                 };
                 if alias.to_id() != peer {
                     log::warn!("[P2pNetwork] ignore peer connected for {peer} from connection {conn} bound to {}", alias.to_id());
+                    if let Some(tx) = self.pending_connects.remove(&conn) {
+                        tx.send(Err(anyhow!("connected peer mismatch for connection {conn}: expected {}, got {peer}", alias.to_id())))
+                            .print_on_err2("[P2pNetwork] send connect answer");
+                    }
                     return Ok(P2pNetworkEvent::Continue);
                 }
                 if self.neighbours.has_peer(&peer) {
@@ -350,11 +359,17 @@ impl<SECURE: HandshakeProtocol> P2pNetwork<SECURE> {
                         self.router.del_direct(&conn);
                         self.neighbours.remove(&conn);
                         self.ctx.unregister_conn(&conn);
+                        if let Some(tx) = self.pending_connects.remove(&conn) {
+                            tx.send(Err(anyhow!("duplicate connection to peer {peer}"))).print_on_err2("[P2pNetwork] send connect answer");
+                        }
                     }
                     return Ok(P2pNetworkEvent::Continue);
                 }
                 self.router.set_direct(conn, peer, ttl_ms);
                 self.neighbours.mark_connected(&conn, peer);
+                if let Some(tx) = self.pending_connects.remove(&conn) {
+                    tx.send(Ok(())).print_on_err2("[P2pNetwork] send connect answer");
+                }
                 Ok(P2pNetworkEvent::PeerConnected(conn, peer))
             }
             MainEvent::PeerData(conn, peer, data) => {
@@ -397,6 +412,9 @@ impl<SECURE: HandshakeProtocol> P2pNetwork<SECURE> {
 
                 if let Some(task) = self.pending_sync_tasks.remove(&conn) {
                     task.abort();
+                }
+                if let Some(tx) = self.pending_connects.remove(&conn) {
+                    tx.send(Err(err)).print_on_err2("[P2pNetwork] send connect answer");
                 }
                 self.neighbours.remove(&conn);
                 Ok(P2pNetworkEvent::Continue)
@@ -450,8 +468,12 @@ impl<SECURE: HandshakeProtocol> P2pNetwork<SECURE> {
             match self.endpoint.connect(*addr.network_address().deref(), CERT_DOMAIN_NAME) {
                 Ok(connecting) => {
                     let conn = PeerConnection::new_connecting(self.secure.clone(), self.local_id, addr.peer_id(), connecting, self.main_tx.clone(), self.ctx.clone());
-                    self.neighbours.insert(conn.conn_id(), conn);
-                    Ok(())
+                    let conn_id = conn.conn_id();
+                    self.neighbours.insert(conn_id, conn);
+                    if let Some(tx) = tx {
+                        self.pending_connects.insert(conn_id, tx);
+                    }
+                    return Ok(P2pNetworkEvent::Continue);
                 }
                 Err(err) => Err(err.into()),
             }

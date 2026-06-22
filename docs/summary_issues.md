@@ -20,7 +20,7 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   ISSUE-094, ISSUE-095, ISSUE-096,
   ISSUE-149, ISSUE-169, ISSUE-174, ISSUE-176, ISSUE-177, ISSUE-078, ISSUE-079, ISSUE-080, ISSUE-081, ISSUE-082, ISSUE-083, ISSUE-084, ISSUE-085, ISSUE-181, ISSUE-184, ISSUE-185, ISSUE-189, ISSUE-190, ISSUE-191, ISSUE-192, ISSUE-193,
   ISSUE-194, ISSUE-195, ISSUE-196, ISSUE-197, ISSUE-198, ISSUE-199,
-  ISSUE-200, ISSUE-201, ISSUE-202, ISSUE-203, ISSUE-204, ISSUE-205, ISSUE-206, ISSUE-207, ISSUE-097, ISSUE-098, ISSUE-099, ISSUE-100, ISSUE-101, ISSUE-102, ISSUE-104, ISSUE-105, ISSUE-106, ISSUE-107, ISSUE-108, ISSUE-109, ISSUE-112, ISSUE-018, ISSUE-022, ISSUE-061, and ISSUE-042 have focused
+  ISSUE-200, ISSUE-201, ISSUE-202, ISSUE-203, ISSUE-204, ISSUE-205, ISSUE-206, ISSUE-207, ISSUE-097, ISSUE-098, ISSUE-099, ISSUE-100, ISSUE-101, ISSUE-102, ISSUE-104, ISSUE-105, ISSUE-106, ISSUE-107, ISSUE-108, ISSUE-109, ISSUE-112, ISSUE-018, ISSUE-022, ISSUE-061, ISSUE-042, and ISSUE-016 have focused
   fixes committed.
   ISSUE-003 is fixed by `cfc8e57`;
   ISSUE-090 is fixed by the alias `Found` request-correlation guard.
@@ -613,6 +613,14 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   `Err("unsupported open_stream to local node")` for `RouteAction::Local`
   instead of panicking. Verified with
   `cargo test open_stream_to_local_returns_error_not_panic -- --nocapture`.
+- ISSUE-016: fixed by completing awaited `connect()` calls only after the
+  outbound connection reports authenticated `PeerConnected`, or after
+  `PeerConnectError` for setup/authentication failure. Best-effort
+  `try_connect()` still only queues the attempt, and duplicate pending awaited
+  connects return an immediate error. Verified with
+  `cargo test connect_must_fail_when_remote_peer_id_does_not_match_address -- --nocapture`,
+  `cargo test awaited_connect_must_error_while_same_peer_connect_is_pending -- --nocapture`,
+  and `cargo test concurrent_connects_to_same_peer_must_be_coalesced -- --nocapture`.
 - ISSUE-001: fixed by validating stopped-peer ownership before accepting or
   propagating graceful stop notifications. Inbound `PeerStopped(peer)` must
   name the authenticated direct peer for that connection, and
