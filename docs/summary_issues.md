@@ -7,12 +7,12 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Accepted issues: 246
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 15
-- Current audit continuation: critical-only service-protocol no-new cycle 17
-  found no new score-80+ issue across pubsub RPC correlation, publish/feedback
-  fanout, heartbeat chunking, stale pubsub handles, replicated-KV full-sync
-  pagination, changed-repair correlation, remote-store caps, graceful-stop
-  cleanup, and high-node churn fuzz.
+- Current consecutive no-new-issue cycles: 16
+- Current audit continuation: critical-only lifecycle/route no-new cycle 18
+  found no new score-80+ issue across active path stability,
+  route/discovery sync caps, stale route resurrection, seed vs non-seed
+  deletion, `PeerStopped` forwarding and retry, duplicate/stale connect
+  events, graceful shutdown notification delivery, and high-node churn fuzz.
 - Fix phase status: ISSUE-001, ISSUE-003, ISSUE-004, ISSUE-005, ISSUE-006, ISSUE-007,
   ISSUE-002, ISSUE-008, ISSUE-009, ISSUE-010, ISSUE-011, ISSUE-012, ISSUE-013, ISSUE-014, ISSUE-015, ISSUE-017, ISSUE-020, ISSUE-021, ISSUE-023, ISSUE-024, ISSUE-025, ISSUE-027, ISSUE-033, ISSUE-034, ISSUE-039, ISSUE-045, ISSUE-046, ISSUE-047, ISSUE-048, ISSUE-055, ISSUE-059, ISSUE-103, ISSUE-110, ISSUE-111, ISSUE-115, ISSUE-116, ISSUE-117, ISSUE-118, ISSUE-119, ISSUE-120, ISSUE-122, ISSUE-123,
   ISSUE-124, ISSUE-125, ISSUE-126, ISSUE-127, ISSUE-128, ISSUE-129, ISSUE-130,
@@ -734,6 +734,22 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   remote-store caps and graceful-stop cleanup. Ledger check found 21 score-80+
   issues and all are fixed; no reproducible service-protocol failure supported
   a distinct score-80+ issue.
+- Fuzz phase no-new cycle 18 reviewed route, discovery, connection lifecycle,
+  and graceful shutdown behavior with forked reviewer `Pascal the 2nd`. Local
+  router, discovery, peer-stopped, stale-peer, duplicate, shutdown,
+  discovery-timeout, active-path, and 34-node churn fuzz checks passed. The
+  reviewer passed broader route, discovery, peer-stopped, graceful, connect,
+  stale, sync, 38-node valid churn, 36-node malformed churn, and targeted
+  route/relay checks. Rejected candidates mapped to ISSUE-003/ISSUE-214/RC-7
+  for path stability, ISSUE-167/ISSUE-215 through ISSUE-222/RC-6/RC-7 for
+  stale route resurrection, ISSUE-214 for direct-route priority, ISSUE-167 and
+  ISSUE-211 through ISSUE-213/RC-7 for seed and non-seed deletion,
+  ISSUE-215 through ISSUE-225/RC-6 for `PeerStopped` and graceful shutdown,
+  ISSUE-153/ISSUE-189/ISSUE-194/ISSUE-223/RC-1/RC-6 for duplicate and stale
+  connect events, and ISSUE-063/ISSUE-103/ISSUE-164/ISSUE-180/ISSUE-197/RC-7
+  for route/discovery sync caps and malformed rows. Ledger check found 21
+  score-80+ issues and all are fixed; no reproducible lifecycle/route failure
+  supported a distinct score-80+ issue.
 - Cycle after ISSUE-231 no-new cycle 1 reviewed routing/discovery/path
   stability and stream/pipe lifecycle integration with forked reviewer
   `Carver`. Focused route, discovery, stream-relay, peer-stopped, and pubsub

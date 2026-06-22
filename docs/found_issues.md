@@ -11,12 +11,12 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 15
-- Current audit continuation: critical-only service-protocol no-new cycle 17
-  found no new score-80+ issue across pubsub RPC correlation, publish/feedback
-  fanout, heartbeat chunking, stale pubsub handles, replicated-KV full-sync
-  pagination, changed-repair correlation, remote-store caps, graceful-stop
-  cleanup, and high-node churn fuzz.
+- Current consecutive no-new-issue cycles: 16
+- Current audit continuation: critical-only lifecycle/route no-new cycle 18
+  found no new score-80+ issue across active path stability,
+  route/discovery sync caps, stale route resurrection, seed vs non-seed
+  deletion, `PeerStopped` forwarding and retry, duplicate/stale connect
+  events, graceful shutdown notification delivery, and high-node churn fuzz.
 
 ## Root Cause Summary
 
@@ -21365,6 +21365,67 @@ the source of truth for evidence and reviewer decisions.
 - Ledger check: 21 score-80+ issues found and all are fixed.
 - Current consecutive no-new cycles after ISSUE-238: 27.
 - Current fuzz-phase no-new cycles after transition: 17.
+- Current focused source-review no-new cycles after fuzz phase: 10.
+
+### Fuzz phase no-new cycle 18: route, discovery, and lifecycle shutdown review
+
+- Scope: continued critical-only review after cycle 17, focusing on active path
+  flapping, stale route resurrection, direct-vs-relayed priority, seed versus
+  non-seed deletion, `PeerStopped` forwarding/dedup/retry, graceful shutdown
+  notification delivery, duplicate and stale connect events, route/discovery
+  sync caps, discovery timeout and seed sync, lifecycle-event backpressure, and
+  churn fuzz interactions.
+- Reviewer: `Pascal the 2nd` (forked RED-team reviewer), returned
+  `NO_NEW_CRITICAL`.
+- Verification:
+  - `RUST_LOG=error cargo test router::tests --lib`: passed 20 tests.
+  - `RUST_LOG=error cargo test discovery::test --lib`: passed 32 tests.
+  - `RUST_LOG=error cargo test peer_stopped --lib`: passed 15 tests.
+  - `RUST_LOG=error cargo test stale_peer --lib`: passed 5 tests.
+  - `RUST_LOG=error cargo test duplicate --lib`: passed 20 tests.
+  - `RUST_LOG=error cargo test shutdown_gracefully --lib`: passed 1 test.
+  - `RUST_LOG=error cargo test discovery_timeout --lib`: passed 1 test.
+  - `RUST_LOG=error cargo test active_path --lib`: passed 1 test.
+  - `RUST_LOG=error P2P_FUZZ_NODES=34 P2P_FUZZ_STEPS=1200 P2P_FUZZ_SEED=39001 cargo test fuzz_random_valid_node_churn_actions_must_not_panic_connection_tasks --lib`:
+    passed.
+- Reviewer cross-check:
+  - `RUST_LOG=error cargo test route --lib`: passed 27 tests.
+  - `RUST_LOG=error cargo test discovery --lib`: passed 37 tests.
+  - `RUST_LOG=error cargo test peer_stopped --lib`: passed 15 tests.
+  - `RUST_LOG=error cargo test graceful --lib`: passed 11 tests.
+  - `RUST_LOG=error cargo test connect --lib`: passed 61 tests.
+  - `RUST_LOG=error cargo test stale --lib`: passed 25 tests.
+  - `RUST_LOG=error cargo test sync --lib`: passed 54 tests.
+  - `RUST_LOG=error P2P_FUZZ_NODES=38 P2P_FUZZ_STEPS=1300 P2P_FUZZ_SEED=39001 cargo test fuzz_random_valid_node_churn_actions_must_not_panic_connection_tasks --lib`:
+    passed.
+  - `RUST_LOG=error P2P_FUZZ_NODES=36 P2P_FUZZ_STEPS=1200 P2P_FUZZ_SEED=39002 cargo test fuzz_random_node_churn_actions_must_not_panic_connection_tasks --lib`:
+    passed.
+  - Targeted route/relay checks for relayed stream cleanup, unicast relay
+    ingress-loop rejection, active path jitter, and direct-route priority
+    passed.
+- Duplicate mapping:
+  - Active path flapping and noisy route switching map to ISSUE-003,
+    ISSUE-214, and RC-7.
+  - Stale route resurrection after disconnect, stop, or tick sync maps to
+    ISSUE-167, ISSUE-215 through ISSUE-222, RC-6, and RC-7.
+  - Direct-vs-relayed priority under sync caps maps to ISSUE-214.
+  - Seed versus non-seed deletion and long-timeout behavior map to ISSUE-167,
+    ISSUE-211 through ISSUE-213, and RC-7.
+  - `PeerStopped` forwarding, dedup, retry, and graceful-shutdown notification
+    delivery map to ISSUE-215 through ISSUE-225 and RC-6.
+  - Duplicate/stale connect events and connect errors map to ISSUE-153,
+    ISSUE-189, ISSUE-194, ISSUE-223, RC-1, and RC-6.
+  - Route/discovery sync caps, duplicate rows, overflow metrics/timestamps, and
+    local/self route rejection map to ISSUE-063, ISSUE-103, ISSUE-164,
+    ISSUE-180, ISSUE-197, and RC-7.
+  - Discovery timeout, seed sync, tombstone freshness, and lifecycle
+    backpressure map to ISSUE-167, ISSUE-211 through ISSUE-225, RC-3, RC-6,
+    and RC-7.
+  - Churn fuzz with forged, stopped, connect, and random actions produced no
+    distinct score-80+ failing evidence.
+- Ledger check: 21 score-80+ issues found and all are fixed.
+- Current consecutive no-new cycles after ISSUE-238: 28.
+- Current fuzz-phase no-new cycles after transition: 18.
 - Current focused source-review no-new cycles after fuzz phase: 10.
 
 ### Cycle after ISSUE-235 no-new cycle 1: transport, auth, and peer setup review
