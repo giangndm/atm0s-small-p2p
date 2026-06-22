@@ -38,7 +38,7 @@ impl SharedCtxInternal {
             log::warn!("[SharedCtx] reject out-of-range service id {service_id}");
             return;
         };
-        if self.services[index].is_some() {
+        if self.services[index].as_ref().is_some_and(|existing| !existing.is_closed()) {
             log::warn!("[SharedCtx] reject duplicate live service id {service_id}");
             return;
         }

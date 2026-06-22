@@ -1757,6 +1757,8 @@ the source of truth for evidence and reviewer decisions.
 
 ### ISSUE-060: Dropped services leave their service id permanently reserved
 
+- Status: fixed by allowing `SharedCtxInternal::set_service` to replace a
+  registered service sender only after the previous receiver is closed.
 - Category: correctness, API lifecycle stability
 - Score: 60/100
 - Reviewer: `Ampere`, confirmed.
@@ -1775,9 +1777,9 @@ the source of truth for evidence and reviewer decisions.
   covers duplicate creation while the first service is still live.
 - Evidence test:
   - `cargo test dropped_service_id_must_be_reusable -- --nocapture`
-  - Failure summary: after dropping the first `P2pService`, creating a
-    replacement with the same id panics at `src/ctx.rs:28` with
-    `Service ID already used`.
+  - Fixed summary: after dropping the first `P2pService`, creating a
+    replacement with the same id no longer panics and updates the service table
+    once the old receiver is closed.
   - Additional reviewer `Turing the 2nd` accepted
     `cargo test unicast_must_not_report_success_when_destination_service_receiver_is_closed -- --nocapture`
     as closed-destination evidence for this stale service sender root cause.
