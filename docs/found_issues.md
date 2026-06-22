@@ -11,10 +11,10 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 14
-- Current audit continuation: Focused source-review no-new cycle 4 reviewed
-  stream/pipe setup, relayed delivery, unicast acknowledgement, and service
-  backpressure behavior without a distinct reviewed failure.
+- Current consecutive no-new-issue cycles: 15
+- Current audit continuation: Focused source-review no-new cycle 5 reviewed
+  pubsub and replicated-KV state-machine correlation, stale membership, and
+  repair/full-sync validation without a distinct reviewed failure.
 
 ## Root Cause Summary
 
@@ -19889,6 +19889,82 @@ the source of truth for evidence and reviewer decisions.
     ISSUE-072, ISSUE-073, ISSUE-076, ISSUE-234, and RC-6.
 - Current consecutive no-new cycles after ISSUE-238: 14.
 - Current fuzz-phase no-new cycles after transition: 5.
+
+### Focused source-review no-new cycle 5: pubsub and replicated-KV state machines
+
+- Scope: audited state-machine and request-correlation behavior for
+  `src/service/pubsub_service.rs`, `src/service/pubsub_service/*`,
+  `src/service/replicate_kv_service.rs`,
+  `src/service/replicate_kv_service/*`, `src/tests/pubsub.rs`, and
+  `src/tests/replicate_kv.rs`. Focus areas were pubsub RPC expected responder
+  binding, local handle binding, stale join/leave/heartbeat generations,
+  remote role tombstones, RPC deadline and pending caps, heartbeat batch caps,
+  replicated-KV unsolicited response rejection, accepted-event liveness
+  refresh, full-sync snapshot validation, stale terminal snapshot rejection,
+  `FetchChanged` repair correlation, duplicate/out-of-range/empty/partial
+  repair responses, pending future-change caps, and repair retry behavior.
+- Reviewer: `Godel the 2nd` (forked RED-team reviewer), rejected new issue
+  acceptance because no distinct failing test evidence was found and
+  recommended documenting this as a no-new source-review cycle.
+- Verification:
+  - `RUST_LOG=error cargo test pubsub_publish_rpc --lib -- --nocapture`: passed 6/6.
+  - `RUST_LOG=error cargo test pubsub_feedback_rpc --lib -- --nocapture`: passed 5/5.
+  - `RUST_LOG=error cargo test stale_pubsub --lib -- --nocapture`: passed 2/2.
+  - `RUST_LOG=error cargo test heartbeat --lib -- --nocapture`: passed 10/10.
+  - `RUST_LOG=error cargo test replicated_kv --lib -- --nocapture`: passed 3/3.
+  - `RUST_LOG=error cargo test full_sync --lib -- --nocapture`: passed 15/15.
+  - `RUST_LOG=error cargo test unsolicited --lib -- --nocapture`: passed 4/4.
+  - `RUST_LOG=error cargo test pending --lib -- --nocapture`: passed 15/15.
+  - `RUST_LOG=error cargo test fetch_changed --lib -- --nocapture`: passed 13/13.
+  - `RUST_LOG=error cargo test snapshot --lib -- --nocapture`: passed 20/20.
+  - `RUST_LOG=error cargo test repair --lib -- --nocapture`: passed 3/3.
+  - `RUST_LOG=error cargo test stale_fetch --lib -- --nocapture`: passed.
+  - `RUST_LOG=error cargo test duplicate --lib -- --nocapture`: passed 20/20.
+- Test note:
+  - `RUST_LOG=error cargo test FetchChanged --lib -- --nocapture` and
+    `RUST_LOG=error cargo test FetchSnapshot --lib -- --nocapture` matched
+    0 tests because test filters are case-sensitive; lower-case filters above
+    were used as the actual evidence.
+- Reviewer cross-check:
+  - `RUST_LOG=error cargo test pubsub_publish_rpc --lib -- --nocapture`: passed 6/6.
+  - `RUST_LOG=error cargo test pubsub_feedback_rpc --lib -- --nocapture`: passed 5/5.
+  - `RUST_LOG=error cargo test stale_pubsub --lib -- --nocapture`: passed 2/2.
+  - `RUST_LOG=error cargo test heartbeat --lib -- --nocapture`: passed 10/10.
+  - `RUST_LOG=error cargo test fetch_changed --lib -- --nocapture`: passed 13/13.
+  - `RUST_LOG=error cargo test snapshot --lib -- --nocapture`: passed 20/20.
+  - `RUST_LOG=error cargo test full_sync --lib -- --nocapture`: passed 15/15.
+  - `RUST_LOG=error cargo test unsolicited --lib -- --nocapture`: passed 4/4.
+  - `RUST_LOG=error cargo test pending --lib -- --nocapture`: passed 15/15.
+  - `RUST_LOG=error cargo test repair --lib -- --nocapture`: passed 3/3.
+- Duplicate mapping:
+  - Pubsub RPC answer correlation maps to expected-responder and
+    expected-local-handle binding coverage, including ISSUE-020, ISSUE-074,
+    ISSUE-075, ISSUE-115, ISSUE-116, and RC-1/RC-2.
+  - Pubsub stale join/leave/heartbeat behavior maps to the generation and
+    tombstone family, including ISSUE-080, ISSUE-155, ISSUE-205, ISSUE-206,
+    ISSUE-231, and RC-2/RC-6.
+  - Pubsub pending, backpressure, and resource exhaustion map to pending RPC,
+    internal control, local event, heartbeat batch, remote membership, and
+    channel caps, including ISSUE-043, ISSUE-100, ISSUE-106, ISSUE-121,
+    ISSUE-123 through ISSUE-126, ISSUE-163, ISSUE-178, ISSUE-228, and RC-3.
+  - Replicated-KV unsolicited response and liveness refresh behavior maps to
+    ISSUE-086, ISSUE-087, ISSUE-140, ISSUE-186, ISSUE-233, and RC-2.
+  - Replicated-KV full-sync and snapshot corruption maps to snapshot
+    validation coverage, including ISSUE-025, ISSUE-034, ISSUE-037,
+    ISSUE-038, ISSUE-047, ISSUE-059, ISSUE-081 through ISSUE-085,
+    ISSUE-110, ISSUE-131, ISSUE-138, ISSUE-143, ISSUE-171, ISSUE-237, and
+    RC-2.
+  - Replicated-KV repair gaps and `FetchChanged` response validation map to
+    ISSUE-023, ISSUE-027, ISSUE-046, ISSUE-071, ISSUE-088, ISSUE-089,
+    ISSUE-095, ISSUE-099, ISSUE-111, ISSUE-141, ISSUE-154, ISSUE-175,
+    ISSUE-184, ISSUE-196, and RC-2/RC-3.
+- Transition: five consecutive focused source-review no-new cycles are now
+  recorded after the prior fuzz phase. Continue the next audit phase by
+  returning to configured-node randomized fuzzing, accepting only distinct
+  failures with reviewer-confirmed failing test evidence.
+- Current consecutive no-new cycles after ISSUE-238: 15.
+- Current fuzz-phase no-new cycles after transition: 5.
+- Current focused source-review no-new cycles after fuzz phase: 5.
 
 ### Cycle after ISSUE-235 no-new cycle 1: transport, auth, and peer setup review
 
