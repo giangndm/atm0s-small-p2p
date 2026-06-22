@@ -11,12 +11,12 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 6
-- Current audit continuation: critical-only configured-node fuzz phase no-new
-  cycle 8 found no new score-80+ issue across steady valid actions, valid
-  random actions, valid churn, sanitized churn, malformed/raw random actions,
-  malformed/raw churn, forged `PeerStopped`, stop/restart, streams,
-  unicast/broadcast, requester paths, and high-load node-count handling.
+- Current consecutive no-new-issue cycles: 7
+- Current audit continuation: critical-only fuzz/source-boundary no-new cycle
+  9 found no new score-80+ issue across configured-node steady and churn fuzz,
+  malformed/raw actions, forged `PeerStopped`, graceful shutdown,
+  stale-requester paths, service/requester guards, duplicate connects, stream
+  setup, unicast/broadcast backpressure, and high-load node-count handling.
 
 ## Root Cause Summary
 
@@ -20887,6 +20887,53 @@ the source of truth for evidence and reviewer decisions.
   - No reproducible fuzz failure supported a distinct score-80+ issue.
 - Current consecutive no-new cycles after ISSUE-238: 18.
 - Current fuzz-phase no-new cycles after transition: 8.
+- Current focused source-review no-new cycles after fuzz phase: 5.
+
+### Fuzz phase no-new cycle 9: fuzz/source-boundary lifecycle stress review
+
+- Scope: continued configured-node randomized fuzzing after cycle 8 and audited
+  fuzz-touched source boundaries (`src/tests/fuzz.rs`, `src/ctx.rs`,
+  `src/peer.rs`, `src/peer/peer_internal.rs`, `src/peer/peer_alias.rs`,
+  `src/service.rs`, `src/requester.rs`, `src/lib.rs`) for critical gaps around
+  background panic detection, channel close/backpressure, graceful shutdown
+  during churn, stale requester and peer aliases, duplicate connects, raw
+  forged messages, invalid service ids, and stopped-peer propagation.
+- Reviewer: `Hypatia the 2nd` (forked RED-team reviewer), returned
+  `NO_NEW_CRITICAL`.
+- Verification:
+  - `RUST_LOG=error P2P_FUZZ_NODES=32 P2P_FUZZ_STEPS=1080 P2P_FUZZ_SEED=31001 cargo test fuzz_random_steady_valid_node_actions_must_not_panic_connection_tasks --lib`: passed.
+  - `RUST_LOG=error P2P_FUZZ_NODES=28 P2P_FUZZ_STEPS=1040 P2P_FUZZ_SEED=31002 cargo test fuzz_random_sanitized_node_churn_actions_must_not_panic_connection_tasks --lib`: passed.
+  - `RUST_LOG=error P2P_FUZZ_NODES=24 P2P_FUZZ_STEPS=800 P2P_FUZZ_SEED=31003 cargo test fuzz_random_node_churn_actions_must_not_panic_connection_tasks --lib`: passed.
+  - `RUST_LOG=error cargo test peer_stopped --lib`: passed, 15/15.
+  - `RUST_LOG=error cargo test dropped_service_requester --lib`: passed, 3/3.
+- Reviewer cross-check:
+  - `RUST_LOG=error cargo test fuzz_node_count_must_honor_high_load_configuration --lib`: passed.
+  - `cargo test fuzz_random --lib -- --list`: listed 6 fuzz tests.
+  - `RUST_LOG=error P2P_FUZZ_NODES=16 P2P_FUZZ_STEPS=260 P2P_FUZZ_SEED=31001 cargo test fuzz_random_steady_valid_node_actions_must_not_panic_connection_tasks --lib`: passed.
+  - `RUST_LOG=error P2P_FUZZ_NODES=14 P2P_FUZZ_STEPS=240 P2P_FUZZ_SEED=31002 cargo test fuzz_random_sanitized_node_churn_actions_must_not_panic_connection_tasks --lib`: passed.
+  - `RUST_LOG=error P2P_FUZZ_NODES=12 P2P_FUZZ_STEPS=220 P2P_FUZZ_SEED=31003 cargo test fuzz_random_node_actions_must_not_panic_connection_tasks --lib`: passed.
+  - `RUST_LOG=error P2P_FUZZ_NODES=12 P2P_FUZZ_STEPS=220 P2P_FUZZ_SEED=31004 cargo test fuzz_random_node_churn_actions_must_not_panic_connection_tasks --lib`: passed.
+  - `RUST_LOG=error cargo test requester --lib`: passed, 13/13.
+  - `RUST_LOG=error cargo test service --lib`: passed, 198/198.
+  - `RUST_LOG=error cargo test peer_stopped --lib`: passed, 15/15.
+- Duplicate mapping:
+  - High-load fuzz node-count coverage maps to fixed ISSUE-209.
+  - Malformed raw messages and invalid service ids map to ISSUE-053,
+    ISSUE-060, ISSUE-091, ISSUE-234, RC-1, and RC-6.
+  - Stop/restart, `PeerStopped`, disconnect cleanup, and graceful shutdown map
+    to ISSUE-215 through ISSUE-225 and RC-6.
+  - Route churn, duplicate connects, and active-path instability map to
+    ISSUE-003 and RC-7.
+  - Stream setup, `open_bi`, internal-channel, local-service delivery, and
+    unicast ack backpressure map to ISSUE-156, ISSUE-180, ISSUE-217,
+    ISSUE-220, ISSUE-238, RC-3, and RC-7.
+  - Stale service requesters and duplicate services map to ISSUE-028,
+    ISSUE-072, ISSUE-073, ISSUE-076, ISSUE-125, ISSUE-234, RC-3, and RC-6.
+  - No reproducible fuzz/source-boundary failure supported a distinct
+    score-80+ issue.
+- Ledger check: 21 score-80+ issues found and all are fixed.
+- Current consecutive no-new cycles after ISSUE-238: 19.
+- Current fuzz-phase no-new cycles after transition: 9.
 - Current focused source-review no-new cycles after fuzz phase: 5.
 
 ### Cycle after ISSUE-235 no-new cycle 1: transport, auth, and peer setup review

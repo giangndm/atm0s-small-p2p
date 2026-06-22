@@ -7,12 +7,12 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Accepted issues: 246
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 6
-- Current audit continuation: critical-only configured-node fuzz phase no-new
-  cycle 8 found no new score-80+ issue across steady valid actions, valid
-  random actions, valid churn, sanitized churn, malformed/raw random actions,
-  malformed/raw churn, forged `PeerStopped`, stop/restart, streams,
-  unicast/broadcast, requester paths, and high-load node-count handling.
+- Current consecutive no-new-issue cycles: 7
+- Current audit continuation: critical-only fuzz/source-boundary no-new cycle
+  9 found no new score-80+ issue across configured-node steady and churn fuzz,
+  malformed/raw actions, forged `PeerStopped`, graceful shutdown,
+  stale-requester paths, service/requester guards, duplicate connects, stream
+  setup, unicast/broadcast backpressure, and high-load node-count handling.
 - Fix phase status: ISSUE-001, ISSUE-003, ISSUE-004, ISSUE-005, ISSUE-006, ISSUE-007,
   ISSUE-002, ISSUE-008, ISSUE-009, ISSUE-010, ISSUE-011, ISSUE-012, ISSUE-013, ISSUE-014, ISSUE-015, ISSUE-017, ISSUE-020, ISSUE-021, ISSUE-023, ISSUE-024, ISSUE-025, ISSUE-027, ISSUE-033, ISSUE-034, ISSUE-039, ISSUE-045, ISSUE-046, ISSUE-047, ISSUE-048, ISSUE-055, ISSUE-059, ISSUE-103, ISSUE-110, ISSUE-111, ISSUE-115, ISSUE-116, ISSUE-117, ISSUE-118, ISSUE-119, ISSUE-120, ISSUE-122, ISSUE-123,
   ISSUE-124, ISSUE-125, ISSUE-126, ISSUE-127, ISSUE-128, ISSUE-129, ISSUE-130,
@@ -593,6 +593,21 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   families ISSUE-003, ISSUE-156, ISSUE-180, ISSUE-217, ISSUE-220,
   ISSUE-238, RC-3, and RC-7. No reproducible fuzz failure supported a
   distinct score-80+ issue.
+- Fuzz phase no-new cycle 9 continued critical-only configured-node fuzzing and
+  source-boundary lifecycle review with forked reviewer `Hypatia the 2nd`.
+  Local 32-node steady fuzz, 28-node sanitized churn, 24-node malformed churn,
+  `peer_stopped`, and dropped-service-requester tests passed; reviewer
+  cross-checks covered node-count config, the six fuzz entries, 12- to 16-node
+  deterministic fuzz seeds, requester, service, and peer-stopped slices. All
+  rejected candidates mapped to fixed ISSUE-209, malformed-input/ownership
+  families ISSUE-053, ISSUE-060, ISSUE-091, ISSUE-234, RC-1, RC-6,
+  lifecycle/graceful-stop families ISSUE-215 through ISSUE-225, route
+  stability ISSUE-003/RC-7, stream/backpressure families ISSUE-156,
+  ISSUE-180, ISSUE-217, ISSUE-220, ISSUE-238, RC-3, and stale
+  service-requester families ISSUE-028, ISSUE-072, ISSUE-073, ISSUE-076,
+  ISSUE-125. Ledger check found 21 score-80+ issues and all are fixed; no
+  reproducible fuzz/source-boundary failure supported a distinct score-80+
+  issue.
 - Cycle after ISSUE-231 no-new cycle 1 reviewed routing/discovery/path
   stability and stream/pipe lifecycle integration with forked reviewer
   `Carver`. Focused route, discovery, stream-relay, peer-stopped, and pubsub
