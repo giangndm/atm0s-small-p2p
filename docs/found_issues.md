@@ -1915,6 +1915,8 @@ the source of truth for evidence and reviewer decisions.
   direct connections when sending a scan and accept at most one unicast
   `Message::Info` from each pending responder; unsolicited `Info` frames
   outside that window are ignored.
+- Fix status: fixed by correlating metrics `Info` frames with the collector's
+  pending scan responder set before emitting peer metric events.
 - Affected code:
   - `src/service/metrics_service.rs`: `MetricsService::recv` accepts any
     unicast or broadcast frame that deserializes as `Message`.
