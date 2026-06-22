@@ -436,6 +436,11 @@ impl<SECURE: HandshakeProtocol> P2pNetwork<SECURE> {
             }
             MainEvent::PeerStats(conn, to_peer, metrics) => {
                 log::debug!("[P2pNetwork] conn {conn} to peer {to_peer} metrics {:?}", metrics);
+                if !self.router.is_direct_peer(&conn, &to_peer) {
+                    log::warn!("[P2pNetwork] ignore peer stats for {to_peer} from non-direct connection {conn}");
+                    return Ok(P2pNetworkEvent::Continue);
+                }
+
                 self.ctx.update_metrics(&conn, to_peer, metrics);
                 Ok(P2pNetworkEvent::Continue)
             }

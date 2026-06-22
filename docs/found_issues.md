@@ -2026,6 +2026,21 @@ the source of truth for evidence and reviewer decisions.
     processing `MainEvent::PeerStats(ConnectionId(66), PeerId(99), metrics)`
     inserts exported metrics for `PeerId(99)`; expected the mismatched stats
     event to be ignored.
+- Root cause: the stats event path trusted the event-supplied peer id instead
+  of checking it against the router's live direct connection owner.
+- Fix proposal: reuse the same `router.is_direct_peer(conn, peer)` guard used
+  by peer data, stopped, and disconnect events before exporting metrics.
+- Fix status: fixed by ignoring `PeerStats` events whose `(conn, peer)` pair is
+  not the current direct peer mapping. Verified with
+  `cargo test peer_stats_must_validate_peer_matches_connection -- --nocapture`,
+  `cargo test stale_peer_stats_event_must_not_publish_metrics_for_unknown_connection -- --nocapture`,
+  `cargo test peer_data_must_validate_peer_matches_connection -- --nocapture`,
+  `cargo test peer_disconnected_must_validate_peer_matches_connection -- --nocapture`,
+  and `cargo fmt -- --check`. `cargo test security -- --nocapture` was also
+  run; it passed the ISSUE-068 tests but still fails unrelated existing issue
+  tests `discovery_timeout_must_remove_route_to_expired_non_seed` and
+  `zero_network_tick_interval_must_not_panic`. Engineer `Kuhn the 12th`
+  proposed the fix; coder-review `Planck the 12th` accepted it.
 
 ### ISSUE-069: Dropped publisher requesters can still publish
 
