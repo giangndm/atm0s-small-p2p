@@ -13,7 +13,7 @@ must resolve.
 
 - Current consecutive no-new-issue cycles: 0
 - Stop condition requested by user: continue until 5 consecutive cycles find no
-  new accepted issue. Not satisfied after ISSUE-221; continue auditing.
+  new accepted issue. Not satisfied after ISSUE-222; continue auditing.
 
 ## Root Cause Summary
 
@@ -124,7 +124,7 @@ the source of truth for evidence and reviewer decisions.
   ISSUE-128 through ISSUE-132, ISSUE-135, ISSUE-139, ISSUE-142, ISSUE-144,
   ISSUE-148, ISSUE-150, ISSUE-151, ISSUE-161, ISSUE-165,
   ISSUE-167, ISSUE-168, ISSUE-170, ISSUE-179, ISSUE-183, ISSUE-185,
-  ISSUE-187, ISSUE-188, ISSUE-193, ISSUE-195, ISSUE-208.
+  ISSUE-187, ISSUE-188, ISSUE-193, ISSUE-195, ISSUE-208, ISSUE-222.
 - Pattern: requesters, services, peer aliases, channel state, and cached hints
   can outlive the owner they represent, while shutdown paths may panic, leak,
   emit false public events, or keep stale routes/cache entries. Remote
@@ -18226,3 +18226,49 @@ the source of truth for evidence and reviewer decisions.
   - `RUST_LOG=error cargo test peer_stopped_ --lib -- --nocapture`
   - `RUST_LOG=error cargo test tests::security:: --lib -- --nocapture`
   - `rustfmt --edition 2024 --check src/peer/peer_internal.rs src/tests/security.rs`
+
+### ISSUE-222: Accepted PeerStopped leaves a stale connection alias
+
+- Score: 64
+- Category: graceful-shutdown correctness / stale outbound fanout handle
+- Status: fixed by commit `648f769` (`fix: unregister stopped peer aliases immediately`).
+- Reviewers:
+  - Forked RED-team candidate reviewer, accepted.
+  - Main engineer/coder pass, accepted after focused lifecycle regression tests.
+- Affected code:
+  - `src/lib.rs`
+  - `src/ctx.rs`
+  - `src/tests/security.rs`
+- Impact: after `MainEvent::PeerStopped(conn, peer)` is accepted, the main loop
+  removes discovery, route, and neighbour state, but previously left the
+  connection alias registered in `SharedCtx` until asynchronous peer-task
+  teardown ran. During that gap, local fanout paths that use `ctx.conns()` could
+  still target the stopped alias even though the peer had already been reported
+  disconnected.
+- Distinctness: ISSUE-051 covers stopped-neighbour cleanup. ISSUE-136 covers
+  delayed `PeerDisconnected` cleanup under a full main queue. ISSUE-151 covers
+  stale route resurrection from RTT ticks. ISSUE-187 covers public disconnect
+  visibility. ISSUE-215 and ISSUE-216 cover `PeerStopped` admission and dedup
+  lifecycle. ISSUE-221 covers inbound traffic from the stopped peer's old
+  connection. ISSUE-222 covers the outbound `SharedCtx` alias that remains live
+  after an accepted stop.
+- Failing evidence:
+  - `cargo test peer_stopped_must_unregister_context_alias_immediately --lib -- --nocapture`
+  - Failure before fix:
+    - `accepted PeerStopped must unregister the stopped connection alias before local fanout can target it again`
+- Root cause: `P2pNetwork::process_internal` handled accepted
+  `MainEvent::PeerStopped` by removing discovery, router, and neighbour state,
+  then notifying services, but it did not call `ctx.unregister_conn(&conn)`.
+  Alias cleanup was deferred to `run_connection` teardown, leaving a stale
+  outbound control handle visible to broadcast/shutdown/fanout code.
+- Minimal fix proposal: after validating that `(conn, peer)` is still the
+  direct route owner, unregister the connection alias in the same accepted
+  `PeerStopped` branch that removes neighbour and route state. Keep invalid or
+  stale stopped events as no-ops.
+- Fix: accepted `PeerStopped` events now call `self.ctx.unregister_conn(&conn)`
+  immediately after removing neighbour state and before service disconnect
+  notification.
+- Verification after fix:
+  - `cargo test peer_stopped_must_unregister_context_alias_immediately --lib -- --nocapture`
+  - `cargo test peer_stopped_ --lib -- --nocapture`
+  - `cargo test tests::security:: --lib -- --nocapture`

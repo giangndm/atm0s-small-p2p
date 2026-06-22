@@ -5,10 +5,10 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Audit Status
 
-- Accepted issues: 221
+- Accepted issues: 222
 - Missing issue scores: 0
 - Current consecutive no-new-issue cycles: 0
-- Stop condition: not satisfied; continue auditing after ISSUE-221 fix commit.
+- Stop condition: not satisfied; continue auditing after ISSUE-222 fix commit.
 - Fix phase status: ISSUE-001, ISSUE-003, ISSUE-004, ISSUE-005, ISSUE-006, ISSUE-007,
   ISSUE-002, ISSUE-008, ISSUE-009, ISSUE-010, ISSUE-011, ISSUE-012, ISSUE-013, ISSUE-014, ISSUE-015, ISSUE-017, ISSUE-020, ISSUE-021, ISSUE-023, ISSUE-024, ISSUE-025, ISSUE-027, ISSUE-033, ISSUE-034, ISSUE-039, ISSUE-045, ISSUE-046, ISSUE-047, ISSUE-048, ISSUE-055, ISSUE-059, ISSUE-103, ISSUE-110, ISSUE-111, ISSUE-115, ISSUE-116, ISSUE-117, ISSUE-118, ISSUE-119, ISSUE-120, ISSUE-122, ISSUE-123,
   ISSUE-124, ISSUE-125, ISSUE-126, ISSUE-127, ISSUE-128, ISSUE-129, ISSUE-130,
@@ -51,6 +51,9 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   ISSUE-221 is fixed by closing and exiting the connection task after an
   admitted graceful stop so a stopped peer cannot continue sending traffic over
   the old authenticated connection.
+  ISSUE-222 is fixed by unregistering the `SharedCtx` connection alias during
+  accepted graceful-stop handling, so local fanout cannot target a peer after it
+  has already been reported disconnected.
   ISSUE-043 is fixed by bounding pending pubsub publish/feedback RPC request
   maps before responder fanout.
   ISSUE-054 is fixed by rejecting zero network tick intervals before endpoint
@@ -222,7 +225,7 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   ISSUE-128 through ISSUE-132, ISSUE-135, ISSUE-139, ISSUE-142, ISSUE-144,
   ISSUE-148, ISSUE-150, ISSUE-151, ISSUE-161, ISSUE-165,
   ISSUE-167, ISSUE-168, ISSUE-170, ISSUE-179, ISSUE-183, ISSUE-185,
-  ISSUE-187, ISSUE-188, ISSUE-193, ISSUE-195, ISSUE-208.
+  ISSUE-187, ISSUE-188, ISSUE-193, ISSUE-195, ISSUE-208, ISSUE-222.
 - Pattern: requesters, services, peer aliases, channel state, and cached hints
   can outlive the owner they represent; shutdown paths can panic, leak, emit
   false public events, keep stale routes/cache entries, announce shutdown while
@@ -243,6 +246,13 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   monotonic counters during teardown. Local guard/reference counts should use a
   counter type that can represent all admitted handles and must not saturate
   silently.
+- ISSUE-222, score 64: fixed by commit `648f769`. Accepted
+  `PeerStopped` handling removed route and neighbour state but left the
+  connection alias registered in `SharedCtx` until peer-task teardown. Local
+  fanout paths that iterate `ctx.conns()` could therefore target a stopped peer
+  after it had already been reported disconnected. Fix: unregister the
+  connection alias in the accepted `PeerStopped` branch after route ownership
+  validation and before service disconnect notification.
 
 ### RC-7: Routing/discovery accepts unstable topology
 
