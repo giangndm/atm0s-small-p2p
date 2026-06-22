@@ -11,10 +11,10 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 11
-- Current audit continuation: Focused source-review no-new cycle 1 reviewed
-  lifecycle/discovery/router graceful-stop and route-stability behavior without
-  a distinct reviewed failure.
+- Current consecutive no-new-issue cycles: 12
+- Current audit continuation: Focused source-review no-new cycle 2 reviewed
+  security/transport handshake, inbound identity, setup timeout, and stale-event
+  route binding behavior without a distinct reviewed failure.
 
 ## Root Cause Summary
 
@@ -19739,6 +19739,60 @@ the source of truth for evidence and reviewer decisions.
   filters and failed before running tests; exact individual filters were rerun
   successfully and are listed above.
 - Current consecutive no-new cycles after ISSUE-238: 11.
+- Current fuzz-phase no-new cycles after transition: 5.
+
+### Focused source-review no-new cycle 2: security handshake, transport admission, and stale event binding
+
+- Scope: continued focused source/spec review for the highest-risk security
+  boundary after lifecycle review. Audited `src/secure.rs`, `src/quic.rs`,
+  `src/peer.rs`, and `src/tests/security.rs` for shared-key handshake
+  freshness, future timestamp rejection, replay protection, global replay-cache
+  bounds, inbound peer identity binding, unauthenticated inbound admission
+  accounting, QUIC unidirectional stream admission, bad-network peer setup
+  timeout cleanup, stale connected/connect-error/data event handling, and route
+  binding correctness.
+- Reviewer: `Raman the 2nd` (forked RED-team reviewer), rejected new issue
+  acceptance because no distinct failing test evidence was found and
+  recommended documenting this as a no-new source-review cycle.
+- Verification:
+  - `RUST_LOG=error cargo test handshake --lib -- --nocapture`: passed 9/9.
+  - `RUST_LOG=error cargo test replay_cache --lib -- --nocapture`: passed 2/2.
+  - `RUST_LOG=error cargo test unused_unidirectional_streams_must_not_be_admitted --lib -- --nocapture`: passed.
+  - `RUST_LOG=error cargo test authenticated_inbound_peers_must_not_exhaust_unauthenticated_admission_cap --lib -- --nocapture`: passed.
+  - `RUST_LOG=error cargo test outbound_peer_setup_must_timeout --lib -- --nocapture`: passed 2/2.
+  - `RUST_LOG=error cargo test inbound_peer_setup_must_timeout --lib -- --nocapture`: passed.
+  - `RUST_LOG=error cargo test peer_connected_must_not_rebind_existing_connection_to_different_peer --lib -- --nocapture`: passed.
+  - `RUST_LOG=error cargo test stale_peer_connected_event_must_not_install_unusable_route --lib -- --nocapture`: passed.
+  - `RUST_LOG=error cargo test inbound_handshake --lib -- --nocapture`: passed 3/3.
+  - `RUST_LOG=error cargo test stale_peer_connect_error_must_not_remove_live_neighbour --lib -- --nocapture`: passed.
+  - `RUST_LOG=error cargo test stale_peer_data_event_must_not_panic_without_direct_route --lib -- --nocapture`: passed.
+  - `RUST_LOG=error cargo test rejects_ --lib -- --nocapture`: passed 4/4.
+- Reviewer cross-check:
+  - `RUST_LOG=error cargo test replay_cache --lib -- --nocapture`: passed 2/2.
+  - `RUST_LOG=error cargo test rejects_ --lib -- --nocapture`: passed 4/4.
+  - `RUST_LOG=error cargo test inbound_handshake --lib -- --nocapture`: passed 3/3.
+  - `RUST_LOG=error cargo test peer_connected_must_not_rebind_existing_connection_to_different_peer --lib -- --nocapture`: passed.
+  - `RUST_LOG=error cargo test stale_peer_connected_event_must_not_install_unusable_route --lib -- --nocapture`: passed.
+  - `RUST_LOG=error cargo test unused_unidirectional_streams_must_not_be_admitted --lib -- --nocapture`: passed.
+  - `RUST_LOG=error cargo test outbound_peer_setup_must_timeout --lib -- --nocapture`: passed 2/2.
+  - `RUST_LOG=error cargo test stale_peer_connect_error_must_not_remove_live_neighbour --lib -- --nocapture`: passed.
+  - `RUST_LOG=error cargo test stale_peer_data_event_must_not_panic_without_direct_route --lib -- --nocapture`: passed.
+- Duplicate mapping:
+  - Handshake timestamp skew, overflow rejection, replay detection, and
+    replay-cache bounds map to existing handshake/replay hardening families,
+    including ISSUE-002, ISSUE-021, ISSUE-146, ISSUE-176, and ISSUE-207.
+  - Inbound identity binding and claimed-peer authorization map to existing
+    forged identity/ownership families, including ISSUE-189 and ISSUE-194.
+  - QUIC unidirectional stream admission and bad-network setup timeout cleanup
+    map to existing transport admission/resource-bound families, including
+    ISSUE-117, ISSUE-172, ISSUE-173, and the existing QUIC uni-stream cap
+    guard.
+  - Stale connected/connect-error/data events and route binding map to existing
+    route churn/stale-event families, including RC-7.
+  - Noisy `open_bi`, stream setup, and bad-network symptoms remain covered by
+    existing stream/backpressure and lifecycle families, including RC-3 and
+    RC-6.
+- Current consecutive no-new cycles after ISSUE-238: 12.
 - Current fuzz-phase no-new cycles after transition: 5.
 
 ### Cycle after ISSUE-235 no-new cycle 1: transport, auth, and peer setup review

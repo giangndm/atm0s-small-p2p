@@ -7,10 +7,10 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Accepted issues: 238
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 11
-- Current audit continuation: Focused source-review no-new cycle 1 reviewed
-  lifecycle/discovery/router graceful-stop and route-stability behavior without
-  a distinct reviewed failure.
+- Current consecutive no-new-issue cycles: 12
+- Current audit continuation: Focused source-review no-new cycle 2 reviewed
+  security/transport handshake, inbound identity, setup timeout, and stale-event
+  route binding behavior without a distinct reviewed failure.
 - Fix phase status: ISSUE-001, ISSUE-003, ISSUE-004, ISSUE-005, ISSUE-006, ISSUE-007,
   ISSUE-002, ISSUE-008, ISSUE-009, ISSUE-010, ISSUE-011, ISSUE-012, ISSUE-013, ISSUE-014, ISSUE-015, ISSUE-017, ISSUE-020, ISSUE-021, ISSUE-023, ISSUE-024, ISSUE-025, ISSUE-027, ISSUE-033, ISSUE-034, ISSUE-039, ISSUE-045, ISSUE-046, ISSUE-047, ISSUE-048, ISSUE-055, ISSUE-059, ISSUE-103, ISSUE-110, ISSUE-111, ISSUE-115, ISSUE-116, ISSUE-117, ISSUE-118, ISSUE-119, ISSUE-120, ISSUE-122, ISSUE-123,
   ISSUE-124, ISSUE-125, ISSUE-126, ISSUE-127, ISSUE-128, ISSUE-129, ISSUE-130,
@@ -311,6 +311,16 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   Rejected candidates mapped to ISSUE-003, ISSUE-004, ISSUE-051, ISSUE-063,
   ISSUE-156, ISSUE-167, ISSUE-170, ISSUE-180, ISSUE-215 through ISSUE-225,
   ISSUE-231, ISSUE-238, RC-3, RC-6, and RC-7.
+- Focused source-review no-new cycle 2 reviewed security/transport handshake,
+  inbound identity binding, setup timeouts, QUIC stream admission, and stale
+  event route binding with forked reviewer `Raman the 2nd`. Local focused
+  tests and reviewer cross-checks passed for handshake freshness, future
+  timestamp rejection, replay-cache bounds, inbound identity binding,
+  authenticated inbound admission accounting, unidirectional stream rejection,
+  outbound/inbound setup timeout cleanup, and stale connected/connect-error/data
+  event handling. Rejected candidates mapped to ISSUE-002, ISSUE-021,
+  ISSUE-117, ISSUE-146, ISSUE-172, ISSUE-173, ISSUE-176, ISSUE-189,
+  ISSUE-194, ISSUE-207, RC-3, RC-6, and RC-7.
 - Cycle after ISSUE-231 no-new cycle 1 reviewed routing/discovery/path
   stability and stream/pipe lifecycle integration with forked reviewer
   `Carver`. Focused route, discovery, stream-relay, peer-stopped, and pubsub
