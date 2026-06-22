@@ -406,6 +406,7 @@ impl<SECURE: HandshakeProtocol> P2pNetwork<SECURE> {
                 self.discovery.remove_remote(now_ms, &peer);
                 self.router.del_peer(&peer);
                 self.neighbours.remove(&conn);
+                self.ctx.unregister_conn(&conn);
                 self.ctx.try_send_peer_disconnected_to_services(peer);
                 Ok(P2pNetworkEvent::PeerDisconnected(conn, peer))
             }
