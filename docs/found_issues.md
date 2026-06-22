@@ -787,6 +787,8 @@ the source of truth for evidence and reviewer decisions.
 - Status: fixed. `LocalStore::changeds_from_to` now performs checked
   arithmetic for untrusted `FetchChanged` range bounds and returns
   `FetchChangedError::MissingData` instead of panicking or wrapping.
+- Fix status: fixed by using checked `FetchChanged` range arithmetic at the
+  untrusted RPC boundary.
 - Affected code:
   - `src/service/replicate_kv_service/local_storage.rs`: remote
     `RpcReq::FetchChanged { from, count }` is passed to `changeds_from_to`.
