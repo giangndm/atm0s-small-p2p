@@ -13,7 +13,7 @@ must resolve.
 
 - Current consecutive no-new-issue cycles: 0
 - Stop condition requested by user: continue until 5 consecutive cycles find no
-  new accepted issue. Not satisfied after ISSUE-215; continue auditing.
+  new accepted issue. Not satisfied after ISSUE-220; continue auditing.
 
 ## Root Cause Summary
 
@@ -88,7 +88,8 @@ the source of truth for evidence and reviewer decisions.
 
 - Representative issues: ISSUE-002, ISSUE-009, ISSUE-021, ISSUE-036,
   ISSUE-042, ISSUE-093, ISSUE-117, ISSUE-121, ISSUE-149,
-  ISSUE-156, ISSUE-159, ISSUE-169, ISSUE-172, ISSUE-173, ISSUE-176.
+  ISSUE-156, ISSUE-159, ISSUE-169, ISSUE-172, ISSUE-173, ISSUE-176,
+  ISSUE-220.
 - Pattern: timeout checks often wrap only one await point, rely on unchecked
   timestamp arithmetic, use coarse global sweeps instead of per-operation
   deadlines, or complete one side of setup before the full end-to-end setup is
@@ -18129,3 +18130,54 @@ the source of truth for evidence and reviewer decisions.
   - `RUST_LOG=error cargo test peer_stopped_ --lib -- --nocapture`
   - `RUST_LOG=error cargo test send_unicast --lib -- --nocapture`
   - `rustfmt --edition 2024 --check src/peer.rs src/peer/peer_internal.rs`
+
+### ISSUE-220: Inbound stream response writes can exhaust accept permits
+
+- Score: 66
+- Category: bad-network stability / authenticated stream setup admission
+- Status: fixed by commit `881c087` (`fix: bound inbound stream setup responses`).
+- Reviewers:
+  - `Schrodinger` (forked RED-team reviewer), found.
+  - `Hegel` (forked candidate reviewer), accepted.
+- Affected code:
+  - `src/peer/peer_internal.rs`
+  - `src/tests/stream.rs`
+- Impact: an authenticated peer can open 16 inbound bidirectional stream setup
+  requests, send valid `StreamConnectReq` frames, and stop reading
+  `StreamConnectRes`. Each `accept_bi` task holds one
+  `MAX_PENDING_ACCEPT_BI` permit while awaiting the response write, so later
+  stream setup on that same connection cannot be accepted.
+- Distinctness: ISSUE-117 covers idle inbound streams that never send an
+  initial request. ISSUE-149/ISSUE-169 cover outbound caller-side stream setup
+  timeout and request/response stalls. ISSUE-180 covers relay-loop correctness,
+  ISSUE-217 covers premature relay success, and ISSUE-219 covers live
+  main-control `framed.send` blocking. ISSUE-220 covers accept-side
+  `StreamConnectRes` writes that park bounded inbound setup permits after a
+  valid request has already been parsed.
+- Failing evidence:
+  - `RUST_LOG=error cargo test inbound_stream_response_write_must_not_exhaust_accept_permits --lib -- --nocapture`
+  - Failure before fix:
+    - `raw client should be able to open another stream after stale response writes are bounded: Elapsed(())`
+- Root cause: `PeerConnectionInternal::on_accept_bi` acquires a per-connection
+  semaphore permit and spawns `accept_bi`. `accept_bi` then awaits
+  `write_object(... StreamConnectRes ...)` in local success, local error,
+  route-loop, relay-error, and route-not-found paths before returning, so a
+  peer-side receive-window stall keeps the semaphore permit indefinitely.
+- Minimal fix proposal: wrap every accept-side `StreamConnectRes` write in a
+  short bounded timeout and return an error on timeout so the stalled setup
+  task drops its semaphore permit. Keep the timeout scoped to setup responses;
+  do not alter established stream `copy_bidirectional` behavior.
+- Fix: added `ACCEPT_BI_RESPONSE_WRITE_TIMEOUT` and routed every accept-side
+  `StreamConnectRes` write through a timeout helper. On timeout, `accept_bi`
+  returns an error, dropping the per-connection accept permit. Local service
+  delivery still happens only after a successful `Ok(())` response write, and
+  relay setup still delays the upstream success response until downstream
+  setup accepts.
+- Verification after fix:
+  - `RUST_LOG=error cargo test inbound_stream_response_write_must_not_exhaust_accept_permits --lib -- --nocapture`
+  - `RUST_LOG=error cargo test idle_inbound_stream_connects_must_be_admission_bounded --lib -- --nocapture`
+  - `RUST_LOG=error cargo test relayed_open_stream_must_not_succeed_before_downstream_accepts --lib -- --nocapture`
+  - `RUST_LOG=error cargo test relay_must_not_deliver_downstream_stream_after_upstream_setup_closes --lib -- --nocapture`
+  - `RUST_LOG=error cargo test open_stream_does_not_succeed_when_destination_service_queue_is_full --lib -- --nocapture`
+  - `RUST_LOG=error cargo test tests::stream:: --lib -- --nocapture`
+  - `rustfmt --edition 2024 --check src/peer/peer_internal.rs src/tests/stream.rs`

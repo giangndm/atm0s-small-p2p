@@ -5,10 +5,10 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Audit Status
 
-- Accepted issues: 219
+- Accepted issues: 220
 - Missing issue scores: 0
 - Current consecutive no-new-issue cycles: 0
-- Stop condition: not satisfied; continue auditing after ISSUE-219 fix commit.
+- Stop condition: not satisfied; continue auditing after ISSUE-220 fix commit.
 - Fix phase status: ISSUE-001, ISSUE-003, ISSUE-004, ISSUE-005, ISSUE-006, ISSUE-007,
   ISSUE-002, ISSUE-008, ISSUE-009, ISSUE-010, ISSUE-011, ISSUE-012, ISSUE-013, ISSUE-014, ISSUE-015, ISSUE-017, ISSUE-020, ISSUE-021, ISSUE-023, ISSUE-024, ISSUE-025, ISSUE-027, ISSUE-033, ISSUE-034, ISSUE-039, ISSUE-045, ISSUE-046, ISSUE-047, ISSUE-048, ISSUE-055, ISSUE-059, ISSUE-103, ISSUE-110, ISSUE-111, ISSUE-115, ISSUE-116, ISSUE-117, ISSUE-118, ISSUE-119, ISSUE-120, ISSUE-122, ISSUE-123,
   ISSUE-124, ISSUE-125, ISSUE-126, ISSUE-127, ISSUE-128, ISSUE-129, ISSUE-130,
@@ -44,6 +44,10 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   coalescing worker per connection, keeping the peer read loop unblocked.
   ISSUE-219 is fixed by bounding post-auth live main-control writes and closing
   stalled connections instead of parking the peer read/control loop.
+  ISSUE-220 is fixed by bounding accept-side stream setup response writes so
+  stalled peers cannot hold all
+  accept permits for one authenticated connection when the peer stops reading
+  `StreamConnectRes`.
   ISSUE-043 is fixed by bounding pending pubsub publish/feedback RPC request
   maps before responder fanout.
   ISSUE-054 is fixed by rejecting zero network tick intervals before endpoint
@@ -145,7 +149,7 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Representative issues: ISSUE-002, ISSUE-009, ISSUE-021, ISSUE-036,
   ISSUE-040, ISSUE-042, ISSUE-093, ISSUE-117, ISSUE-121, ISSUE-149,
-  ISSUE-169, ISSUE-172, ISSUE-173, ISSUE-176, ISSUE-207.
+  ISSUE-169, ISSUE-172, ISSUE-173, ISSUE-176, ISSUE-207, ISSUE-220.
 - Pattern: timeouts wrap only one await point, rely on unchecked timestamp
   arithmetic, use coarse global sweeps, or complete one side of setup before
   proving the end-to-end setup is still alive. Public timer durations can also
@@ -155,6 +159,13 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
   protocol phase in an end-to-end timeout, and tie relay downstream setup to
   upstream cancellation. Bind handshake responses to fresh request nonces and
   reject recently accepted tokens until expiry.
+- ISSUE-220, score 66: fixed by commit `881c087`. Accept-side
+  `StreamConnectRes` writes could
+  await while holding one of the 16 inbound stream setup permits. A peer that
+  sends valid setup requests and then stops reading responses can exhaust that
+  connection's accept permits and prevent later stream setup on the same
+  connection. Fix: use a bounded timeout for every accept-side setup response
+  write and return an error on timeout so the permit is released.
 - ISSUE-036: fixed by routing alias find hint and scan timeout checks through
   checked deadline arithmetic. Deadlines that overflow `u64` remain pending
   instead of panicking or wrapping into early expiry. Verification:
