@@ -5611,6 +5611,9 @@ the source of truth for evidence and reviewer decisions.
 
 ### ISSUE-159: Outbound peer setup hangs before main control stream opens
 
+- Fix status: fixed by wrapping outbound QUIC connect and initial
+  `connection.open_bi()` setup in `PEER_SETUP_TIMEOUT` with
+  `PeerConnectError` reporting for pending-neighbour cleanup.
 - Status: fixed by `f62d6a6a`. `PeerConnection::new_connecting` now wraps the
   outbound `connecting.await` and initial `connection.open_bi().await` in
   `PEER_SETUP_TIMEOUT`, reporting `MainEvent::PeerConnectError(conn_id,
