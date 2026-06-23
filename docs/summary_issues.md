@@ -7,10 +7,47 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Accepted issues: 247
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 21
-- Current audit continuation: critical-only public network setup and
-  control-plane admission review found no new score-80+ issue with concrete
-  failing-test evidence.
+- Current consecutive no-new-issue cycles: 22
+- Current audit continuation: critical-only service registry, service-id, and
+  local/remote delivery boundary review found no new score-80+ issue with
+  concrete failing-test evidence.
+- Critical-only no-new cycle 22 after ISSUE-247 reviewed service registry,
+  service-id indexing, requester liveness, duplicate service creation,
+  service-id reuse after drop, local and relayed unicast/broadcast/stream
+  delivery, full/closed service queues, peer-control queue congestion, forged
+  source normalization, disconnect notifications, and high-load bad-network
+  service actions. Local service (199), service_id (4), unregistered (1),
+  dropped_service (4), full (58), closed (5), open_stream (10),
+  duplicate_service (2), and 62-node 4200-step adversarial fuzz seed `111049`
+  checks passed. Reviewer `Hegel` returned `NO_NEW_CRITICAL` after
+  independently reviewing the same service/control boundary slice, then
+  passing service (199), duplicate_service (2), out_of_range (4), stream (30),
+  pubsub (92), and requester (13). One attempted combined Cargo filter matched
+  zero tests because Cargo uses substring filtering rather than regex
+  alternation, so it was not used as evidence. Rejected candidates mapped
+  service-id bounds, out-of-range unicast/stream handling, and service array
+  indexing to ISSUE-043, ISSUE-052, ISSUE-053, ISSUE-060, ISSUE-091,
+  ISSUE-217 through ISSUE-230, ISSUE-246, RC-3, RC-5, and RC-6; duplicate
+  service creation, unregistered duplicate handles, service-id reuse after
+  drop, stale service requesters, and dropped pubsub wrappers to ISSUE-072,
+  ISSUE-073, ISSUE-076, ISSUE-108, ISSUE-234, ISSUE-235, ISSUE-246, RC-3,
+  and RC-6; direct and relayed unicast/open-stream false success, closed/full
+  destination service queues, peer-control queue congestion, and disconnect
+  notification delivery to ISSUE-011, ISSUE-012, ISSUE-013, ISSUE-056,
+  ISSUE-149, ISSUE-156, ISSUE-169, ISSUE-180, ISSUE-217 through ISSUE-230,
+  ISSUE-238, ISSUE-246, RC-3, RC-4, and RC-6; forged source normalization and
+  broadcast deduplication by authenticated source/service to ISSUE-014,
+  ISSUE-015, ISSUE-017, ISSUE-018, ISSUE-039, ISSUE-115, ISSUE-116,
+  ISSUE-197, ISSUE-226, RC-1, and RC-2; and high-load queue/refusal/shutdown
+  churn to existing RC-3, RC-6, and RC-7 fuzz families. No distinct score-80+
+  service-boundary issue had concrete failing-test evidence. Smallest future
+  fix proposal if this family regresses: pin the exact service id, service
+  receiver state, duplicate registration, stale requester handle, route/action,
+  peer-control queue state, source peer id, disconnect event, or fuzz seed with
+  one focused failing test, then patch only the failed service-id validation,
+  registration/liveness guard, queue/backpressure boundary, delivery ack/false
+  success path, source normalization, disconnect notification retry, or task
+  cleanup.
 - Critical-only no-new cycle 21 after ISSUE-247 reviewed network setup,
   `recv`, incoming admission, connect processing, internal event gating,
   requester/control queues, pending inbound tracking, QUIC stream limits,

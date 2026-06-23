@@ -11,10 +11,72 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 21
-- Current audit continuation: critical-only public network setup and
-  control-plane admission review found no new score-80+ issue with concrete
-  failing-test evidence.
+- Current consecutive no-new-issue cycles: 22
+- Current audit continuation: critical-only service registry, service-id, and
+  local/remote delivery boundary review found no new score-80+ issue with
+  concrete failing-test evidence.
+
+### Critical-only no-new cycle 22 after ISSUE-247: service boundary and delivery admission
+
+- Scope: reviewer-style critical-only pass over `src/service.rs`,
+  `src/ctx.rs`, `src/requester.rs`, `src/peer/peer_alias.rs`,
+  `src/peer/peer_internal.rs`, `src/lib.rs`, `src/msg.rs`, and related
+  service, service-id, requester, stream, pubsub, cross-node, security, full,
+  closed, and adversarial fuzz tests. Focus areas were service-id indexing,
+  out-of-range ids, duplicate service creation, service-id reuse after drop,
+  stale `P2pServiceRequester` unicast/broadcast/stream paths, local and relayed
+  delivery false success, closed/full service queues, peer-control queue
+  congestion, forged source normalization, disconnect notification delivery,
+  and high-load bad-network random service actions.
+- Verification:
+  - `RUST_LOG=error cargo test --lib service -- --nocapture`: passed 199
+    tests.
+  - `RUST_LOG=error cargo test --lib service_id -- --nocapture`: passed 4
+    tests.
+  - `RUST_LOG=error cargo test --lib unregistered -- --nocapture`: passed 1
+    test.
+  - `RUST_LOG=error cargo test --lib dropped_service -- --nocapture`: passed
+    4 tests.
+  - `RUST_LOG=error cargo test --lib full -- --nocapture`: passed 58 tests.
+  - `RUST_LOG=error cargo test --lib closed -- --nocapture`: passed 5 tests.
+  - `RUST_LOG=error cargo test --lib open_stream -- --nocapture`: passed 10
+    tests.
+  - `RUST_LOG=error cargo test --lib duplicate_service -- --nocapture`:
+    passed 2 tests.
+  - `RUST_LOG=error P2P_FUZZ_NODES=62 P2P_FUZZ_STEPS=4200 P2P_FUZZ_SEED=111049 cargo test --lib fuzz_random_adversarial_node_actions_must_not_panic_connection_tasks -- --nocapture`:
+    passed.
+- Reviewer cross-check: `Hegel` returned `NO_NEW_CRITICAL` after independently
+  reviewing the same service/control boundary slice. Reviewer verification
+  included `service` (199 passed), `duplicate_service` (2 passed),
+  `out_of_range` (4 passed), `stream` (30 passed), `pubsub` (92 passed), and
+  `requester` (13 passed). One attempted combined Cargo filter matched zero
+  tests because Cargo filters by substring rather than regex alternation; it
+  was not used as evidence.
+- Duplicate mapping:
+  - Service-id bounds, out-of-range unicast/stream handling, and service array
+    indexing map to ISSUE-043, ISSUE-052, ISSUE-053, ISSUE-060, ISSUE-091,
+    ISSUE-217 through ISSUE-230, ISSUE-246, RC-3, RC-5, and RC-6.
+  - Duplicate service creation, unregistered duplicate handles, service-id
+    reuse after drop, stale service requesters, and dropped pubsub wrappers map
+    to ISSUE-072, ISSUE-073, ISSUE-076, ISSUE-108, ISSUE-234, ISSUE-235,
+    ISSUE-246, RC-3, and RC-6.
+  - Direct and relayed unicast/open-stream false success, closed/full
+    destination service queues, peer-control queue congestion, and disconnect
+    notification delivery map to ISSUE-011, ISSUE-012, ISSUE-013, ISSUE-056,
+    ISSUE-149, ISSUE-156, ISSUE-169, ISSUE-180, ISSUE-217 through ISSUE-230,
+    ISSUE-238, ISSUE-246, RC-3, RC-4, and RC-6.
+  - Forged source normalization for unicast, broadcast, and stream setup plus
+    broadcast deduplication by authenticated source/service map to ISSUE-014,
+    ISSUE-015, ISSUE-017, ISSUE-018, ISSUE-039, ISSUE-115, ISSUE-116,
+    ISSUE-197, ISSUE-226, RC-1, and RC-2.
+  - High-load service actions, queue pressure, duplicate closes, refused
+    connects, frame-size errors, and shutdown/lifecycle churn map to existing
+    bad-network fuzz families under RC-3, RC-6, and RC-7.
+- Result: no distinct score-80+ service-id, duplicate service, stale
+  requester, local/relayed delivery, closed/full queue, false-success,
+  source-binding, disconnect notification, peer-control congestion, or
+  high-load bad-network service issue had concrete failing-test evidence in
+  this cycle.
 
 ### Critical-only no-new cycle 21 after ISSUE-247: network setup and control-plane admission
 
