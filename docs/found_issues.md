@@ -11,12 +11,71 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 3
-- Current audit continuation: critical-only pubsub protocol, state-machine,
-  resource-boundary, requester/drop lifecycle, and high-load churn no-new
-  cycle after ISSUE-247 found no new score-80+ issue across RPC correlation,
-  heartbeat chunking, channel/member/tombstone caps, forged membership/data,
-  full local queues, graceful-stop cleanup, and fuzz churn.
+- Current consecutive no-new-issue cycles: 4
+- Current audit continuation: critical-only lifecycle, public requester/API,
+  service registration, control/event queue, graceful shutdown, stale event,
+  duplicate/stopped peer, and high-load churn no-new cycle after ISSUE-247
+  found no new score-80+ issue.
+
+### Critical-only no-new cycle 4 after ISSUE-247: lifecycle and public API control paths
+
+- Scope: reviewer-style critical-only pass over `src/lib.rs`, `src/ctx.rs`,
+  `src/service.rs`, `src/requester.rs`, `src/peer.rs`,
+  `src/peer/peer_internal.rs`, `src/peer/peer_alias.rs`,
+  `src/tests/security.rs`, `src/tests/cross_nodes.rs`,
+  `src/tests/stream.rs`, `src/tests/fuzz.rs`, and the issue ledgers.
+- Focus areas: public requester `connect`/`try_connect` behavior under full
+  and closed control queues, service registration and stale requester
+  liveness, duplicate and out-of-range service IDs, main-loop handling of
+  stale connection events, graceful shutdown `PeerStopped` notification,
+  duplicate/stopped peer cleanup, full local/peer queues, false success from
+  unicast/open-stream paths, and bad-network high-load churn.
+- Verification:
+  - `RUST_LOG=error cargo test --lib requester -- --nocapture`: passed 13
+    tests.
+  - `RUST_LOG=error cargo test --lib service -- --nocapture`: passed 199
+    tests.
+  - `RUST_LOG=error cargo test --lib service_id -- --nocapture`: passed 4
+    tests.
+  - `RUST_LOG=error cargo test --lib shutdown -- --nocapture`: passed 8
+    tests.
+  - `RUST_LOG=error cargo test --lib dropped -- --nocapture`: passed 13
+    tests.
+  - `RUST_LOG=error cargo test --lib stale -- --nocapture --test-threads=1`:
+    passed 25 tests.
+  - `RUST_LOG=error cargo test --lib queue -- --nocapture`: passed 37 tests.
+  - `RUST_LOG=error cargo test --lib bounded -- --nocapture`: passed 31
+    tests.
+  - `RUST_LOG=error P2P_FUZZ_NODES=36 P2P_FUZZ_STEPS=1500 P2P_FUZZ_SEED=93049 cargo test --lib fuzz_random_valid_node_actions_must_not_panic_connection_tasks -- --nocapture`:
+    passed.
+- Reviewer cross-check: `Dewey the 2nd` returned `NO_NEW_CRITICAL` after
+  independently reviewing lifecycle and public API control paths. Reviewer
+  verification included requester, service, shutdown, service-id, dropped,
+  stale, queue, and the same 36-node 1500-step valid-action fuzz slice; all
+  passed.
+- Duplicate mapping:
+  - Graceful shutdown, `PeerStopped`, stopped-peer cleanup/forwarding, full
+    main queue behavior, and stopped route cleanup map to ISSUE-001,
+    ISSUE-004, ISSUE-170, ISSUE-215 through ISSUE-225, ISSUE-231, RC-3,
+    RC-6, and RC-7.
+  - Public requester/control queue full or closed behavior, stale `connect()`,
+    duplicate connection attempts, false connect success, duplicate services,
+    out-of-range service IDs, dropped/stale requesters, and closed receivers
+    map to ISSUE-052, ISSUE-053, ISSUE-060, ISSUE-072, ISSUE-073, ISSUE-076,
+    ISSUE-091, ISSUE-234, ISSUE-235, ISSUE-246, and RC-6.
+  - Local/peer queue pressure, control-frame backpressure, full service
+    delivery, unicast/open-stream false success, and ack admission map to
+    ISSUE-043, ISSUE-100 through ISSUE-105, ISSUE-119, ISSUE-121,
+    ISSUE-123 through ISSUE-126, ISSUE-217 through ISSUE-230, ISSUE-238,
+    RC-3, RC-4, and RC-6.
+  - Bad-network and high-load churn, duplicate connections, endpoint drops,
+    timed-out stream setup, and noisy closed-channel delivery are covered by
+    existing fuzz families from cycles 20, 24, 28, 31, 32, 34, 36, 38, 39,
+    40, 41, 42, 43, 44, 45, 47, and 48, plus RC-3, RC-6, and RC-7.
+- Result: no distinct score-80+ lifecycle, public API control, service
+  registration, stale-event, queue/backpressure, graceful-shutdown,
+  duplicate/stopped-peer, false-success, or high-load bad-network churn issue
+  had concrete failing-test evidence in this cycle.
 
 ### Critical-only no-new cycle 42: transport, stream, and backpressure
 

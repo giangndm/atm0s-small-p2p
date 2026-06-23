@@ -7,12 +7,43 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Accepted issues: 247
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 3
-- Current audit continuation: critical-only pubsub protocol, state-machine,
-  resource-boundary, requester/drop lifecycle, and high-load churn no-new
-  cycle after ISSUE-247 found no new score-80+ issue across RPC correlation,
-  heartbeat chunking, channel/member/tombstone caps, forged membership/data,
-  full local queues, graceful-stop cleanup, and fuzz churn.
+- Current consecutive no-new-issue cycles: 4
+- Current audit continuation: critical-only lifecycle, public requester/API,
+  service registration, control/event queue, graceful shutdown, stale event,
+  duplicate/stopped peer, and high-load churn no-new cycle after ISSUE-247
+  found no new score-80+ issue.
+- Critical-only no-new cycle 4 after ISSUE-247 reviewed `src/lib.rs`,
+  `src/ctx.rs`, `src/service.rs`, `src/requester.rs`, `src/peer.rs`,
+  `src/peer/peer_internal.rs`, `src/peer/peer_alias.rs`,
+  `src/tests/security.rs`, `src/tests/cross_nodes.rs`,
+  `src/tests/stream.rs`, `src/tests/fuzz.rs`, and the issue ledgers. Local
+  requester, service, service-id, shutdown, dropped, stale, queue, bounded,
+  and 36-node 1500-step valid-action fuzz checks passed. Reviewer `Dewey the
+  2nd` returned `NO_NEW_CRITICAL` after independently reviewing lifecycle and
+  public API control paths and running requester, service, shutdown,
+  service-id, dropped, stale, queue, and the same 36-node fuzz slice. Rejected
+  candidates mapped graceful shutdown, `PeerStopped`, stopped-peer cleanup,
+  full main queues, and stopped route cleanup to ISSUE-001, ISSUE-004,
+  ISSUE-170, ISSUE-215 through ISSUE-225, ISSUE-231, RC-3, RC-6, and RC-7;
+  public requester/control queue full or closed behavior, stale `connect()`,
+  duplicate connection attempts, false connect success, duplicate services,
+  out-of-range service IDs, dropped/stale requesters, and closed receivers to
+  ISSUE-052, ISSUE-053, ISSUE-060, ISSUE-072, ISSUE-073, ISSUE-076,
+  ISSUE-091, ISSUE-234, ISSUE-235, ISSUE-246, and RC-6; local/peer queue
+  pressure, control-frame backpressure, full service delivery,
+  unicast/open-stream false success, and ack admission to ISSUE-043,
+  ISSUE-100 through ISSUE-105, ISSUE-119, ISSUE-121, ISSUE-123 through
+  ISSUE-126, ISSUE-217 through ISSUE-230, ISSUE-238, RC-3, RC-4, and RC-6;
+  and bad-network churn, duplicate connections, endpoint drops, timed-out
+  stream setup, and noisy closed-channel delivery to existing fuzz families
+  and RC-3, RC-6, and RC-7. No distinct score-80+ lifecycle, public API
+  control, service registration, stale-event, queue/backpressure,
+  graceful-shutdown, duplicate/stopped-peer, false-success, or high-load
+  bad-network churn issue had concrete failing-test evidence. Smallest future
+  fix proposal if a new issue appears in this root-cause family: add the
+  narrow missing admission/liveness/stale-event guard at the boundary where
+  the false success or unbounded wait is observed, then pin it with a focused
+  failing regression test before broad refactor.
 - Critical-only no-new cycle 3 after ISSUE-247 reviewed
   `src/service/pubsub_service.rs`,
   `src/service/pubsub_service/publisher.rs`,
