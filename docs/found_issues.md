@@ -11,13 +11,108 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 37
-- Current audit continuation: critical-only authentication, identity, and
-  source-binding no-new cycle 39 found no new score-80+ issue across
-  `SharedKeyHandshake`, QUIC setup, inbound static/open-cluster admission,
-  peer-id to connection binding, unicast/broadcast/stream source normalization,
-  stale connection events, route/discovery sync admission, stopped tombstones,
-  and high-load churn.
+- Current consecutive no-new-issue cycles: 38
+- Current audit continuation: critical-only service payload, RPC, and
+  resource-boundary no-new cycle 40 found no new score-80+ issue across base
+  service handles, service-id bounds, frame/object payload caps, pubsub
+  heartbeat/RPC/fanout state, alias lifecycle and pending finds,
+  metrics/visualization scan ingestion, replicated-KV snapshot/repair state,
+  stale/unsolicited responses, queue backpressure, and high-load churn.
+
+### Critical-only no-new cycle 40: service payload, RPC, and resource boundaries
+
+- Scope: reviewer-style critical-only pass over `src/service.rs`,
+  `src/ctx.rs`, `src/service/pubsub_service.rs`,
+  `src/service/pubsub_service/publisher.rs`,
+  `src/service/pubsub_service/subscriber.rs`,
+  `src/service/alias_service.rs`, `src/service/metrics_service.rs`,
+  `src/service/visualization_service.rs`, `src/service/replicate_kv_service.rs`,
+  `src/service/replicate_kv_service/local_storage.rs`,
+  `src/service/replicate_kv_service/remote_storage.rs`,
+  `src/service/replicate_kv_service/messages.rs`, `src/msg.rs`,
+  `src/stream.rs`, and service-focused tests.
+- Focus areas: base service handle liveness, closed/dropped service false
+  success, service-id bounds, peer frame and object payload caps, malformed
+  bincode payloads, pubsub internal queue/RPC/heartbeat/member/channel caps,
+  stale or unsolicited pubsub RPC answers, alias pending-find and cached-hint
+  bounds, metrics/visualization scan disclosure and stale `Info` admission,
+  replicated-KV remote-store caps, snapshot page validation, repair state,
+  outbound event bounds, backpressure, and bad-network churn.
+- Verification:
+  - `RUST_LOG=error cargo test pubsub --lib -- --nocapture`: passed 92 tests.
+  - `RUST_LOG=error cargo test replicate_kv --lib -- --nocapture`: passed 64
+    tests.
+  - `RUST_LOG=error cargo test bounded --lib -- --nocapture`: passed 30
+    tests.
+  - `RUST_LOG=error cargo test rpc --lib -- --nocapture`: passed 32 tests.
+  - `RUST_LOG=error cargo test alias --lib -- --nocapture`: passed 47 tests.
+  - `RUST_LOG=error cargo test metrics --lib -- --nocapture`: passed 14
+    tests.
+  - `RUST_LOG=error cargo test visualization --lib -- --nocapture`: passed
+    19 tests.
+  - `RUST_LOG=error cargo test malformed --lib -- --nocapture`: matched 0
+    tests.
+  - `RUST_LOG=error cargo test service_id --lib -- --nocapture`: passed 4
+    tests.
+  - `RUST_LOG=error cargo test codec --lib -- --nocapture`: passed 3 tests.
+  - `RUST_LOG=error cargo test queue --lib -- --nocapture`: passed 37 tests.
+  - `RUST_LOG=error cargo test stale --lib -- --nocapture --test-threads=1`:
+    passed 25 tests.
+  - `RUST_LOG=error P2P_FUZZ_NODES=32 P2P_FUZZ_STEPS=1300 P2P_FUZZ_SEED=80040 cargo test fuzz_random_sanitized_node_churn_actions_must_not_panic_connection_tasks --lib -- --nocapture`:
+    passed.
+- Reviewer cross-check: `Peirce the 2nd` returned `NO_NEW_CRITICAL` after
+  reviewing base service and context boundaries, pubsub service/handles,
+  alias/metrics/visualization services, replicated-KV service/storage/messages,
+  message framing, stream object helpers, and scoped tests. Reviewer
+  verification included bounded, queue, RPC, heartbeat, scan, snapshot,
+  service-id, closed, serialize, deserialize, malformed, and repair filters;
+  all valid focused filters passed, with deserialize/malformed matching no
+  tests.
+- Duplicate mapping:
+  - Service-id bounds, dropped or closed service false success, stale service
+    requesters, and duplicate service handles map to ISSUE-052, ISSUE-053,
+    ISSUE-060, ISSUE-072, ISSUE-073, ISSUE-076, ISSUE-091, ISSUE-234,
+    ISSUE-235, ISSUE-246, RC-6, and cycles 33/35/36/38.
+  - Payload/frame oversize, object length-prefix handling, bincode malformed
+    decode, and peer-message caps map to ISSUE-024, ISSUE-094, ISSUE-097,
+    ISSUE-098, ISSUE-174, RC-5, and cycles 33/36.
+  - Pubsub RPC responder binding, pending RPC caps, method caps, queue/full
+    fanout, requester drop, and internal control backlog map to ISSUE-020,
+    ISSUE-039, ISSUE-043, ISSUE-080, ISSUE-094, ISSUE-100, ISSUE-115,
+    ISSUE-116, ISSUE-121, ISSUE-123 through ISSUE-126, ISSUE-178,
+    ISSUE-228, ISSUE-231, ISSUE-234 through ISSUE-236, ISSUE-246, RC-2,
+    RC-3, RC-4, RC-5, RC-6, and cycles 20/24/31/32/34/36/38.
+  - Pubsub heartbeat chunking, sparse chunks, stale snapshot cleanup,
+    member/channel/tombstone caps, and generation reset behavior map to
+    ISSUE-155, ISSUE-205, ISSUE-206, ISSUE-231, ISSUE-240 through ISSUE-243,
+    RC-3/RC-5/RC-6, and cycles 31/36.
+  - Alias pending find, cached hint, lifecycle generation, unsolicited
+    `Found`/`NotFound`, refcount, and requester liveness concerns map to
+    ISSUE-028, ISSUE-035, ISSUE-041, ISSUE-053, ISSUE-060, ISSUE-072,
+    ISSUE-073, ISSUE-076, ISSUE-090, ISSUE-091, ISSUE-101, ISSUE-109,
+    ISSUE-125, ISSUE-127, ISSUE-152, ISSUE-158, ISSUE-179, ISSUE-183,
+    ISSUE-206, ISSUE-235, ISSUE-239, RC-2, RC-3, RC-5, RC-6, and cycle 30.
+  - Metrics/visualization scan disclosure, stale or unsolicited `Info`,
+    responder backpressure, duplicate scans, row caps, retained peer caps,
+    and disconnect cleanup map to ISSUE-064, ISSUE-068, ISSUE-078,
+    ISSUE-079, ISSUE-102, ISSUE-104, ISSUE-105, ISSUE-128, ISSUE-129,
+    ISSUE-165, ISSUE-200 through ISSUE-204, ISSUE-226, ISSUE-232, RC-1,
+    RC-3, RC-5, RC-6, and cycles 29/34/36/38.
+  - Replicated-KV unsolicited RPC responses, remote-store caps, snapshot page
+    validation, partial snapshot visibility, fetch-changed repair state,
+    pending changed bounds, outbound event bounds, and disconnect cleanup map
+    to ISSUE-023, ISSUE-025, ISSUE-027, ISSUE-031, ISSUE-034, ISSUE-037,
+    ISSUE-038, ISSUE-059, ISSUE-081 through ISSUE-089, ISSUE-110,
+    ISSUE-131, ISSUE-138, ISSUE-141, ISSUE-154, ISSUE-171, ISSUE-175,
+    ISSUE-184, ISSUE-186, ISSUE-196, ISSUE-233, ISSUE-237, ISSUE-245,
+    RC-3, RC-5, RC-6, and cycles 28/36.
+  - High-load service/resource churn mapped to the existing fuzz families from
+    cycles 20/24/28/31/32/34/36/38/39; this cycle's 32-node 1300-step
+    sanitized churn seed produced no failing evidence.
+- Result: no distinct score-80+ service payload, RPC, resource-bound,
+  malformed-input, stale-response, queue/backpressure, replicated-state,
+  scan-ingestion, or high-load churn issue had concrete failing-test evidence
+  in this cycle.
 
 ### Critical-only no-new cycle 39: authentication, identity, and source binding
 
