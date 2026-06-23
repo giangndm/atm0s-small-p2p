@@ -7,13 +7,33 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Accepted issues: 246
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 44
-- Current audit continuation: critical-only pubsub service-protocol and
-  state-machine no-new cycle 46 found no new score-80+ issue across RPC
-  correlation, responder binding, stale requester answers, remote membership
-  authorization, heartbeat chunking/reassembly, stale tombstones, resource
-  caps, queue/full-channel behavior, drop liveness, graceful peer stop, and
-  high-load bad-network churn.
+- Current consecutive no-new-issue cycles: 45
+- Current audit continuation: critical-only route selection, stream/pipe
+  relay, discovery, graceful-stop, and churn no-new cycle 47 found no new
+  score-80+ issue across active-path stability, direct-route priority, stale
+  sync cleanup, relay-loop rejection, relayed stream setup, acked unicast
+  relay, service queue/full-channel behavior, stopped-peer cleanup, and
+  high-load route/pipe churn.
+- Critical-only no-new cycle 47 reviewed `src/router.rs`,
+  `src/discovery.rs`, `src/neighbours.rs`, `src/ctx.rs`, `src/peer.rs`,
+  `src/peer/peer_alias.rs`, `src/peer/peer_internal.rs`, `src/stream.rs`,
+  `src/service.rs`, `src/tests/discovery.rs`, `src/tests/cross_nodes.rs`,
+  `src/tests/stream.rs`, and fuzz coverage. Local router, route, relay,
+  stream, cross-node, discovery, peer-stopped, unicast, and 36-node
+  1500-step valid-churn fuzz checks passed. Reviewer `Mendel the 2nd`
+  returned `NO_NEW_CRITICAL` after independently running discovery,
+  router, stream, unicast, relay, and 38-node 1450-step valid-action fuzz
+  slices. Rejected candidates mapped active-path jumping/noisy route
+  selection to ISSUE-003 and RC-7; pipe/relay unsuccessful or false-success
+  behavior to ISSUE-011/012/013/056/117/149/156/169/180/217/220/229/230/
+  238 and RC-3/RC-4/RC-6; relayed unicast delivery/backpressure to
+  ISSUE-119/224/225/229/230 and RC-3/RC-6; discovery/graceful-stop/stale
+  route behavior to ISSUE-001/004/051/063/164/167/170/211 through ISSUE-225/
+  231 and RC-5/RC-6/RC-7; and high-load churn to fuzz cycles
+  20/24/28/31/32/34/36/38/39/40/41/42/43/44/45 and RC-3/RC-6/RC-7. No
+  distinct score-80+ route-selection, stream/pipe relay, unicast relay,
+  discovery, graceful-stop, stale-route, or high-load churn issue had
+  concrete failing-test evidence.
 - Critical-only no-new cycle 46 reviewed `src/service/pubsub_service.rs`,
   `src/service/pubsub_service/publisher.rs`,
   `src/service/pubsub_service/subscriber.rs`, base service/requester

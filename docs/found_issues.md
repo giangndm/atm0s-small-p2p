@@ -11,13 +11,13 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 44
-- Current audit continuation: critical-only pubsub service-protocol and
-  state-machine no-new cycle 46 found no new score-80+ issue across RPC
-  correlation, responder binding, stale requester answers, remote membership
-  authorization, heartbeat chunking/reassembly, stale tombstones, resource
-  caps, queue/full-channel behavior, drop liveness, graceful peer stop, and
-  high-load bad-network churn.
+- Current consecutive no-new-issue cycles: 45
+- Current audit continuation: critical-only route selection, stream/pipe
+  relay, discovery, graceful-stop, and churn no-new cycle 47 found no new
+  score-80+ issue across active-path stability, direct-route priority, stale
+  sync cleanup, relay-loop rejection, relayed stream setup, acked unicast
+  relay, service queue/full-channel behavior, stopped-peer cleanup, and
+  high-load route/pipe churn.
 
 ### Critical-only no-new cycle 42: transport, stream, and backpressure
 
@@ -23386,3 +23386,62 @@ the source of truth for evidence and reviewer decisions.
 - Fix proposal: no new fix is proposed because no distinct critical issue was
   accepted; continue critical-only review/fuzzing for score-80+ findings.
 - Current consecutive no-new cycles after ISSUE-246: 44.
+
+### Critical-only no-new cycle 47: route selection and pipe relay stability
+
+- Scope: reviewed the current issue ledgers and summary, then audited
+  `src/router.rs`, `src/discovery.rs`, `src/neighbours.rs`, `src/ctx.rs`,
+  `src/peer.rs`, `src/peer/peer_alias.rs`, `src/peer/peer_internal.rs`,
+  `src/stream.rs`, `src/service.rs`, `src/tests/discovery.rs`,
+  `src/tests/cross_nodes.rs`, `src/tests/stream.rs`, and fuzz coverage.
+- Focus areas: active-path jumping, equal-cost and tiny-jitter route
+  stability, direct-route priority, stale sync cleanup, sync cap behavior,
+  stopped-peer route deletion, discovery non-seed aging, graceful-stop
+  tombstones, relay-loop rejection, relayed stream setup and commit ordering,
+  relayed unicast acknowledgement, destination service queue/full-channel
+  behavior, peer-control queue pressure, and high-load route/pipe churn.
+- Reviewer: `Mendel the 2nd` (forked RED-team reviewer) returned
+  `NO_NEW_CRITICAL` and found no distinct score-80+ route-selection,
+  stream/pipe relay, unicast relay, discovery, graceful-stop, stale-route, or
+  high-load churn issue with concrete failing-test evidence.
+- Local verification:
+  - `RUST_LOG=error cargo test --lib router -- --nocapture`
+  - `RUST_LOG=error cargo test --lib route -- --nocapture`
+  - `RUST_LOG=error cargo test --lib relay -- --nocapture`
+  - `RUST_LOG=error cargo test --lib stream -- --nocapture`
+  - `RUST_LOG=error cargo test --lib cross_nodes -- --nocapture`
+  - `RUST_LOG=error cargo test --lib discovery -- --nocapture`
+  - `RUST_LOG=error cargo test --lib peer_stopped -- --nocapture`
+  - `RUST_LOG=error cargo test --lib unicast -- --nocapture`
+  - `RUST_LOG=error P2P_FUZZ_NODES=36 P2P_FUZZ_STEPS=1500 P2P_FUZZ_SEED=87047 cargo test --lib fuzz_random_valid_node_churn_actions_must_not_panic_connection_tasks -- --nocapture`
+- Reviewer verification:
+  - `RUST_LOG=error cargo test --lib discovery::test:: -- --nocapture`
+  - `RUST_LOG=error cargo test --lib router::tests -- --nocapture`
+  - `RUST_LOG=error cargo test --lib stream -- --nocapture`
+  - `RUST_LOG=error cargo test --lib unicast -- --nocapture`
+  - `RUST_LOG=error cargo test --lib relay -- --nocapture`
+  - `RUST_LOG=error P2P_FUZZ_NODES=38 P2P_FUZZ_STEPS=1450 P2P_FUZZ_SEED=87047 cargo test --lib fuzz_random_valid_node_actions_must_not_panic_connection_tasks -- --nocapture`
+- Duplicate mapping:
+  - Active path jumping and noisy route selection map to ISSUE-003 and RC-7.
+    Current router tests cover equal-cost stability, RTT jitter hysteresis,
+    direct-route priority, stale sync rejection, and capped direct-prioritized
+    route sync.
+  - Pipe/relay unsuccessful or false-success behavior maps to ISSUE-011,
+    ISSUE-012, ISSUE-013, ISSUE-056, ISSUE-117, ISSUE-149, ISSUE-156,
+    ISSUE-169, ISSUE-180, ISSUE-217, ISSUE-220, ISSUE-229, ISSUE-230,
+    ISSUE-238, RC-3, RC-4, and RC-6.
+  - Relayed unicast delivery and backpressure map to ISSUE-119, ISSUE-224,
+    ISSUE-225, ISSUE-229, ISSUE-230, RC-3, and RC-6.
+  - Discovery, graceful stop, and stale-route behavior map to ISSUE-001,
+    ISSUE-004, ISSUE-051, ISSUE-063, ISSUE-164, ISSUE-167, ISSUE-170,
+    ISSUE-211 through ISSUE-225, ISSUE-231, RC-5, RC-6, and RC-7.
+  - High-load route/pipe churn, refused connects, duplicate connection
+    cleanup, endpoint-drop noise, and deadline behavior map to fuzz cycles
+    20, 24, 28, 31, 32, 34, 36, 38, 39, 40, 41, 42, 43, 44, and 45, plus
+    RC-3, RC-6, and RC-7.
+- Root-cause summary: no new root cause was accepted; rejected candidates fit
+  existing route-stability, relay setup/backpressure, unicast ack, discovery
+  lifecycle, graceful-stop, stale-route, and high-load churn families.
+- Fix proposal: no new fix is proposed because no distinct critical issue was
+  accepted; continue critical-only review/fuzzing for score-80+ findings.
+- Current consecutive no-new cycles after ISSUE-246: 45.
