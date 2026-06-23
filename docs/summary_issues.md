@@ -7,11 +7,41 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Accepted issues: 248
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 0
-- Current audit continuation: ISSUE-248 accepted and fixed after the
-  benchmark/profile/report tooling review found the long-run stream benchmark
-  could report repeated short clusters as plain pass while the RSS chart showed
-  sharp process memory growth.
+- Current consecutive no-new-issue cycles: 1
+- Current audit continuation: critical-only discovery, neighbour admission,
+  connection lifecycle, stopped-peer, duplicate-connect, and bad-network churn
+  review after ISSUE-248 found no new score-80+ issue with concrete
+  failing-test evidence.
+- Critical-only no-new cycle 1 after ISSUE-248 reviewed discovery sync,
+  neighbour admission, incoming/outgoing connection lifecycle, peer identity
+  validation, stopped-peer tombstones, seed/non-seed retention, duplicate
+  connections, and bad-network churn across `src/discovery.rs`,
+  `src/neighbours.rs`, `src/peer.rs`, `src/peer/peer_internal.rs`,
+  `src/ctx.rs`, `src/router.rs`, `src/quic.rs`, `src/tests/discovery.rs`,
+  `src/tests/cross_nodes.rs`, `src/tests/security.rs`, and
+  `src/tests/fuzz.rs`. Local bounded verification with `CARGO_BUILD_JOBS=8`
+  passed discovery (37), security (55), cross_nodes (9), stopped (19), the
+  default adversarial fuzz (1), and the `<50` node adversarial fuzz seed
+  `P2P_FUZZ_NODES=48 P2P_FUZZ_STEPS=7200 P2P_FUZZ_SEED=248049` (1). Forked
+  reviewer `James` returned `NO_NEW_CRITICAL` after independently reviewing
+  the same slice and passing discovery (37), stopped (19), duplicate (20), and
+  a 36-node valid-churn fuzz seed. Rejected candidates mapped forged/stale
+  discovery, stale route resurrection, seed/non-seed retention, stopped
+  tombstones, forged `PeerStopped`, stopped-peer fanout/removal/post-stop
+  delivery, duplicate/stale connection events, peer/data/stats/disconnect
+  identity validation, alias cleanup, refused connects, timeout noise, and
+  duplicate connection closure noise to ISSUE-001, ISSUE-004, ISSUE-051,
+  ISSUE-063, ISSUE-136, ISSUE-144, ISSUE-162, ISSUE-164, ISSUE-167,
+  ISSUE-170, ISSUE-207, ISSUE-211 through ISSUE-225, ISSUE-231, ISSUE-238,
+  ISSUE-244, RC-3, RC-5, RC-6, and RC-7. No distinct score-80+
+  discovery/neighbour/connection-lifecycle/churn issue had reviewer-accepted
+  failing-test evidence. Smallest future fix proposal if this family regresses:
+  pin the exact sync payload, stopped tombstone timestamp, seed flag,
+  connection id, authenticated peer id, pending connection state, alias
+  presence, queue fill level, or fuzz seed with one focused failing test, then
+  patch only the failed discovery filter, tombstone gate, direct-route
+  validation, duplicate-connection coalescing, alias cleanup, or pending
+  connection branch.
 - ISSUE-248, score 82: fixed stream-limit benchmark report evidence validity.
   Root cause: `--min-run-seconds` repeats fresh short `run_profile` executions
   and the report status only checked stream counters, so the checked-in

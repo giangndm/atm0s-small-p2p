@@ -11,11 +11,65 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 0
-- Current audit continuation: ISSUE-248 accepted and fixed after the
-  benchmark/profile/report tooling review found the long-run stream benchmark
-  could report repeated short clusters as plain pass while the RSS chart showed
-  sharp process memory growth.
+- Current consecutive no-new-issue cycles: 1
+- Current audit continuation: critical-only discovery, neighbour admission,
+  connection lifecycle, stopped-peer, duplicate-connect, and bad-network churn
+  review after ISSUE-248 found no new score-80+ issue with concrete
+  failing-test evidence.
+
+### Critical-only no-new cycle 1 after ISSUE-248: discovery, neighbours, connection lifecycle, and churn
+
+- Scope: reviewer-style critical-only pass over `src/discovery.rs`,
+  `src/neighbours.rs`, `src/peer.rs`, `src/peer/peer_internal.rs`,
+  `src/ctx.rs`, `src/router.rs`, `src/quic.rs`,
+  `src/tests/discovery.rs`, `src/tests/cross_nodes.rs`,
+  `src/tests/security.rs`, and `src/tests/fuzz.rs`. Focus areas were forged or
+  stale discovery events, neighbour add/remove identity checks, seed versus
+  non-seed retention, stopped or removed peers re-entering through discovery,
+  duplicate connection races, bounded peer/connection state growth, and
+  bad-network churn with fewer than 50 nodes and `CARGO_BUILD_JOBS=8`.
+- Verification:
+  - `CARGO_BUILD_JOBS=8 RUST_LOG=error cargo test --lib discovery -- --nocapture`:
+    passed 37 tests.
+  - `CARGO_BUILD_JOBS=8 RUST_LOG=error cargo test --lib security -- --nocapture`:
+    passed 55 tests.
+  - `CARGO_BUILD_JOBS=8 RUST_LOG=error cargo test --lib cross_nodes -- --nocapture`:
+    passed 9 tests.
+  - `CARGO_BUILD_JOBS=8 RUST_LOG=error cargo test --lib stopped -- --nocapture`:
+    passed 19 tests.
+  - `CARGO_BUILD_JOBS=8 RUST_LOG=error cargo test --lib fuzz_random_adversarial_node_actions_must_not_panic_connection_tasks -- --nocapture`:
+    passed 1 test.
+  - `CARGO_BUILD_JOBS=8 P2P_FUZZ_NODES=48 P2P_FUZZ_STEPS=7200 P2P_FUZZ_SEED=248049 RUST_LOG=error cargo test --lib fuzz_random_adversarial_node_actions_must_not_panic_connection_tasks -- --nocapture`:
+    passed 1 test in 64.76s.
+- Reviewer cross-check: `James` returned `NO_NEW_CRITICAL` after independently
+  reviewing the discovery/neighbour/connection lifecycle slice. Reviewer
+  commands passed discovery (37), stopped (19), duplicate (20), and
+  `P2P_FUZZ_NODES=36 P2P_FUZZ_STEPS=1500 P2P_FUZZ_SEED=93050`
+  valid-node-churn fuzz (1).
+- Duplicate mapping:
+  - Forged or stale discovery, stale route resurrection, seed/non-seed
+    retention, and stopped tombstones map to ISSUE-001, ISSUE-004, ISSUE-051,
+    ISSUE-063, ISSUE-164, ISSUE-167, ISSUE-170, ISSUE-211 through ISSUE-225,
+    ISSUE-231, RC-5, RC-6, and RC-7.
+  - Forged `PeerStopped`, graceful-stop fanout, stopped-peer route removal,
+    and stopped-peer post-stop delivery map to ISSUE-207, ISSUE-215 through
+    ISSUE-225, ISSUE-231, ISSUE-238, ISSUE-244, RC-3, RC-6, and RC-7.
+  - Duplicate or stale connection events, peer/data/stats/disconnect identity
+    validation, and alias cleanup map to ISSUE-136, ISSUE-144, ISSUE-162,
+    ISSUE-211 through ISSUE-225, ISSUE-231, ISSUE-238, and ISSUE-244.
+  - Bad-network/high-load churn, refused connects, timeout noise, and
+    duplicate connection closure noise map to existing fuzz/churn families
+    RC-6 and RC-7.
+- Result: no distinct score-80+ discovery, neighbour admission, connection
+  lifecycle, stopped-peer, duplicate-connect, or high-load churn issue had
+  concrete reviewer-accepted failing-test evidence in this cycle.
+- Smallest future fix proposal if this family regresses: pin the exact
+  discovery sync payload, stopped tombstone timestamp, seed/non-seed
+  classification, authenticated peer id, connection id, pending-connect state,
+  alias registration, main/control queue fill level, or fuzz seed with one
+  focused failing test, then patch only the failed discovery filter, tombstone
+  gate, direct-route validation, duplicate-connection coalescing branch, alias
+  cleanup, or pending-connection cleanup path.
 
 ### ISSUE-248: Stream-limit benchmark can report repeated short clusters as a long-run pass while RSS grows
 
