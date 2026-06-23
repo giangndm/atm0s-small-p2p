@@ -11,10 +11,67 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 13
-- Current audit continuation: critical-only production panic boundary and
-  background task lifecycle review found no new score-80+ issue with concrete
-  failing-test evidence.
+- Current consecutive no-new-issue cycles: 14
+- Current audit continuation: critical-only identity/source-binding and
+  authorization review found no new score-80+ issue with concrete failing-test
+  evidence.
+
+### Critical-only no-new cycle 14 after ISSUE-247: identity and source binding
+
+- Scope: reviewer-style critical-only pass over `src/secure.rs`,
+  `src/discovery.rs`, `src/router.rs`, `src/lib.rs`, `src/ctx.rs`,
+  `src/msg.rs`, `src/peer/peer_internal.rs`,
+  `src/service/pubsub_service.rs`, `src/service/alias_service.rs`,
+  `src/requester.rs`, and related security, route, source, pubsub, stream,
+  requester, alias, discovery, and fuzz tests. Focus areas were handshake
+  identity/role binding, replay/freshness, forged source/service messages,
+  stale route sync, sender spoofing, direct-vs-relay confusion, pubsub
+  responder binding, alias lifecycle, and high-load bad-network churn.
+- Verification:
+  - `RUST_LOG=error cargo test --lib source -- --nocapture`: passed 7 tests.
+  - `RUST_LOG=error cargo test --lib forged -- --nocapture`: passed 4 tests.
+  - `RUST_LOG=error cargo test --lib identity -- --nocapture`: passed 1 test.
+  - `RUST_LOG=error cargo test --lib replay -- --nocapture`: passed 6 tests.
+  - `RUST_LOG=error cargo test --lib route -- --nocapture`: passed 27 tests.
+  - `RUST_LOG=error cargo test --lib pubsub -- --nocapture`: passed 92 tests.
+  - `RUST_LOG=error cargo test --lib requester -- --nocapture`: passed 13
+    tests.
+  - `RUST_LOG=error P2P_FUZZ_NODES=46 P2P_FUZZ_STEPS=2600 P2P_FUZZ_SEED=103049 cargo test --lib fuzz_random_adversarial_node_actions_must_not_panic_connection_tasks -- --nocapture`:
+    passed.
+- Reviewer cross-check: `Euclid the 2nd` returned `NO_NEW_CRITICAL` after
+  independently reviewing the same identity/source-binding and authorization
+  slice. Reviewer verification included secure, source, router, pubsub,
+  discovery, stream, alias, requester, security, and 36-node 1600-step
+  adversarial fuzz seed `103049`; all matching tests passed.
+- Duplicate mapping:
+  - Handshake identity/role binding, replay, freshness, future/overflow
+    timestamps, replay-cache pressure, and open-cluster exposure map to
+    ISSUE-002, ISSUE-021, ISSUE-146, ISSUE-176, ISSUE-189, ISSUE-194,
+    ISSUE-207, ISSUE-223, ISSUE-244, RC-1, RC-3, and RC-4.
+  - Forged source/service delivery across unicast, acked unicast, broadcast,
+    stream setup, relayed stream setup, and pubsub RPC responder binding maps
+    to ISSUE-014, ISSUE-015, ISSUE-017, ISSUE-018, ISSUE-039, ISSUE-115,
+    ISSUE-116, ISSUE-197, ISSUE-226, RC-1, and RC-2.
+  - Discovery and route stale sync, stopped-peer tombstones, direct-vs-relay
+    route priority, route resurrection, route loops, duplicate route entries,
+    and seed/non-seed lifecycle behavior map to ISSUE-001, ISSUE-003,
+    ISSUE-004, ISSUE-167, ISSUE-170, ISSUE-211 through ISSUE-225,
+    ISSUE-231, RC-6, and RC-7.
+  - Queue/backpressure, requester/service liveness, local service delivery,
+    direct/relay stream false success, full/closed channels, and failed pipe
+    delivery map to ISSUE-043, ISSUE-052, ISSUE-053, ISSUE-060, ISSUE-072,
+    ISSUE-073, ISSUE-076, ISSUE-091, ISSUE-100 through ISSUE-105,
+    ISSUE-119, ISSUE-121, ISSUE-123 through ISSUE-126, ISSUE-217 through
+    ISSUE-230, ISSUE-234, ISSUE-235, ISSUE-238, ISSUE-246, RC-3, RC-4, and
+    RC-6.
+  - Pubsub membership, RPC responder checks, stale heartbeat/chunk handling,
+    alias hint/found behavior, and stale alias lifecycle map to existing
+    pubsub/alias lifecycle, spoofing, resource, and responder-binding
+    families noted in cycles 8, 9, 12, and 13.
+- Result: no distinct score-80+ handshake, identity/source-binding,
+  route-sync authorization, pubsub/alias responder-binding, requester
+  liveness, or high-load bad-network stability issue had concrete failing-test
+  evidence in this cycle.
 
 ### Critical-only no-new cycle 13 after ISSUE-247: panic boundaries and task lifecycle
 

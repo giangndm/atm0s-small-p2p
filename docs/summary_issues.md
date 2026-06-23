@@ -7,10 +7,50 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Accepted issues: 247
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 13
-- Current audit continuation: critical-only production panic boundary and
-  background task lifecycle review found no new score-80+ issue with concrete
-  failing-test evidence.
+- Current consecutive no-new-issue cycles: 14
+- Current audit continuation: critical-only identity/source-binding and
+  authorization review found no new score-80+ issue with concrete failing-test
+  evidence.
+- Critical-only no-new cycle 14 after ISSUE-247 reviewed `src/secure.rs`,
+  `src/discovery.rs`, `src/router.rs`, `src/lib.rs`, `src/ctx.rs`,
+  `src/msg.rs`, `src/peer/peer_internal.rs`, pubsub, alias, requester, and
+  related security, route, source, pubsub, stream, requester, discovery,
+  alias, and fuzz tests. Local source, forged, identity, replay, route,
+  pubsub, requester, and 46-node 2600-step adversarial fuzz seed `103049`
+  checks passed. Reviewer `Euclid the 2nd` returned `NO_NEW_CRITICAL` after
+  independently reviewing the same identity/source-binding and authorization
+  slice, then passing secure, source, router, pubsub, discovery, stream,
+  alias, requester, security, and 36-node 1600-step adversarial fuzz seed
+  `103049`. Rejected candidates mapped handshake identity/role binding,
+  replay, freshness, future/overflow timestamps, replay-cache pressure, and
+  open-cluster exposure to ISSUE-002, ISSUE-021, ISSUE-146, ISSUE-176,
+  ISSUE-189, ISSUE-194, ISSUE-207, ISSUE-223, ISSUE-244, RC-1, RC-3, and
+  RC-4; forged source/service delivery across unicast, acked unicast,
+  broadcast, stream setup, relayed stream setup, and pubsub RPC responder
+  binding to ISSUE-014, ISSUE-015, ISSUE-017, ISSUE-018, ISSUE-039,
+  ISSUE-115, ISSUE-116, ISSUE-197, ISSUE-226, RC-1, and RC-2; discovery and
+  route stale sync, stopped-peer tombstones, direct-vs-relay route priority,
+  route resurrection, route loops, duplicate route entries, and seed/non-seed
+  lifecycle behavior to ISSUE-001, ISSUE-003, ISSUE-004, ISSUE-167,
+  ISSUE-170, ISSUE-211 through ISSUE-225, ISSUE-231, RC-6, and RC-7;
+  queue/backpressure, requester/service liveness, local service delivery,
+  direct/relay stream false success, full/closed channels, and failed pipe
+  delivery to ISSUE-043, ISSUE-052, ISSUE-053, ISSUE-060, ISSUE-072,
+  ISSUE-073, ISSUE-076, ISSUE-091, ISSUE-100 through ISSUE-105, ISSUE-119,
+  ISSUE-121, ISSUE-123 through ISSUE-126, ISSUE-217 through ISSUE-230,
+  ISSUE-234, ISSUE-235, ISSUE-238, ISSUE-246, RC-3, RC-4, and RC-6; and
+  pubsub membership, RPC responder checks, stale heartbeat/chunk handling,
+  alias hint/found behavior, and stale alias lifecycle to existing
+  pubsub/alias lifecycle, spoofing, resource, and responder-binding families
+  noted in cycles 8, 9, 12, and 13. No distinct score-80+ handshake,
+  identity/source-binding, route-sync authorization, pubsub/alias
+  responder-binding, requester liveness, or high-load bad-network stability
+  issue had concrete failing-test evidence. Smallest future fix proposal if
+  this family regresses: pin the exact authenticated peer, claimed source,
+  route sync, pubsub responder, alias reply, or fuzz seed with one focused
+  failing test, then patch only the failed ingress/source normalization,
+  direct-route ownership check, responder correlation, route admission, or
+  lifecycle cleanup boundary.
 - Critical-only no-new cycle 13 after ISSUE-247 reviewed `src/lib.rs`,
   `src/peer.rs`, `src/peer/peer_internal.rs`, `src/ctx.rs`,
   `src/requester.rs`, `src/service.rs`, metrics, visualization, alias,
