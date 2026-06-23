@@ -7,10 +7,42 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Accepted issues: 247
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 26
-- Current audit continuation: critical-only wire-message integrity and
-  forged/invalid peer-event review found no new score-80+ issue with concrete
-  failing-test evidence.
+- Current consecutive no-new-issue cycles: 27
+- Current audit continuation: critical-only dependency, feature, package,
+  example credential, and secure-setup review found no new score-80+ issue
+  with concrete failing-test evidence.
+- Critical-only no-new cycle 27 after ISSUE-247 reviewed dependency, feature,
+  package, credential, and secure-setup posture across `Cargo.toml`,
+  `Cargo.lock`, README/examples, development certificates, `src/secure.rs`,
+  `src/quic.rs`, `src/lib.rs` config defaults, and related docs/tests. Local
+  `cargo check`, `cargo check --examples`, `cargo check --no-default-features`,
+  `cargo tree -d`, `cargo tree -e features`, `cargo package --list`, secure
+  (10), config (6), readme (1), quic (2), and 72-node 5200-step adversarial
+  fuzz seed `116049` checks passed. `cargo package --list` showed the dev
+  cert/key and `Cargo.toml.orig` in the package, and `cargo audit --version`
+  showed `cargo-audit` is not installed; both were recorded as verification
+  context rather than accepted critical issues. Reviewer `Planck` returned
+  `NO_NEW_CRITICAL` after independently reviewing the same slice and passing
+  the same core checks. Rejected candidates mapped packaged development
+  cert/key, example `insecure`/`DEFAULT_SECURE_KEY` defaults, open-cluster demo
+  posture, README/example setup wording, and package metadata to ISSUE-001,
+  ISSUE-003, ISSUE-004, ISSUE-167, ISSUE-170, ISSUE-211 through ISSUE-225,
+  ISSUE-231, ISSUE-244, RC-1, RC-6, and RC-7; shared-key handshake freshness,
+  replay, timestamp, cache, role, and identity assumptions to ISSUE-002,
+  ISSUE-021, ISSUE-146, ISSUE-176, ISSUE-189, ISSUE-194, ISSUE-207,
+  ISSUE-223, ISSUE-244, RC-1, RC-3, and RC-4; QUIC/TLS feature activation,
+  stream admission, idle limits, unauthenticated inbound pressure,
+  graceful-stop cleanup, and bad-network refusal/timeout churn to ISSUE-211
+  through ISSUE-225, ISSUE-231, ISSUE-238, RC-3, RC-6, and RC-7; and duplicate
+  dependency versions, dev-only dependency surface, package hygiene warnings,
+  and unused/dead-code warnings to non-critical hygiene without concrete
+  score-80+ failing evidence. Smallest future fix proposal if this family
+  regresses: pin the exact manifest feature/dependency, package include/exclude
+  entry, cert/key path, example argument, config default, handshake timestamp
+  or replay token, QUIC transport setting, or fuzz seed with one focused
+  failing test or package check, then patch only the manifest/package rule,
+  docs/example default, config validation, replay/freshness guard, or transport
+  admission setting that failed.
 - Critical-only no-new cycle 26 after ISSUE-247 reviewed wire-message
   integrity and forged/invalid peer events across `src/msg.rs`,
   `src/stream.rs`, `src/quic.rs`, `src/peer.rs`,

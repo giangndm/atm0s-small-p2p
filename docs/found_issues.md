@@ -11,10 +11,68 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 26
-- Current audit continuation: critical-only wire-message integrity and
-  forged/invalid peer-event review found no new score-80+ issue with concrete
-  failing-test evidence.
+- Current consecutive no-new-issue cycles: 27
+- Current audit continuation: critical-only dependency, feature, package,
+  example credential, and secure-setup review found no new score-80+ issue
+  with concrete failing-test evidence.
+
+### Critical-only no-new cycle 27 after ISSUE-247: dependency, feature, package, and secure setup
+
+- Scope: reviewer-style critical-only pass over `Cargo.toml`, `Cargo.lock`,
+  dependency and feature activation, package contents, README and examples,
+  development certificates, `src/secure.rs`, `src/quic.rs`, `src/lib.rs`
+  configuration defaults, and related docs/tests. Focus areas were packaged
+  development credentials, example insecure defaults, open-cluster setup
+  posture, package metadata, duplicate dependency versions, no-default-feature
+  behavior, QUIC/TLS setup, shared-key freshness/replay/cache behavior, and
+  high-load bad-network churn under adversarial fuzzing.
+- Verification:
+  - `cargo check`: passed with 3 non-critical unused/dead-code warnings.
+  - `cargo check --examples`: passed with the same library warnings plus one
+    unused README example function warning.
+  - `cargo check --no-default-features`: passed with the same non-critical
+    library warnings.
+  - `cargo tree -d`: passed; duplicate dependency versions were present but
+    no score-80+ failing path was identified.
+  - `cargo tree -e features`: passed.
+  - `cargo package --list`: passed with a missing package metadata warning;
+    package contents include the development cert/key and `Cargo.toml.orig`.
+  - `cargo audit --version`: unavailable because the `cargo-audit` subcommand
+    is not installed in this environment.
+  - `RUST_LOG=error cargo test --lib secure -- --nocapture`: passed 10 tests.
+  - `RUST_LOG=error cargo test --lib config -- --nocapture`: passed 6 tests.
+  - `RUST_LOG=error cargo test --lib readme -- --nocapture`: passed 1 test.
+  - `RUST_LOG=error cargo test --lib quic -- --nocapture`: passed 2 tests.
+  - `RUST_LOG=error P2P_FUZZ_NODES=72 P2P_FUZZ_STEPS=5200 P2P_FUZZ_SEED=116049 cargo test --lib fuzz_random_adversarial_node_actions_must_not_panic_connection_tasks -- --nocapture`:
+    passed 1 test.
+- Reviewer cross-check: `Planck` returned `NO_NEW_CRITICAL` after
+  independently reviewing the same dependency/config/package/security slice.
+  Reviewer verification included `cargo check`, `cargo check --examples`,
+  `cargo check --no-default-features`, `cargo tree -d`, `secure` (10 passed),
+  `config` (6 passed), `quic` (2 passed), `readme` (1 passed),
+  `cargo package --list`, unavailable `cargo audit --version`, and 72-node
+  5200-step adversarial fuzz seed `116049` (1 passed).
+- Duplicate mapping:
+  - Packaged development cert/key, example `insecure` and
+    `DEFAULT_SECURE_KEY` defaults, open-cluster demo posture, README/example
+    setup wording, and missing package metadata map to existing build, docs,
+    package, default-config, and open-cluster families including ISSUE-001,
+    ISSUE-003, ISSUE-004, ISSUE-167, ISSUE-170, ISSUE-211 through ISSUE-225,
+    ISSUE-231, ISSUE-244, RC-1, RC-6, and RC-7.
+  - Shared-key handshake freshness, replay, future timestamp, cache pressure,
+    timestamp overflow, role binding, and identity assumptions map to
+    ISSUE-002, ISSUE-021, ISSUE-146, ISSUE-176, ISSUE-189, ISSUE-194,
+    ISSUE-207, ISSUE-223, ISSUE-244, RC-1, RC-3, and RC-4.
+  - QUIC TLS/rustls/ring feature activation, stream admission, idle limits,
+    transport churn, unauthenticated inbound pressure, graceful-stop cleanup,
+    and bad-network connection refusal/timeout noise map to ISSUE-211 through
+    ISSUE-225, ISSUE-231, ISSUE-238, RC-3, RC-6, and RC-7.
+  - Duplicate dependency versions, development-only dependency surface,
+    package hygiene warnings, and unused/dead-code warnings were classified as
+    non-critical without concrete score-80+ failing evidence.
+- Result: no distinct score-80+ dependency, feature, package, credential,
+  secure-handshake, QUIC setup, config-default, or high-load bad-network issue
+  had concrete failing-test evidence in this cycle.
 
 ### Critical-only no-new cycle 26 after ISSUE-247: wire-message integrity and forged peer events
 
