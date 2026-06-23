@@ -7,9 +7,45 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Accepted issues: 247
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 9
-- Current audit continuation: critical-only service-layer review found no new
-  score-80+ issue with concrete failing-test evidence.
+- Current consecutive no-new-issue cycles: 10
+- Current audit continuation: critical-only public API, lifecycle, config, and
+  example review found no new score-80+ issue with concrete failing-test
+  evidence.
+- Critical-only no-new cycle 10 after ISSUE-247 reviewed `src/lib.rs`,
+  `src/ctx.rs`, `src/peer.rs`, `src/peer/peer_internal.rs`,
+  `src/requester.rs`, `src/neighbours.rs`, `src/stats.rs`, `src/utils.rs`,
+  tests, README/examples, Cargo config, workflow config, and the issue
+  ledgers. Local security, requester, readme, lifecycle, config,
+  zero-tick-config, connect, shutdown, dropped-service, examples, and 38-node
+  2200-step adversarial fuzz seed `99049` checks passed; the examples check
+  emitted warnings only. Reviewer `Lorentz the 2nd` returned
+  `NO_NEW_CRITICAL` after independently reviewing the same slice, then passing
+  shutdown, requester, service-id, readme, config, drop, closed, stale,
+  lifecycle, examples, and 32-node 1200-step adversarial fuzz seed `99031`.
+  Rejected candidates mapped public requester false success, stale requester
+  after drop, and full/closed control queues to ISSUE-052, ISSUE-053,
+  ISSUE-060, ISSUE-072, ISSUE-073, ISSUE-076, ISSUE-091, ISSUE-234,
+  ISSUE-235, ISSUE-246, and RC-6; shutdown/graceful stop, stopped-peer
+  propagation, non-seed cleanup, and stale lifecycle to ISSUE-001, ISSUE-004,
+  ISSUE-170, ISSUE-215 through ISSUE-225, ISSUE-231, RC-3, RC-6, and RC-7;
+  configured seed lifecycle, seed retention/removal, and seed advertisement to
+  ISSUE-004, ISSUE-167, ISSUE-211 through ISSUE-213, and RC-7; connection
+  admission, duplicate connects, self-connect, setup timeouts, and open-stream
+  timeouts to ISSUE-117, ISSUE-172, ISSUE-173, ISSUE-217, ISSUE-220 through
+  ISSUE-223, ISSUE-238, RC-3, and RC-4; service-id bounds, dropped services,
+  local queue pressure, and full/closed-channel false success to ISSUE-043,
+  ISSUE-100 through ISSUE-105, ISSUE-119, ISSUE-121, ISSUE-123 through
+  ISSUE-126, ISSUE-217 through ISSUE-230, ISSUE-234, ISSUE-235, ISSUE-246,
+  RC-3, RC-4, and RC-6; README/examples open-cluster/default demo behavior to
+  the existing public config/example family, ISSUE-244, and RC-1; and
+  bad-network/high-load churn, abort/restart, refused connections, forged
+  stop/raw frames, and endpoint drops to existing fuzz-cycle families, RC-3,
+  RC-6, and RC-7. No distinct score-80+ public API/lifecycle/config/example
+  issue had concrete failing-test evidence. Smallest future fix proposal if
+  this family regresses: pin the public method/config/example or lifecycle
+  event, reproduce the false success/panic/leak with one focused test, then
+  patch only the public admission, handle-liveness, shutdown propagation, or
+  config validation boundary that failed.
 - Critical-only no-new cycle 9 after ISSUE-247 reviewed `src/service.rs`,
   alias, pubsub, replicated-KV, metrics, visualization service modules, their
   tests, fuzz coverage, and the issue ledgers. Local alias, metrics,

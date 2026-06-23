@@ -11,9 +11,75 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 9
-- Current audit continuation: critical-only service-layer review found no new
-  score-80+ issue with concrete failing-test evidence.
+- Current consecutive no-new-issue cycles: 10
+- Current audit continuation: critical-only public API, lifecycle, config, and
+  example review found no new score-80+ issue with concrete failing-test
+  evidence.
+
+### Critical-only no-new cycle 10 after ISSUE-247: public API, lifecycle, config, and examples
+
+- Scope: reviewer-style critical-only pass over `src/lib.rs`, `src/ctx.rs`,
+  `src/peer.rs`, `src/peer/peer_internal.rs`, `src/requester.rs`,
+  `src/neighbours.rs`, `src/stats.rs`, `src/utils.rs`, `src/tests.rs`,
+  `src/tests/readme.rs`, `src/tests/security.rs`, `src/tests/cross_nodes.rs`,
+  `src/tests/fuzz.rs`, README/examples, Cargo config, workflow config, and the
+  issue ledgers. Focus areas were public API false success after stop/drop,
+  stale requester/service handles, graceful shutdown and task cleanup, public
+  entrypoint resource bounds, invalid configs causing panic or unbounded work,
+  seed/non-seed lifecycle regressions, connection admission limits, join handle
+  leaks, and README/example behavior that could contradict tested safe usage.
+- Verification:
+  - `RUST_LOG=error cargo test --lib security -- --nocapture`: passed 55
+    tests.
+  - `RUST_LOG=error cargo test --lib requester -- --nocapture`: passed 13
+    tests.
+  - `RUST_LOG=error cargo test --lib readme -- --nocapture`: passed 1 test.
+  - `RUST_LOG=error cargo test --lib lifecycle -- --nocapture`: passed 3
+    tests.
+  - `RUST_LOG=error cargo test --lib config -- --nocapture`: passed 6 tests.
+  - `cargo check --examples`: passed with warnings only.
+  - `RUST_LOG=error cargo test --lib zero_network_tick_interval_must_not_panic -- --nocapture`:
+    passed 1 test.
+  - `RUST_LOG=error cargo test --lib connect -- --nocapture`: passed 62
+    tests.
+  - `RUST_LOG=error cargo test --lib shutdown -- --nocapture`: passed 8
+    tests.
+  - `RUST_LOG=error cargo test --lib dropped_service -- --nocapture`: passed
+    4 tests.
+  - `RUST_LOG=error P2P_FUZZ_NODES=38 P2P_FUZZ_STEPS=2200 P2P_FUZZ_SEED=99049 cargo test --lib fuzz_random_adversarial_node_actions_must_not_panic_connection_tasks -- --nocapture`:
+    passed.
+- Reviewer cross-check: `Lorentz the 2nd` returned `NO_NEW_CRITICAL` after
+  independently reviewing the same public API/lifecycle/config/example slice.
+  Reviewer verification included shutdown, requester, service-id, readme,
+  config, drop, closed, stale, lifecycle, examples, and 32-node 1200-step
+  adversarial fuzz seed `99031`; all passed.
+- Duplicate mapping:
+  - Public requester false success, stale requester after drop, and full/closed
+    control queues map to ISSUE-052, ISSUE-053, ISSUE-060, ISSUE-072,
+    ISSUE-073, ISSUE-076, ISSUE-091, ISSUE-234, ISSUE-235, ISSUE-246, and
+    RC-6.
+  - Shutdown/graceful stop, stopped-peer propagation, non-seed cleanup, and
+    stale lifecycle map to ISSUE-001, ISSUE-004, ISSUE-170,
+    ISSUE-215 through ISSUE-225, ISSUE-231, RC-3, RC-6, and RC-7.
+  - Configured seed lifecycle, seed retention/removal, and seed advertisement
+    behavior map to ISSUE-004, ISSUE-167, ISSUE-211 through ISSUE-213, and
+    RC-7.
+  - Connection admission, duplicate connects, self-connect, setup timeouts,
+    and open-stream timeout behavior map to ISSUE-117, ISSUE-172, ISSUE-173,
+    ISSUE-217, ISSUE-220 through ISSUE-223, ISSUE-238, RC-3, and RC-4.
+  - Service-id bounds, dropped services, local queue pressure, and full/closed
+    channel false success map to ISSUE-043, ISSUE-100 through ISSUE-105,
+    ISSUE-119, ISSUE-121, ISSUE-123 through ISSUE-126,
+    ISSUE-217 through ISSUE-230, ISSUE-234, ISSUE-235, ISSUE-246, RC-3,
+    RC-4, and RC-6.
+  - README/examples open-cluster and default demo behavior map to the existing
+    public config/example family, ISSUE-244, and RC-1.
+  - Bad-network/high-load churn, abort/restart, refused connections, forged
+    stop/raw frames, and endpoint drops map to existing fuzz-cycle families,
+    RC-3, RC-6, and RC-7.
+- Result: no distinct score-80+ public API, lifecycle, config/limits, example,
+  shutdown, or high-load stability issue had concrete failing-test evidence in
+  this cycle.
 
 ### Critical-only no-new cycle 9 after ISSUE-247: service-layer protocols and resource boundaries
 
