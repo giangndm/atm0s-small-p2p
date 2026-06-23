@@ -7,10 +7,47 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Accepted issues: 247
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 23
-- Current audit continuation: critical-only alias discovery and cache
-  lifecycle review found no new score-80+ issue with concrete failing-test
-  evidence.
+- Current consecutive no-new-issue cycles: 24
+- Current audit continuation: critical-only production panic, overflow,
+  framing, and error-boundary review found no new score-80+ issue with
+  concrete failing-test evidence.
+- Critical-only no-new cycle 24 after ISSUE-247 reviewed production
+  panic/error boundaries across `src/**/*.rs`, including
+  `unwrap`/`expect`/panic candidates, unchecked indexing, integer overflow,
+  router best-path invariants, connected-neighbour peer-id assumptions,
+  inbound sync handoff state, bincode/object/frame serialization and
+  deserialization, channel full/closed behavior, task abort/join lifetimes,
+  shutdown paths, replay/freshness caches, replicated-KV version arithmetic,
+  and high-load bad-network churn. Local panic (33), overflow (12), frame (1),
+  codec (3), and 66-node 4600-step adversarial fuzz seed `113049` checks
+  passed; `malformed` matched zero tests and was recorded only as a gap.
+  Reviewer `Sagan` returned `NO_NEW_CRITICAL` after independently reviewing
+  the same production panic/error-boundary slice, then passing panic (33),
+  overflow (12), shutdown (8), frame (1), closed (5), full (58), replay (6),
+  malformed (0 matched), and a 64-node 4400-step adversarial fuzz seed
+  `113049`. Rejected candidates mapped production `unwrap`/`expect`
+  candidates in handshake generation, constant-size LRU setup, router
+  `PeerMemory` best-path invariants, connected-neighbour peer ids, inbound
+  sync handoff, metrics/visualization scans, alias serialization, and
+  replicated-KV ordered-state invariants to existing panic-boundary families,
+  ISSUE-023, ISSUE-031, ISSUE-043, ISSUE-060, ISSUE-091, ISSUE-217 through
+  ISSUE-230, ISSUE-246, RC-3, RC-5, and RC-6; arithmetic overflow candidates
+  in route metrics, discovery timestamps, handshake timestamps, alias
+  deadlines/refcounts, pubsub registration, and replicated-KV version windows
+  to ISSUE-005, ISSUE-009, ISSUE-019, ISSUE-021, ISSUE-033, ISSUE-036,
+  ISSUE-042, ISSUE-044, ISSUE-046, ISSUE-099, ISSUE-111, ISSUE-141,
+  ISSUE-154, ISSUE-184, ISSUE-246, RC-4, RC-5, and RC-6; and
+  bincode/object/frame malformed or oversized input, service-id bounds,
+  open-stream setup, local/peer queue pressure, full/closed channels, replay
+  cache pressure, and shutdown/drop task churn to ISSUE-024, ISSUE-094,
+  ISSUE-097, ISSUE-098, ISSUE-174, ISSUE-217 through ISSUE-230, RC-1, RC-3,
+  RC-4, RC-6, and RC-7. No distinct score-80+ error-boundary issue had
+  concrete failing-test evidence. Smallest future fix proposal if this family
+  regresses: pin the exact public call, inbound frame/object, peer/control
+  event, service id, queue state, version/timestamp value, route memory state,
+  shutdown/drop timing, or fuzz seed with one focused failing test, then patch
+  only the failed fallible conversion, invariant guard, checked arithmetic,
+  frame bound, queue admission path, task cleanup, or replay/cache limit.
 - Critical-only no-new cycle 23 after ISSUE-247 reviewed alias discovery,
   alias cache lifecycle, register/unregister guards, local/cached/scan find
   behavior, timeouts, stale `NotifySet`/`NotifyDel`/`Found`/`NotFound`

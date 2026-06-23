@@ -11,10 +11,61 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 23
-- Current audit continuation: critical-only alias discovery and cache
-  lifecycle review found no new score-80+ issue with concrete failing-test
-  evidence.
+- Current consecutive no-new-issue cycles: 24
+- Current audit continuation: critical-only production panic, overflow,
+  framing, and error-boundary review found no new score-80+ issue with
+  concrete failing-test evidence.
+
+### Critical-only no-new cycle 24 after ISSUE-247: production panic and error boundaries
+
+- Scope: reviewer-style critical-only pass over production panic/error
+  boundaries in `src/**/*.rs`, excluding test-only assertions except where
+  they exercise public or network-facing behavior. Focus areas were
+  `unwrap`/`expect`/panic candidates, unchecked indexing, integer overflow,
+  router best-path invariants, connected-neighbour peer-id assumptions,
+  inbound sync handoff state, bincode/object/frame serialization and
+  deserialization, channel full/closed behavior, task abort/join lifetimes,
+  shutdown paths, replay/freshness caches, replicated-KV version arithmetic,
+  and high-load bad-network churn.
+- Verification:
+  - `RUST_LOG=error cargo test --lib panic -- --nocapture`: passed 33 tests.
+  - `RUST_LOG=error cargo test --lib overflow -- --nocapture`: passed 12
+    tests.
+  - `RUST_LOG=error cargo test --lib malformed -- --nocapture`: 0 matching
+    tests.
+  - `RUST_LOG=error cargo test --lib frame -- --nocapture`: passed 1 test.
+  - `RUST_LOG=error cargo test --lib codec -- --nocapture`: passed 3 tests.
+  - `RUST_LOG=error P2P_FUZZ_NODES=66 P2P_FUZZ_STEPS=4600 P2P_FUZZ_SEED=113049 cargo test --lib fuzz_random_adversarial_node_actions_must_not_panic_connection_tasks -- --nocapture`:
+    passed.
+- Reviewer cross-check: `Sagan` returned `NO_NEW_CRITICAL` after
+  independently reviewing the same production panic/error-boundary slice.
+  Reviewer verification included `panic` (33 passed), `overflow` (12 passed),
+  `malformed` (0 matched), `shutdown` (8 passed), `frame` (1 passed),
+  `closed` (5 passed), `full` (58 passed), `replay` (6 passed), and 64-node
+  4400-step adversarial fuzz seed `113049` (1 passed).
+- Duplicate mapping:
+  - Production `unwrap`/`expect` candidates in handshake generation,
+    constant-size LRU setup, router `PeerMemory` best-path invariants,
+    connected-neighbour peer ids, inbound sync handoff, metrics/visualization
+    scans, alias serialization, and replicated-KV ordered-state invariants map
+    to existing panic-boundary families under ISSUE-023, ISSUE-031,
+    ISSUE-043, ISSUE-060, ISSUE-091, ISSUE-217 through ISSUE-230,
+    ISSUE-246, RC-3, RC-5, and RC-6.
+  - Arithmetic overflow candidates in route metrics, discovery timestamps,
+    handshake timestamps, alias deadlines/refcounts, pubsub registration, and
+    replicated-KV version windows map to ISSUE-005, ISSUE-009, ISSUE-019,
+    ISSUE-021, ISSUE-033, ISSUE-036, ISSUE-042, ISSUE-044, ISSUE-046,
+    ISSUE-099, ISSUE-111, ISSUE-141, ISSUE-154, ISSUE-184, ISSUE-246, RC-4,
+    RC-5, and RC-6.
+  - Bincode/object/frame malformed or oversized input, service-id bounds,
+    open-stream setup, local/peer queue pressure, full/closed channels, replay
+    cache pressure, and shutdown/drop task churn map to ISSUE-024, ISSUE-094,
+    ISSUE-097, ISSUE-098, ISSUE-174, ISSUE-217 through ISSUE-230, RC-1,
+    RC-3, RC-4, RC-6, and RC-7.
+- Result: no distinct score-80+ production panic, overflow, malformed-frame,
+  codec, service-id, queue, replay, shutdown, task-lifecycle, replicated-KV,
+  router invariant, or high-load bad-network error-boundary issue had concrete
+  failing-test evidence in this cycle.
 
 ### Critical-only no-new cycle 23 after ISSUE-247: alias discovery and cache lifecycle
 
