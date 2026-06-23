@@ -11,12 +11,12 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 1
-- Current audit continuation: critical-only transport, auth, stream/framing,
-  service-id, peer-control, and high-load churn no-new cycle after ISSUE-247
-  found no new score-80+ issue across malformed/oversized frames, object
-  length caps, handshake replay/freshness/identity, QUIC admission, stalled
-  setup, source binding, closed/full queues, and fuzz churn.
+- Current consecutive no-new-issue cycles: 2
+- Current audit continuation: critical-only route, discovery, neighbour
+  lifecycle, graceful-stop, and high-load churn no-new cycle after ISSUE-247
+  found no new score-80+ issue across active-path stability, seed/non-seed
+  removal, stopped tombstones, stale route/discovery syncs, shutdown cleanup,
+  duplicate connection churn, and bad-network fuzzing.
 
 ### Critical-only no-new cycle 42: transport, stream, and backpressure
 
@@ -23662,3 +23662,60 @@ the source of truth for evidence and reviewer decisions.
 - Fix proposal: no new fix is proposed because no distinct critical issue was
   accepted; continue critical-only review/fuzzing for score-80+ findings.
 - Current consecutive no-new cycles after ISSUE-247: 1.
+
+### Critical-only no-new cycle 2 after ISSUE-247: route, discovery, neighbour lifecycle, and graceful-stop review
+
+- Scope: reviewed the current issue ledgers and summary, then audited
+  `src/router.rs`, `src/discovery.rs`, `src/neighbours.rs`, `src/lib.rs`,
+  `src/ctx.rs`, `src/peer.rs`, `src/peer/peer_internal.rs`,
+  `src/tests/discovery.rs`, `src/tests/security.rs`, `src/tests/fuzz.rs`,
+  and related route/discovery/shutdown coverage.
+- Focus areas: active-path jumping, equal-cost and tiny-jitter route
+  stability, direct-route priority, stale and duplicate route sync, route
+  cleanup after disconnect, non-seed timeout/removal after long outage, seed
+  retention, stopped tombstone freshness and bounds, graceful-stop
+  notification and fanout, duplicate/stale connection events, full-queue
+  shutdown cleanup, and bad-network/high-load churn.
+- Reviewer: `Franklin the 2nd` (forked RED-team reviewer) returned
+  `NO_NEW_CRITICAL` and found no distinct score-80+ routing, discovery,
+  neighbour lifecycle, graceful-stop, shutdown, stale-sync, duplicate
+  connection, or high-load churn issue with concrete failing-test evidence.
+- Local verification:
+  - `RUST_LOG=error cargo test --lib router::tests -- --nocapture`
+  - `RUST_LOG=error cargo test --lib discovery::test -- --nocapture`
+  - `RUST_LOG=error cargo test --lib peer_stopped -- --nocapture`
+  - `RUST_LOG=error cargo test --lib stale -- --nocapture --test-threads=1`
+  - `RUST_LOG=error cargo test --lib tests::discovery -- --nocapture`
+  - `RUST_LOG=error P2P_FUZZ_NODES=36 P2P_FUZZ_STEPS=1500 P2P_FUZZ_SEED=91049 cargo test --lib fuzz_random_valid_node_churn_actions_must_not_panic_connection_tasks -- --nocapture`
+- Reviewer verification:
+  - `RUST_LOG=error cargo test --lib router -- --nocapture`
+  - `RUST_LOG=error cargo test --lib discovery -- --nocapture`
+  - `RUST_LOG=error cargo test --lib stopped -- --nocapture`
+  - `RUST_LOG=error cargo test --lib route -- --nocapture`
+  - `RUST_LOG=error cargo test --lib disconnect -- --nocapture`
+  - `RUST_LOG=error cargo test --lib stale -- --nocapture --test-threads=1`
+  - `RUST_LOG=error P2P_FUZZ_NODES=36 P2P_FUZZ_STEPS=1500 P2P_FUZZ_SEED=91049 cargo test --lib fuzz_random_node_churn_actions_must_not_panic_connection_tasks -- --nocapture`
+- Duplicate mapping:
+  - Active path jumping, equal-cost jitter, and direct-route priority map to
+    ISSUE-003 and RC-7.
+  - Non-seed timeout/removal, expired discovery routes, and seed
+    retention/retry map to ISSUE-004, ISSUE-167, ISSUE-211 through
+    ISSUE-213, and RC-7.
+  - Graceful stop notification, `PeerStopped` validation/dedup/fanout,
+    stopped route resurrection, and shutdown cleanup map to ISSUE-001,
+    ISSUE-004, ISSUE-170, ISSUE-215 through ISSUE-225, ISSUE-231, RC-3,
+    RC-6, and RC-7.
+  - Duplicate/stale connection events, stale sync/data/stats/disconnect, and
+    full-queue/backpressure lifecycle behavior map to ISSUE-117, ISSUE-156,
+    ISSUE-217 through ISSUE-225, ISSUE-230, ISSUE-238, RC-3, RC-4, and
+    RC-6.
+  - Bad-network and high-load churn, refused connects, duplicate connection
+    closure noise, deadlines, and endpoint-drop behavior map to existing fuzz
+    cycles under RC-3, RC-6, and RC-7.
+- Root-cause summary: no new root cause was accepted; rejected candidates fit
+  existing route-stability, discovery seed/non-seed lifecycle, stopped-peer
+  notification, stale connection/sync cleanup, queue/backpressure, and
+  high-load churn families.
+- Fix proposal: no new fix is proposed because no distinct critical issue was
+  accepted; continue critical-only review/fuzzing for score-80+ findings.
+- Current consecutive no-new cycles after ISSUE-247: 2.

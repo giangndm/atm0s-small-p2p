@@ -7,12 +7,33 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Accepted issues: 247
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 1
-- Current audit continuation: critical-only transport, auth, stream/framing,
-  service-id, peer-control, and high-load churn no-new cycle after ISSUE-247
-  found no new score-80+ issue across malformed/oversized frames, object
-  length caps, handshake replay/freshness/identity, QUIC admission, stalled
-  setup, source binding, closed/full queues, and fuzz churn.
+- Current consecutive no-new-issue cycles: 2
+- Current audit continuation: critical-only route, discovery, neighbour
+  lifecycle, graceful-stop, and high-load churn no-new cycle after ISSUE-247
+  found no new score-80+ issue across active-path stability, seed/non-seed
+  removal, stopped tombstones, stale route/discovery syncs, shutdown cleanup,
+  duplicate connection churn, and bad-network fuzzing.
+- Critical-only no-new cycle 2 after ISSUE-247 reviewed `src/router.rs`,
+  `src/discovery.rs`, `src/neighbours.rs`, `src/lib.rs`, `src/ctx.rs`,
+  `src/peer.rs`, `src/peer/peer_internal.rs`, `src/tests/discovery.rs`,
+  `src/tests/security.rs`, and `src/tests/fuzz.rs`. Local router,
+  discovery, `PeerStopped`, stale-event, integration discovery, and 36-node
+  1500-step valid churn fuzz checks passed. Reviewer `Franklin the 2nd`
+  returned `NO_NEW_CRITICAL` after independently running router, discovery,
+  stopped, route, disconnect, stale, and 36-node churn fuzz slices. Rejected
+  candidates mapped active-path jumping, equal-cost jitter, and direct-route
+  priority to ISSUE-003 and RC-7; non-seed expiry/removal and seed retention
+  to ISSUE-004, ISSUE-167, ISSUE-211 through ISSUE-213, and RC-7;
+  graceful-stop notification, `PeerStopped` validation/dedup/fanout, stopped
+  route resurrection, and shutdown cleanup to ISSUE-001, ISSUE-004,
+  ISSUE-170, ISSUE-215 through ISSUE-225, ISSUE-231, RC-3, RC-6, and RC-7;
+  stale/duplicate connection events, stale sync/data/stats/disconnect, and
+  full-queue lifecycle behavior to ISSUE-117, ISSUE-156, ISSUE-217 through
+  ISSUE-225, ISSUE-230, ISSUE-238, RC-3, RC-4, and RC-6; and bad-network
+  churn to existing fuzz cycles under RC-3/RC-6/RC-7. No distinct score-80+
+  route, discovery, neighbour lifecycle, graceful-stop, shutdown, duplicate
+  connection, stale-sync, or high-load churn issue had concrete failing-test
+  evidence.
 - Critical-only no-new cycle after ISSUE-247 reviewed `src/stream.rs`,
   `src/secure.rs`, `src/quic.rs`, `src/msg.rs`, `src/peer.rs`,
   `src/peer/peer_internal.rs`, `src/ctx.rs`, `src/service.rs`,
