@@ -11,13 +11,80 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 32
-- Current audit continuation: critical-only runtime lifecycle and QUIC boundary
-  no-new cycle 34 found no new score-80+ issue across endpoint configuration,
-  uni/bidi stream caps, inbound admission, graceful shutdown notification,
-  requester/network drop behavior, duplicate connect coalescing, stale
-  main-loop event admission, connection alias cleanup, control/backpressure
-  handling, metrics/stats admission, and high-load churn behavior.
+- Current consecutive no-new-issue cycles: 33
+- Current audit continuation: critical-only public API, config, and docs
+  boundary no-new cycle 35 found no new score-80+ issue across README/example
+  contract, downstream compileability, package/dependency assumptions,
+  address/config validation, static/open-cluster binding defaults,
+  service/requester misuse after drop, public service-id misuse, metrics/stats
+  helpers, and high-load valid API action behavior.
+
+### Critical-only no-new cycle 35: public API, config, and docs boundary
+
+- Scope: reviewer-style critical-only pass over `README.md`, `Cargo.toml`,
+  examples, `src/tests/readme.rs`, `src/utils.rs`, `src/stats.rs`,
+  `src/requester.rs`, `src/service.rs`, `src/ctx.rs`, public exports and
+  public types in `src/lib.rs`, `PeerAddress`/`NetworkAddress`
+  parsing/display, config defaults and validation, service/requester APIs,
+  dev certificate/example assumptions, and README/spec promises versus actual
+  security and correctness behavior.
+- Focus areas: downstream consumer compileability without dev-dependency
+  feature unification, compiled README examples, packaged examples and dev
+  cert/key assumptions, explicit `insecure_open_cluster` use, static inbound
+  binding defaults, self/third-party identity admission, zero config values,
+  non-dialable advertise/seed addresses, peer-id/address mismatch, self
+  connect, duplicate/backlogged connects, requester use after network drop,
+  service requester use after service drop, duplicate/out-of-range service IDs,
+  public metrics/stats helpers, stale stats admission, and high-load random
+  public API actions.
+- Verification:
+  - `cargo check --lib`: passed with existing warnings only.
+  - External temporary consumer crate with `atm0s-small-p2p = { path = ... }`
+    and no dev-dependency feature unification: `cargo check` passed.
+  - `cargo check --examples`: passed with existing warnings only.
+  - `RUST_LOG=error cargo test readme --lib -- --nocapture`: passed 1 test.
+  - `RUST_LOG=error cargo test zero --lib -- --nocapture`: passed 11 tests.
+  - `RUST_LOG=error cargo test address --lib -- --nocapture`: passed 12 tests.
+  - `RUST_LOG=error cargo test service_id --lib -- --nocapture`: passed 4 tests.
+  - `RUST_LOG=error cargo test dropped_service --lib -- --nocapture`: passed 4 tests.
+  - `RUST_LOG=error cargo test requester --lib -- --nocapture`: passed 13 tests.
+  - `RUST_LOG=error P2P_FUZZ_NODES=24 P2P_FUZZ_STEPS=900 P2P_FUZZ_SEED=73035 cargo test fuzz_random_valid_node_actions_must_not_panic_connection_tasks --lib -- --nocapture`: passed.
+- Reviewer cross-check: `Hilbert the 2nd` returned `NO_NEW_CRITICAL` after
+  reviewing README, examples, package/dependency assumptions,
+  readme-compilation tests, helpers, public types and exports, requester and
+  service APIs, config validation, dev cert assumptions, static/open-cluster
+  binding behavior, address parsing/display, service/requester drop behavior,
+  and metrics/stats helpers. Reviewer verification included readme,
+  requester, dropped-service-requester, config, address, binding/open-cluster
+  filters, examples, package listing, and feature-tree checks.
+- Duplicate mapping:
+  - README/example dev certs, demo shared-key strings, and explicit
+    `InboundPeerBindings::insecure_open_cluster()` usage map to prior public
+    API/config passes, critical-only cycles 19 and 23, ISSUE-244, and RC-1.
+  - Static inbound binding defaults, self/third-party identity admission, and
+    open-cluster opt-in map to ISSUE-001, ISSUE-004, ISSUE-170, ISSUE-189,
+    ISSUE-194, ISSUE-223, ISSUE-244, RC-1, and cycle 33.
+  - `tick_ms == 0`, advertise/seed validity, non-dialable addresses, and seed
+    discovery defaults map to ISSUE-054, ISSUE-211 through ISSUE-213, RC-7,
+    discovery config tests, and cycle 32.
+  - `PeerAddress` peer-id/socket mismatch, self-connect, duplicate connect,
+    and same peer at a different address map to ISSUE-153, ISSUE-189,
+    ISSUE-194, RC-1, RC-6, and existing security address tests.
+  - Requester after network drop, full control queue, duplicate/backlogged
+    connects, and service/requester after service drop map to ISSUE-072,
+    ISSUE-073, ISSUE-076, ISSUE-234, ISSUE-235, ISSUE-246, RC-6, and cycles
+    24, 30, and 34.
+  - Public service-id misuse, duplicate service creation, and out-of-range
+    service IDs map to ISSUE-052, ISSUE-053, ISSUE-060, ISSUE-091,
+    ISSUE-234, ISSUE-235, RC-6, and cycle 33.
+  - Stats/metrics public helpers and stale/forged stats behavior map to
+    ISSUE-064, ISSUE-068, ISSUE-226, ISSUE-232, RC-1, RC-6, and cycles 29
+    and 34.
+  - Dependency/default-feature and package-content candidates had no distinct
+    score-80+ failing-test evidence beyond the already documented demo-cert
+    packaging and explicit example-only open-cluster posture.
+- Result: no distinct score-80+ public API, config, docs/spec, dependency, or
+  helper issue had concrete failing-test evidence in this cycle.
 
 ### Critical-only no-new cycle 34: runtime lifecycle and QUIC boundary
 

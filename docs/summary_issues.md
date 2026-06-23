@@ -7,13 +7,38 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Accepted issues: 246
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 32
-- Current audit continuation: critical-only runtime lifecycle and QUIC boundary
-  no-new cycle 34 found no new score-80+ issue across endpoint configuration,
-  uni/bidi stream caps, inbound admission, graceful shutdown notification,
-  requester/network drop behavior, duplicate connect coalescing, stale
-  main-loop event admission, connection alias cleanup, control/backpressure
-  handling, metrics/stats admission, and high-load churn behavior.
+- Current consecutive no-new-issue cycles: 33
+- Current audit continuation: critical-only public API, config, and docs
+  boundary no-new cycle 35 found no new score-80+ issue across README/example
+  contract, downstream compileability, package/dependency assumptions,
+  address/config validation, static/open-cluster binding defaults,
+  service/requester misuse after drop, public service-id misuse, metrics/stats
+  helpers, and high-load valid API action behavior.
+- Critical-only no-new cycle 35 reviewed public API, config, and docs/spec
+  boundaries in `README.md`, `Cargo.toml`, examples, `readme.rs`, `utils.rs`,
+  `stats.rs`, `requester.rs`, `service.rs`, `ctx.rs`, and public exports in
+  `lib.rs`. `cargo check --lib`, an external downstream consumer compile
+  check, `cargo check --examples`, focused readme, zero-value, address,
+  service-id, dropped-service, requester tests, and a 24-node 900-step
+  valid-action fuzz seed passed. Reviewer `Hilbert the 2nd` returned
+  `NO_NEW_CRITICAL` after independently reviewing README/spec promises,
+  package/dependency assumptions, config validation, dev cert assumptions,
+  static/open-cluster binding behavior, address parsing/display,
+  service/requester drop behavior, and metrics/stats helpers. Rejected
+  candidates mapped to cycles 19/23, ISSUE-244, and RC-1 for demo certs,
+  shared-key strings, and explicit open-cluster examples; ISSUE-001,
+  ISSUE-004, ISSUE-170, ISSUE-189, ISSUE-194, ISSUE-223, ISSUE-244, RC-1,
+  and cycle 33 for inbound binding defaults and identity admission; ISSUE-054,
+  ISSUE-211 through ISSUE-213, RC-7, and cycle 32 for zero config,
+  advertise/seed validity, and discovery defaults; ISSUE-153, ISSUE-189,
+  ISSUE-194, RC-1, and RC-6 for peer-id/address mismatch and self/duplicate
+  connects; ISSUE-072, ISSUE-073, ISSUE-076, ISSUE-234, ISSUE-235,
+  ISSUE-246, RC-6, and cycles 24/30/34 for requester/service drop and connect
+  backlogs; ISSUE-052, ISSUE-053, ISSUE-060, ISSUE-091, ISSUE-234,
+  ISSUE-235, RC-6, and cycle 33 for service-id misuse; and ISSUE-064,
+  ISSUE-068, ISSUE-226, ISSUE-232, RC-1, RC-6, and cycles 29/34 for
+  stats/metrics helper behavior. No distinct score-80+ public API, config,
+  docs/spec, dependency, or helper issue had concrete failing-test evidence.
 - Critical-only no-new cycle 34 reviewed runtime lifecycle and QUIC boundary in
   `lib.rs`, `quic.rs`, `requester.rs`, `neighbours.rs`, and `peer.rs`.
   Focused shutdown, requester, stale, duplicate, control, QUIC,
