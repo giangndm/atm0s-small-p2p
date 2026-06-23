@@ -11,10 +11,69 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 11
-- Current audit continuation: critical-only route stability, pipe/open-stream,
-  and unicast relay review found no new score-80+ issue with concrete
-  failing-test evidence.
+- Current consecutive no-new-issue cycles: 12
+- Current audit continuation: critical-only build/dependency and
+  serialization/framing boundary review found no new score-80+ issue with
+  concrete failing-test evidence.
+
+### Critical-only no-new cycle 12 after ISSUE-247: build, dependency, and serialization boundaries
+
+- Scope: reviewer-style critical-only pass over `Cargo.toml`, `Cargo.lock`,
+  `.github/workflows/*`, `src/stream.rs`, `src/msg.rs`, `src/secure.rs`,
+  `src/quic.rs`, `src/discovery.rs`, `src/router.rs`, and codec, object,
+  handshake, discovery, QUIC, stream, overflow, bounded, and fuzz tests. Focus
+  areas were dependency exposure, unsafe usage, CI gates that could hide
+  critical failures, unbounded serialization/deserialization, frame length
+  bypasses, malformed handshake/object panics, replay-cache pressure, and
+  high-churn malformed-frame stability.
+- Verification:
+  - `RUST_LOG=error cargo test --lib stream -- --nocapture`: passed 30 tests.
+  - `RUST_LOG=error cargo test --lib secure -- --nocapture`: passed 10 tests.
+  - `RUST_LOG=error cargo test --lib discovery -- --nocapture`: passed 37
+    tests.
+  - `RUST_LOG=error cargo test --lib codec -- --nocapture`: passed 3 tests.
+  - `RUST_LOG=error cargo test --lib malformed -- --nocapture`: 0 matching
+    tests.
+  - `RUST_LOG=error cargo test --lib overflow -- --nocapture`: passed 12
+    tests.
+  - `cargo tree -d`: duplicate versions observed, mostly dev/transitive; no
+    concrete critical exposure found.
+  - `cargo fmt --all -- --check`: failed on import ordering/line wrapping in
+    existing source; treated as non-critical CI hygiene, not score-80+
+    correctness/security evidence.
+  - `cargo clippy --all-targets --all-features -- -D warnings`: failed on
+    unused imports, dead code, and style lints; treated as non-critical CI
+    hygiene, not score-80+ correctness/security evidence.
+  - `cargo audit`: unavailable because `cargo-audit` is not installed.
+  - `RUST_LOG=error P2P_FUZZ_NODES=40 P2P_FUZZ_STEPS=2000 P2P_FUZZ_SEED=101049 cargo test --lib fuzz_random_adversarial_node_actions_must_not_panic_connection_tasks -- --nocapture`:
+    passed.
+- Reviewer cross-check: `Chandrasekhar the 2nd` returned `NO_NEW_CRITICAL`
+  after independently reviewing the same build/dependency and
+  serialization/framing boundary slice. Reviewer verification included codec,
+  object, secure, malformed, router, discovery, QUIC, stream, overflow,
+  bounded, duplicate dependency tree, locked metadata, and unavailable
+  `cargo-audit` checks; all matching tests passed.
+- Duplicate mapping:
+  - Framing/object size, bincode serialization/deserialization failures,
+    malformed frames, and oversized frames map to ISSUE-024, ISSUE-094,
+    ISSUE-097, ISSUE-098, ISSUE-174, and RC-5.
+  - Handshake replay, freshness, identity/role binding, timestamp overflow,
+    future timestamps, and replay-cache pressure map to ISSUE-002, ISSUE-021,
+    ISSUE-146, ISSUE-176, ISSUE-189, ISSUE-194, ISSUE-207, ISSUE-223,
+    ISSUE-244, RC-1, RC-3, and RC-4.
+  - QUIC stream caps, setup/open-stream timeouts, and unauthenticated
+    admission map to ISSUE-117, ISSUE-172, ISSUE-173, ISSUE-217,
+    ISSUE-220 through ISSUE-223, ISSUE-238, RC-3, and RC-4.
+  - Route/discovery caps, stale syncs, stopped peers, direct-route priority,
+    and route stability map to ISSUE-001, ISSUE-003, ISSUE-004, ISSUE-167,
+    ISSUE-170, ISSUE-211 through ISSUE-225, ISSUE-231, RC-6, and RC-7.
+  - Queue/backpressure and service-id bounds touched by stream tests map to
+    ISSUE-043, ISSUE-100 through ISSUE-105, ISSUE-119, ISSUE-121,
+    ISSUE-123 through ISSUE-126, ISSUE-217 through ISSUE-230, ISSUE-234,
+    ISSUE-235, and ISSUE-246.
+- Result: no distinct score-80+ build/dependency, serialization/framing,
+  handshake, QUIC, discovery, malformed-frame, or high-churn stability issue
+  had concrete failing-test evidence in this cycle.
 
 ### Critical-only no-new cycle 11 after ISSUE-247: route stability and pipe delivery
 

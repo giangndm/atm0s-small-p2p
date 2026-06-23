@@ -7,10 +7,47 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Accepted issues: 247
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 11
-- Current audit continuation: critical-only route stability, pipe/open-stream,
-  and unicast relay review found no new score-80+ issue with concrete
-  failing-test evidence.
+- Current consecutive no-new-issue cycles: 12
+- Current audit continuation: critical-only build/dependency and
+  serialization/framing boundary review found no new score-80+ issue with
+  concrete failing-test evidence.
+- Critical-only no-new cycle 12 after ISSUE-247 reviewed `Cargo.toml`,
+  `Cargo.lock`, `.github/workflows/*`, `src/stream.rs`, `src/msg.rs`,
+  `src/secure.rs`, `src/quic.rs`, `src/discovery.rs`, `src/router.rs`, and
+  codec, object, handshake, discovery, QUIC, stream, overflow, bounded, and
+  fuzz tests. Local stream, secure, discovery, codec, overflow, duplicate
+  dependency tree, and 40-node 2000-step adversarial fuzz seed `101049` checks
+  passed; `malformed` had zero matching tests; `cargo audit` was unavailable
+  because `cargo-audit` is not installed. `cargo fmt --all -- --check` failed
+  on import ordering/line wrapping in existing source, and `cargo clippy
+  --all-targets --all-features -- -D warnings` failed on unused imports, dead
+  code, and style lints; both were classified as non-critical CI hygiene, not
+  score-80+ correctness/security evidence. Reviewer `Chandrasekhar the 2nd`
+  returned `NO_NEW_CRITICAL` after independently reviewing the same slice, then
+  passing codec, object, secure, malformed, router, discovery, QUIC, stream,
+  overflow, bounded, duplicate dependency tree, and locked metadata checks, with
+  `cargo-audit` also unavailable. Rejected candidates mapped framing/object
+  size, bincode failures, malformed frames, and oversized frames to ISSUE-024,
+  ISSUE-094, ISSUE-097, ISSUE-098, ISSUE-174, and RC-5; handshake replay,
+  freshness, identity/role binding, timestamp overflow, future timestamps, and
+  replay-cache pressure to ISSUE-002, ISSUE-021, ISSUE-146, ISSUE-176,
+  ISSUE-189, ISSUE-194, ISSUE-207, ISSUE-223, ISSUE-244, RC-1, RC-3, and
+  RC-4; QUIC stream caps, setup/open-stream timeouts, and unauthenticated
+  admission to ISSUE-117, ISSUE-172, ISSUE-173, ISSUE-217, ISSUE-220 through
+  ISSUE-223, ISSUE-238, RC-3, and RC-4; route/discovery caps, stale syncs,
+  stopped peers, direct-route priority, and route stability to ISSUE-001,
+  ISSUE-003, ISSUE-004, ISSUE-167, ISSUE-170, ISSUE-211 through ISSUE-225,
+  ISSUE-231, RC-6, and RC-7; and queue/backpressure plus service-id bounds to
+  ISSUE-043, ISSUE-100 through ISSUE-105, ISSUE-119, ISSUE-121,
+  ISSUE-123 through ISSUE-126, ISSUE-217 through ISSUE-230, ISSUE-234,
+  ISSUE-235, and ISSUE-246. No distinct score-80+ build/dependency,
+  serialization/framing, handshake, QUIC, discovery, malformed-frame, or
+  high-churn stability issue had concrete failing-test evidence. Smallest
+  future fix proposal if this family regresses: pin the exact dependency,
+  workflow gate, serialized object, frame, handshake token, or discovery sync
+  with one focused failing test or reproducing command, then patch only the
+  dependency pin/gate, size check, decode admission, timestamp/replay guard, or
+  sync cap boundary that failed.
 - Critical-only no-new cycle 11 after ISSUE-247 reviewed `src/router.rs`,
   `src/ctx.rs`, `src/lib.rs`, `src/msg.rs`, `src/peer/peer_internal.rs`, and
   route, cross-node, stream, unicast, security, and fuzz tests. Local router,
