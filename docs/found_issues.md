@@ -11,12 +11,54 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 5
-- Current audit continuation: critical-only panic/error boundary,
-  serialization/framing, handshake/auth, timeout overflow, queue/resource
-  exhaustion, and high-load churn no-new cycle after ISSUE-247 found no new
-  score-80+ issue. Per the five-clean-cycle steering rule, the next discovery
-  cycle should shift to fuzz-heavy randomized node/action coverage.
+- Current consecutive no-new-issue cycles: 6
+- Current audit continuation: critical-only fuzz-heavy randomized node/action
+  coverage after the five-clean-cycle steering threshold found no new
+  score-80+ issue with concrete failing-test evidence.
+
+### Critical-only no-new cycle 6 after ISSUE-247: fuzz-heavy adversarial node/action coverage
+
+- Scope: added and reviewed `fuzz_random_adversarial_node_actions_must_not_panic_connection_tasks`
+  in `src/tests/fuzz.rs`, then stress-tested node actions across duplicate
+  connects, awaited connects, unicast/broadcast/send/open-stream calls, raw
+  forged `Unicast`, forged `UnicastWithAck`, stray `UnicastAck`, forged
+  `PeerStopped`, self-connects, oversized raw frames, graceful stop, abort,
+  restart, and reconnect churn. The test honors `P2P_FUZZ_NODES`,
+  `P2P_FUZZ_STEPS`, and `P2P_FUZZ_SEED`.
+- Verification:
+  - `RUST_LOG=error P2P_FUZZ_NODES=12 P2P_FUZZ_STEPS=250 P2P_FUZZ_SEED=95001 cargo test --lib fuzz_random_adversarial_node_actions_must_not_panic_connection_tasks -- --nocapture`:
+    passed.
+  - `RUST_LOG=error P2P_FUZZ_NODES=40 P2P_FUZZ_STEPS=1800 P2P_FUZZ_SEED=95049 cargo test --lib fuzz_random_adversarial_node_actions_must_not_panic_connection_tasks -- --nocapture`:
+    passed.
+  - `cargo fmt --check`: still fails on pre-existing formatting drift in
+    `src/discovery.rs`, `src/lib.rs`, `src/router.rs`, and `src/stream.rs`;
+    the touched fuzz file was formatted with the repo rustfmt config.
+- Reviewer cross-check: `James the 2nd` returned `NO_NEW_CRITICAL` after
+  independently reviewing `src/tests/fuzz.rs`, `src/lib.rs`, `src/peer.rs`,
+  `src/peer/peer_internal.rs`, `src/ctx.rs`, and `src/service.rs`.
+  Reviewer verification included 42-node 2000-step valid-action fuzz seed
+  `95001`, 42-node 2000-step sanitized churn seed `95002`, 36-node 1800-step
+  churn seed `95003`, and 40-node 2000-step adversarial seed `95004`; all
+  passed.
+- Duplicate mapping:
+  - Forged `PeerStopped`, graceful stop, stopped-peer cleanup, abort/restart,
+    and bad-network churn map to ISSUE-001, ISSUE-004, ISSUE-170,
+    ISSUE-215 through ISSUE-225, ISSUE-231, RC-3, RC-6, RC-7, and existing
+    fuzz-cycle families.
+  - Duplicate connects, stale connect events, false connect success, and
+    self-connect behavior map to ISSUE-052, ISSUE-053, ISSUE-060, ISSUE-072,
+    ISSUE-073, ISSUE-076, ISSUE-091, ISSUE-234, ISSUE-235, ISSUE-246, and
+    RC-6.
+  - Forged sources, raw unicast, acked unicast, and stray ack handling map to
+    ISSUE-014, ISSUE-015, ISSUE-017, ISSUE-018, ISSUE-039, ISSUE-115,
+    ISSUE-116, ISSUE-197, ISSUE-226, RC-1, and RC-2.
+  - Invalid service IDs, oversized frames, open-stream timeouts, queue
+    pressure, and full peer/local queues map to ISSUE-024, ISSUE-094,
+    ISSUE-097, ISSUE-098, ISSUE-100 through ISSUE-105, ISSUE-119, ISSUE-121,
+    ISSUE-123 through ISSUE-126, ISSUE-174, ISSUE-217 through ISSUE-230,
+    ISSUE-238, RC-3, RC-4, RC-5, and RC-6.
+- Result: no distinct score-80+ correctness, security, or stability issue had
+  concrete failing-test evidence in this fuzz-heavy cycle.
 
 ### Critical-only no-new cycle 5 after ISSUE-247: panic and serialization boundaries
 

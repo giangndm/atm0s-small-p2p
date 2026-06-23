@@ -7,12 +7,45 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Accepted issues: 247
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 5
-- Current audit continuation: critical-only panic/error boundary,
-  serialization/framing, handshake/auth, timeout overflow, queue/resource
-  exhaustion, and high-load churn no-new cycle after ISSUE-247 found no new
-  score-80+ issue. Per the five-clean-cycle steering rule, the next discovery
-  cycle should shift to fuzz-heavy randomized node/action coverage.
+- Current consecutive no-new-issue cycles: 6
+- Current audit continuation: critical-only fuzz-heavy randomized node/action
+  coverage after the five-clean-cycle steering threshold found no new
+  score-80+ issue with concrete failing-test evidence.
+- Critical-only no-new cycle 6 after ISSUE-247 added and reviewed
+  `fuzz_random_adversarial_node_actions_must_not_panic_connection_tasks` in
+  `src/tests/fuzz.rs`. The new harness honors `P2P_FUZZ_NODES`,
+  `P2P_FUZZ_STEPS`, and `P2P_FUZZ_SEED`, and randomizes duplicate connects,
+  awaited connects, unicast/broadcast/send/open-stream calls, forged
+  `Unicast`, forged `UnicastWithAck`, stray `UnicastAck`, forged
+  `PeerStopped`, self-connects, oversized raw frames, graceful stop, abort,
+  restart, and reconnect churn. Local 12-node 250-step seed `95001` and
+  40-node 1800-step seed `95049` adversarial fuzz runs passed. `cargo fmt
+  --check` still reports pre-existing formatting drift in `src/discovery.rs`,
+  `src/lib.rs`, `src/router.rs`, and `src/stream.rs`; the touched fuzz file
+  was formatted with the repo rustfmt config. Reviewer `James the 2nd`
+  returned `NO_NEW_CRITICAL` after independently reviewing fuzz and network
+  paths, then passing 42-node 2000-step valid-action seed `95001`, 42-node
+  2000-step sanitized churn seed `95002`, 36-node 1800-step churn seed
+  `95003`, and 40-node 2000-step adversarial seed `95004`. Rejected
+  candidates mapped graceful stop, forged `PeerStopped`, stopped cleanup,
+  abort/restart, and bad-network churn to ISSUE-001, ISSUE-004, ISSUE-170,
+  ISSUE-215 through ISSUE-225, ISSUE-231, RC-3, RC-6, RC-7, and existing
+  fuzz-cycle families; duplicate connects, stale connect events, false
+  connect success, and self-connect behavior to ISSUE-052, ISSUE-053,
+  ISSUE-060, ISSUE-072, ISSUE-073, ISSUE-076, ISSUE-091, ISSUE-234,
+  ISSUE-235, ISSUE-246, and RC-6; forged sources, raw unicast, acked unicast,
+  and stray ack handling to ISSUE-014, ISSUE-015, ISSUE-017, ISSUE-018,
+  ISSUE-039, ISSUE-115, ISSUE-116, ISSUE-197, ISSUE-226, RC-1, and RC-2;
+  and invalid service IDs, oversized frames, open-stream timeouts, queue
+  pressure, and full peer/local queues to ISSUE-024, ISSUE-094, ISSUE-097,
+  ISSUE-098, ISSUE-100 through ISSUE-105, ISSUE-119, ISSUE-121, ISSUE-123
+  through ISSUE-126, ISSUE-174, ISSUE-217 through ISSUE-230, ISSUE-238,
+  RC-3, RC-4, RC-5, and RC-6. No distinct score-80+ correctness, security,
+  or stability issue had concrete failing-test evidence. Smallest future fix
+  proposal if this harness exposes a failure: pin the exact seed/node/step
+  tuple, minimize to the first failing action sequence, then add only the
+  missing boundary guard, admission check, queue result propagation, or
+  source/liveness validation proven by that minimized regression.
 - Critical-only no-new cycle 5 after ISSUE-247 reviewed `src/msg.rs`,
   `src/stream.rs`, `src/secure.rs`, `src/quic.rs`, `src/utils.rs`,
   `src/lib.rs`, `src/ctx.rs`, `src/peer.rs`,

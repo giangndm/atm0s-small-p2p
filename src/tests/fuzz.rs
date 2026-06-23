@@ -12,7 +12,7 @@ use test_log::test;
 use tokio::{sync::oneshot, task::JoinHandle};
 
 use crate::{
-    msg::{BroadcastMsgId, P2pServiceId, PeerMessage},
+    msg::{BroadcastMsgId, P2pServiceId, PeerMessage, UnicastAckId},
     P2pNetworkRequester, P2pServiceEvent, P2pServiceRequester, PeerAddress, PeerId, SharedCtx,
 };
 
@@ -32,11 +32,7 @@ fn fuzz_node_count(configured: usize) -> usize {
 
 #[test]
 fn fuzz_node_count_must_honor_high_load_configuration() {
-    assert_eq!(
-        fuzz_node_count(12),
-        12,
-        "high-load fuzzing must honor P2P_FUZZ_NODES values above the small default cap"
-    );
+    assert_eq!(fuzz_node_count(12), 12, "high-load fuzzing must honor P2P_FUZZ_NODES values above the small default cap");
 }
 
 #[test(tokio::test(flavor = "multi_thread", worker_threads = 4))]
@@ -62,6 +58,11 @@ async fn fuzz_random_valid_node_churn_actions_must_not_panic_connection_tasks() 
 #[test(tokio::test(flavor = "multi_thread", worker_threads = 4))]
 async fn fuzz_random_sanitized_node_churn_actions_must_not_panic_connection_tasks() {
     run_random_node_churn_fuzz(false, false, 500).await;
+}
+
+#[test(tokio::test(flavor = "multi_thread", worker_threads = 4))]
+async fn fuzz_random_adversarial_node_actions_must_not_panic_connection_tasks() {
+    run_random_adversarial_node_fuzz().await;
 }
 
 #[test(tokio::test(flavor = "multi_thread", worker_threads = 4))]
@@ -385,6 +386,190 @@ async fn run_random_node_churn_fuzz(include_known_invalid_service: bool, include
     assert!(
         !background_panicked.load(Ordering::SeqCst),
         "fuzz random node churn actions must not panic background connection/service tasks; seed={seed}, nodes={node_count}, steps={steps}"
+    );
+}
+
+async fn run_random_adversarial_node_fuzz() {
+    let node_count = fuzz_node_count(env_usize("P2P_FUZZ_NODES", 8));
+    let steps = env_usize("P2P_FUZZ_STEPS", 700);
+    let seed = env_u64("P2P_FUZZ_SEED", 0xa11ce);
+    let mut rng = StdRng::seed_from_u64(seed);
+
+    let background_panicked = Arc::new(AtomicBool::new(false));
+    let previous_hook = std::panic::take_hook();
+    let hook_flag = background_panicked.clone();
+    std::panic::set_hook(Box::new(move |info| {
+        hook_flag.store(true, Ordering::SeqCst);
+        eprintln!("{info}");
+    }));
+
+    let mut nodes = Vec::with_capacity(node_count);
+    for id in 0..node_count {
+        nodes.push(Some(spawn_fuzz_node((id + 1) as u64).await));
+    }
+
+    for step in 0..steps {
+        let from = rng.gen_range(0..node_count);
+        let mut to = rng.gen_range(0..node_count);
+        if to == from {
+            to = (to + 1) % node_count;
+        }
+        let peer_id = |idx: usize| PeerId::from((idx + 1) as u64);
+
+        match rng.gen_range(0..19) {
+            0 => {
+                if let (Some(from_node), Some(to_node)) = (&nodes[from], &nodes[to]) {
+                    from_node.requester.try_connect(to_node.addr.clone());
+                }
+            }
+            1 => {
+                if let (Some(from_node), Some(to_node)) = (&nodes[from], &nodes[to]) {
+                    let _ = tokio::time::timeout(Duration::from_millis(50), from_node.requester.connect(to_node.addr.clone())).await;
+                }
+            }
+            2 => {
+                if let (Some(from_node), Some(to_node)) = (&nodes[from], &nodes[to]) {
+                    for _ in 0..rng.gen_range(2..=10) {
+                        from_node.requester.try_connect(to_node.addr.clone());
+                    }
+                }
+            }
+            3 => {
+                if let (Some(from_node), Some(to_node)) = (&nodes[from], &nodes[to]) {
+                    let data = format!("fuzz-adversarial-unicast-{seed}-{step}-{from}-{to}").into_bytes();
+                    let _ = tokio::time::timeout(Duration::from_millis(50), from_node.service_requester.send_unicast(to_node.addr.peer_id(), data)).await;
+                }
+            }
+            4 => {
+                if let (Some(from_node), Some(to_node)) = (&nodes[from], &nodes[to]) {
+                    let data = format!("fuzz-adversarial-try-unicast-{seed}-{step}-{from}-{to}").into_bytes();
+                    let _ = from_node.service_requester.try_send_unicast(to_node.addr.peer_id(), data).await;
+                }
+            }
+            5 => {
+                if let Some(from_node) = &nodes[from] {
+                    let data = format!("fuzz-adversarial-broadcast-{seed}-{step}-{from}").into_bytes();
+                    let _ = tokio::time::timeout(Duration::from_millis(50), from_node.service_requester.send_broadcast(data)).await;
+                }
+            }
+            6 => {
+                if let Some(from_node) = &nodes[from] {
+                    let data = format!("fuzz-adversarial-try-broadcast-{seed}-{step}-{from}").into_bytes();
+                    let _ = from_node.service_requester.try_send_broadcast(data).await;
+                }
+            }
+            7 => {
+                if let (Some(from_node), Some(to_node)) = (&nodes[from], &nodes[to]) {
+                    let meta = format!("fuzz-adversarial-stream-{seed}-{step}-{from}-{to}").into_bytes();
+                    let _ = tokio::time::timeout(Duration::from_millis(100), from_node.service_requester.open_stream(to_node.addr.peer_id(), meta)).await;
+                }
+            }
+            8 => {
+                if let (Some(from_node), Some(to_node)) = (&nodes[from], &nodes[to]) {
+                    if let Some(conn) = from_node.ctx.conns().into_iter().next() {
+                        let source = PeerId::from(rng.gen_range(1_000_000..2_000_000));
+                        let data = format!("fuzz-adversarial-raw-unicast-{seed}-{step}-{from}-{to}").into_bytes();
+                        let _ = conn.try_send(PeerMessage::Unicast(source, to_node.addr.peer_id(), P2pServiceId::from(0), data));
+                    }
+                }
+            }
+            9 => {
+                if let Some(from_node) = &nodes[from] {
+                    if let Some(conn) = from_node.ctx.conns().into_iter().next() {
+                        let data = format!("fuzz-adversarial-invalid-service-{seed}-{step}").into_bytes();
+                        let _ = conn.try_send(PeerMessage::Broadcast(PeerId::from(999_999), P2pServiceId::from(256), BroadcastMsgId::rand(), data));
+                    }
+                }
+            }
+            10 => {
+                if let (Some(from_node), Some(to_node)) = (&nodes[from], &nodes[to]) {
+                    if let Some(conn) = from_node.ctx.conns().into_iter().next() {
+                        let source = PeerId::from(rng.gen_range(1_000_000..2_000_000));
+                        let data = format!("fuzz-adversarial-acked-unicast-{seed}-{step}-{from}-{to}").into_bytes();
+                        let _ = conn.try_send(PeerMessage::UnicastWithAck(UnicastAckId::rand(), source, to_node.addr.peer_id(), P2pServiceId::from(0), data));
+                    }
+                }
+            }
+            11 => {
+                if let Some(from_node) = &nodes[from] {
+                    if let Some(conn) = from_node.ctx.conns().into_iter().next() {
+                        let result = if rng.gen_bool(0.5) {
+                            Ok(())
+                        } else {
+                            Err(format!("fuzz-adversarial-unknown-ack-{seed}-{step}"))
+                        };
+                        let _ = conn.try_send(PeerMessage::UnicastAck(UnicastAckId::rand(), result));
+                    }
+                }
+            }
+            12 => {
+                if let Some(from_node) = &nodes[from] {
+                    if let Some(conn) = from_node.ctx.conns().into_iter().next() {
+                        let forged_peer = PeerId::from(rng.gen_range(1..=(node_count as u64 + 8)));
+                        let _ = conn.try_send(PeerMessage::PeerStopped(forged_peer));
+                    }
+                }
+            }
+            13 => {
+                if let Some(mut node) = nodes[from].take() {
+                    if let Some(stop_tx) = node.stop_tx.take() {
+                        let _ = stop_tx.send(());
+                    }
+                    if tokio::time::timeout(Duration::from_millis(250), &mut node.task).await.is_err() {
+                        node.abort();
+                    }
+                }
+            }
+            14 => {
+                if let Some(node) = nodes[from].take() {
+                    node.abort();
+                }
+            }
+            15 => {
+                if nodes[from].is_none() {
+                    nodes[from] = Some(spawn_fuzz_node((from + 1) as u64).await);
+                }
+            }
+            16 => {
+                if let Some(from_node) = &nodes[from] {
+                    let self_addr = PeerAddress::new(peer_id(from), from_node.addr.network_address().clone());
+                    let _ = tokio::time::timeout(Duration::from_millis(50), from_node.requester.connect(self_addr)).await;
+                }
+            }
+            17 => {
+                if let (Some(from_node), Some(to_node)) = (&nodes[from], &nodes[to]) {
+                    if let Some(conn) = from_node.ctx.conns().into_iter().next() {
+                        let payload = vec![rng.gen::<u8>(); 70_000];
+                        let _ = conn.try_send(PeerMessage::Unicast(PeerId::from(999_998), to_node.addr.peer_id(), P2pServiceId::from(0), payload));
+                    }
+                }
+            }
+            _ => {
+                let restart = rng.gen_range(0..node_count);
+                if nodes[restart].is_none() {
+                    nodes[restart] = Some(spawn_fuzz_node((restart + 1) as u64).await);
+                }
+                if let (Some(from_node), Some(to_node)) = (&nodes[from], &nodes[restart]) {
+                    from_node.requester.try_connect(to_node.addr.clone());
+                }
+            }
+        }
+
+        tokio::time::sleep(Duration::from_millis(5)).await;
+        if background_panicked.load(Ordering::SeqCst) {
+            break;
+        }
+    }
+
+    tokio::time::sleep(Duration::from_millis(200)).await;
+    for node in nodes.into_iter().flatten() {
+        node.abort();
+    }
+    std::panic::set_hook(previous_hook);
+
+    assert!(
+        !background_panicked.load(Ordering::SeqCst),
+        "fuzz random adversarial node actions must not panic background connection/service tasks; seed={seed}, nodes={node_count}, steps={steps}"
     );
 }
 
