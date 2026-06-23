@@ -11,13 +11,87 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 39
-- Current audit continuation: critical-only route, discovery, and
-  graceful-shutdown no-new cycle 41 found no new score-80+ issue across
-  active-path stability, direct-route priority, stale route/discovery sync,
-  seed versus non-seed lifecycle, stopped-peer tombstones, duplicate
-  connection cleanup, PeerStopped dedup/forgery/backpressure, and high-load
-  bad-network churn.
+- Current consecutive no-new-issue cycles: 40
+- Current audit continuation: critical-only transport, stream, and
+  backpressure no-new cycle 42 found no new score-80+ issue across peer
+  control admission, stream setup and relay, upstream/downstream commit
+  ordering, unicast acking, local service delivery, frame/object codec caps,
+  malformed payload handling, and high-load bad-network churn.
+
+### Critical-only no-new cycle 42: transport, stream, and backpressure
+
+- Scope: reviewer-style critical-only pass over `src/peer.rs`,
+  `src/peer/peer_internal.rs`, `src/peer/peer_alias.rs`, `src/stream.rs`,
+  `src/msg.rs`, `src/ctx.rs`, `src/service.rs`, `src/tests/stream.rs`,
+  `src/tests/cross_nodes.rs`, `src/tests/security.rs`, and `src/tests/fuzz.rs`.
+- Focus areas: QUIC/control stream setup, peer-control queue admission,
+  outbound/inbound frame and object size caps, malformed or oversized payloads,
+  stream-open timeout behavior, stream relay loop rejection, relayed
+  upstream/downstream commit ordering, deferred local delivery caps, unicast
+  ack caps/timeouts, closed destination receivers, local service delivery
+  backpressure, forged stream/unicast source normalization, and high-load
+  transport churn under bad-network conditions.
+- Verification:
+  - `RUST_LOG=error cargo test stream --lib -- --nocapture`: passed 30 tests.
+  - `RUST_LOG=error cargo test unicast --lib -- --nocapture`: passed 12 tests.
+  - `RUST_LOG=error cargo test backpressure --lib -- --nocapture`: passed 3
+    tests.
+  - `RUST_LOG=error cargo test codec --lib -- --nocapture`: passed 3 tests.
+  - `RUST_LOG=error cargo test object --lib -- --nocapture`: passed 4 tests.
+  - `RUST_LOG=error cargo test malformed --lib -- --nocapture`: matched 0
+    tests.
+  - `RUST_LOG=error cargo test control --lib -- --nocapture`: passed 19 tests.
+  - `RUST_LOG=error cargo test queue --lib -- --nocapture`: passed 37 tests.
+  - `RUST_LOG=error P2P_FUZZ_NODES=36 P2P_FUZZ_STEPS=1500 P2P_FUZZ_SEED=82042 cargo test fuzz_random_sanitized_node_churn_actions_must_not_panic_connection_tasks --lib -- --nocapture`:
+    passed.
+  - `RUST_LOG=error P2P_FUZZ_NODES=32 P2P_FUZZ_STEPS=1300 P2P_FUZZ_SEED=82043 cargo test fuzz_random_steady_valid_node_actions_must_not_panic_connection_tasks --lib -- --nocapture`:
+    passed.
+  - `RUST_LOG=error P2P_FUZZ_NODES=28 P2P_FUZZ_STEPS=1000 P2P_FUZZ_SEED=82044 cargo test fuzz_random_valid_node_actions_must_not_panic_connection_tasks --lib -- --nocapture`:
+    passed.
+- Reviewer cross-check: `Halley the 2nd` returned `NO_NEW_CRITICAL` after
+  independently reviewing transport, stream setup/relay, peer control, unicast
+  ack, local service delivery, codec limits, and high-load backpressure.
+  Reviewer verification included stream, unicast, peer, security, codec,
+  backpressure, and 32-node 1300-step sanitized churn fuzz filters; all
+  passed.
+- Duplicate mapping:
+  - Transport/handshake admission, identity binding, duplicate or coalesced
+    connections, pending unauthenticated inbound caps, and setup timeouts map
+    to ISSUE-001, ISSUE-002, ISSUE-117, ISSUE-172, ISSUE-173, ISSUE-189,
+    ISSUE-194, ISSUE-219, ISSUE-221 through ISSUE-223, ISSUE-244, RC-1,
+    RC-3, RC-4, RC-6, and cycles 33/34/36/38/39.
+  - Stream setup, relayed open success, upstream/downstream commit ordering,
+    route-loop relay rejection, stalled setup responses, deferred delivery
+    reservations, and closed/full destination service behavior map to
+    ISSUE-011, ISSUE-012, ISSUE-013, ISSUE-056, ISSUE-117, ISSUE-149,
+    ISSUE-156, ISSUE-169, ISSUE-180, ISSUE-217, ISSUE-220, ISSUE-238, RC-3,
+    RC-4, RC-5, RC-6, and cycles 32/33/34/36/38/40.
+  - Unicast ack, pending ack caps, local service delivery queues, closed
+    receivers, full service queues, relay reporting, and false success map to
+    ISSUE-043, ISSUE-100 through ISSUE-105, ISSUE-117, ISSUE-119,
+    ISSUE-121, ISSUE-123 through ISSUE-126, ISSUE-156, ISSUE-217 through
+    ISSUE-230, ISSUE-238, RC-3, RC-4, RC-6, and cycles 30/32/33/34/36/38/40.
+  - Forged unicast/stream source normalization and authenticated previous-hop
+    binding map to ISSUE-014, ISSUE-015, ISSUE-018, ISSUE-017, RC-1, RC-2,
+    and cycles 33/39.
+  - Peer frame caps, object length-prefix limits, bincode encode/decode
+    errors, oversized payloads, and malformed raw frames map to ISSUE-024,
+    ISSUE-094, ISSUE-097, ISSUE-098, ISSUE-174, RC-5, and cycles
+    33/36/40.
+  - `PeerStopped` delivery during full queues, graceful shutdown forwarding,
+    stopped-peer route resurrection, and peer-control closure noise map to
+    ISSUE-170, ISSUE-215 through ISSUE-225, ISSUE-231, RC-3, RC-6, RC-7, and
+    cycles 20/24/32/34/36/38/39/41.
+  - High-load bad-network refused connects, deadlines, duplicate closures,
+    transient route churn, endpoint-drop logs, and internal `open_bi` answer
+    races mapped to existing fuzz families from cycles
+    20/24/28/31/32/34/36/38/39/40/41; this cycle's 36-node 1500-step
+    sanitized churn, 32-node 1300-step steady, and 28-node 1000-step valid
+    action fuzz seeds produced no failing evidence.
+- Result: no distinct score-80+ transport, stream setup/relay, peer-control,
+  unicast-ack, local-delivery, codec-limit, malformed-payload,
+  queue/backpressure, or high-load bad-network churn issue had concrete
+  failing-test evidence in this cycle.
 
 ### Critical-only no-new cycle 41: route, discovery, and graceful shutdown
 

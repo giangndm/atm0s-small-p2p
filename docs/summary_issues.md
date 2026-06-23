@@ -7,13 +7,50 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Accepted issues: 246
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 39
-- Current audit continuation: critical-only route, discovery, and
-  graceful-shutdown no-new cycle 41 found no new score-80+ issue across
-  active-path stability, direct-route priority, stale route/discovery sync,
-  seed versus non-seed lifecycle, stopped-peer tombstones, duplicate
-  connection cleanup, PeerStopped dedup/forgery/backpressure, and high-load
-  bad-network churn.
+- Current consecutive no-new-issue cycles: 40
+- Current audit continuation: critical-only transport, stream, and
+  backpressure no-new cycle 42 found no new score-80+ issue across peer
+  control admission, stream setup and relay, upstream/downstream commit
+  ordering, unicast acking, local service delivery, frame/object codec caps,
+  malformed payload handling, and high-load bad-network churn.
+- Critical-only no-new cycle 42 reviewed transport, stream, and backpressure
+  behavior in `src/peer.rs`, `src/peer/peer_internal.rs`,
+  `src/peer/peer_alias.rs`, `src/stream.rs`, `src/msg.rs`, `src/ctx.rs`,
+  `src/service.rs`, `src/tests/stream.rs`, `src/tests/cross_nodes.rs`,
+  `src/tests/security.rs`, and `src/tests/fuzz.rs`. Focused stream, unicast,
+  backpressure, codec, object, malformed, control, queue, a 36-node 1500-step
+  sanitized churn fuzz seed, a 32-node 1300-step steady fuzz seed, and a
+  28-node 1000-step valid-action fuzz seed passed locally; `malformed`
+  matched no tests. Reviewer `Halley the 2nd` returned `NO_NEW_CRITICAL`
+  after independently reviewing transport, stream setup/relay, peer control,
+  unicast ack, local service delivery, codec limits, and high-load
+  backpressure. Rejected candidates mapped to ISSUE-001/002/117/172/173/189/
+  194/219/221 through ISSUE-223/244, RC-1/RC-3/RC-4/RC-6, and cycles
+  33/34/36/38/39 for transport/handshake admission, identity binding,
+  duplicate/coalesced connections, pending unauthenticated inbound caps, and
+  setup timeouts; ISSUE-011/012/013/056/117/149/156/169/180/217/220/238,
+  RC-3/RC-4/RC-5/RC-6, and cycles 32/33/34/36/38/40 for stream setup,
+  relayed open success, upstream/downstream commit ordering, route-loop relay
+  rejection, stalled setup responses, deferred delivery reservations, and
+  closed/full destination service behavior; ISSUE-043, ISSUE-100 through
+  ISSUE-105, ISSUE-117/119/121, ISSUE-123 through ISSUE-126, ISSUE-156,
+  ISSUE-217 through ISSUE-230, ISSUE-238, RC-3/RC-4/RC-6, and cycles
+  30/32/33/34/36/38/40 for unicast ack, pending ack caps, local service
+  delivery queues, closed receivers, full service queues, relay reporting, and
+  false success; ISSUE-014/015/018/017, RC-1/RC-2, and cycles 33/39 for
+  forged unicast/stream source normalization and authenticated previous-hop
+  binding; ISSUE-024/094/097/098/174, RC-5, and cycles 33/36/40 for frame
+  caps, object length-prefix limits, bincode errors, oversized payloads, and
+  malformed raw frames; ISSUE-170, ISSUE-215 through ISSUE-225, ISSUE-231,
+  RC-3/RC-6/RC-7, and cycles 20/24/32/34/36/38/39/41 for `PeerStopped`
+  delivery during full queues, graceful shutdown forwarding, stopped-peer
+  route resurrection, and peer-control closure noise; and fuzz cycles
+  20/24/28/31/32/34/36/38/39/40/41 for high-load bad-network refused connects,
+  deadlines, duplicate closures, transient route churn, endpoint-drop logs,
+  and internal `open_bi` answer races. No distinct score-80+ transport,
+  stream setup/relay, peer-control, unicast-ack, local-delivery, codec-limit,
+  malformed-payload, queue/backpressure, or high-load bad-network churn issue
+  had concrete failing-test evidence.
 - Critical-only no-new cycle 41 reviewed route, discovery, and
   graceful-shutdown behavior in `src/router.rs`, `src/discovery.rs`,
   `src/neighbours.rs`, `src/lib.rs`, `src/ctx.rs`, `src/peer.rs`,
