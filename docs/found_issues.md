@@ -23167,3 +23167,77 @@ the source of truth for evidence and reviewer decisions.
 - Fix proposal: no new fix is proposed because no distinct critical issue was
   accepted; continue critical-only review/fuzzing for score-80+ findings.
 - Current consecutive no-new cycles after ISSUE-246: 41.
+
+### Critical-only no-new cycle 44: public lifecycle, config/examples, and malformed-input review
+
+- Scope: reviewed the current issue ledgers and summary, then audited public
+  network lifecycle/config behavior, requester/control admission,
+  shutdown/graceful stop, QUIC setup, shared-key handshake, inbound bindings,
+  service-id misuse, external malformed frames/objects, README snippets, and
+  example binaries.
+- Reviewer: `Hume the 2nd` (forked RED-team reviewer) returned
+  `NO_NEW_CRITICAL` and found no distinct score-80+ public lifecycle,
+  config/example, or malformed external-input issue with concrete failing-test
+  evidence.
+- Local verification:
+  - `RUST_LOG=error cargo test --lib secure::tests -- --nocapture`
+  - `RUST_LOG=error cargo test --lib tests::security:: -- --nocapture`
+  - `RUST_LOG=error cargo test --lib stream::tests -- --nocapture`
+  - `RUST_LOG=error cargo test --lib quic::tests -- --nocapture`
+  - `RUST_LOG=error cargo test --lib tests::readme:: -- --nocapture`
+  - `cargo test --examples --no-run`
+  - `RUST_LOG=error P2P_FUZZ_NODES=36 P2P_FUZZ_STEPS=1300 P2P_FUZZ_SEED=84044 cargo test --lib fuzz_random_valid_node_actions_must_not_panic_connection_tasks -- --nocapture`
+- Reviewer verification:
+  - `RUST_LOG=error cargo test --lib secure::tests -- --nocapture`
+  - `RUST_LOG=error cargo test --lib quic -- --nocapture`
+  - `RUST_LOG=error cargo test --lib codec -- --nocapture`
+  - `RUST_LOG=error cargo test --lib malformed -- --nocapture` matched zero tests
+  - `RUST_LOG=error cargo test --lib object -- --nocapture`
+  - `RUST_LOG=error cargo test --lib stream -- --nocapture`
+  - `RUST_LOG=error cargo test --lib requester -- --nocapture`
+  - `RUST_LOG=error cargo test --lib unauthenticated -- --nocapture`
+  - `RUST_LOG=error cargo test --lib shutdown -- --nocapture`
+  - `RUST_LOG=error cargo test --lib graceful -- --nocapture`
+  - `RUST_LOG=error cargo test --lib inbound -- --nocapture`
+  - `RUST_LOG=error cargo test --lib readme -- --nocapture`
+  - `cargo check --examples`
+  - `RUST_LOG=error cargo test --lib security -- --nocapture`
+  - `RUST_LOG=error cargo test --lib service_id -- --nocapture`
+  - `RUST_LOG=error P2P_FUZZ_NODES=30 P2P_FUZZ_STEPS=1200 P2P_FUZZ_SEED=84044 cargo test --lib fuzz_random_sanitized_node_churn_actions_must_not_panic_connection_tasks -- --nocapture`
+- Duplicate mapping:
+  - Public config, README/examples, default credential strings, and
+    open-cluster demo behavior map to cycles 19, 23, 35, 37, ISSUE-244, and
+    RC-1.
+  - Requester/control queue closure, dropped network/service requesters,
+    duplicate service handles, and public service-id misuse map to ISSUE-052,
+    ISSUE-053, ISSUE-060, ISSUE-072, ISSUE-073, ISSUE-076, ISSUE-091,
+    ISSUE-234, ISSUE-235, ISSUE-246, and RC-6.
+  - QUIC setup, unauthenticated inbound admission caps, bidi/unidirectional
+    stream limits, stalled setup, and main control-stream timeouts map to
+    ISSUE-117, ISSUE-172, ISSUE-173, ISSUE-217, ISSUE-220, ISSUE-221,
+    ISSUE-222, ISSUE-223, ISSUE-238, RC-3, and RC-4.
+  - Shared-key freshness, timestamp overflow/future skew, replay pressure,
+    peer-id and role binding, and inbound static peer/address binding map to
+    ISSUE-002, ISSUE-021, ISSUE-146, ISSUE-176, ISSUE-189, ISSUE-194,
+    ISSUE-207, ISSUE-244, and RC-1.
+  - Malformed peer frames, bincode/object size limits, oversized payloads,
+    object length-prefix overflow, and out-of-range service IDs map to
+    ISSUE-024, ISSUE-052, ISSUE-053, ISSUE-060, ISSUE-091, ISSUE-094,
+    ISSUE-097, ISSUE-098, ISSUE-174, ISSUE-234, ISSUE-235, RC-5, and RC-6.
+  - Source forgery and previous-hop identity binding for unicast, broadcast,
+    and streams map to ISSUE-014, ISSUE-015, ISSUE-017, ISSUE-018, ISSUE-039,
+    ISSUE-115, ISSUE-116, ISSUE-197, ISSUE-226, RC-1, and RC-2.
+  - Shutdown/graceful stop, stopped-peer tombstones, stale lifecycle events,
+    duplicate connection cleanup, and backpressure during stop delivery map to
+    ISSUE-001, ISSUE-004, ISSUE-170, ISSUE-215 through ISSUE-225, ISSUE-231,
+    RC-3, RC-6, and RC-7.
+  - High-load bad-network churn, refused connects, duplicate closure noise,
+    deadlines, and endpoint-drop behavior map to fuzz cycles 20, 24, 28, 31,
+    32, 34, 36, 38, 39, 40, 41, 42, and 43.
+- Root-cause summary: no new root cause was accepted; rejected candidates fit
+  existing authentication/source-binding, malformed-input/resource-bound,
+  public-lifecycle/stale-requester, QUIC setup/backpressure, and
+  shutdown/route-churn families.
+- Fix proposal: no new fix is proposed because no distinct critical issue was
+  accepted; continue critical-only review/fuzzing for score-80+ findings.
+- Current consecutive no-new cycles after ISSUE-246: 42.

@@ -7,11 +7,44 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Accepted issues: 246
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 41
-- Current audit continuation: critical-only stateful-service and observability
-  no-new cycle 43 found no new score-80+ issue across replicated-KV repair,
-  alias lifecycle/cache/find shutdown, metrics and visualization ingestion,
-  stale disconnect handling, bounded queues, and high-load bad-network churn.
+- Current consecutive no-new-issue cycles: 42
+- Current audit continuation: critical-only public lifecycle, config/example,
+  and malformed-input no-new cycle 44 found no new score-80+ issue across
+  requester/control admission, network shutdown/graceful stop, QUIC setup,
+  shared-key handshake, inbound bindings, service-id misuse, frame/object
+  codec limits, examples/readme, and high-load bad-network churn.
+- Critical-only no-new cycle 44 reviewed public network lifecycle, config,
+  examples, and malformed external-input behavior in `src/lib.rs`,
+  `src/requester.rs`, `src/quic.rs`, `src/secure.rs`, `src/msg.rs`,
+  `src/stream.rs`, `src/peer.rs`, `examples/simple.rs`,
+  `examples/benchmark.rs`, `examples/kv.rs`,
+  `examples/readme_getting_started.rs`, `README.md`, and security/readme
+  tests. Local focused security, secure-handshake, stream codec, QUIC, readme,
+  example-build, and 36-node 1300-step valid-action fuzz checks passed.
+  Reviewer `Hume the 2nd` returned `NO_NEW_CRITICAL` after independently
+  running secure, QUIC, codec/object/stream, requester, unauthenticated,
+  shutdown/graceful, inbound, readme, examples, security, service-id, and
+  30-node 1200-step sanitized churn fuzz slices; `malformed` matched no
+  tests. Rejected candidates mapped to README/example open-cluster/default
+  credential demos, ISSUE-244, RC-1, and cycles 19/23/35/37; requester,
+  service-id, stale requester, duplicate service, and public control behavior
+  to ISSUE-052/053/060/072/073/076/091/234/235/246 and RC-6; QUIC setup,
+  unauthenticated admission, bidirectional/unidirectional stream limits,
+  stalled setup, and main control-stream timeout behavior to ISSUE-117/172/
+  173/217/220/221/222/223/238 and RC-3/RC-4; shared-key freshness, replay,
+  timestamp overflow/future skew, peer-id/role binding, and inbound static
+  binding to ISSUE-002/021/146/176/189/194/207/244 and RC-1; malformed
+  frames, bincode/object size limits, oversized payloads, length-prefix
+  overflow, and out-of-range service IDs to ISSUE-024/052/053/060/091/094/
+  097/098/174/234/235 and RC-5/RC-6; source forgery and previous-hop binding
+  to ISSUE-014/015/017/018/039/115/116/197/226 and RC-1/RC-2; shutdown,
+  graceful stop, stopped-peer tombstones, stale lifecycle events, duplicate
+  cleanup, and stop-delivery backpressure to ISSUE-001/004/170/215 through
+  ISSUE-225/231 and RC-3/RC-6/RC-7; and high-load bad-network churn to fuzz
+  cycles 20/24/28/31/32/34/36/38/39/40/41/42/43. No distinct score-80+
+  public lifecycle, config/example, malformed input, handshake, QUIC setup,
+  requester/control, service-id, shutdown, or high-load churn issue had
+  concrete failing-test evidence.
 - Critical-only no-new cycle 43 reviewed stateful-service and observability
   behavior in `src/service/replicate_kv_service.rs`,
   `src/service/replicate_kv_service/local_storage.rs`,
