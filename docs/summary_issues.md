@@ -7,10 +7,45 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Accepted issues: 247
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 7
-- Current audit continuation: critical-only route/discovery/pipe-stability
-  review after fuzz-heavy randomized node/action coverage found no new
-  score-80+ issue with concrete failing-test evidence.
+- Current consecutive no-new-issue cycles: 8
+- Current audit continuation: critical-only transport/auth/framing/resource
+  boundary review found no new score-80+ issue with concrete failing-test
+  evidence.
+- Critical-only no-new cycle 8 after ISSUE-247 reviewed `src/secure.rs`,
+  `src/stream.rs`, `src/msg.rs`, `src/quic.rs`, `src/lib.rs`,
+  `src/peer.rs`, `src/peer/peer_internal.rs`, `src/tests/security.rs`,
+  `src/tests/stream.rs`, `src/tests/fuzz.rs`, and the issue ledgers. Local
+  secure, stream, codec, unauthenticated, object, malformed, overflow,
+  inbound-handshake, and 40-node 2400-step adversarial fuzz seed `97049`
+  checks passed; `cargo audit` was unavailable because `cargo-audit` is not
+  installed. Reviewer `Feynman the 2nd` returned `NO_NEW_CRITICAL` after
+  independently reviewing transport/auth/framing/resource-boundary paths, then
+  passing secure, stream, security, bounded, malformed, and 34-node 1400-step
+  adversarial fuzz seed `97031`. Rejected candidates mapped handshake
+  replay/freshness/identity, role, timestamp overflow, replay pressure, and
+  replay false-positive DoS to ISSUE-002, ISSUE-021, ISSUE-146, ISSUE-176,
+  ISSUE-189, ISSUE-194, ISSUE-207, ISSUE-223, ISSUE-244, RC-1, RC-3, and
+  RC-4; malformed/oversized frames, bincode/object serialization,
+  length-prefix caps, and service payload limits to ISSUE-024, ISSUE-094,
+  ISSUE-097, ISSUE-098, ISSUE-174, and RC-5; QUIC caps, unauthenticated
+  admission, setup/open_bi/control stream timeouts, endpoint drops, and
+  shutdown noise to ISSUE-117, ISSUE-172, ISSUE-173, ISSUE-217, ISSUE-220
+  through ISSUE-223, ISSUE-238, RC-3, and RC-4; peer-control queue pressure,
+  ack caps/timeouts, local service delivery backpressure, service-id bounds,
+  and closed/full queues to ISSUE-043, ISSUE-100 through ISSUE-105,
+  ISSUE-119, ISSUE-121, ISSUE-123 through ISSUE-126, ISSUE-217 through
+  ISSUE-230, ISSUE-234, ISSUE-235, ISSUE-238, ISSUE-246, RC-3, RC-4, and
+  RC-6; forged source/identity binding after auth to ISSUE-014, ISSUE-015,
+  ISSUE-017, ISSUE-018, ISSUE-039, ISSUE-115, ISSUE-116, ISSUE-197,
+  ISSUE-226, RC-1, and RC-2; and high-load churn/noisy duplicate/refused/
+  graceful-stop behavior to ISSUE-001, ISSUE-004, ISSUE-170, ISSUE-215
+  through ISSUE-225, ISSUE-231, existing fuzz-cycle families, RC-3, RC-6, and
+  RC-7. No distinct score-80+ transport/auth/framing/resource-boundary issue
+  had concrete failing-test evidence. Smallest future fix proposal if this
+  family regresses: pin the exact malformed object/frame/seed/action sequence,
+  determine whether the missing guard is handshake/auth, frame/object cap,
+  transport admission, queue result propagation, or source binding, then patch
+  that boundary only and add a focused regression.
 - Critical-only no-new cycle 7 after ISSUE-247 reviewed `src/router.rs`,
   `src/discovery.rs`, `src/lib.rs`, `src/ctx.rs`, `src/requester.rs`,
   `src/peer.rs`, `src/peer/peer_internal.rs`, `src/tests/fuzz.rs`,

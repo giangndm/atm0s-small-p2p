@@ -11,10 +11,73 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 7
-- Current audit continuation: critical-only route/discovery/pipe-stability
-  review after fuzz-heavy randomized node/action coverage found no new
-  score-80+ issue with concrete failing-test evidence.
+- Current consecutive no-new-issue cycles: 8
+- Current audit continuation: critical-only transport/auth/framing/resource
+  boundary review found no new score-80+ issue with concrete failing-test
+  evidence.
+
+### Critical-only no-new cycle 8 after ISSUE-247: transport, auth, framing, and resource boundaries
+
+- Scope: reviewer-style critical-only pass over `src/secure.rs`,
+  `src/stream.rs`, `src/msg.rs`, `src/quic.rs`, `src/lib.rs`,
+  `src/peer.rs`, `src/peer/peer_internal.rs`, `src/tests/security.rs`,
+  `src/tests/stream.rs`, `src/tests/fuzz.rs`, and the issue ledgers. Focus
+  areas were handshake replay/freshness/identity/role/static binding, replay
+  cache pressure and false-positive DoS candidates, object length-prefix caps,
+  bincode frame caps, malformed and oversized frames, QUIC bidi/uni stream
+  caps, unauthenticated inbound admission, setup/open_bi/control-send
+  timeouts, pending ack and stream admission caps, service-id bounds, and
+  bad-network high-load churn.
+- Verification:
+  - `RUST_LOG=error cargo test --lib secure -- --nocapture`: passed 10
+    tests.
+  - `RUST_LOG=error cargo test --lib stream -- --nocapture`: passed 30
+    tests.
+  - `RUST_LOG=error cargo test --lib codec -- --nocapture`: passed 3 tests.
+  - `RUST_LOG=error cargo test --lib unauthenticated -- --nocapture`: passed
+    2 tests.
+  - `RUST_LOG=error cargo test --lib object -- --nocapture`: passed 4 tests.
+  - `RUST_LOG=error cargo test --lib malformed -- --nocapture`: passed with
+    0 matching tests.
+  - `RUST_LOG=error cargo test --lib overflow -- --nocapture`: passed 12
+    tests.
+  - `RUST_LOG=error cargo test --lib inbound_handshake -- --nocapture`:
+    passed 3 tests.
+  - `RUST_LOG=error P2P_FUZZ_NODES=40 P2P_FUZZ_STEPS=2400 P2P_FUZZ_SEED=97049 cargo test --lib fuzz_random_adversarial_node_actions_must_not_panic_connection_tasks -- --nocapture`:
+    passed.
+  - `cargo audit`: unavailable in this workspace because the `cargo-audit`
+    subcommand is not installed.
+- Reviewer cross-check: `Feynman the 2nd` returned `NO_NEW_CRITICAL` after
+  independently reviewing the transport/auth/framing/resource-boundary paths.
+  Reviewer verification included secure, stream, security, bounded,
+  malformed, and 34-node 1400-step adversarial fuzz seed `97031`; all passed.
+- Duplicate mapping:
+  - Handshake replay/freshness/identity, role, timestamp overflow, replay
+    pressure, and replay false-positive DoS candidates map to ISSUE-002,
+    ISSUE-021, ISSUE-146, ISSUE-176, ISSUE-189, ISSUE-194, ISSUE-207,
+    ISSUE-223, ISSUE-244, RC-1, RC-3, and RC-4.
+  - Malformed and oversized frames, bincode/object serialization and
+    deserialization, length-prefix caps, and service payload frame limits map
+    to ISSUE-024, ISSUE-094, ISSUE-097, ISSUE-098, ISSUE-174, and RC-5.
+  - QUIC stream caps, unauthenticated admission, setup timeouts, stalled
+    connect/open_bi/control stream, endpoint drops, and shutdown noise map to
+    ISSUE-117, ISSUE-172, ISSUE-173, ISSUE-217, ISSUE-220 through ISSUE-223,
+    ISSUE-238, RC-3, and RC-4.
+  - Peer-control queue pressure, ack caps/timeouts, local service delivery
+    backpressure, service-id bounds, and closed/full queues map to ISSUE-043,
+    ISSUE-100 through ISSUE-105, ISSUE-119, ISSUE-121, ISSUE-123 through
+    ISSUE-126, ISSUE-217 through ISSUE-230, ISSUE-234, ISSUE-235, ISSUE-238,
+    ISSUE-246, RC-3, RC-4, and RC-6.
+  - Forged source/identity binding after auth maps to ISSUE-014, ISSUE-015,
+    ISSUE-017, ISSUE-018, ISSUE-039, ISSUE-115, ISSUE-116, ISSUE-197,
+    ISSUE-226, RC-1, and RC-2.
+  - High-load churn, noisy duplicate/refused connections, graceful stop, and
+    bad-network behavior map to ISSUE-001, ISSUE-004, ISSUE-170, ISSUE-215
+    through ISSUE-225, ISSUE-231, the existing fuzz-cycle families, RC-3,
+    RC-6, and RC-7.
+- Result: no distinct score-80+ transport/auth/framing/resource-boundary
+  correctness, security, or high-load stability issue had concrete
+  failing-test evidence in this cycle.
 
 ### Critical-only no-new cycle 7 after ISSUE-247: route, discovery, and pipe stability
 
