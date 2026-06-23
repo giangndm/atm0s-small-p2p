@@ -7,12 +7,40 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Accepted issues: 247
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 2
-- Current audit continuation: critical-only route, discovery, neighbour
-  lifecycle, graceful-stop, and high-load churn no-new cycle after ISSUE-247
-  found no new score-80+ issue across active-path stability, seed/non-seed
-  removal, stopped tombstones, stale route/discovery syncs, shutdown cleanup,
-  duplicate connection churn, and bad-network fuzzing.
+- Current consecutive no-new-issue cycles: 3
+- Current audit continuation: critical-only pubsub protocol, state-machine,
+  resource-boundary, requester/drop lifecycle, and high-load churn no-new
+  cycle after ISSUE-247 found no new score-80+ issue across RPC correlation,
+  heartbeat chunking, channel/member/tombstone caps, forged membership/data,
+  full local queues, graceful-stop cleanup, and fuzz churn.
+- Critical-only no-new cycle 3 after ISSUE-247 reviewed
+  `src/service/pubsub_service.rs`,
+  `src/service/pubsub_service/publisher.rs`,
+  `src/service/pubsub_service/subscriber.rs`, `src/tests/pubsub.rs`,
+  `src/tests/security.rs`, `src/tests/fuzz.rs`, and the issue ledgers. Local
+  pubsub, heartbeat, tombstone, chunk, RPC, bounded, full-channel, stale, and
+  36-node 1500-step sanitized churn fuzz checks passed. Reviewer `Maxwell the
+  2nd` returned `NO_NEW_CRITICAL` after independently running pubsub,
+  heartbeat, RPC, tombstone, chunk, membership, requester, bounded, full,
+  stale, backpressure, and the same 36-node fuzz slice. Rejected candidates
+  mapped RPC answer correlation and forged/stale answers to ISSUE-020,
+  ISSUE-115, ISSUE-116, ISSUE-236, and RC-2; requester/drop/service-drop and
+  phantom channels to ISSUE-072, ISSUE-073, ISSUE-076, ISSUE-108, ISSUE-234,
+  ISSUE-235, ISSUE-246, and RC-6; membership authorization to ISSUE-039,
+  ISSUE-048, RC-1, and RC-2; pending RPC caps, timeout overflow,
+  no-destination behavior, internal queue pressure, and full local queues to
+  ISSUE-043, ISSUE-100 through ISSUE-105, ISSUE-121, ISSUE-123 through
+  ISSUE-126, ISSUE-178, ISSUE-228, ISSUE-231, ISSUE-240 through ISSUE-243,
+  ISSUE-246, RC-3, RC-5, and RC-6; heartbeat omission/chunk/stale snapshot,
+  channel/member/tombstone caps, and restart generation reset to ISSUE-080,
+  ISSUE-155, ISSUE-205, ISSUE-206, ISSUE-228, ISSUE-240 through ISSUE-243,
+  and RC-6; malformed serialization and oversized method/batch handling to
+  ISSUE-094, ISSUE-097, ISSUE-098, ISSUE-174, and RC-5; and graceful stop,
+  disconnect cleanup, full-channel behavior, and high-load churn to
+  ISSUE-001, ISSUE-004, ISSUE-170, ISSUE-215 through ISSUE-225, ISSUE-231,
+  RC-3, RC-6, and RC-7. No distinct score-80+ pubsub protocol,
+  state-machine, resource-bound, queue/backpressure, lifecycle, graceful-stop,
+  or high-load churn issue had concrete failing-test evidence.
 - Critical-only no-new cycle 2 after ISSUE-247 reviewed `src/router.rs`,
   `src/discovery.rs`, `src/neighbours.rs`, `src/lib.rs`, `src/ctx.rs`,
   `src/peer.rs`, `src/peer/peer_internal.rs`, `src/tests/discovery.rs`,

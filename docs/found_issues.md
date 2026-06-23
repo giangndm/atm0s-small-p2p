@@ -11,12 +11,12 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 2
-- Current audit continuation: critical-only route, discovery, neighbour
-  lifecycle, graceful-stop, and high-load churn no-new cycle after ISSUE-247
-  found no new score-80+ issue across active-path stability, seed/non-seed
-  removal, stopped tombstones, stale route/discovery syncs, shutdown cleanup,
-  duplicate connection churn, and bad-network fuzzing.
+- Current consecutive no-new-issue cycles: 3
+- Current audit continuation: critical-only pubsub protocol, state-machine,
+  resource-boundary, requester/drop lifecycle, and high-load churn no-new
+  cycle after ISSUE-247 found no new score-80+ issue across RPC correlation,
+  heartbeat chunking, channel/member/tombstone caps, forged membership/data,
+  full local queues, graceful-stop cleanup, and fuzz churn.
 
 ### Critical-only no-new cycle 42: transport, stream, and backpressure
 
@@ -23719,3 +23719,76 @@ the source of truth for evidence and reviewer decisions.
 - Fix proposal: no new fix is proposed because no distinct critical issue was
   accepted; continue critical-only review/fuzzing for score-80+ findings.
 - Current consecutive no-new cycles after ISSUE-247: 2.
+
+### Critical-only no-new cycle 3 after ISSUE-247: pubsub protocol, state, and resource-boundary review
+
+- Scope: reviewed the current issue ledgers and summary, then audited
+  `src/service/pubsub_service.rs`,
+  `src/service/pubsub_service/publisher.rs`,
+  `src/service/pubsub_service/subscriber.rs`, `src/tests/pubsub.rs`,
+  `src/tests/security.rs`, `src/tests/fuzz.rs`, and related pubsub
+  protocol/resource coverage.
+- Focus areas: publish/feedback RPC correlation, forged and stale remote
+  answers, local stale requester answers, heartbeat chunk assembly and
+  omission cleanup, stale snapshot handling, remote channel/member/tombstone
+  caps, restart generation reset, membership authorization for publish,
+  feedback, and RPC paths, internal-control queue pressure, full local
+  publisher/subscriber queues, dropped requester liveness, graceful-stop
+  cleanup, malformed/oversized RPC methods, and high-load bad-network churn.
+- Reviewer: `Maxwell the 2nd` (forked RED-team reviewer) returned
+  `NO_NEW_CRITICAL` and found no distinct score-80+ pubsub protocol,
+  state-machine, resource-boundary, queue/backpressure, lifecycle,
+  graceful-stop, or high-load churn issue with concrete failing-test evidence.
+- Local verification:
+  - `RUST_LOG=error cargo test --lib pubsub -- --nocapture`
+  - `RUST_LOG=error cargo test --lib heartbeat -- --nocapture`
+  - `RUST_LOG=error cargo test --lib tombstone -- --nocapture`
+  - `RUST_LOG=error cargo test --lib chunk -- --nocapture`
+  - `RUST_LOG=error cargo test --lib rpc -- --nocapture`
+  - `RUST_LOG=error cargo test --lib bounded -- --nocapture`
+  - `RUST_LOG=error cargo test --lib full -- --nocapture`
+  - `RUST_LOG=error cargo test --lib stale -- --nocapture --test-threads=1`
+  - `RUST_LOG=error P2P_FUZZ_NODES=36 P2P_FUZZ_STEPS=1500 P2P_FUZZ_SEED=92049 cargo test --lib fuzz_random_sanitized_node_churn_actions_must_not_panic_connection_tasks -- --nocapture`
+- Reviewer verification:
+  - `cargo test --lib pubsub -- --nocapture`
+  - `cargo test --lib heartbeat -- --nocapture`
+  - `cargo test --lib rpc -- --nocapture`
+  - `cargo test --lib tombstone -- --nocapture`
+  - `cargo test --lib chunk -- --nocapture`
+  - `cargo test --lib membership -- --nocapture`
+  - `cargo test --lib requester -- --nocapture`
+  - `cargo test --lib bounded -- --nocapture`
+  - `cargo test --lib full -- --nocapture`
+  - `cargo test --lib stale -- --nocapture --test-threads=1`
+  - `cargo test --lib backpressure -- --nocapture`
+  - `P2P_FUZZ_NODES=36 P2P_FUZZ_STEPS=1500 P2P_FUZZ_SEED=92049 cargo test --lib fuzz_random_sanitized_node_churn_actions_must_not_panic_connection_tasks -- --nocapture`
+- Duplicate mapping:
+  - RPC answer correlation, forged/stale remote answers, and local stale
+    requester answers map to ISSUE-020, ISSUE-115, ISSUE-116, ISSUE-236,
+    and RC-2.
+  - Publisher/subscriber requester lifecycle, dropped handles, service-drop
+    handles, and phantom channels map to ISSUE-072, ISSUE-073, ISSUE-076,
+    ISSUE-108, ISSUE-234, ISSUE-235, ISSUE-246, and RC-6.
+  - Remote membership authorization for publish, feedback, and RPC paths maps
+    to ISSUE-039, ISSUE-048, RC-1, and RC-2.
+  - Pending RPC caps, timeout overflow, no-destination behavior, internal
+    queue pressure, and local full queues map to ISSUE-043, ISSUE-100
+    through ISSUE-105, ISSUE-121, ISSUE-123 through ISSUE-126, ISSUE-178,
+    ISSUE-228, ISSUE-231, ISSUE-240 through ISSUE-243, ISSUE-246, RC-3,
+    RC-5, and RC-6.
+  - Heartbeat omission cleanup, chunk assembly, stale snapshot cleanup,
+    channel/member/tombstone caps, and restart generation reset map to
+    ISSUE-080, ISSUE-155, ISSUE-205, ISSUE-206, ISSUE-228, ISSUE-240
+    through ISSUE-243, and RC-6.
+  - Malformed serialization and oversized method/batch handling map to
+    ISSUE-094, ISSUE-097, ISSUE-098, ISSUE-174, and RC-5.
+  - Graceful stop, disconnect cleanup, full-channel behavior, and high-load
+    bad-network churn map to ISSUE-001, ISSUE-004, ISSUE-170, ISSUE-215
+    through ISSUE-225, ISSUE-231, RC-3, RC-6, and RC-7.
+- Root-cause summary: no new root cause was accepted; rejected candidates fit
+  existing pubsub RPC binding, requester/service liveness, membership
+  authorization, queue/backpressure, heartbeat/chunk/tombstone lifecycle,
+  malformed/resource-bound, graceful-stop, and high-load churn families.
+- Fix proposal: no new fix is proposed because no distinct critical issue was
+  accepted; continue critical-only review/fuzzing for score-80+ findings.
+- Current consecutive no-new cycles after ISSUE-247: 3.
