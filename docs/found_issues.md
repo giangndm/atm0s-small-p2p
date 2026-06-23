@@ -11,13 +11,72 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 38
-- Current audit continuation: critical-only service payload, RPC, and
-  resource-boundary no-new cycle 40 found no new score-80+ issue across base
-  service handles, service-id bounds, frame/object payload caps, pubsub
-  heartbeat/RPC/fanout state, alias lifecycle and pending finds,
-  metrics/visualization scan ingestion, replicated-KV snapshot/repair state,
-  stale/unsolicited responses, queue backpressure, and high-load churn.
+- Current consecutive no-new-issue cycles: 39
+- Current audit continuation: critical-only route, discovery, and
+  graceful-shutdown no-new cycle 41 found no new score-80+ issue across
+  active-path stability, direct-route priority, stale route/discovery sync,
+  seed versus non-seed lifecycle, stopped-peer tombstones, duplicate
+  connection cleanup, PeerStopped dedup/forgery/backpressure, and high-load
+  bad-network churn.
+
+### Critical-only no-new cycle 41: route, discovery, and graceful shutdown
+
+- Scope: reviewer-style critical-only pass over `src/router.rs`,
+  `src/discovery.rs`, `src/neighbours.rs`, `src/lib.rs`, `src/ctx.rs`,
+  `src/peer.rs`, `src/peer/peer_internal.rs`, `src/tests/discovery.rs`,
+  `src/tests/cross_nodes.rs`, `src/tests/fuzz.rs`, and route/discovery/
+  stopped-peer security coverage.
+- Focus areas: active-path jumping, direct-route priority, stale sync after
+  disconnect, route loop suppression, non-seed timeout/removal, configured seed
+  retention, graceful-shutdown `PeerStopped` delivery and forwarding,
+  stopped-peer tombstone freshness, duplicate connection cleanup, forged
+  `PeerStopped` messages, main/control/service queue backpressure during
+  shutdown, and high-load bad-network churn.
+- Verification:
+  - `RUST_LOG=error cargo test discovery --lib -- --nocapture`: passed 37
+    tests.
+  - `RUST_LOG=error cargo test router --lib -- --nocapture`: passed 20
+    tests.
+  - `RUST_LOG=error cargo test PeerStopped --lib -- --nocapture`: matched 0
+    tests; rerun with lowercase filters below.
+  - `RUST_LOG=error cargo test graceful_shutdown_removes_stopped_non_seed --lib -- --nocapture`:
+    passed.
+  - `RUST_LOG=error cargo test peer_stopped --lib -- --nocapture`: passed 15
+    tests.
+  - `RUST_LOG=error cargo test stopped --lib -- --nocapture`: passed 19
+    tests.
+  - `RUST_LOG=error P2P_FUZZ_NODES=34 P2P_FUZZ_STEPS=1400 P2P_FUZZ_SEED=81041 cargo test fuzz_random_sanitized_node_churn_actions_must_not_panic_connection_tasks --lib -- --nocapture`:
+    passed.
+  - `RUST_LOG=error P2P_FUZZ_NODES=30 P2P_FUZZ_STEPS=1200 P2P_FUZZ_SEED=81042 cargo test fuzz_random_steady_valid_node_actions_must_not_panic_connection_tasks --lib -- --nocapture`:
+    passed.
+- Reviewer cross-check: `Turing the 2nd` returned `NO_NEW_CRITICAL` after
+  independently reviewing route/discovery/graceful-shutdown/stopped-peer
+  lifecycle behavior under bad network and high churn. Reviewer verification
+  included route, discovery, graceful, stopped, serial stale, seed, and
+  32-node 1300-step sanitized churn fuzz filters; all passed.
+- Duplicate mapping:
+  - Route jitter, direct-route priority, stale route sync, route loop
+    suppression, advertise validity, and active-path stability map to
+    ISSUE-003, ISSUE-009, ISSUE-010, ISSUE-063, ISSUE-103, ISSUE-164,
+    ISSUE-211 through ISSUE-214, RC-5, RC-7, and cycles 32/36/39.
+  - Graceful stop, stopped-peer lifecycle, stale route resurrection, duplicate
+    connection cleanup, and stop forwarding map to ISSUE-001, ISSUE-004,
+    ISSUE-215 through ISSUE-225, ISSUE-231, RC-6, and cycles
+    18/24/32/34/36/38/39.
+  - `PeerStopped` forgery, dedup, stale-event confusion, and queue
+    backpressure map to ISSUE-170, ISSUE-215 through ISSUE-225, RC-3, RC-6,
+    and cycles 20/24/32/34/36/38/39.
+  - Seed retention, non-seed timeout/removal, non-dialable advertise
+    rejection, and discovery backlog coalescing map to ISSUE-167,
+    ISSUE-211 through ISSUE-213, RC-7, and cycles 32/37/39.
+  - High-load route/discovery churn mapped to the existing fuzz families from
+    cycles 20/24/28/31/32/34/36/38/39/40; this cycle's 34-node 1400-step
+    sanitized churn seed and 30-node 1200-step steady seed produced no failing
+    evidence.
+- Result: no distinct score-80+ route, discovery, graceful-shutdown,
+  stopped-peer, seed/non-seed lifecycle, active-path, stale-sync,
+  queue/backpressure, or high-load bad-network churn issue had concrete
+  failing-test evidence in this cycle.
 
 ### Critical-only no-new cycle 40: service payload, RPC, and resource boundaries
 

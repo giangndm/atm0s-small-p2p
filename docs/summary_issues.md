@@ -7,13 +7,40 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Accepted issues: 246
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 38
-- Current audit continuation: critical-only service payload, RPC, and
-  resource-boundary no-new cycle 40 found no new score-80+ issue across base
-  service handles, service-id bounds, frame/object payload caps, pubsub
-  heartbeat/RPC/fanout state, alias lifecycle and pending finds,
-  metrics/visualization scan ingestion, replicated-KV snapshot/repair state,
-  stale/unsolicited responses, queue backpressure, and high-load churn.
+- Current consecutive no-new-issue cycles: 39
+- Current audit continuation: critical-only route, discovery, and
+  graceful-shutdown no-new cycle 41 found no new score-80+ issue across
+  active-path stability, direct-route priority, stale route/discovery sync,
+  seed versus non-seed lifecycle, stopped-peer tombstones, duplicate
+  connection cleanup, PeerStopped dedup/forgery/backpressure, and high-load
+  bad-network churn.
+- Critical-only no-new cycle 41 reviewed route, discovery, and
+  graceful-shutdown behavior in `src/router.rs`, `src/discovery.rs`,
+  `src/neighbours.rs`, `src/lib.rs`, `src/ctx.rs`, `src/peer.rs`,
+  `src/peer/peer_internal.rs`, `src/tests/discovery.rs`,
+  `src/tests/cross_nodes.rs`, `src/tests/fuzz.rs`, and stopped-peer security
+  coverage. Focused discovery, router, graceful non-seed shutdown,
+  peer-stopped, stopped-peer, a 34-node 1400-step sanitized churn fuzz seed,
+  and a 30-node 1200-step steady fuzz seed passed locally; the initial
+  uppercase `PeerStopped` filter matched no tests and was rerun with lowercase
+  filters. Reviewer `Turing the 2nd` returned `NO_NEW_CRITICAL` after
+  independently reviewing route/discovery/graceful-shutdown/stopped-peer
+  lifecycle behavior under bad network and high churn. Rejected candidates
+  mapped to ISSUE-003/009/010/063/103/164/211 through ISSUE-214, RC-5,
+  RC-7, and cycles 32/36/39 for route jitter, direct-route priority, stale
+  sync, route loop suppression, advertise validity, and active-path stability;
+  ISSUE-001/004/215 through ISSUE-225/231, RC-6, and cycles
+  18/24/32/34/36/38/39 for graceful stop, stopped-peer lifecycle, stale route
+  resurrection, duplicate connection cleanup, and stop forwarding; ISSUE-170,
+  ISSUE-215 through ISSUE-225, RC-3/RC-6, and cycles 20/24/32/34/36/38/39
+  for `PeerStopped` forgery, dedup, stale-event confusion, and queue
+  backpressure; ISSUE-167, ISSUE-211 through ISSUE-213, RC-7, and cycles
+  32/37/39 for seed retention, non-seed timeout/removal, non-dialable
+  advertise rejection, and discovery backlog coalescing; and fuzz cycles
+  20/24/28/31/32/34/36/38/39/40 for high-load route/discovery churn. No
+  distinct score-80+ route, discovery, graceful-shutdown, stopped-peer,
+  seed/non-seed lifecycle, active-path, stale-sync, queue/backpressure, or
+  high-load bad-network churn issue had concrete failing-test evidence.
 - Critical-only no-new cycle 40 reviewed service payload, RPC, and resource
   boundaries in `src/service.rs`, `src/ctx.rs`, pubsub service and handles,
   alias/metrics/visualization services, replicated-KV service/storage/messages,
