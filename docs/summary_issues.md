@@ -7,10 +7,53 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Accepted issues: 247
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 12
-- Current audit continuation: critical-only build/dependency and
-  serialization/framing boundary review found no new score-80+ issue with
-  concrete failing-test evidence.
+- Current consecutive no-new-issue cycles: 13
+- Current audit continuation: critical-only production panic boundary and
+  background task lifecycle review found no new score-80+ issue with concrete
+  failing-test evidence.
+- Critical-only no-new cycle 13 after ISSUE-247 reviewed `src/lib.rs`,
+  `src/peer.rs`, `src/peer/peer_internal.rs`, `src/ctx.rs`,
+  `src/requester.rs`, `src/service.rs`, metrics, visualization, alias,
+  pubsub, replicated-KV service modules, `src/utils.rs`, and panic, drop,
+  shutdown, lifecycle, stale, task, backpressure, and fuzz tests. Local panic,
+  drop, closed, full, shutdown, lifecycle, stale, task, and 44-node 2400-step
+  adversarial fuzz seed `102049` checks passed. Reviewer `Schrodinger the
+  2nd` returned `NO_NEW_CRITICAL` after independently reviewing the same
+  panic-boundary/task-lifecycle slice, then passing shutdown, dropped-service,
+  lifecycle, requester, metrics, visualization, pubsub, replicate, and
+  36-node 1800-step adversarial fuzz seed `102049`; one invalid combined
+  Cargo command was rerun as separate valid filters. Rejected candidates mapped
+  production panic/unwrap, serialization, overflow, and time arithmetic to
+  ISSUE-024, ISSUE-094, ISSUE-097, ISSUE-098, ISSUE-174, ISSUE-189,
+  ISSUE-194, ISSUE-207, RC-5, and RC-6; shutdown, graceful stop,
+  stopped-peer propagation, non-seed cleanup, stale lifecycle, and
+  `JoinHandle` abort/cleanup to ISSUE-001, ISSUE-004, ISSUE-170, ISSUE-215
+  through ISSUE-225, ISSUE-231, RC-3, RC-6, and RC-7; full/closed queues,
+  stale requesters, dropped services, local service pressure, and false-success
+  backpressure paths to ISSUE-043, ISSUE-052, ISSUE-053, ISSUE-060,
+  ISSUE-072, ISSUE-073, ISSUE-076, ISSUE-091, ISSUE-100 through ISSUE-105,
+  ISSUE-119, ISSUE-121, ISSUE-123 through ISSUE-126, ISSUE-217 through
+  ISSUE-230, ISSUE-234, ISSUE-235, ISSUE-246, RC-3, and RC-6; stream/open_bi
+  task admission, setup/open timeout, retry task pressure, and failed pipe
+  delivery to ISSUE-011, ISSUE-012, ISSUE-013, ISSUE-056, ISSUE-117,
+  ISSUE-149, ISSUE-156, ISSUE-169, ISSUE-180, ISSUE-217, ISSUE-220,
+  ISSUE-229, ISSUE-230, ISSUE-238, RC-3, RC-4, and RC-6; metrics and
+  visualization scan cleanup to existing observability spoofing/resource/
+  lifecycle families, RC-1, RC-3, and RC-6; pubsub pending RPC, responder
+  binding, queue, and requester lifecycle behavior to ISSUE-020, ISSUE-039,
+  ISSUE-048, ISSUE-080, ISSUE-108, ISSUE-115, ISSUE-116, ISSUE-155,
+  ISSUE-205, ISSUE-206, ISSUE-228, ISSUE-236, ISSUE-240 through ISSUE-243,
+  ISSUE-246, RC-1, RC-3, and RC-6; and replicated-KV bounds, unsolicited
+  responses, serialization failure, full-sync tasks, and graceful-stop cleanup
+  to existing replicated-KV resource/divergence/overflow/lifecycle families,
+  RC-3, RC-5, RC-6, and RC-7. No distinct score-80+ production panic,
+  background task, graceful shutdown, queue backpressure, service lifecycle,
+  replicated-KV cleanup, or high-load bad-network stability issue had concrete
+  failing-test evidence. Smallest future fix proposal if this family regresses:
+  pin the exact panic, task, queue, drop, or shutdown event with one focused
+  failing test or fuzz seed, then patch only the failed boundary by replacing
+  the panic with `Result` or logged drop, propagating timeout/backpressure,
+  aborting or joining the owned task, or adding the missing lifecycle cleanup.
 - Critical-only no-new cycle 12 after ISSUE-247 reviewed `Cargo.toml`,
   `Cargo.lock`, `.github/workflows/*`, `src/stream.rs`, `src/msg.rs`,
   `src/secure.rs`, `src/quic.rs`, `src/discovery.rs`, `src/router.rs`, and

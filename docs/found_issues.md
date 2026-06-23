@@ -11,10 +11,78 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 12
-- Current audit continuation: critical-only build/dependency and
-  serialization/framing boundary review found no new score-80+ issue with
-  concrete failing-test evidence.
+- Current consecutive no-new-issue cycles: 13
+- Current audit continuation: critical-only production panic boundary and
+  background task lifecycle review found no new score-80+ issue with concrete
+  failing-test evidence.
+
+### Critical-only no-new cycle 13 after ISSUE-247: panic boundaries and task lifecycle
+
+- Scope: reviewer-style critical-only pass over `src/lib.rs`, `src/peer.rs`,
+  `src/peer/peer_internal.rs`, `src/ctx.rs`, `src/requester.rs`,
+  `src/service.rs`, `src/service/metrics_service.rs`,
+  `src/service/visualization_service.rs`, `src/service/alias_service.rs`,
+  `src/service/pubsub_service.rs`, `src/service/replicate_kv_service.rs`,
+  `src/service/replicate_kv_service/remote_storage.rs`, `src/utils.rs`, and
+  panic, drop, shutdown, lifecycle, stale, task, backpressure, and adversarial
+  fuzz tests. Focus areas were production `expect`/panic boundaries, owned
+  background task abort/cleanup, graceful shutdown notification, full/closed
+  queue behavior, requester/service liveness, service scan task accumulation,
+  replicated-KV task cleanup, and bad-network/high-load churn.
+- Verification:
+  - `RUST_LOG=error cargo test --lib panic -- --nocapture`: passed 33 tests.
+  - `RUST_LOG=error cargo test --lib drop -- --nocapture`: passed 25 tests.
+  - `RUST_LOG=error cargo test --lib closed -- --nocapture`: passed 5 tests.
+  - `RUST_LOG=error cargo test --lib full -- --nocapture`: passed 58 tests.
+  - `RUST_LOG=error cargo test --lib shutdown -- --nocapture`: passed 8 tests.
+  - `RUST_LOG=error cargo test --lib lifecycle -- --nocapture`: passed 3 tests.
+  - `RUST_LOG=error cargo test --lib stale -- --nocapture`: passed 25 tests.
+  - `RUST_LOG=error cargo test --lib task -- --nocapture`: passed 11 tests.
+  - `RUST_LOG=error P2P_FUZZ_NODES=44 P2P_FUZZ_STEPS=2400 P2P_FUZZ_SEED=102049 cargo test --lib fuzz_random_adversarial_node_actions_must_not_panic_connection_tasks -- --nocapture`:
+    passed.
+- Reviewer cross-check: `Schrodinger the 2nd` returned `NO_NEW_CRITICAL`
+  after independently reviewing the same panic-boundary and task-lifecycle
+  slice. Reviewer verification included shutdown, dropped-service, lifecycle,
+  requester, metrics, visualization, pubsub, replicate, and 36-node 1800-step
+  adversarial fuzz seed `102049`; all matching tests passed. One reviewer
+  combined `cargo test` invocation failed from invalid Cargo CLI usage before
+  running tests and was rerun as separate valid filters.
+- Duplicate mapping:
+  - Production panic/unwrap candidates in `src/lib.rs`, `src/ctx.rs`,
+    services, replicated-KV state guards, serialization, overflow, and time
+    arithmetic map to ISSUE-024, ISSUE-094, ISSUE-097, ISSUE-098,
+    ISSUE-174, ISSUE-189, ISSUE-194, ISSUE-207, RC-5, and RC-6.
+  - Shutdown, graceful stop, stopped-peer propagation, non-seed cleanup, stale
+    lifecycle, and `JoinHandle` abort/cleanup map to ISSUE-001, ISSUE-004,
+    ISSUE-170, ISSUE-215 through ISSUE-225, ISSUE-231, RC-3, RC-6, and RC-7.
+  - Full/closed control queues, stale requesters, dropped services, local
+    service delivery pressure, and false-success backpressure paths map to
+    ISSUE-043, ISSUE-052, ISSUE-053, ISSUE-060, ISSUE-072, ISSUE-073,
+    ISSUE-076, ISSUE-091, ISSUE-100 through ISSUE-105, ISSUE-119, ISSUE-121,
+    ISSUE-123 through ISSUE-126, ISSUE-217 through ISSUE-230, ISSUE-234,
+    ISSUE-235, ISSUE-246, RC-3, and RC-6.
+  - Stream/open_bi task admission, setup/open-stream timeout, retry task
+    pressure, and failed pipe delivery map to ISSUE-011, ISSUE-012, ISSUE-013,
+    ISSUE-056, ISSUE-117, ISSUE-149, ISSUE-156, ISSUE-169, ISSUE-180,
+    ISSUE-217, ISSUE-220, ISSUE-229, ISSUE-230, ISSUE-238, RC-3, RC-4, and
+    RC-6.
+  - Metrics and visualization scan tasks, unsolicited or stale `Info`, row
+    caps, base-service close behavior, and scan resource cleanup map to
+    existing observability spoofing/resource/lifecycle families, RC-1, RC-3,
+    and RC-6.
+  - Pubsub pending RPC bounds, responder binding, full local queues, dropped
+    requesters, and serialization/lifecycle behavior map to ISSUE-020,
+    ISSUE-039, ISSUE-048, ISSUE-080, ISSUE-108, ISSUE-115, ISSUE-116,
+    ISSUE-155, ISSUE-205, ISSUE-206, ISSUE-228, ISSUE-236, ISSUE-240 through
+    ISSUE-243, ISSUE-246, RC-1, RC-3, and RC-6.
+  - Replicated-KV snapshot/change bounds, unsolicited responses, serialization
+    failure, remote-store caps, full-sync task cleanup, and graceful-stop
+    cleanup map to existing replicated-KV resource, divergence, overflow, and
+    lifecycle families, RC-3, RC-5, RC-6, and RC-7.
+- Result: no distinct score-80+ production panic, owned background task,
+  graceful shutdown, queue backpressure, service lifecycle, replicated-KV
+  cleanup, or high-load bad-network stability issue had concrete failing-test
+  evidence in this cycle.
 
 ### Critical-only no-new cycle 12 after ISSUE-247: build, dependency, and serialization boundaries
 
