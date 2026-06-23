@@ -7,10 +7,47 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Accepted issues: 247
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 20
-- Current audit continuation: critical-only route/path-stability and
-  pipe/relay delivery review found no new score-80+ issue with concrete
+- Current consecutive no-new-issue cycles: 21
+- Current audit continuation: critical-only public network setup and
+  control-plane admission review found no new score-80+ issue with concrete
   failing-test evidence.
+- Critical-only no-new cycle 21 after ISSUE-247 reviewed network setup,
+  `recv`, incoming admission, connect processing, internal event gating,
+  requester/control queues, pending inbound tracking, QUIC stream limits,
+  inbound handshake binding, handshake freshness/replay, stale requesters,
+  duplicate connects, zero tick handling, and high-load bad-network paths.
+  Local handshake (10), requester (13), unauthenticated (2), QUIC (2),
+  duplicate (20), stale (25), zero (11), and 60-node 4000-step adversarial
+  fuzz seed `110049` checks passed. The original forked reviewer agent errored
+  before returning a result; because no subagent result was available, this
+  cycle used a main-agent reviewer-style replacement pass over the same
+  setup/control-plane slice and concrete verification above, rejecting
+  theoretical issues without a reproducible failing-test path. Rejected
+  candidates mapped zero tick setup,
+  advertised-address validation, configured seed/self-loop behavior,
+  non-dialable seed filtering, and local-peer advertisements to existing
+  config/discovery families, ISSUE-001, ISSUE-003, ISSUE-004, ISSUE-167,
+  ISSUE-170, ISSUE-211 through ISSUE-225, ISSUE-231, RC-6, and RC-7;
+  requester/control queue pressure, duplicate best-effort connects, awaited
+  duplicate connects, stale requesters, network drop handling, and pending
+  connect cleanup to ISSUE-217 through ISSUE-230, ISSUE-246, RC-3, RC-4, and
+  RC-6; inbound admission, authenticated-vs-unauthenticated cap accounting,
+  duplicate inbound coalescing, peer-id mismatch, static binding, and
+  open-cluster posture to ISSUE-002, ISSUE-021, ISSUE-117, ISSUE-146,
+  ISSUE-172, ISSUE-173, ISSUE-176, ISSUE-189, ISSUE-194, ISSUE-207,
+  ISSUE-223, ISSUE-244, RC-1, RC-3, and RC-4; and handshake
+  replay/freshness/future timestamp handling, replay-cache pressure, QUIC
+  stream limits, unidirectional stream rejection, stream setup timeout, and
+  high-load churn to existing transport, handshake, and resource families under
+  RC-1, RC-3, RC-4, RC-6, and RC-7. No distinct score-80+
+  setup/control-plane issue had concrete failing-test evidence. Smallest
+  future fix proposal if this family regresses: pin the exact config value,
+  connect command, pending connection id, inbound remote address, handshake
+  token/timestamp, QUIC stream type, queue state, duplicate event, stale
+  requester, or fuzz seed with one focused failing test, then patch only the
+  failed validation, admission cap, coalescing rule, direct-route event gate,
+  requester error path, handshake replay/freshness check, stream-limit config,
+  or cleanup boundary.
 - Critical-only no-new cycle 20 after ISSUE-247 reviewed router, discovery,
   peer/internal, stream, network event handling, route/path stability, relay
   pipe delivery, stale events, stopped-peer propagation, and high-load

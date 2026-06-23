@@ -11,10 +11,68 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 20
-- Current audit continuation: critical-only route/path-stability and
-  pipe/relay delivery review found no new score-80+ issue with concrete
+- Current consecutive no-new-issue cycles: 21
+- Current audit continuation: critical-only public network setup and
+  control-plane admission review found no new score-80+ issue with concrete
   failing-test evidence.
+
+### Critical-only no-new cycle 21 after ISSUE-247: network setup and control-plane admission
+
+- Scope: reviewer-style critical-only pass over `src/lib.rs` network
+  construction, `recv`, `process_incoming`, `process_connect`, and
+  `process_internal`; `src/quic.rs` endpoint stream limits; `src/neighbours.rs`
+  pending inbound tracking; `src/requester.rs` connect APIs; `src/peer.rs`
+  inbound handshake admission and binding; `src/secure.rs` handshake freshness
+  and replay; and related requester, duplicate, stale, unauthenticated, zero
+  tick, QUIC, handshake, replay, and adversarial fuzz tests. Focus areas were
+  zero tick setup, bind/advertise safety, seed/self loops, requester/control
+  queue admission, awaited connect liveness, duplicate/refused cleanup,
+  pending unauthenticated inbound caps, stale requester behavior, QUIC stream
+  admission, handshake replay/freshness/address binding, panic/unwrap
+  boundaries, and high-load bad-network random actions.
+- Verification:
+  - `RUST_LOG=error cargo test --lib handshake -- --nocapture`: passed 10
+    tests.
+  - `RUST_LOG=error cargo test --lib requester -- --nocapture`: passed 13
+    tests.
+  - `RUST_LOG=error cargo test --lib unauthenticated -- --nocapture`: passed
+    2 tests.
+  - `RUST_LOG=error cargo test --lib quic -- --nocapture`: passed 2 tests.
+  - `RUST_LOG=error cargo test --lib duplicate -- --nocapture`: passed 20
+    tests.
+  - `RUST_LOG=error cargo test --lib stale -- --nocapture`: passed 25 tests.
+  - `RUST_LOG=error cargo test --lib zero -- --nocapture`: passed 11 tests.
+  - `RUST_LOG=error P2P_FUZZ_NODES=60 P2P_FUZZ_STEPS=4000 P2P_FUZZ_SEED=110049 cargo test --lib fuzz_random_adversarial_node_actions_must_not_panic_connection_tasks -- --nocapture`:
+    passed.
+- Reviewer cross-check: the original forked reviewer agent errored before it
+  could return a result. Because no subagent result was available, this cycle
+  used a main-agent reviewer-style replacement pass over the same
+  setup/control-plane scope and concrete local verification above; theoretical
+  issues without a reproducible failing-test path were rejected under the
+  current acceptance rule.
+- Duplicate mapping:
+  - Zero tick setup, advertised-address validation, configured seed/self-loop
+    behavior, non-dialable seed filtering, and local-peer advertisements map
+    to existing config/discovery families, ISSUE-001, ISSUE-003, ISSUE-004,
+    ISSUE-167, ISSUE-170, ISSUE-211 through ISSUE-225, ISSUE-231, RC-6, and
+    RC-7.
+  - Requester/control queue pressure, duplicate best-effort connects, awaited
+    duplicate connects, stale requesters, network drop handling, and pending
+    connect cleanup map to ISSUE-217 through ISSUE-230, ISSUE-246, RC-3,
+    RC-4, and RC-6.
+  - Inbound admission, authenticated-vs-unauthenticated cap accounting,
+    duplicate inbound coalescing, peer-id mismatch, static binding, and
+    open-cluster posture map to ISSUE-002, ISSUE-021, ISSUE-117, ISSUE-146,
+    ISSUE-172, ISSUE-173, ISSUE-176, ISSUE-189, ISSUE-194, ISSUE-207,
+    ISSUE-223, ISSUE-244, RC-1, RC-3, and RC-4.
+  - Handshake replay/freshness/future timestamp handling, replay-cache
+    pressure, QUIC stream limits, unidirectional stream rejection, stream setup
+    timeout, and high-load bad-network churn map to existing transport,
+    handshake, and resource families under RC-1, RC-3, RC-4, RC-6, and RC-7.
+- Result: no distinct score-80+ public setup, requester/control admission,
+  duplicate connect, stale requester, unauthenticated inbound cap, handshake
+  replay/freshness, QUIC stream-limit, binding, panic/unwrap, or high-load
+  bad-network issue had concrete failing-test evidence in this cycle.
 
 ### Critical-only no-new cycle 20 after ISSUE-247: route stability and relay pipe delivery
 
