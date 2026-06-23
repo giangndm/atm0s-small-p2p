@@ -11,10 +11,74 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 17
-- Current audit continuation: critical-only replicated-KV consistency,
-  version arithmetic, snapshot/change replay, and lifecycle review found no
-  new score-80+ issue with concrete failing-test evidence.
+- Current consecutive no-new-issue cycles: 18
+- Current audit continuation: critical-only transport, framing, stream setup,
+  service-id, and raw/forged ingress review found no new score-80+ issue with
+  concrete failing-test evidence.
+
+### Critical-only no-new cycle 18 after ISSUE-247: transport framing and message ingress
+
+- Scope: reviewer-style critical-only pass over `src/msg.rs`, `src/quic.rs`,
+  `src/stream.rs`, `src/peer.rs`, `src/peer/peer_internal.rs`, `src/lib.rs`,
+  `src/ctx.rs`, `src/service.rs`, `src/requester.rs`, `src/secure.rs`, and
+  related stream, security, cross-node, codec, object, handshake, malformed,
+  oversized, service-id, source, forged, frame, and adversarial fuzz tests.
+  Focus areas were bincode decode failures, service-id bounds, raw/forged QUIC
+  handshakes, oversized frames, malformed frames, open-stream/setup ack false
+  success, direct-vs-relay source binding, unauthenticated inbound pressure,
+  unidirectional stream admission, stream/task leaks, closed/full service
+  queues, panic/unwrap boundaries, and high-load bad-network random actions.
+- Verification:
+  - `RUST_LOG=error cargo test --lib codec -- --nocapture`: passed 3 tests.
+  - `RUST_LOG=error cargo test --lib stream -- --nocapture`: passed 30 tests.
+  - `RUST_LOG=error cargo test --lib malformed -- --nocapture`: 0 matching
+    tests.
+  - `RUST_LOG=error cargo test --lib service_id -- --nocapture`: passed 4
+    tests.
+  - `RUST_LOG=error cargo test --lib source -- --nocapture`: passed 7 tests.
+  - `RUST_LOG=error cargo test --lib forged -- --nocapture`: passed 4 tests.
+  - `RUST_LOG=error cargo test --lib raw -- --nocapture`: 0 matching tests.
+  - `RUST_LOG=error cargo test --lib security -- --nocapture`: passed 55 tests.
+  - `RUST_LOG=error cargo test --lib object -- --nocapture`: passed 4 tests.
+  - `RUST_LOG=error cargo test --lib handshake -- --nocapture`: passed 10
+    tests.
+  - `RUST_LOG=error cargo test --lib oversized -- --nocapture`: passed 2 tests.
+  - `RUST_LOG=error cargo test --lib frame -- --nocapture`: passed 1 test.
+  - `RUST_LOG=error P2P_FUZZ_NODES=54 P2P_FUZZ_STEPS=3400 P2P_FUZZ_SEED=107049 cargo test --lib fuzz_random_adversarial_node_actions_must_not_panic_connection_tasks -- --nocapture`:
+    passed.
+- Reviewer cross-check: `Helmholtz the 2nd` returned `NO_NEW_CRITICAL` after
+  independently reviewing the same transport/framing ingress slice. Reviewer
+  verification included codec, malformed, stream, forged, source, oversized,
+  unidirectional, ack, panic, open_stream, frame, and 54-node 3400-step
+  adversarial fuzz seed `107049`; all matching tests passed.
+- Duplicate mapping:
+  - Bincode/frame decode failures, oversized peer frames, object length-prefix
+    checks, malformed input, and frame-size disconnect behavior map to existing
+    frame-size/malformed ingress families, RC-3, RC-5, RC-6, and RC-7.
+  - Service-id bounds, out-of-range unicast and stream handling, duplicate or
+    dropped service behavior, and closed/full service queues map to ISSUE-043,
+    ISSUE-052, ISSUE-053, ISSUE-060, ISSUE-072, ISSUE-073, ISSUE-091,
+    ISSUE-217 through ISSUE-230, ISSUE-246, RC-3, and RC-6.
+  - Forged direct and relayed source binding for unicast, acked unicast,
+    broadcast, stream setup, and broadcast deduplication map to ISSUE-014,
+    ISSUE-015, ISSUE-017, ISSUE-018, ISSUE-039, ISSUE-115, ISSUE-116,
+    ISSUE-197, ISSUE-226, RC-1, and RC-2.
+  - Open-stream/setup ack false success, queue-full or closed service
+    receivers, relay setup commit, route-loop rejection, stalled write/read
+    timeouts, pending accept permits, and task cleanup map to ISSUE-011,
+    ISSUE-012, ISSUE-013, ISSUE-056, ISSUE-117, ISSUE-149, ISSUE-156,
+    ISSUE-169, ISSUE-180, ISSUE-217, ISSUE-220, ISSUE-229, ISSUE-230,
+    ISSUE-238, ISSUE-246, RC-3, RC-4, and RC-6.
+  - Raw/forged handshakes, unauthenticated inbound pressure, unidirectional
+    stream admission, handshake replay/freshness, duplicate/refused connects,
+    and bad-network churn map to ISSUE-002, ISSUE-021, ISSUE-117, ISSUE-146,
+    ISSUE-172, ISSUE-173, ISSUE-176, ISSUE-189, ISSUE-194, ISSUE-207,
+    ISSUE-217, ISSUE-220, ISSUE-223, ISSUE-238, ISSUE-244, RC-1, RC-3, RC-4,
+    RC-6, and RC-7.
+- Result: no distinct score-80+ bincode/framing, malformed-frame, service-id,
+  source-binding, stream setup, raw-handshake, unauthenticated-admission,
+  unidirectional-stream, task-lifecycle, or high-load bad-network ingress issue
+  had concrete failing-test evidence in this cycle.
 
 ### Critical-only no-new cycle 17 after ISSUE-247: replicated-KV consistency and version lifecycle
 

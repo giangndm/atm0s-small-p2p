@@ -7,10 +7,52 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Accepted issues: 247
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 17
-- Current audit continuation: critical-only replicated-KV consistency,
-  version arithmetic, snapshot/change replay, and lifecycle review found no
-  new score-80+ issue with concrete failing-test evidence.
+- Current consecutive no-new-issue cycles: 18
+- Current audit continuation: critical-only transport, framing, stream setup,
+  service-id, and raw/forged ingress review found no new score-80+ issue with
+  concrete failing-test evidence.
+- Critical-only no-new cycle 18 after ISSUE-247 reviewed `src/msg.rs`,
+  `src/quic.rs`, `src/stream.rs`, `src/peer.rs`,
+  `src/peer/peer_internal.rs`, `src/lib.rs`, `src/ctx.rs`, `src/service.rs`,
+  `src/requester.rs`, `src/secure.rs`, and stream, security, cross-node,
+  codec, object, handshake, malformed, oversized, service-id, source, forged,
+  frame, and adversarial fuzz tests. Local codec, stream, service-id, source,
+  forged, security, object, handshake, oversized, frame, and 54-node 3400-step
+  adversarial fuzz seed `107049` checks passed; `malformed` and `raw` had zero
+  matching tests. Reviewer `Helmholtz the 2nd` returned `NO_NEW_CRITICAL`
+  after independently reviewing the same transport/framing ingress slice, then
+  passing codec, malformed, stream, forged, source, oversized,
+  unidirectional, ack, panic, open_stream, frame, and 54-node 3400-step
+  adversarial fuzz seed `107049`. Rejected candidates mapped bincode/frame
+  decode failures, oversized frames, object length-prefix checks, malformed
+  input, and frame-size disconnect behavior to existing frame-size/malformed
+  ingress families, RC-3, RC-5, RC-6, and RC-7; service-id bounds,
+  out-of-range unicast/stream handling, duplicate or dropped service behavior,
+  and closed/full service queues to ISSUE-043, ISSUE-052, ISSUE-053,
+  ISSUE-060, ISSUE-072, ISSUE-073, ISSUE-091, ISSUE-217 through ISSUE-230,
+  ISSUE-246, RC-3, and RC-6; forged direct/relayed source binding for unicast,
+  acked unicast, broadcast, stream setup, and broadcast deduplication to
+  ISSUE-014, ISSUE-015, ISSUE-017, ISSUE-018, ISSUE-039, ISSUE-115,
+  ISSUE-116, ISSUE-197, ISSUE-226, RC-1, and RC-2; open-stream/setup ack false
+  success, service queue pressure, relay setup commit, route-loop rejection,
+  stalled write/read timeouts, pending accept permits, and task cleanup to
+  ISSUE-011, ISSUE-012, ISSUE-013, ISSUE-056, ISSUE-117, ISSUE-149,
+  ISSUE-156, ISSUE-169, ISSUE-180, ISSUE-217, ISSUE-220, ISSUE-229,
+  ISSUE-230, ISSUE-238, ISSUE-246, RC-3, RC-4, and RC-6; and raw/forged
+  handshakes, unauthenticated inbound pressure, unidirectional streams,
+  handshake replay/freshness, duplicate/refused connects, and bad-network
+  churn to ISSUE-002, ISSUE-021, ISSUE-117, ISSUE-146, ISSUE-172, ISSUE-173,
+  ISSUE-176, ISSUE-189, ISSUE-194, ISSUE-207, ISSUE-217, ISSUE-220,
+  ISSUE-223, ISSUE-238, ISSUE-244, RC-1, RC-3, RC-4, RC-6, and RC-7. No
+  distinct score-80+ bincode/framing, malformed-frame, service-id,
+  source-binding, stream setup, raw-handshake, unauthenticated-admission,
+  unidirectional-stream, task-lifecycle, or high-load bad-network ingress issue
+  had concrete failing-test evidence. Smallest future fix proposal if this
+  family regresses: pin the exact frame, serialized object, service id, forged
+  source, stream setup request/response, raw handshake, admission queue,
+  timeout, or fuzz seed with one focused failing test, then patch only the
+  failed decode cap, length-prefix check, service lookup, source normalization,
+  stream commit boundary, timeout, permit release, or admission gate.
 - Critical-only no-new cycle 17 after ISSUE-247 reviewed replicated-KV service,
   local storage, remote storage, message/version types, service/network
   interactions, and replicated-KV, snapshot, changed, version, remote, stale,
