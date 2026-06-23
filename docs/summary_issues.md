@@ -7,12 +7,35 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Accepted issues: 246
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 40
-- Current audit continuation: critical-only transport, stream, and
-  backpressure no-new cycle 42 found no new score-80+ issue across peer
-  control admission, stream setup and relay, upstream/downstream commit
-  ordering, unicast acking, local service delivery, frame/object codec caps,
-  malformed payload handling, and high-load bad-network churn.
+- Current consecutive no-new-issue cycles: 41
+- Current audit continuation: critical-only stateful-service and observability
+  no-new cycle 43 found no new score-80+ issue across replicated-KV repair,
+  alias lifecycle/cache/find shutdown, metrics and visualization ingestion,
+  stale disconnect handling, bounded queues, and high-load bad-network churn.
+- Critical-only no-new cycle 43 reviewed stateful-service and observability
+  behavior in `src/service/replicate_kv_service.rs`,
+  `src/service/replicate_kv_service/local_storage.rs`,
+  `src/service/replicate_kv_service/remote_storage.rs`,
+  `src/service/replicate_kv_service/messages.rs`,
+  `src/service/alias_service.rs`, `src/service/metrics_service.rs`,
+  `src/service/visualization_service.rs`, and `src/stats.rs`. Local
+  replicated-KV working-state repair tests passed. Reviewer `Arendt the 2nd`
+  returned `NO_NEW_CRITICAL` after running focused replicated-KV, metrics,
+  visualization, alias, stale, bounded, scan, and 32-node 1300-step sanitized
+  churn fuzz slices. Rejected candidates mapped to replicated-KV issues
+  ISSUE-023/025/027/031/034/037/038/059/081 through ISSUE-089/110/131/138/
+  141/154/171/175/184/186/196/233/237/245, RC-3/RC-5/RC-6, and cycles
+  28/36/40; metrics and visualization issues ISSUE-064/068/078/079/102/104/
+  105/128/129/165/200 through ISSUE-204/226/232, RC-1/RC-3/RC-5/RC-6, and
+  cycles 29/34/36/38/40; alias issues ISSUE-028/035/041/053/060/072/073/076/
+  090/091/101/109/125/127/152/158/179/183/206/235/239, RC-2/RC-3/RC-5/RC-6,
+  and cycles 30/35/36/38/40; stats ingestion to ISSUE-064/068/226/232,
+  RC-1/RC-6, and cycles 29/34/35/38/40; and high-load stale/disconnect/
+  backpressure churn to fuzz cycles 20/24/28/31/32/34/36/38/39/40/41/42 and
+  RC-3/RC-6/RC-7. No distinct score-80+ replicated-state, alias lifecycle,
+  metrics/visualization ingestion, stale disconnect, queue/backpressure,
+  stats, or high-load bad-network churn issue had concrete failing-test
+  evidence.
 - Critical-only no-new cycle 42 reviewed transport, stream, and backpressure
   behavior in `src/peer.rs`, `src/peer/peer_internal.rs`,
   `src/peer/peer_alias.rs`, `src/stream.rs`, `src/msg.rs`, `src/ctx.rs`,

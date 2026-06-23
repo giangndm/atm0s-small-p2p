@@ -23114,3 +23114,56 @@ the source of truth for evidence and reviewer decisions.
   events, and graceful-stop data deletion. No new root cause beyond RC-1,
   RC-2, RC-3, RC-5, RC-6, and RC-7 was accepted.
 - Current consecutive no-new cycles after ISSUE-230: 2.
+
+### Critical-only no-new cycle 43: stateful services and observability review
+
+- Scope: reviewed the current issue ledgers and summary, then audited
+  replicated-KV local/remote/message repair behavior, alias lifecycle/cache/find
+  shutdown behavior, metrics and visualization ingestion, stats publication,
+  stale disconnect handling, resource bounds, and high-load bad-network churn.
+- Reviewer: `Arendt the 2nd` (forked RED-team reviewer) returned
+  `NO_NEW_CRITICAL` and found no distinct score-80+ stateful-service or
+  observability issue with concrete failing-test evidence.
+- Local verification:
+  - `RUST_LOG=error cargo test --lib working_state_must -- --nocapture`
+- Reviewer verification:
+  - `RUST_LOG=error cargo test --lib replicate_kv -- --nocapture`
+  - `RUST_LOG=error cargo test --lib metrics -- --nocapture`
+  - `RUST_LOG=error cargo test --lib visualization -- --nocapture`
+  - `RUST_LOG=error cargo test --lib alias -- --nocapture`
+  - `RUST_LOG=error cargo test --lib stale -- --nocapture --test-threads=1`
+  - `RUST_LOG=error cargo test --lib bounded -- --nocapture`
+  - `RUST_LOG=error cargo test --lib scan -- --nocapture`
+  - `RUST_LOG=error P2P_FUZZ_NODES=32 P2P_FUZZ_STEPS=1300 P2P_FUZZ_SEED=83043 cargo test --lib fuzz_random_sanitized_node_churn_actions_must_not_panic_connection_tasks -- --nocapture`
+- Duplicate mapping:
+  - Replicated-KV snapshot, repair, page bounds, stale response, and remote
+    cleanup map to ISSUE-023, ISSUE-025, ISSUE-027, ISSUE-031, ISSUE-034,
+    ISSUE-037, ISSUE-038, ISSUE-059, ISSUE-081 through ISSUE-089, ISSUE-110,
+    ISSUE-131, ISSUE-138, ISSUE-141, ISSUE-154, ISSUE-171, ISSUE-175,
+    ISSUE-184, ISSUE-186, ISSUE-196, ISSUE-233, ISSUE-237, ISSUE-245,
+    RC-3, RC-5, RC-6, and cycles 28, 36, and 40.
+  - Metrics and visualization scan disclosure, untrusted scan rejection,
+    unsolicited or stale `Info` rejection, scan retry/backpressure, row caps,
+    peer leave, and remote peer caps map to ISSUE-064, ISSUE-068, ISSUE-078,
+    ISSUE-079, ISSUE-102, ISSUE-104, ISSUE-105, ISSUE-128, ISSUE-129,
+    ISSUE-165, ISSUE-200 through ISSUE-204, ISSUE-226, ISSUE-232, RC-1,
+    RC-3, RC-5, RC-6, and cycles 29, 34, 36, 38, and 40.
+  - Alias cache/lifecycle/generation handling, stale `Notify`/`Found`/
+    `NotFound` handling, peer disconnect cleanup, shutdown propagation,
+    control queue bounds, find waiter and pending-find bounds, and hint caps
+    map to ISSUE-028, ISSUE-035, ISSUE-041, ISSUE-053, ISSUE-060, ISSUE-072,
+    ISSUE-073, ISSUE-076, ISSUE-090, ISSUE-091, ISSUE-101, ISSUE-109,
+    ISSUE-125, ISSUE-127, ISSUE-152, ISSUE-158, ISSUE-179, ISSUE-183,
+    ISSUE-206, ISSUE-235, ISSUE-239, RC-2, RC-3, RC-5, RC-6, and cycles 30,
+    35, 36, 38, and 40.
+  - Stats ingestion and stale peer stats publication map to ISSUE-064,
+    ISSUE-068, ISSUE-226, ISSUE-232, RC-1, RC-6, and cycles 29, 34, 35, 38,
+    and 40.
+  - High-load stale/disconnect/backpressure churn maps to fuzz cycles 20, 24,
+    28, 31, 32, 34, 36, 38, 39, 40, 41, and 42 plus RC-3, RC-6, and RC-7.
+- Root-cause summary: no new root cause was accepted; rejected candidates fit
+  the existing resource-bound/backpressure, stale lifecycle, scan-ingestion,
+  replicated-state validation, and route-churn families.
+- Fix proposal: no new fix is proposed because no distinct critical issue was
+  accepted; continue critical-only review/fuzzing for score-80+ findings.
+- Current consecutive no-new cycles after ISSUE-246: 41.
