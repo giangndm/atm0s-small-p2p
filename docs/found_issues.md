@@ -11,7 +11,7 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 45
+- Current consecutive no-new-issue cycles: 46
 - Current audit continuation: critical-only route selection, stream/pipe
   relay, discovery, graceful-stop, and churn no-new cycle 47 found no new
   score-80+ issue across active-path stability, direct-route priority, stale
@@ -23445,3 +23445,80 @@ the source of truth for evidence and reviewer decisions.
 - Fix proposal: no new fix is proposed because no distinct critical issue was
   accepted; continue critical-only review/fuzzing for score-80+ findings.
 - Current consecutive no-new cycles after ISSUE-246: 45.
+
+### Critical-only no-new cycle 48: alias, observability, and service-boundary review
+
+- Scope: reviewed the current issue ledgers and summary, then audited
+  `src/service/alias_service.rs`, `src/service/metrics_service.rs`,
+  `src/service/visualization_service.rs`, `src/stats.rs`, `src/service.rs`,
+  `src/ctx.rs`, `src/requester.rs`, service registration/requester paths in
+  `src/lib.rs`, and scoped alias, metrics, visualization, security, bounded,
+  stale, full-channel, service-id, and fuzz coverage.
+- Focus areas: forged or stale alias/stat sources, alias lifecycle/cache
+  poisoning, unbounded alias/find/waiter/row/task state, queue/full-channel
+  false success, stale disconnect and `PeerStopped` cleanup, duplicate or
+  stale service/requester lifecycle, malformed payload handling, trusted
+  metrics/visualization scan disclosure, and high-load bad-network churn.
+- Reviewer: `Sartre the 2nd` (forked RED-team reviewer) returned
+  `NO_NEW_CRITICAL` and found no distinct score-80+ alias, observability,
+  stats, service-boundary, queue/full-channel, graceful-stop, or high-load
+  churn issue with concrete failing-test evidence.
+- Local verification:
+  - `RUST_LOG=error cargo test --lib alias -- --nocapture`
+  - `RUST_LOG=error cargo test --lib metrics -- --nocapture`
+  - `RUST_LOG=error cargo test --lib visualization -- --nocapture`
+  - `RUST_LOG=error cargo test --lib service_drop -- --nocapture`
+  - `RUST_LOG=error cargo test --lib requester -- --nocapture`
+  - `RUST_LOG=error cargo test --lib bounded -- --nocapture`
+- Reviewer verification:
+  - `RUST_LOG=error cargo test --lib alias -- --nocapture`
+  - `RUST_LOG=error cargo test --lib metrics -- --nocapture`
+  - `RUST_LOG=error cargo test --lib visualization -- --nocapture`
+  - `RUST_LOG=error cargo test --lib service_drop -- --nocapture`
+  - `RUST_LOG=error cargo test --lib requester -- --nocapture`
+  - `RUST_LOG=error cargo test --lib service_id -- --nocapture`
+  - `RUST_LOG=error cargo test --lib stale -- --nocapture --test-threads=1`
+  - `RUST_LOG=error cargo test --lib bounded -- --nocapture`
+  - `RUST_LOG=error cargo test --lib malformed -- --nocapture` (0 matched tests)
+  - `RUST_LOG=error cargo test --lib full -- --nocapture`
+  - `RUST_LOG=error P2P_FUZZ_NODES=38 P2P_FUZZ_STEPS=1450 P2P_FUZZ_SEED=88048 cargo test --lib fuzz_random_valid_node_actions_must_not_panic_connection_tasks -- --nocapture`
+- Duplicate mapping:
+  - Alias forged/stale lifecycle, hint poisoning, shutdown, bounded pending
+    finds/waiters/cache, control queue behavior, generation reset, and cached
+    peer cleanup map to ISSUE-028, ISSUE-035, ISSUE-041, ISSUE-053,
+    ISSUE-060, ISSUE-072, ISSUE-073, ISSUE-076, ISSUE-090, ISSUE-091,
+    ISSUE-101, ISSUE-109, ISSUE-125, ISSUE-127, ISSUE-152, ISSUE-158,
+    ISSUE-179, ISSUE-183, ISSUE-206, ISSUE-235, ISSUE-239, RC-2, RC-3,
+    RC-5, RC-6, and cycles 30, 35, 36, 38, 40, and 43.
+  - Metrics and visualization forged `Info`, scan disclosure, stale
+    disconnect cleanup, oversized row batches, duplicate scan suppression,
+    stale peer stats, and full peer-control queue behavior map to ISSUE-064,
+    ISSUE-068, ISSUE-078, ISSUE-079, ISSUE-102, ISSUE-104, ISSUE-105,
+    ISSUE-128, ISSUE-129, ISSUE-165, ISSUE-200 through ISSUE-204,
+    ISSUE-226, ISSUE-232, RC-1, RC-3, RC-5, RC-6, and cycles 29, 34, 36,
+    38, 40, and 43.
+  - Service/requester stale liveness, duplicate service registration,
+    out-of-range service IDs, service-drop reuse, full local service queues,
+    and false success behavior map to ISSUE-052, ISSUE-053, ISSUE-060,
+    ISSUE-072, ISSUE-073, ISSUE-076, ISSUE-091, ISSUE-234, ISSUE-235,
+    ISSUE-246, and RC-6.
+  - Graceful stop, `PeerStopped`, disconnect notification under full queues,
+    stale service/route cleanup, and duplicate connection cleanup map to
+    ISSUE-001, ISSUE-004, ISSUE-170, ISSUE-215 through ISSUE-225,
+    ISSUE-231, RC-3, RC-6, RC-7, and cycles 18, 24, 32, 34, 36, 38, 39,
+    41, 42, 44, and 47.
+  - Malformed serialization, oversized payloads, object size limits, and
+    bounded service rows/batches map to ISSUE-024, ISSUE-094, ISSUE-097,
+    ISSUE-098, ISSUE-174, RC-5, and existing malformed/object/batch cap
+    tests.
+  - High-load bad-network churn, refused connects, duplicate closure noise,
+    deadlines, endpoint-drop behavior, and task/backpressure candidates map
+    to fuzz cycles 20, 24, 28, 31, 32, 34, 36, 38, 39, 40, 41, 42, 43, 44,
+    45, and 47.
+- Root-cause summary: no new root cause was accepted; rejected candidates fit
+  existing alias lifecycle/source-binding, metrics/visualization trust and
+  stale-cleanup, requester/service liveness, malformed/resource-bound,
+  graceful-stop, and high-load churn families.
+- Fix proposal: no new fix is proposed because no distinct critical issue was
+  accepted; continue critical-only review/fuzzing for score-80+ findings.
+- Current consecutive no-new cycles after ISSUE-246: 46.

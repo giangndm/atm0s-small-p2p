@@ -7,13 +7,38 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Accepted issues: 246
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 45
-- Current audit continuation: critical-only route selection, stream/pipe
-  relay, discovery, graceful-stop, and churn no-new cycle 47 found no new
-  score-80+ issue across active-path stability, direct-route priority, stale
-  sync cleanup, relay-loop rejection, relayed stream setup, acked unicast
-  relay, service queue/full-channel behavior, stopped-peer cleanup, and
-  high-load route/pipe churn.
+- Current consecutive no-new-issue cycles: 46
+- Current audit continuation: critical-only alias, observability,
+  service-boundary, stale source, queue/full-channel, graceful-stop, and churn
+  no-new cycle 48 found no new score-80+ issue across alias lifecycle/cache
+  poisoning, metrics/visualization scan trust, stale stats, service requester
+  liveness, queue backpressure, stopped-peer cleanup, and high-load churn.
+- Critical-only no-new cycle 48 reviewed `src/service/alias_service.rs`,
+  `src/service/metrics_service.rs`, `src/service/visualization_service.rs`,
+  `src/stats.rs`, `src/service.rs`, `src/ctx.rs`, `src/requester.rs`,
+  service registration/requester paths in `src/lib.rs`, and scoped alias,
+  metrics, visualization, security, bounded, stale, full-channel, service-id,
+  and fuzz coverage. Local alias, metrics, visualization, service-drop,
+  requester, and bounded checks passed. Reviewer `Sartre the 2nd` returned
+  `NO_NEW_CRITICAL` after independently running alias, metrics,
+  visualization, service-drop, requester, service-id, stale, bounded,
+  malformed, full-channel, and 38-node 1450-step valid-action fuzz slices.
+  Rejected candidates mapped alias forged/stale lifecycle, hint poisoning,
+  shutdown, bounded pending finds/waiters/cache, and control queue behavior to
+  ISSUE-028/035/041/053/060/072/073/076/090/091/101/109/125/127/152/158/179/
+  183/206/235/239 and RC-2/RC-3/RC-5/RC-6; metrics and visualization forged
+  `Info`, scan disclosure, stale disconnect cleanup, oversized row batches,
+  duplicate scan suppression, and full peer-control queues to ISSUE-064/068/
+  078/079/102/104/105/128/129/165/200 through ISSUE-204/226/232 and
+  RC-1/RC-3/RC-5/RC-6; service/requester stale liveness, duplicate or
+  out-of-range service IDs, service-drop reuse, full local service queues, and
+  false success to ISSUE-052/053/060/072/073/076/091/234/235/246 and RC-6;
+  graceful stop, `PeerStopped`, disconnect notification under full queues, and
+  churn behavior to ISSUE-001/004/170/215 through ISSUE-225/231,
+  RC-3/RC-6/RC-7, and fuzz cycles 20/24/28/31/32/34/36/38/39/40/41/42/43/44/
+  45/47. No distinct score-80+ alias, observability, stats, service-boundary,
+  queue/backpressure, graceful-stop, or high-load churn issue had concrete
+  failing-test evidence.
 - Critical-only no-new cycle 47 reviewed `src/router.rs`,
   `src/discovery.rs`, `src/neighbours.rs`, `src/ctx.rs`, `src/peer.rs`,
   `src/peer/peer_alias.rs`, `src/peer/peer_internal.rs`, `src/stream.rs`,
