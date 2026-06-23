@@ -27,7 +27,35 @@ fn env_u64(name: &str, default: u64) -> u64 {
 }
 
 fn fuzz_node_count(configured: usize) -> usize {
-    configured.max(2)
+    configured.clamp(2, 49)
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+struct FuzzNetworkProfile {
+    max_delay_ms: u64,
+    loss_percent: u8,
+}
+
+impl FuzzNetworkProfile {
+    fn from_env() -> Self {
+        match env::var("P2P_FUZZ_PROFILE").as_deref() {
+            Ok("slow-global") => Self::slow_global(),
+            _ => Self::default(),
+        }
+    }
+
+    fn slow_global() -> Self {
+        Self { max_delay_ms: 500, loss_percent: 10 }
+    }
+
+    async fn apply(self, rng: &mut StdRng) -> bool {
+        if self.max_delay_ms > 0 {
+            let delay_ms = rng.gen_range(0..=self.max_delay_ms);
+            tokio::time::sleep(Duration::from_millis(delay_ms)).await;
+        }
+
+        self.loss_percent == 0 || !rng.gen_bool(f64::from(self.loss_percent) / 100.0)
+    }
 }
 
 #[test]
@@ -35,42 +63,60 @@ fn fuzz_node_count_must_honor_high_load_configuration() {
     assert_eq!(fuzz_node_count(12), 12, "high-load fuzzing must honor P2P_FUZZ_NODES values above the small default cap");
 }
 
+#[test]
+fn fuzz_node_count_must_stay_below_fifty_nodes() {
+    assert_eq!(fuzz_node_count(50), 49, "fuzzing must keep node count below 50");
+    assert_eq!(fuzz_node_count(128), 49, "fuzzing must cap oversized P2P_FUZZ_NODES values");
+}
+
+#[test]
+fn slow_global_fuzz_profile_must_match_bad_network_budget() {
+    let profile = FuzzNetworkProfile::slow_global();
+    assert_eq!(profile.max_delay_ms, 500, "slow global profile must simulate up to 500ms delay");
+    assert_eq!(profile.loss_percent, 10, "slow global profile must simulate 10% action loss");
+}
+
 #[test(tokio::test(flavor = "multi_thread", worker_threads = 4))]
 async fn fuzz_random_node_actions_must_not_panic_connection_tasks() {
-    run_random_node_action_fuzz(true, 120).await;
+    run_random_node_action_fuzz(true, 120, FuzzNetworkProfile::from_env()).await;
 }
 
 #[test(tokio::test(flavor = "multi_thread", worker_threads = 4))]
 async fn fuzz_random_valid_node_actions_must_not_panic_connection_tasks() {
-    run_random_node_action_fuzz(false, 300).await;
+    run_random_node_action_fuzz(false, 300, FuzzNetworkProfile::from_env()).await;
 }
 
 #[test(tokio::test(flavor = "multi_thread", worker_threads = 4))]
 async fn fuzz_random_node_churn_actions_must_not_panic_connection_tasks() {
-    run_random_node_churn_fuzz(true, true, 180).await;
+    run_random_node_churn_fuzz(true, true, 180, FuzzNetworkProfile::from_env()).await;
 }
 
 #[test(tokio::test(flavor = "multi_thread", worker_threads = 4))]
 async fn fuzz_random_valid_node_churn_actions_must_not_panic_connection_tasks() {
-    run_random_node_churn_fuzz(false, true, 300).await;
+    run_random_node_churn_fuzz(false, true, 300, FuzzNetworkProfile::from_env()).await;
 }
 
 #[test(tokio::test(flavor = "multi_thread", worker_threads = 4))]
 async fn fuzz_random_sanitized_node_churn_actions_must_not_panic_connection_tasks() {
-    run_random_node_churn_fuzz(false, false, 500).await;
+    run_random_node_churn_fuzz(false, false, 500, FuzzNetworkProfile::from_env()).await;
 }
 
 #[test(tokio::test(flavor = "multi_thread", worker_threads = 4))]
 async fn fuzz_random_adversarial_node_actions_must_not_panic_connection_tasks() {
-    run_random_adversarial_node_fuzz().await;
+    run_random_adversarial_node_fuzz(FuzzNetworkProfile::from_env()).await;
 }
 
 #[test(tokio::test(flavor = "multi_thread", worker_threads = 4))]
 async fn fuzz_random_steady_valid_node_actions_must_not_panic_connection_tasks() {
-    run_random_steady_valid_node_fuzz().await;
+    run_random_steady_valid_node_fuzz(FuzzNetworkProfile::from_env()).await;
 }
 
-async fn run_random_node_action_fuzz(include_known_invalid_service: bool, default_steps: usize) {
+#[test(tokio::test(flavor = "multi_thread", worker_threads = 4))]
+async fn fuzz_random_slow_global_network_actions_must_not_panic_connection_tasks() {
+    run_random_node_action_fuzz(false, 16, FuzzNetworkProfile::slow_global()).await;
+}
+
+async fn run_random_node_action_fuzz(include_known_invalid_service: bool, default_steps: usize, profile: FuzzNetworkProfile) {
     let node_count = fuzz_node_count(env_usize("P2P_FUZZ_NODES", 5));
     let steps = env_usize("P2P_FUZZ_STEPS", default_steps);
     let seed = env_u64("P2P_FUZZ_SEED", 0x5eed);
@@ -129,6 +175,11 @@ async fn run_random_node_action_fuzz(include_known_invalid_service: bool, defaul
         } else {
             10
         };
+        if !profile.apply(&mut rng).await {
+            tokio::time::sleep(Duration::from_millis(5)).await;
+            continue;
+        }
+
         match rng.gen_range(0..actions) {
             0 => {
                 requesters[from].try_connect(addrs[to].clone());
@@ -256,7 +307,7 @@ async fn spawn_fuzz_node(peer_id: u64) -> RunningFuzzNode {
     }
 }
 
-async fn run_random_node_churn_fuzz(include_known_invalid_service: bool, include_forged_peer_stopped: bool, default_steps: usize) {
+async fn run_random_node_churn_fuzz(include_known_invalid_service: bool, include_forged_peer_stopped: bool, default_steps: usize, profile: FuzzNetworkProfile) {
     let node_count = fuzz_node_count(env_usize("P2P_FUZZ_NODES", 5));
     let steps = env_usize("P2P_FUZZ_STEPS", default_steps);
     let seed = env_u64("P2P_FUZZ_SEED", 0x51a7e);
@@ -289,6 +340,11 @@ async fn run_random_node_churn_fuzz(include_known_invalid_service: bool, include
         } else {
             10
         };
+        if !profile.apply(&mut rng).await {
+            tokio::time::sleep(Duration::from_millis(5)).await;
+            continue;
+        }
+
         match rng.gen_range(0..actions) {
             0 => {
                 if let (Some(from_node), Some(to_node)) = (&nodes[from], &nodes[to]) {
@@ -389,7 +445,7 @@ async fn run_random_node_churn_fuzz(include_known_invalid_service: bool, include
     );
 }
 
-async fn run_random_adversarial_node_fuzz() {
+async fn run_random_adversarial_node_fuzz(profile: FuzzNetworkProfile) {
     let node_count = fuzz_node_count(env_usize("P2P_FUZZ_NODES", 8));
     let steps = env_usize("P2P_FUZZ_STEPS", 700);
     let seed = env_u64("P2P_FUZZ_SEED", 0xa11ce);
@@ -415,6 +471,11 @@ async fn run_random_adversarial_node_fuzz() {
             to = (to + 1) % node_count;
         }
         let peer_id = |idx: usize| PeerId::from((idx + 1) as u64);
+
+        if !profile.apply(&mut rng).await {
+            tokio::time::sleep(Duration::from_millis(5)).await;
+            continue;
+        }
 
         match rng.gen_range(0..19) {
             0 => {
@@ -573,7 +634,7 @@ async fn run_random_adversarial_node_fuzz() {
     );
 }
 
-async fn run_random_steady_valid_node_fuzz() {
+async fn run_random_steady_valid_node_fuzz(profile: FuzzNetworkProfile) {
     let node_count = fuzz_node_count(env_usize("P2P_FUZZ_NODES", 5));
     let steps = env_usize("P2P_FUZZ_STEPS", 500);
     let seed = env_u64("P2P_FUZZ_SEED", 0x57ead);
@@ -598,6 +659,11 @@ async fn run_random_steady_valid_node_fuzz() {
         let mut to = rng.gen_range(0..node_count);
         if to == from {
             to = (to + 1) % node_count;
+        }
+
+        if !profile.apply(&mut rng).await {
+            tokio::time::sleep(Duration::from_millis(5)).await;
+            continue;
         }
 
         match rng.gen_range(0..8) {
