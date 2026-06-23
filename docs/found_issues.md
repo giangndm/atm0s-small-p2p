@@ -11,10 +11,64 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 6
-- Current audit continuation: critical-only fuzz-heavy randomized node/action
-  coverage after the five-clean-cycle steering threshold found no new
+- Current consecutive no-new-issue cycles: 7
+- Current audit continuation: critical-only route/discovery/pipe-stability
+  review after fuzz-heavy randomized node/action coverage found no new
   score-80+ issue with concrete failing-test evidence.
+
+### Critical-only no-new cycle 7 after ISSUE-247: route, discovery, and pipe stability
+
+- Scope: reviewer-style critical-only pass over `src/router.rs`,
+  `src/discovery.rs`, `src/lib.rs`, `src/ctx.rs`, `src/requester.rs`,
+  `src/peer.rs`, `src/peer/peer_internal.rs`, `src/tests/fuzz.rs`,
+  `src/tests/cross_nodes.rs`, `src/tests/stream.rs`, `src/tests/security.rs`,
+  and the issue ledgers. Focus areas were active-path jumping, equal-cost and
+  tiny-RTT jitter route stability, failed unicast/open-stream pipes, direct
+  versus relayed route priority, non-seed timeout/removal, seed retention,
+  graceful `PeerStopped`, stale route resurrection, queue/backpressure false
+  success, and bad-network high-load churn.
+- Verification:
+  - `RUST_LOG=error cargo test --lib route -- --nocapture`: passed 27 tests.
+  - `RUST_LOG=error cargo test --lib discovery -- --nocapture`: passed 37
+    tests.
+  - `RUST_LOG=error cargo test --lib stopped -- --nocapture`: passed 19
+    tests.
+  - `RUST_LOG=error cargo test --lib open_stream -- --nocapture`: passed 10
+    tests.
+  - `RUST_LOG=error P2P_FUZZ_NODES=44 P2P_FUZZ_STEPS=2200 P2P_FUZZ_SEED=96049 cargo test --lib fuzz_random_adversarial_node_actions_must_not_panic_connection_tasks -- --nocapture`:
+    passed.
+  - `RUST_LOG=error P2P_FUZZ_NODES=44 P2P_FUZZ_STEPS=2200 P2P_FUZZ_SEED=96050 cargo test --lib fuzz_random_sanitized_node_churn_actions_must_not_panic_connection_tasks -- --nocapture`:
+    passed.
+- Reviewer cross-check: `Planck the 2nd` returned `NO_NEW_CRITICAL` after
+  independently reviewing the route/discovery/network/send/open-stream paths.
+  Reviewer verification included `router::tests`, discovery, peer-stopped,
+  open-stream, unicast, route, 36-node 1200-step adversarial fuzz seed
+  `96031`, and 36-node 1200-step sanitized churn seed `96032`; all passed.
+- Duplicate mapping:
+  - Active path jumping, equal-cost jitter, tiny RTT jitter, direct route
+    priority, and route advertisement loops map to ISSUE-003 and RC-7.
+  - Non-seed timeout/removal, seed retention/retry, stopped tombstones, and
+    stale discovery advertisements map to ISSUE-004, ISSUE-167,
+    ISSUE-211 through ISSUE-213, and RC-7.
+  - Graceful `PeerStopped`, stopped route cleanup/resurrection, stopped
+    fanout/dedup/backpressure, and service disconnect visibility map to
+    ISSUE-001, ISSUE-004, ISSUE-170, ISSUE-215 through ISSUE-225,
+    ISSUE-231, RC-3, RC-6, and RC-7.
+  - Failed pipes, direct and relayed `open_stream` false success, stream
+    delivery commits, upstream/downstream stalls, local service queue
+    pressure, and stream admission limits map to ISSUE-011, ISSUE-012,
+    ISSUE-013, ISSUE-056, ISSUE-117, ISSUE-149, ISSUE-156, ISSUE-169,
+    ISSUE-180, ISSUE-217, ISSUE-220, ISSUE-229, ISSUE-230, ISSUE-238,
+    RC-3, RC-4, and RC-6.
+  - Unicast and acked-unicast relay delivery, ingress-loop rejection,
+    queue pressure, destination-service closure, and false success map to
+    ISSUE-119, ISSUE-224, ISSUE-225, ISSUE-229, ISSUE-230, RC-3, and RC-6.
+  - Duplicate connects, refused connections, shutdown/abort/restart churn,
+    endpoint drops, and noisy bad-network behavior map to existing fuzz-cycle
+    families, RC-3, RC-6, and RC-7.
+- Result: no distinct score-80+ route/discovery/pipe-stability correctness,
+  security, or high-load stability issue had concrete failing-test evidence in
+  this cycle.
 
 ### Critical-only no-new cycle 6 after ISSUE-247: fuzz-heavy adversarial node/action coverage
 

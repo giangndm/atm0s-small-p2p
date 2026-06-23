@@ -7,10 +7,46 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Accepted issues: 247
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 6
-- Current audit continuation: critical-only fuzz-heavy randomized node/action
-  coverage after the five-clean-cycle steering threshold found no new
+- Current consecutive no-new-issue cycles: 7
+- Current audit continuation: critical-only route/discovery/pipe-stability
+  review after fuzz-heavy randomized node/action coverage found no new
   score-80+ issue with concrete failing-test evidence.
+- Critical-only no-new cycle 7 after ISSUE-247 reviewed `src/router.rs`,
+  `src/discovery.rs`, `src/lib.rs`, `src/ctx.rs`, `src/requester.rs`,
+  `src/peer.rs`, `src/peer/peer_internal.rs`, `src/tests/fuzz.rs`,
+  `src/tests/cross_nodes.rs`, `src/tests/stream.rs`,
+  `src/tests/security.rs`, and the issue ledgers. Local route, discovery,
+  stopped-peer, open-stream, 44-node 2200-step adversarial fuzz seed `96049`,
+  and 44-node 2200-step sanitized churn fuzz seed `96050` checks passed.
+  Reviewer `Planck the 2nd` returned `NO_NEW_CRITICAL` after independently
+  reviewing route/discovery/network/send/open-stream paths, then passing
+  `router::tests`, discovery, peer-stopped, open-stream, unicast, route,
+  36-node 1200-step adversarial fuzz seed `96031`, and 36-node 1200-step
+  sanitized churn seed `96032`. Rejected candidates mapped active path
+  jumping, equal-cost jitter, tiny RTT jitter, direct route priority, and
+  route advertisement loops to ISSUE-003 and RC-7; non-seed timeout/removal,
+  seed retention/retry, stopped tombstones, and stale discovery
+  advertisements to ISSUE-004, ISSUE-167, ISSUE-211 through ISSUE-213, and
+  RC-7; graceful `PeerStopped`, stopped route cleanup/resurrection, stopped
+  fanout/dedup/backpressure, and service disconnect visibility to ISSUE-001,
+  ISSUE-004, ISSUE-170, ISSUE-215 through ISSUE-225, ISSUE-231, RC-3, RC-6,
+  and RC-7; failed pipes, direct and relayed `open_stream` false success,
+  stream delivery commits, upstream/downstream stalls, local service queue
+  pressure, and stream admission limits to ISSUE-011, ISSUE-012, ISSUE-013,
+  ISSUE-056, ISSUE-117, ISSUE-149, ISSUE-156, ISSUE-169, ISSUE-180,
+  ISSUE-217, ISSUE-220, ISSUE-229, ISSUE-230, ISSUE-238, RC-3, RC-4, and
+  RC-6; unicast and acked-unicast relay delivery, ingress-loop rejection,
+  queue pressure, destination-service closure, and false success to
+  ISSUE-119, ISSUE-224, ISSUE-225, ISSUE-229, ISSUE-230, RC-3, and RC-6;
+  and duplicate connects, refused connections, shutdown/abort/restart churn,
+  endpoint drops, and noisy bad-network behavior to existing fuzz-cycle
+  families, RC-3, RC-6, and RC-7. No distinct score-80+ route/discovery/
+  pipe-stability correctness, security, or high-load stability issue had
+  concrete failing-test evidence. Smallest future fix proposal if this family
+  regresses: pin the exact topology/seed/action sequence, prove whether the
+  failure is route selection, stale discovery, peer-lifecycle cleanup, or
+  stream/unicast admission, then patch only that boundary with a focused
+  regression test before widening behavior.
 - Critical-only no-new cycle 6 after ISSUE-247 added and reviewed
   `fuzz_random_adversarial_node_actions_must_not_panic_connection_tasks` in
   `src/tests/fuzz.rs`. The new harness honors `P2P_FUZZ_NODES`,
