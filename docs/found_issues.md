@@ -11,10 +11,75 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 15
-- Current audit continuation: critical-only public config, binding, address,
-  discovery, and QUIC endpoint review found no new score-80+ issue with
+- Current consecutive no-new-issue cycles: 16
+- Current audit continuation: critical-only high-load resource cap,
+  backpressure, and unbounded-state review found no new score-80+ issue with
   concrete failing-test evidence.
+
+### Critical-only no-new cycle 16 after ISSUE-247: high-load resource caps and backpressure
+
+- Scope: reviewer-style critical-only pass over `src/secure.rs`,
+  `src/discovery.rs`, `src/router.rs`, `src/lib.rs`, `src/ctx.rs`,
+  `src/peer.rs`, `src/peer/peer_internal.rs`, `src/msg.rs`, `src/requester.rs`,
+  and service modules for alias, pubsub, metrics, visualization, replicated
+  KV, and remote storage. Focus areas were `HashMap`, `BTreeMap`, `Vec`,
+  `VecDeque`, `FuturesUnordered`, `JoinHandle`, pending ack/RPC maps, queue
+  backpressure, retry task accumulation, cache eviction, route/discovery sync
+  caps, service-local queues, stopped-peer tombstones, untrusted inbound
+  messages, and high-load/bad-network random actions.
+- Verification:
+  - `RUST_LOG=error cargo test --lib bounded -- --nocapture`: passed 31 tests.
+  - `RUST_LOG=error cargo test --lib cap -- --nocapture`: passed 24 tests.
+  - `RUST_LOG=error cargo test --lib full -- --nocapture`: passed 58 tests.
+  - `RUST_LOG=error cargo test --lib backpressure -- --nocapture`: passed 3
+    tests.
+  - `RUST_LOG=error cargo test --lib pending -- --nocapture`: passed 17 tests.
+  - `RUST_LOG=error cargo test --lib overflow -- --nocapture`: passed 12 tests.
+  - `RUST_LOG=error cargo test --lib resource -- --nocapture`: 0 matching
+    tests.
+  - `RUST_LOG=error cargo test --lib queue -- --nocapture`: passed 37 tests.
+  - `RUST_LOG=error P2P_FUZZ_NODES=50 P2P_FUZZ_STEPS=3000 P2P_FUZZ_SEED=105049 cargo test --lib fuzz_random_adversarial_node_actions_must_not_panic_connection_tasks -- --nocapture`:
+    passed.
+- Reviewer cross-check: `Sagan the 2nd` returned `NO_NEW_CRITICAL` after
+  independently reviewing the same high-load resource-cap and backpressure
+  slice. Reviewer verification included `bounded`, `task`, `full`, and a
+  36-node 1500-step adversarial fuzz seed `105049`; all matching tests passed.
+- Duplicate mapping:
+  - Handshake replay cache, freshness, timestamp overflow, replay pressure,
+    and open-cluster exposure map to ISSUE-002, ISSUE-021, ISSUE-146,
+    ISSUE-176, ISSUE-189, ISSUE-194, ISSUE-207, ISSUE-223, ISSUE-244, RC-1,
+    RC-3, and RC-4.
+  - Discovery/router sync caps, stale syncs, stopped tombstones, seed/non-seed
+    cleanup, route loops, duplicate route entries, and path stability map to
+    ISSUE-001, ISSUE-003, ISSUE-004, ISSUE-167, ISSUE-170, ISSUE-211 through
+    ISSUE-225, ISSUE-231, RC-6, and RC-7.
+  - Control queues, requester backlog, pending connects, sync retry tasks,
+    unauthenticated inbound admission, pending unicast acks, stream admission,
+    setup/open timeouts, failed pipe delivery, and relay task pressure map to
+    ISSUE-011, ISSUE-012, ISSUE-013, ISSUE-056, ISSUE-117, ISSUE-149,
+    ISSUE-156, ISSUE-169, ISSUE-172, ISSUE-173, ISSUE-180, ISSUE-217,
+    ISSUE-220, ISSUE-229, ISSUE-230, ISSUE-238, ISSUE-246, RC-3, RC-4, and
+    RC-6.
+  - Service local queues, full/closed channels, stale requesters, false-success
+    delivery paths, alias cache/find waiters, and stale observer data map to
+    ISSUE-043, ISSUE-052, ISSUE-053, ISSUE-060, ISSUE-072, ISSUE-073,
+    ISSUE-076, ISSUE-091, ISSUE-100 through ISSUE-105, ISSUE-119, ISSUE-121,
+    ISSUE-123 through ISSUE-126, ISSUE-217 through ISSUE-230, ISSUE-234,
+    ISSUE-235, ISSUE-246, RC-1, RC-3, RC-5, and RC-6.
+  - Pubsub pending RPC maps, responder binding, remote channel/member/tombstone
+    caps, heartbeat chunk bounds, and local publisher/subscriber queues map to
+    ISSUE-020, ISSUE-039, ISSUE-048, ISSUE-080, ISSUE-108, ISSUE-115,
+    ISSUE-116, ISSUE-155, ISSUE-205, ISSUE-206, ISSUE-228, ISSUE-236,
+    ISSUE-240 through ISSUE-243, ISSUE-246, RC-1, RC-2, RC-3, and RC-6.
+  - Metrics/visualization scan coalescing, info row caps, collector gating,
+    replicated-KV remote store caps, outbound event caps, snapshot/page/staged
+    slot caps, pending changed caps, malformed snapshots, high-load refused
+    connects, duplicate connection churn, endpoint drops, frame-size errors,
+    and shutdown noise map to existing observability, replicated-KV, and
+    high-load fuzz/churn families under RC-3, RC-5, RC-6, and RC-7.
+- Result: no distinct score-80+ map, queue, task, cache, tombstone, admission,
+  route/discovery cap, service-local queue, replicated-KV cap, or high-load
+  bad-network resource issue had concrete failing-test evidence in this cycle.
 
 ### Critical-only no-new cycle 15 after ISSUE-247: config, bindings, and endpoint setup
 

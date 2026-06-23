@@ -7,10 +7,56 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Accepted issues: 247
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 15
-- Current audit continuation: critical-only public config, binding, address,
-  discovery, and QUIC endpoint review found no new score-80+ issue with
+- Current consecutive no-new-issue cycles: 16
+- Current audit continuation: critical-only high-load resource cap,
+  backpressure, and unbounded-state review found no new score-80+ issue with
   concrete failing-test evidence.
+- Critical-only no-new cycle 16 after ISSUE-247 reviewed `src/secure.rs`,
+  `src/discovery.rs`, `src/router.rs`, `src/lib.rs`, `src/ctx.rs`,
+  `src/peer.rs`, `src/peer/peer_internal.rs`, `src/msg.rs`,
+  `src/requester.rs`, alias, pubsub, metrics, visualization, replicated-KV,
+  remote storage, and bounded, cap, full, backpressure, pending, overflow,
+  resource, queue, and adversarial fuzz tests. Local bounded, cap, full,
+  backpressure, pending, overflow, queue, and 50-node 3000-step adversarial
+  fuzz seed `105049` checks passed; `resource` had zero matching tests.
+  Reviewer `Sagan the 2nd` returned `NO_NEW_CRITICAL` after independently
+  reviewing the same high-load resource-cap/backpressure slice, then passing
+  bounded, task, full, and 36-node 1500-step adversarial fuzz seed `105049`.
+  Rejected candidates mapped handshake replay cache, freshness, timestamp
+  overflow, replay pressure, and open-cluster exposure to ISSUE-002,
+  ISSUE-021, ISSUE-146, ISSUE-176, ISSUE-189, ISSUE-194, ISSUE-207,
+  ISSUE-223, ISSUE-244, RC-1, RC-3, and RC-4; discovery/router sync caps,
+  stale syncs, stopped tombstones, seed/non-seed cleanup, route loops,
+  duplicate route entries, and path stability to ISSUE-001, ISSUE-003,
+  ISSUE-004, ISSUE-167, ISSUE-170, ISSUE-211 through ISSUE-225, ISSUE-231,
+  RC-6, and RC-7; control queues, requester backlog, pending connects, sync
+  retry tasks, unauthenticated inbound admission, pending unicast acks, stream
+  admission, setup/open timeouts, failed pipe delivery, and relay task pressure
+  to ISSUE-011, ISSUE-012, ISSUE-013, ISSUE-056, ISSUE-117, ISSUE-149,
+  ISSUE-156, ISSUE-169, ISSUE-172, ISSUE-173, ISSUE-180, ISSUE-217,
+  ISSUE-220, ISSUE-229, ISSUE-230, ISSUE-238, ISSUE-246, RC-3, RC-4, and
+  RC-6; service local queues, full/closed channels, stale requesters,
+  false-success delivery paths, alias waiters, and stale observer data to
+  ISSUE-043, ISSUE-052, ISSUE-053, ISSUE-060, ISSUE-072, ISSUE-073,
+  ISSUE-076, ISSUE-091, ISSUE-100 through ISSUE-105, ISSUE-119, ISSUE-121,
+  ISSUE-123 through ISSUE-126, ISSUE-217 through ISSUE-230, ISSUE-234,
+  ISSUE-235, ISSUE-246, RC-1, RC-3, RC-5, and RC-6; pubsub pending RPC,
+  responder binding, remote channel/member/tombstone caps, heartbeat chunk
+  bounds, and local publisher/subscriber queues to ISSUE-020, ISSUE-039,
+  ISSUE-048, ISSUE-080, ISSUE-108, ISSUE-115, ISSUE-116, ISSUE-155,
+  ISSUE-205, ISSUE-206, ISSUE-228, ISSUE-236, ISSUE-240 through ISSUE-243,
+  ISSUE-246, RC-1, RC-2, RC-3, and RC-6; and metrics/visualization,
+  replicated-KV, refused connects, duplicate connection churn, endpoint drops,
+  frame-size errors, and shutdown noise to existing observability,
+  replicated-KV, and high-load fuzz/churn families under RC-3, RC-5, RC-6,
+  and RC-7. No distinct score-80+ map, queue, task, cache, tombstone,
+  admission, route/discovery cap, service-local queue, replicated-KV cap, or
+  high-load bad-network resource issue had concrete failing-test evidence.
+  Smallest future fix proposal if this family regresses: pin the exact map,
+  queue, task, cache, tombstone, admission path, route/discovery sync,
+  service-local buffer, replicated-KV state, or fuzz seed with one focused
+  failing test, then patch only the failed cap, admission, eviction, timeout,
+  cleanup, or backpressure boundary.
 - Critical-only no-new cycle 15 after ISSUE-247 reviewed `src/lib.rs`,
   `src/quic.rs`, `src/peer.rs`, `src/secure.rs`, `src/discovery.rs`,
   `src/requester.rs`, README/examples, and config, discovery, connect, QUIC,
