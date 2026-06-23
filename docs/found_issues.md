@@ -11,13 +11,77 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 35
-- Current audit continuation: critical-only build, package, feature-gating,
-  platform, and release-profile no-new cycle 37 found no new score-80+ issue
-  across manifest dependency split, package contents, examples, README build
-  contract, downstream release consumer compileability, crate-local cfg/feature
-  surfaces, public exports, release-mode panic/overflow behavior, and
-  all-target builds.
+- Current consecutive no-new-issue cycles: 36
+- Current audit continuation: critical-only cancellation, drop, and
+  task-lifetime no-new cycle 38 found no new score-80+ issue across detached
+  Tokio tasks, JoinHandle ownership, shutdown/graceful-shutdown paths, peer
+  connection task exits, channel closure, stale requester/service liveness,
+  retry loops/timers, stream setup/copy tasks, scan response/broadcast tasks,
+  and high-load churn.
+
+### Critical-only no-new cycle 38: cancellation, drop, and task lifetime
+
+- Scope: reviewer-style critical-only pass over `src/lib.rs`, `src/peer.rs`,
+  `src/peer/peer_internal.rs`, `src/ctx.rs`, `src/quic.rs`, `src/service.rs`,
+  `src/service/metrics_service.rs`, `src/service/visualization_service.rs`,
+  service requester/drop tests, and churn fuzz coverage.
+- Focus areas: detached `tokio::spawn`, `JoinHandle` ownership/abort,
+  `P2pNetwork::shutdown`/`shutdown_gracefully`, pending sync retry task
+  cleanup, `PeerConnectionInternal` helper-task drop, peer-control/main/local
+  service channel closure, stale requester/service liveness, inbound sync and
+  local service delivery retry loops, stream open/accept/copy tasks, scan
+  response/broadcast tasks, pending unicast ack expiry, and high-load churn.
+- Verification:
+  - `RUST_LOG=error cargo test shutdown --lib -- --nocapture`: passed 8 tests.
+  - `RUST_LOG=error cargo test drop --lib -- --nocapture`: passed 25 tests.
+  - `RUST_LOG=error cargo test closed --lib -- --nocapture`: passed 5 tests.
+  - `RUST_LOG=error cargo test task --lib -- --nocapture`: passed 10 tests.
+  - `RUST_LOG=error cargo test stale --lib -- --nocapture`: initial
+    concurrent run had one `Address already in use (os error 98)` harness
+    failure while other network-heavy filters ran in parallel; serial rerun
+    below passed.
+  - `RUST_LOG=error cargo test stale --lib -- --nocapture --test-threads=1`:
+    passed 25 tests.
+  - `RUST_LOG=error cargo test disconnected --lib -- --nocapture`: passed 8
+    tests.
+  - `RUST_LOG=error cargo test graceful --lib -- --nocapture`: passed 11
+    tests.
+  - `RUST_LOG=error P2P_FUZZ_NODES=28 P2P_FUZZ_STEPS=1100 P2P_FUZZ_SEED=76038 cargo test fuzz_random_sanitized_node_churn_actions_must_not_panic_connection_tasks --lib -- --nocapture`:
+    passed.
+- Reviewer cross-check: `Ohm the 2nd` returned `NO_NEW_CRITICAL` after
+  reviewing detached spawn/task ownership, shutdown and graceful-shutdown
+  behavior, endpoint close behavior, pending sync task aborts,
+  `PeerConnectionInternal` helper-task `Drop`, connection close paths,
+  peer-control channel closure, stale requester/service liveness, retry/timer
+  loops, scan response/broadcast tasks, stream open/setup, pending unicast ack
+  expiry, peer disconnect notifications, and high-load churn. Reviewer
+  verification included shutdown, dropped, control, queue, stopped,
+  disconnected, requester, stale, and 28-node churn fuzz tests.
+- Duplicate mapping:
+  - Graceful stop notification, `PeerStopped` forwarding/dedup/retry,
+    stopped-peer cleanup, and stop-after-congestion behavior map to ISSUE-215
+    through ISSUE-225, ISSUE-231, RC-6, and cycles 18/24/32/34/36.
+  - Peer-control, main-queue, local-service queue, pending ack, sync retry,
+    stream setup, and backpressure task behavior map to RC-3/RC-4,
+    ISSUE-117, ISSUE-156, ISSUE-217 through ISSUE-225, ISSUE-230,
+    ISSUE-238, and cycles 20/24/32/34/36.
+  - Requester/service/network drop semantics map to ISSUE-072, ISSUE-073,
+    ISSUE-076, ISSUE-234, ISSUE-235, ISSUE-246, RC-6, and cycles
+    24/30/34/35.
+  - Metrics/visualization scan task coalescing, scan response retries, stale
+    peer cleanup, and base-service close behavior map to ISSUE-064,
+    ISSUE-068, ISSUE-102, ISSUE-104, ISSUE-105, ISSUE-226, ISSUE-232,
+    RC-3/RC-6, and cycles 29/34/36.
+  - QUIC accept/setup task and connection close concerns map to ISSUE-117,
+    ISSUE-172, ISSUE-173, ISSUE-217, ISSUE-220, ISSUE-238, RC-3/RC-4, and
+    cycles 33/34/36.
+  - High-load churn, refused connections, duplicate connection closures,
+    endpoint-drop noise, and live work after shutdown/drop map to fuzz cycles
+    20/24 and critical-only cycles 32/34/36.
+  - The initial concurrent `stale` filter port collision is a test harness
+    scheduling artifact, not an accepted library issue.
+- Result: no distinct score-80+ cancellation/drop/task-lifetime/live-work
+  after-shutdown issue had concrete failing-test evidence in this cycle.
 
 ### Critical-only no-new cycle 37: build, package, feature, and release profile
 
