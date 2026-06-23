@@ -7,11 +7,47 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Accepted issues: 247
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 34
-- Current audit continuation: critical-only configuration, package, examples,
-  dependency, secure setup, default cert/key, feature, production panic, and
-  bad-network churn
+- Current consecutive no-new-issue cycles: 35
+- Current audit continuation: critical-only routing/path stability, neighbour
+  selection, alias cleanup, stream/open_stream/pipe behavior, graceful stop,
+  and bad-network churn under the current `<50` node and max-8-CPU fuzz limit
   review found no new score-80+ issue with concrete failing-test evidence.
+- Critical-only no-new cycle 35 after ISSUE-247 reviewed routing/path
+  stability, neighbour selection, alias cleanup, stream/open_stream/pipe
+  behavior, graceful stop, duplicate connections, and bad-network churn across
+  `src/router.rs`, `src/neighbours.rs`, `src/ctx.rs`, `src/peer.rs`,
+  `src/peer/peer_internal.rs`, `src/stream.rs`, `src/lib.rs`,
+  `src/tests/stream.rs`, `src/tests/cross_nodes.rs`,
+  `src/tests/security.rs`, and fuzz tests. Local bounded verification with
+  `CARGO_BUILD_JOBS=8` passed router (20), stream (30), cross_nodes (9),
+  security (55), stopped (19), and the `<50` node adversarial fuzz seed
+  `P2P_FUZZ_NODES=48 P2P_FUZZ_STEPS=6800 P2P_FUZZ_SEED=124049` (1). Earlier
+  higher-node or interrupted runs were not used as evidence for this cycle.
+  Rejected candidates mapped active path jumping, equal-cost tie-breaking,
+  tiny RTT jitter, direct path preference, outbound sync caps, loop-avoidance
+  advertisement, duplicate/oversized route sync, and metric overflow to RC-6
+  and RC-7; stale removed-direct cache, stale events, peer/data/stats/
+  disconnect identity validation, alias cleanup, duplicate inbound/outbound
+  connections, same-peer pending connects, and route resurrection to ISSUE-136,
+  ISSUE-144, ISSUE-162, ISSUE-211 through ISSUE-225, ISSUE-231, ISSUE-238,
+  ISSUE-244, RC-6, and RC-7; seed/non-seed retention, stopped route removal,
+  graceful shutdown, stopped propagation/deduplication, forged `PeerStopped`,
+  and stopped-peer delivery suppression to ISSUE-207, ISSUE-223, ISSUE-244,
+  RC-6, and RC-7; false success for direct/relayed unicast and
+  `open_stream`, closed/full destination services, route loops, upstream setup
+  close/stall, downstream commit failure, out-of-range stream services, and
+  peer-control queue pressure to ISSUE-011, ISSUE-012, ISSUE-013, ISSUE-119,
+  ISSUE-120, ISSUE-217 through ISSUE-230, RC-3, RC-4, and RC-6; and
+  bad-network duplicate/refused/timeout/churn logs to RC-6 and RC-7. No
+  distinct score-80+ routing/path/stream/churn issue had reviewer-accepted
+  failing-test evidence. Smallest future fix proposal if this family regresses:
+  pin the exact route table state, connection id, peer id, service id, queue
+  fill level, stream setup phase, upstream/downstream commit response, stopped
+  event, duplicate connection race, or fuzz seed with one focused failing test,
+  then patch only the failed selector margin/tie-break, direct-route filter,
+  stale-event validation, alias unregister path, stopped propagation path,
+  stream handshake acknowledgement, queue backpressure, or duplicate-connection
+  coalescing branch.
 - Critical-only no-new cycle 34 after ISSUE-247 reviewed configuration,
   package, examples, dependency, secure setup, default cert/key, feature,
   production panic, and high-load churn surfaces across `Cargo.toml`,

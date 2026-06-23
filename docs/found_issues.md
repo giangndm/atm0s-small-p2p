@@ -11,11 +11,75 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 34
-- Current audit continuation: critical-only configuration, package, examples,
-  dependency, secure setup, default cert/key, feature, production panic, and
-  bad-network churn
+- Current consecutive no-new-issue cycles: 35
+- Current audit continuation: critical-only routing/path stability, neighbour
+  selection, alias cleanup, stream/open_stream/pipe behavior, graceful stop,
+  and bad-network churn under the current `<50` node and max-8-CPU fuzz limit
   review found no new score-80+ issue with concrete failing-test evidence.
+
+### Critical-only no-new cycle 35 after ISSUE-247: routing, path stability, streams, and churn
+
+- Scope: reviewer-style critical-only pass over `src/router.rs`,
+  `src/neighbours.rs`, `src/ctx.rs`, `src/peer.rs`,
+  `src/peer/peer_internal.rs`, `src/stream.rs`, `src/lib.rs`,
+  `src/tests/stream.rs`, `src/tests/cross_nodes.rs`,
+  `src/tests/security.rs`, and fuzz tests. Focus areas were active path
+  jumping/noisy route changes, unstable best-path tie-breaking, stale
+  removed-direct cache, seed/non-seed retention, failed pipe/open_stream false
+  success, closed/full destination handling, duplicate connections, graceful
+  shutdown/stopped propagation, and high-load bad-network stability.
+- Verification:
+  - `env CARGO_BUILD_JOBS=8 RUST_LOG=error cargo test --lib router -- --nocapture`:
+    passed 20 tests.
+  - `env CARGO_BUILD_JOBS=8 RUST_LOG=error cargo test --lib stream -- --nocapture`:
+    passed 30 tests.
+  - `env CARGO_BUILD_JOBS=8 RUST_LOG=error cargo test --lib cross_nodes -- --nocapture`:
+    passed 9 tests.
+  - `env CARGO_BUILD_JOBS=8 RUST_LOG=error cargo test --lib security -- --nocapture`:
+    passed 55 tests.
+  - `env CARGO_BUILD_JOBS=8 RUST_LOG=error cargo test --lib stopped -- --nocapture`:
+    passed 19 tests.
+  - `env CARGO_BUILD_JOBS=8 P2P_FUZZ_NODES=48 P2P_FUZZ_STEPS=6800 P2P_FUZZ_SEED=124049 RUST_LOG=error cargo test --lib fuzz_random_adversarial_node_actions_must_not_panic_connection_tasks -- --nocapture`:
+    passed 1 test. This cycle intentionally used only `<50` nodes and
+    `CARGO_BUILD_JOBS=8`; earlier higher-node or interrupted runs are not used
+    as evidence for this cycle.
+- Reviewer cross-check: cycle 35 used the required reviewer scope for
+  critical-only routing/path/stream/churn review. No separate accepted
+  score-80+ issue was produced; observed candidates all mapped to existing
+  failing-test families below.
+- Duplicate mapping:
+  - Active path jumping, equal-cost tie-breaking, tiny RTT jitter, direct path
+    preference over relay, outbound sync caps, loop-avoidance advertisement,
+    oversized/duplicate route sync, and metric overflow map to prior routing
+    families, especially RC-6 and RC-7. Current router tests cover equal-score
+    stickiness, `PATH_SWITCH_SCORE_MARGIN`, direct-only preference when direct
+    paths exist, stale sync ignore after disconnect, MAX_HOPS filtering,
+    duplicate sync rejection, and outbound sync caps.
+  - Stale removed-direct cache, stale internal events, peer/data/stats/
+    disconnect identity validation, alias cleanup under full queues, duplicate
+    inbound/outbound connections, same-peer pending connects, and route
+    resurrection map to ISSUE-136, ISSUE-144, ISSUE-162, ISSUE-211 through
+    ISSUE-225, ISSUE-231, ISSUE-238, ISSUE-244, RC-6, and RC-7.
+  - Seed/non-seed retention, stopped-peer route removal, stopped propagation,
+    graceful shutdown, stopped-peer deduplication, forged `PeerStopped`, and
+    stopped-peer delivery suppression map to ISSUE-207, ISSUE-223, ISSUE-244,
+    and the stopped/graceful-shutdown test family. Current `stopped` and
+    `security` filters passed.
+  - False success for `send_unicast`, relayed unicast, direct and relayed
+    `open_stream`, closed destination services, full service queues, route
+    loops, upstream setup close/stall, downstream commit failure, out-of-range
+    stream services, and peer-control queue pressure map to ISSUE-011,
+    ISSUE-012, ISSUE-013, ISSUE-119, ISSUE-120, ISSUE-217 through ISSUE-230,
+    RC-3, RC-4, and RC-6. Current stream/cross-node tests passed.
+  - Bad-network/high-load churn under duplicate connection races, connection
+    loss, refused accepts, frame-size errors, setup deadlines, and shutdown
+    noise maps to RC-6 and RC-7. The bounded 48-node 6800-step adversarial
+    fuzz seed `124049` produced expected churn logs without panic or invariant
+    failure.
+- Result: no distinct score-80+ routing/path stability, neighbour selection,
+  alias cleanup, stream/open_stream/pipe, graceful-stop, duplicate-connection,
+  or bounded bad-network churn issue had concrete reviewer-accepted
+  failing-test evidence in this cycle.
 
 ### Critical-only no-new cycle 34 after ISSUE-247: configuration, package, and example setup
 
