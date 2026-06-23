@@ -5,14 +5,28 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Audit Status
 
-- Accepted issues: 246
+- Accepted issues: 247
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 46
-- Current audit continuation: critical-only alias, observability,
-  service-boundary, stale source, queue/full-channel, graceful-stop, and churn
-  no-new cycle 48 found no new score-80+ issue across alias lifecycle/cache
-  poisoning, metrics/visualization scan trust, stale stats, service requester
-  liveness, queue backpressure, stopped-peer cleanup, and high-load churn.
+- Current consecutive no-new-issue cycles: 0
+- Current audit continuation: ISSUE-247 accepted and fixed a critical
+  replicated-KV full-sync resource-bound issue. Full sync now caps cumulative
+  staged snapshot slots across continuation pages, not only slots per page.
+  Reviewer `Beauvoir the 2nd` accepted the finding as distinct, score 88.
+- ISSUE-247, score 88: fixed replicated-KV cumulative full-sync snapshot
+  staging. Root cause: `SyncFullState` capped each snapshot page but retained
+  all accepted non-terminal pages in `staged_slots` until terminal commit
+  without a total cap. A malicious authenticated peer could keep sending valid
+  advancing continuation pages and grow memory unbounded before the snapshot
+  completed. Smallest fix: add `MAX_STAGED_SNAPSHOT_SLOTS` and reject a page
+  before mutation when `staged_slots.len() + snapshot.slots.len()` would exceed
+  the cap. Verification:
+  `cargo test full_sync_staged_snapshot_slots_must_be_bounded_across_pages --lib -- --nocapture`,
+  `cargo test replicate_kv --lib -- --nocapture`,
+  `cargo test snapshot --lib -- --nocapture`,
+  `cargo test fetch_changed --lib -- --nocapture`,
+  `cargo test full --lib -- --nocapture`,
+  `cargo test stale --lib -- --nocapture --test-threads=1`, and
+  `P2P_FUZZ_NODES=34 P2P_FUZZ_STEPS=1450 P2P_FUZZ_SEED=89049 cargo test --lib fuzz_random_valid_node_actions_must_not_panic_connection_tasks -- --nocapture`.
 - Critical-only no-new cycle 48 reviewed `src/service/alias_service.rs`,
   `src/service/metrics_service.rs`, `src/service/visualization_service.rs`,
   `src/stats.rs`, `src/service.rs`, `src/ctx.rs`, `src/requester.rs`,

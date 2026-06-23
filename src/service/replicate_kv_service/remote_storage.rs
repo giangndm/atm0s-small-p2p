@@ -10,6 +10,7 @@ use super::messages::{Action, BroadcastEvent, Changed, Event, KvEvent, NetEvent,
 
 const REQUEST_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(1);
 const MAX_SNAPSHOT_SLOTS_PER_PAGE: usize = 1024;
+const MAX_STAGED_SNAPSHOT_SLOTS: usize = 16 * MAX_SNAPSHOT_SLOTS_PER_PAGE;
 const MAX_PENDING_CHANGEDS: usize = 1024;
 
 #[derive(Debug, PartialEq, Eq)]
@@ -346,6 +347,15 @@ where
                 if let (Some(next_key), Some(last_key)) = (snapshot.next_key.as_ref(), prev_key) {
                     if next_key <= last_key {
                         log::warn!("[RemoteStore {:?}] reject snapshot page next_key {:?} not advancing past last key {:?}", ctx.remote, next_key, last_key);
+                        return false;
+                    }
+                }
+                if let Some(staged_slots) = self.staged_slots.as_ref() {
+                    if staged_slots.len().saturating_add(snapshot.slots.len()) > MAX_STAGED_SNAPSHOT_SLOTS {
+                        log::warn!(
+                            "[RemoteStore {:?}] reject snapshot page because staged slots would exceed limit {MAX_STAGED_SNAPSHOT_SLOTS}",
+                            ctx.remote
+                        );
                         return false;
                     }
                 }
@@ -947,6 +957,55 @@ mod tests {
             "full-sync snapshot pages must be capped, got {} slots",
             ctx.slots.len()
         );
+    }
+
+    #[test]
+    fn full_sync_staged_snapshot_slots_must_be_bounded_across_pages() {
+        const MAX_STAGED_FOR_TEST: usize = 16 * MAX_SNAPSHOT_SLOTS_PER_PAGE;
+
+        let mut ctx: StateCtx<u16, u64, u64> = StateCtx {
+            remote: 1,
+            slots: BTreeMap::new(),
+            outs: VecDeque::new(),
+            next_state: None,
+        };
+
+        let now = Instant::now();
+        let mut state = SyncFullState::default();
+        state.init(&mut ctx, now);
+        ctx.outs.clear();
+
+        for page in 0..=16 {
+            let first_key = (page * MAX_SNAPSHOT_SLOTS_PER_PAGE) as u64 + 1;
+            let slots = (0..MAX_SNAPSHOT_SLOTS_PER_PAGE)
+                .map(|offset| {
+                    let key = first_key + offset as u64;
+                    (key, Slot::new(key, Version(key)))
+                })
+                .collect::<Vec<_>>();
+
+            state.on_rpc_res(
+                &mut ctx,
+                now,
+                RpcRes::FetchSnapshot(
+                    Some(SnapshotData {
+                        slots,
+                        next_key: Some(first_key + MAX_SNAPSHOT_SLOTS_PER_PAGE as u64),
+                        biggest_key: (MAX_STAGED_FOR_TEST + MAX_SNAPSHOT_SLOTS_PER_PAGE + 1) as u64,
+                    }),
+                    Version((MAX_STAGED_FOR_TEST + MAX_SNAPSHOT_SLOTS_PER_PAGE + 1) as u64),
+                ),
+            );
+            ctx.outs.clear();
+        }
+
+        let staged_len = state.staged_slots.as_ref().map(BTreeMap::len).unwrap_or_default();
+
+        assert!(
+            staged_len <= MAX_STAGED_FOR_TEST,
+            "full sync must cap total staged snapshot slots across continuation pages; got {staged_len}"
+        );
+        assert!(ctx.slots.is_empty(), "partial full-sync data must remain staged until the terminal page");
     }
 
     #[test]

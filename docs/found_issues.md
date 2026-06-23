@@ -11,13 +11,14 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 46
-- Current audit continuation: critical-only route selection, stream/pipe
-  relay, discovery, graceful-stop, and churn no-new cycle 47 found no new
-  score-80+ issue across active-path stability, direct-route priority, stale
-  sync cleanup, relay-loop rejection, relayed stream setup, acked unicast
-  relay, service queue/full-channel behavior, stopped-peer cleanup, and
-  high-load route/pipe churn.
+- Current consecutive no-new-issue cycles: 0
+- Current audit continuation: ISSUE-247 accepted and fixed a critical
+  replicated-KV full-sync resource-bound issue. A malicious authenticated
+  remote could send many valid non-terminal snapshot continuation pages and
+  grow staged full-sync slots without a total cap. Failing evidence:
+  `RUST_LOG=error cargo test full_sync_staged_snapshot_slots_must_be_bounded_across_pages --lib -- --nocapture`
+  failed before the fix with `got 17408`; reviewer `Beauvoir the 2nd`
+  accepted the finding as distinct, score 88.
 
 ### Critical-only no-new cycle 42: transport, stream, and backpressure
 
@@ -20680,6 +20681,68 @@ the source of truth for evidence and reviewer decisions.
     `RUST_LOG=error cargo test pubsub_internal_control --lib -- --nocapture`,
     `rustfmt --edition 2021 --check src/service/pubsub_service.rs src/service/pubsub_service/publisher.rs src/service/pubsub_service/subscriber.rs`,
     and `git diff --check` passed.
+
+### ISSUE-247: Replicated-KV full sync can stage unbounded snapshot slots across pages
+
+- Status: fixed by capping cumulative staged full-sync snapshot slots before
+  accepting another continuation page.
+- Category: stability, resource exhaustion, replicated-KV full-sync protocol
+- Score: 88
+- Reviewers:
+  - `Beauvoir the 2nd` accepted the candidate as a distinct critical issue
+    after reviewing the failing test and patch. The reviewer confirmed this is
+    separate from existing per-page malformed/oversized snapshot validation.
+- Affected code:
+  - `src/service/replicate_kv_service/remote_storage.rs`:
+    `SyncFullState::on_rpc_res` capped each `SnapshotData.slots` page at
+    `MAX_SNAPSHOT_SLOTS_PER_PAGE`, but accumulated accepted non-terminal pages
+    into `staged_slots` without a total bound.
+- Impact: a malicious authenticated remote can answer full-sync
+  `FetchSnapshot` requests with many valid continuation pages, each under the
+  per-page limit and with advancing keys. Because staged data is intentionally
+  held until the terminal page, the receiver can grow memory indefinitely
+  before any snapshot commit or visible event. This is a high-load/bad-network
+  stability issue and can be driven without malformed pages.
+- Distinctness: ISSUE-131 capped a single oversized snapshot page. ISSUE-037,
+  ISSUE-038, ISSUE-059, ISSUE-081 through ISSUE-089, ISSUE-110, ISSUE-111,
+  ISSUE-138, ISSUE-140, ISSUE-141, ISSUE-154, ISSUE-171, ISSUE-175,
+  ISSUE-184, ISSUE-186, ISSUE-196, ISSUE-233, ISSUE-237, and ISSUE-245 cover
+  malformed snapshot ordering, stale terminal pages, version mismatches,
+  partial visibility, replacement commit safety, and page-level validation.
+  None bounded the cumulative staging map across otherwise valid continuation
+  pages.
+- Root cause: full-sync staging was made atomic and per-page bounded, but the
+  resource limit was applied only to each page, not to the aggregate staged
+  snapshot state that persists until terminal completion.
+- Minimal fix proposal: add a small constant total staged-slot cap and reject a
+  snapshot continuation page before mutation if accepting it would exceed that
+  cap. Keep already staged partial data bounded and invisible until a valid
+  terminal page completes.
+- Fix: `MAX_STAGED_SNAPSHOT_SLOTS = 16 * MAX_SNAPSHOT_SLOTS_PER_PAGE` now
+  bounds aggregate full-sync staging. `SyncFullState::on_rpc_res` checks
+  `staged_slots.len().saturating_add(snapshot.slots.len())` before inserting
+  the page and rejects pages that would exceed the total cap.
+- Evidence tests:
+  - Red evidence before fix:
+    `RUST_LOG=error cargo test full_sync_staged_snapshot_slots_must_be_bounded_across_pages --lib -- --nocapture`
+    failed at `src/service/replicate_kv_service/remote_storage.rs:994` with
+    `full sync must cap total staged snapshot slots across continuation pages; got 17408`.
+  - Reviewer verification:
+    `Beauvoir the 2nd` accepted the issue as distinct, score 88, and approved
+    the fix/test. Reviewer command:
+    `RUST_LOG=error cargo test full_sync_staged_snapshot_slots_must_be_bounded_across_pages --lib -- --nocapture`.
+  - Verification after fix:
+    `RUST_LOG=error cargo test full_sync_staged_snapshot_slots_must_be_bounded_across_pages --lib -- --nocapture`
+    passed.
+  - Regression guards:
+    `RUST_LOG=error cargo test replicate_kv --lib -- --nocapture`,
+    `RUST_LOG=error cargo test snapshot --lib -- --nocapture`,
+    `RUST_LOG=error cargo test fetch_changed --lib -- --nocapture`,
+    `RUST_LOG=error cargo test full --lib -- --nocapture`,
+    `RUST_LOG=error cargo test stale --lib -- --nocapture --test-threads=1`,
+    and
+    `RUST_LOG=error P2P_FUZZ_NODES=34 P2P_FUZZ_STEPS=1450 P2P_FUZZ_SEED=89049 cargo test --lib fuzz_random_valid_node_actions_must_not_panic_connection_tasks -- --nocapture`
+    passed.
 
 ### Cycle after ISSUE-246 no-new critical cycle 1: auth, stream, service-id, and admission review
 
