@@ -7,13 +7,36 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Accepted issues: 246
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 31
-- Current audit continuation: critical-only auth, framing, and service-boundary
-  no-new cycle 33 found no new score-80+ issue across shared-key handshake
-  freshness/replay/role binding, inbound identity binding, unauthenticated
-  admission, QUIC stream admission, bincode/object frame caps, service-id
-  bounds, source identity normalization, stream setup stalls, malformed raw and
-  service payloads, and high-load churn behavior.
+- Current consecutive no-new-issue cycles: 32
+- Current audit continuation: critical-only runtime lifecycle and QUIC boundary
+  no-new cycle 34 found no new score-80+ issue across endpoint configuration,
+  uni/bidi stream caps, inbound admission, graceful shutdown notification,
+  requester/network drop behavior, duplicate connect coalescing, stale
+  main-loop event admission, connection alias cleanup, control/backpressure
+  handling, metrics/stats admission, and high-load churn behavior.
+- Critical-only no-new cycle 34 reviewed runtime lifecycle and QUIC boundary in
+  `lib.rs`, `quic.rs`, `requester.rs`, `neighbours.rs`, and `peer.rs`.
+  Focused shutdown, requester, stale, duplicate, control, QUIC,
+  peer-connected, peer-disconnected, unauthenticated-admission, and a 28-node
+  1000-step churn fuzz seed passed. Reviewer `McClintock the 2nd` returned
+  `NO_NEW_CRITICAL` after independently covering QUIC, graceful, stopped,
+  unauthenticated, disconnected, backpressure, metrics, cross-node, and two
+  24-node 900-step churn fuzz seeds. Rejected candidates mapped to ISSUE-215
+  through ISSUE-225, ISSUE-231, RC-6, and cycles 18/24/32 for graceful
+  shutdown, `PeerStopped`, seed/non-seed lifecycle, and stop tombstones;
+  ISSUE-014, ISSUE-015, ISSUE-018, ISSUE-039, ISSUE-115, ISSUE-116,
+  ISSUE-197, ISSUE-226, ISSUE-232, and RC-1 for forged or stale runtime event
+  authority checks; ISSUE-221 through ISSUE-223 and cycle 33 for
+  unauthenticated admission and authenticated alias release; ISSUE-117,
+  ISSUE-156, ISSUE-172, ISSUE-173, ISSUE-217, ISSUE-220, ISSUE-238, RC-3,
+  RC-4, and cycle 33 for QUIC stream caps, stream admission, stalled setup,
+  and false stream success; ISSUE-218 through ISSUE-225, ISSUE-227,
+  ISSUE-230, RC-3, and RC-6 for control/sync/local-delivery backpressure and
+  ack bounds; ISSUE-226, ISSUE-232, cycle 29, cycle 33, and metrics stale
+  tests for metrics/reporting admission; and cycles 18/24/32/33 plus fuzz
+  coverage for high-load churn. No distinct score-80+ runtime lifecycle, QUIC
+  boundary, main-loop event admission, or bad-network churn issue had concrete
+  failing-test evidence.
 - Critical-only no-new cycle 33 reviewed auth, framing, and service boundaries
   in `secure.rs`, `msg.rs`, `stream.rs`, `peer.rs`, `peer_internal.rs`,
   `lib.rs`, `service.rs`, and `ctx.rs`. Focused handshake, service-id, codec,

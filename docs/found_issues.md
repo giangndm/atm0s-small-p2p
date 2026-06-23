@@ -11,13 +11,77 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 31
-- Current audit continuation: critical-only auth, framing, and service-boundary
-  no-new cycle 33 found no new score-80+ issue across shared-key handshake
-  freshness/replay/role binding, inbound identity binding, unauthenticated
-  admission, QUIC stream admission, bincode/object frame caps, service-id
-  bounds, source identity normalization, stream setup stalls, malformed raw and
-  service payloads, and high-load churn behavior.
+- Current consecutive no-new-issue cycles: 32
+- Current audit continuation: critical-only runtime lifecycle and QUIC boundary
+  no-new cycle 34 found no new score-80+ issue across endpoint configuration,
+  uni/bidi stream caps, inbound admission, graceful shutdown notification,
+  requester/network drop behavior, duplicate connect coalescing, stale
+  main-loop event admission, connection alias cleanup, control/backpressure
+  handling, metrics/stats admission, and high-load churn behavior.
+
+### Critical-only no-new cycle 34: runtime lifecycle and QUIC boundary
+
+- Scope: reviewer-style critical-only pass over `src/lib.rs` network lifecycle,
+  main-loop event admission, connect/dedup, shutdown and graceful shutdown;
+  `src/quic.rs` endpoint/client/server configuration, TLS root setup, idle
+  timeout, and uni/bidi stream caps; `src/requester.rs`; `src/neighbours.rs`;
+  `src/peer.rs` connection setup, main queue reporting, and graceful shutdown
+  tests; focused security/cross-node/fuzz tests; and runtime behavior under
+  bad-network churn.
+- Focus areas: endpoint construction, unidirectional stream rejection,
+  bidirectional stream caps, unauthenticated inbound admission, authenticated
+  alias release before `PeerConnected` is drained, duplicate connection
+  coalescing, stale or forged `PeerConnected`/`PeerData`/`PeerStopped`/
+  `PeerDisconnected`/`PeerStats`, graceful shutdown notification under
+  congested peer-control queues, requester use after network drop, pending
+  connect bounds, sync retry/backpressure, service disconnect notification,
+  metrics/stats admission, and high-load churn with refused connects,
+  deadlines, duplicate connections, and peer stops.
+- Verification:
+  - `RUST_LOG=error cargo test shutdown --lib -- --nocapture`: passed 8 tests.
+  - `RUST_LOG=error cargo test requester --lib -- --nocapture`: passed 13 tests.
+  - `RUST_LOG=error cargo test stale --lib -- --nocapture`: passed 25 tests.
+  - `RUST_LOG=error cargo test duplicate --lib -- --nocapture`: passed 20 tests.
+  - `RUST_LOG=error cargo test control --lib -- --nocapture`: passed 19 tests.
+  - `RUST_LOG=error cargo test quic --lib -- --nocapture`: passed 2 tests.
+  - `RUST_LOG=error cargo test peer_connected --lib -- --nocapture`: passed 3 tests.
+  - `RUST_LOG=error cargo test peer_disconnected --lib -- --nocapture`: passed 8 tests.
+  - `RUST_LOG=error cargo test unauthenticated --lib -- --nocapture`: passed 2 tests.
+  - `RUST_LOG=error P2P_FUZZ_NODES=28 P2P_FUZZ_STEPS=1000 P2P_FUZZ_SEED=72034 cargo test fuzz_random_node_churn_actions_must_not_panic_connection_tasks --lib -- --nocapture`: passed.
+- Reviewer cross-check: `McClintock the 2nd` returned `NO_NEW_CRITICAL`
+  after reviewing `P2pNetwork` lifecycle, main-loop event admission,
+  connect/dedup, shutdown/graceful shutdown, `PeerStopped`,
+  `PeerDisconnected`, stats admission, QUIC endpoint config, TLS root setup,
+  idle timeout, uni/bidi stream caps, security/cross-node/fuzz tests, and
+  duplicate mappings. Reviewer verification included QUIC, graceful, stopped,
+  unauthenticated, disconnected, backpressure, metrics, cross-node, and two
+  24-node 900-step churn fuzz seeds.
+- Duplicate mapping:
+  - Graceful shutdown, `PeerStopped` forwarding/dedup/retry, non-seed removal,
+    seed retention, and stop tombstones map to ISSUE-215 through ISSUE-225,
+    ISSUE-231, RC-6, and critical-only cycles 18, 24, and 32.
+  - Forged or stale `PeerStopped`, `PeerDisconnected`, `PeerConnected`, and
+    `PeerStats` authority checks map to ISSUE-014, ISSUE-015, ISSUE-018,
+    ISSUE-039, ISSUE-115, ISSUE-116, ISSUE-197, ISSUE-226, ISSUE-232, and
+    RC-1.
+  - Unauthenticated inbound admission and authenticated alias release map to
+    ISSUE-221 through ISSUE-223 and cycle 33.
+  - QUIC unidirectional stream rejection, bidirectional stream caps, stream
+    admission, stalled stream setup, and false stream success map to ISSUE-117,
+    ISSUE-156, ISSUE-172, ISSUE-173, ISSUE-217, ISSUE-220, ISSUE-238, RC-3,
+    RC-4, and cycle 33.
+  - Connection alias/control queue backpressure, sync retry, local delivery
+    backpressure, service disconnect notification, and ack bounds map to
+    ISSUE-218 through ISSUE-225, ISSUE-227, ISSUE-230, RC-3, and RC-6.
+  - Metrics/reporting stale or forged runtime events map to ISSUE-226,
+    ISSUE-232, critical-only cycle 29, critical-only cycle 33, and existing
+    metrics stale-info/stale-stats tests.
+  - High-load churn, shutdown/drop, duplicate connects, refused connects, and
+    bad-network noise map to critical-only cycles 18, 24, 32, and 33 plus
+    existing fuzz coverage.
+- Result: no distinct score-80+ runtime lifecycle, QUIC boundary, main-loop
+  event admission, or bad-network churn issue had concrete failing-test
+  evidence in this cycle.
 
 ### Critical-only no-new cycle 33: auth, framing, and service boundaries
 
