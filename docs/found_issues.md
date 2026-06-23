@@ -11,12 +11,79 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 29
-- Current audit continuation: critical-only pubsub lifecycle and RPC
-  no-new cycle 31 found no new score-80+ issue across pubsub membership
-  lifecycle, heartbeat/chunk reconciliation, RPC responder correlation,
-  bounded queues/resources, requester drop/shutdown handling, malformed
-  payload handling, and high-load churn behavior.
+- Current consecutive no-new-issue cycles: 30
+- Current audit continuation: critical-only route/discovery active-path and
+  stream/pipe stability no-new cycle 32 found no new score-80+ issue across
+  route selection hysteresis, direct-vs-relayed priority, discovery stale
+  cleanup, seed/non-seed lifecycle, route/discovery sync validation, relay loop
+  rejection, stream setup, pipe delivery, backpressure cleanup, and high-load
+  churn behavior.
+
+### Critical-only no-new cycle 32: route/discovery active path and pipe stability
+
+- Scope: reviewer-style critical-only pass over `src/router.rs`,
+  `src/discovery.rs`, `src/lib.rs` main-loop route/discovery handlers,
+  `src/peer/peer_internal.rs` relay decisions, `src/stream.rs`, focused
+  route/discovery/security/stream/cross-node tests, and message paths feeding
+  route sync, discovery sync, `PeerConnected`, `PeerData`, `PeerStopped`,
+  `PeerDisconnected`, relayed unicast, and relayed stream setup.
+- Focus areas: active path flapping/jumping, direct paths being replaced by
+  relayed paths, stale route resurrection after disconnect/graceful
+  stop/restart, non-seed removal versus seed retention, route/discovery sync
+  poisoning, duplicate/oversized/malformed rows, overflowed route metrics,
+  relay loops, pipe/open-stream false success or orphan delivery under route
+  churn, queue backpressure losing route cleanup, and high-load churn.
+- Verification:
+  - `RUST_LOG=error cargo test route --lib -- --nocapture`: passed 27 tests.
+  - `RUST_LOG=error cargo test discovery --lib -- --nocapture`: passed 37 tests.
+  - `RUST_LOG=error cargo test active_path --lib -- --nocapture`: passed 1 test.
+  - `RUST_LOG=error cargo test direct_peer_route --lib -- --nocapture`: passed 1 test.
+  - `RUST_LOG=error cargo test peer_stopped --lib -- --nocapture`: passed 15 tests.
+  - `RUST_LOG=error cargo test stale_peer --lib -- --nocapture`: passed 5 tests.
+  - `RUST_LOG=error cargo test discovery_timeout --lib -- --nocapture`: passed 1 test.
+  - `RUST_LOG=error cargo test graceful_shutdown_removes_stopped_non_seed --lib -- --nocapture`: passed 1 test.
+  - `RUST_LOG=error cargo test duplicate --lib -- --nocapture`: passed 20 tests.
+  - `RUST_LOG=error cargo test relayed_open_stream --lib -- --nocapture`: passed 3 tests.
+  - `RUST_LOG=error cargo test relay_must_not_deliver --lib -- --nocapture`: passed 3 tests.
+  - `RUST_LOG=error cargo test relay_stream_must_not_forward --lib -- --nocapture`: passed 1 test.
+  - `RUST_LOG=error cargo test route_not_found --lib -- --nocapture`: matched 0 tests.
+  - `RUST_LOG=error cargo test open_stream --lib -- --nocapture`: passed 10 tests.
+  - `RUST_LOG=error cargo test send_relay --lib -- --nocapture`: passed 1 test.
+  - `RUST_LOG=error cargo test unicast_relay --lib -- --nocapture`: passed 1 test.
+  - `RUST_LOG=error cargo test sync_must_not_block --lib -- --nocapture`: passed 1 test.
+  - `RUST_LOG=error cargo test route_discovery_tick --lib -- --nocapture`: matched 0 tests.
+  - `RUST_LOG=error cargo test peer_connected_must_not_block --lib -- --nocapture`: passed 1 test.
+  - `RUST_LOG=error cargo test stream --lib -- --nocapture`: passed 30 tests.
+  - `RUST_LOG=error cargo test relay --lib -- --nocapture`: passed 16 tests.
+  - `RUST_LOG=error cargo test seed --lib -- --nocapture`: passed 15 tests.
+  - `RUST_LOG=error cargo test stopped --lib -- --nocapture`: passed 19 tests.
+  - `RUST_LOG=error P2P_FUZZ_NODES=28 P2P_FUZZ_STEPS=1000 P2P_FUZZ_SEED=70032 cargo test fuzz_random_valid_node_churn_actions_must_not_panic_connection_tasks --lib -- --nocapture`: passed.
+- Reviewer cross-check: `Laplace the 2nd` returned `NO_NEW_CRITICAL` after
+  reviewing router, discovery, main-loop route/discovery handlers, stream and
+  peer relay paths, focused security/discovery/stream/cross-node tests, and
+  issue mappings. Reviewer verification included route, discovery, stream,
+  relay, stale, seed, stopped, and a 24-node churn fuzz seed.
+- Duplicate mapping:
+  - Active path flapping/jumping and direct paths being replaced by relayed
+    paths map to ISSUE-003 and RC-7.
+  - Stale route resurrection after disconnect, graceful stop, restart, or
+    connection ticker sync maps to ISSUE-215 through ISSUE-225, ISSUE-231, and
+    RC-6.
+  - Non-seed removal, seed retention, seed gossip priority, and discovery
+    retryability map to ISSUE-004, ISSUE-167, ISSUE-211 through ISSUE-213, and
+    RC-7.
+  - Route/discovery sync poisoning, local/self rows, duplicate/oversized rows,
+    stale timestamps, non-dialable addresses, overflowed timestamps, and
+    overflowed route metrics map to ISSUE-063, ISSUE-103, ISSUE-164, RC-5,
+    and RC-7.
+  - Relay loops, relayed unicast false success, open-stream false success,
+    orphan downstream stream delivery, upstream setup cancellation, and
+    stream/pipe churn map to ISSUE-117, ISSUE-149, ISSUE-156, ISSUE-217,
+    ISSUE-220, ISSUE-229, ISSUE-230, RC-3, and RC-4.
+  - Queue backpressure losing sync, stop, route, or service-delivery cleanup
+    maps to ISSUE-218, ISSUE-219, ISSUE-224, ISSUE-225, RC-3, and RC-6.
+- Result: no distinct score-80+ route/discovery active-path or stream/pipe
+  stability issue had concrete failing-test evidence in this cycle.
 
 ### Critical-only no-new cycle 31: pubsub lifecycle and RPC
 

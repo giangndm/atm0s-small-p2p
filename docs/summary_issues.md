@@ -7,12 +7,33 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Accepted issues: 246
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 29
-- Current audit continuation: critical-only pubsub lifecycle and RPC
-  no-new cycle 31 found no new score-80+ issue across pubsub membership
-  lifecycle, heartbeat/chunk reconciliation, RPC responder correlation,
-  bounded queues/resources, requester drop/shutdown handling, malformed
-  payload handling, and high-load churn behavior.
+- Current consecutive no-new-issue cycles: 30
+- Current audit continuation: critical-only route/discovery active-path and
+  stream/pipe stability no-new cycle 32 found no new score-80+ issue across
+  route selection hysteresis, direct-vs-relayed priority, discovery stale
+  cleanup, seed/non-seed lifecycle, route/discovery sync validation, relay loop
+  rejection, stream setup, pipe delivery, backpressure cleanup, and high-load
+  churn behavior.
+- Critical-only no-new cycle 32 reviewed route/discovery active-path and
+  stream/pipe stability in `router.rs`, `discovery.rs`, `lib.rs`,
+  `peer_internal.rs`, and `stream.rs`. Focused route, discovery, active-path,
+  direct-route, peer-stopped, stale-peer, discovery-timeout, graceful-shutdown,
+  duplicate, relayed-open-stream, relay-orphan-delivery, relay-loop,
+  open-stream, send-relay, unicast-relay, sync-backpressure,
+  peer-connected-backpressure, stream, relay, seed, stopped, and a 28-node
+  churn fuzz seed passed. Reviewer `Laplace the 2nd` returned
+  `NO_NEW_CRITICAL`. Rejected candidates mapped to ISSUE-003/RC-7 for active
+  path flapping and direct-route priority, ISSUE-215 through ISSUE-225,
+  ISSUE-231, and RC-6 for stale route resurrection and lifecycle cleanup,
+  ISSUE-004, ISSUE-167, ISSUE-211 through ISSUE-213, and RC-7 for seed versus
+  non-seed discovery lifecycle, ISSUE-063, ISSUE-103, ISSUE-164, RC-5, and
+  RC-7 for route/discovery sync validation and metric/timestamp bounds,
+  ISSUE-117, ISSUE-149, ISSUE-156, ISSUE-217, ISSUE-220, ISSUE-229,
+  ISSUE-230, RC-3, and RC-4 for relay loops, false stream/unicast success, and
+  orphan pipe delivery, plus ISSUE-218, ISSUE-219, ISSUE-224, ISSUE-225,
+  RC-3, and RC-6 for queue backpressure cleanup. No distinct score-80+
+  route/discovery active-path or stream/pipe failure had concrete failing-test
+  evidence.
 - Critical-only no-new cycle 31 reviewed pubsub lifecycle and RPC behavior in
   `pubsub_service.rs`, `publisher.rs`, and `subscriber.rs`. Focused pubsub,
   heartbeat, RPC, stale, tombstone, bounded, queue, pending, disconnect,
