@@ -23241,3 +23241,75 @@ the source of truth for evidence and reviewer decisions.
 - Fix proposal: no new fix is proposed because no distinct critical issue was
   accepted; continue critical-only review/fuzzing for score-80+ findings.
 - Current consecutive no-new cycles after ISSUE-246: 42.
+
+### Critical-only no-new cycle 45: concurrency, task lifecycle, and closed-channel review
+
+- Scope: reviewed the current issue ledgers and summary, then audited
+  concurrency/task lifecycle, pending sync retry tasks, peer-control closure,
+  connection helper task drop, local service delivery queues, acked unicast
+  pressure, requester/service drop liveness, metrics cleanup, disconnect
+  notifications, graceful shutdown, and high-load shutdown/backpressure churn.
+- Reviewer: `Newton the 2nd` (forked RED-team reviewer) returned
+  `NO_NEW_CRITICAL` and found no distinct score-80+ concurrency, lifecycle,
+  closed/full channel, spawned retry task, requester/drop liveness, metrics
+  cleanup, or high-load shutdown/backpressure issue with concrete failing-test
+  evidence.
+- Local verification:
+  - `RUST_LOG=error cargo test --lib task -- --nocapture`
+  - `RUST_LOG=error cargo test --lib backpressure -- --nocapture`
+  - `RUST_LOG=error cargo test --lib peer_stopped -- --nocapture`
+  - `RUST_LOG=error cargo test --lib closed -- --nocapture`
+  - `RUST_LOG=error cargo test --lib delivery -- --nocapture`
+  - `RUST_LOG=error cargo test --lib ack -- --nocapture`
+  - `RUST_LOG=error cargo test --lib disconnect -- --nocapture`
+  - `RUST_LOG=error cargo test --lib stale -- --nocapture --test-threads=1`
+  - `RUST_LOG=error P2P_FUZZ_NODES=38 P2P_FUZZ_STEPS=1400 P2P_FUZZ_SEED=85045 cargo test --lib fuzz_random_valid_node_churn_actions_must_not_panic_connection_tasks -- --nocapture`
+- Reviewer verification:
+  - `RUST_LOG=error cargo test --lib shutdown -- --nocapture`
+  - `RUST_LOG=error cargo test --lib drop -- --nocapture`
+  - `RUST_LOG=error cargo test --lib requester -- --nocapture`
+  - `RUST_LOG=error cargo test --lib channel -- --nocapture`
+  - `RUST_LOG=error cargo test --lib closed -- --nocapture`
+  - `RUST_LOG=error cargo test --lib full -- --nocapture`
+  - `RUST_LOG=error cargo test --lib task -- --nocapture`
+  - `RUST_LOG=error cargo test --lib metrics -- --nocapture`
+  - `RUST_LOG=error cargo test --lib service_drop -- --nocapture`
+  - `RUST_LOG=error cargo test --lib stale -- --nocapture --test-threads=1`
+  - `RUST_LOG=error cargo test --lib backpressure -- --nocapture`
+  - `RUST_LOG=error P2P_FUZZ_NODES=34 P2P_FUZZ_STEPS=1400 P2P_FUZZ_SEED=85045 cargo test --lib fuzz_random_sanitized_node_churn_actions_must_not_panic_connection_tasks -- --nocapture`
+- Duplicate mapping:
+  - Concurrency/task lifecycle, pending sync retry tasks, peer-control closure,
+    connection helper task drop, and main-loop closure behavior map to
+    ISSUE-117, ISSUE-156, ISSUE-217, ISSUE-220, ISSUE-221, ISSUE-222,
+    ISSUE-223, ISSUE-238, RC-3, RC-4, RC-6, and cycles 20, 24, 32, 34, 36,
+    38, 42, and 44.
+  - Closed/full channel behavior, local service delivery queue pressure,
+    acked unicast pressure, full peer-control queues, and false success on
+    closed destination services map to ISSUE-043, ISSUE-100 through ISSUE-105,
+    ISSUE-119, ISSUE-121, ISSUE-123 through ISSUE-126, ISSUE-218 through
+    ISSUE-230, ISSUE-234 through ISSUE-236, ISSUE-240 through ISSUE-243,
+    ISSUE-246, RC-3, RC-4, RC-6, and cycles 30, 33, 34, 36, 38, 40, 42, and
+    44.
+  - Requester/service/drop liveness and stale requester behavior map to
+    ISSUE-052, ISSUE-053, ISSUE-060, ISSUE-072, ISSUE-073, ISSUE-076,
+    ISSUE-091, ISSUE-234, ISSUE-235, ISSUE-246, and RC-6.
+  - Metrics cleanup, stale peer stats rejection, scan response retry/
+    backpressure, and duplicate scan-task suppression map to ISSUE-064,
+    ISSUE-068, ISSUE-102, ISSUE-104, ISSUE-105, ISSUE-128, ISSUE-129,
+    ISSUE-165, ISSUE-200 through ISSUE-204, ISSUE-226, ISSUE-232, RC-1,
+    RC-3, RC-6, and cycles 29, 34, 36, 38, 40, and 43.
+  - Graceful shutdown, stopped-peer delivery, disconnect notification under
+    full queues, route/service cleanup, duplicate connection cleanup, and
+    stop-delivery backpressure map to ISSUE-001, ISSUE-004, ISSUE-170,
+    ISSUE-215 through ISSUE-225, ISSUE-231, RC-3, RC-6, RC-7, and cycles 18,
+    24, 32, 34, 36, 38, 39, 41, 42, and 44.
+  - High-load bad-network churn, refused connects, endpoint-drop behavior,
+    duplicate closure noise, deadlines, and task storm candidates map to fuzz
+    cycles 20, 24, 28, 31, 32, 34, 36, 38, 39, 40, 41, 42, 43, and 44.
+- Root-cause summary: no new root cause was accepted; rejected candidates fit
+  existing task-lifecycle/backpressure, closed-channel false-success,
+  requester/service liveness, metrics cleanup, graceful-stop, and high-load
+  route-churn families.
+- Fix proposal: no new fix is proposed because no distinct critical issue was
+  accepted; continue critical-only review/fuzzing for score-80+ findings.
+- Current consecutive no-new cycles after ISSUE-246: 43.

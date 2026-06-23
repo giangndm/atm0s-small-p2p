@@ -7,12 +7,42 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Accepted issues: 246
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 42
-- Current audit continuation: critical-only public lifecycle, config/example,
-  and malformed-input no-new cycle 44 found no new score-80+ issue across
-  requester/control admission, network shutdown/graceful stop, QUIC setup,
-  shared-key handshake, inbound bindings, service-id misuse, frame/object
-  codec limits, examples/readme, and high-load bad-network churn.
+- Current consecutive no-new-issue cycles: 43
+- Current audit continuation: critical-only concurrency, task-lifecycle, and
+  closed/full-channel no-new cycle 45 found no new score-80+ issue across
+  pending sync retry tasks, peer-control closure, local service delivery,
+  acked unicast pressure, requester/service drop liveness, metrics cleanup,
+  graceful shutdown, disconnect notification, and high-load backpressure churn.
+- Critical-only no-new cycle 45 reviewed concurrency/task lifecycle and
+  closed/full-channel behavior in `src/lib.rs`, `src/peer.rs`,
+  `src/peer/peer_internal.rs`, `src/peer/peer_alias.rs`, `src/ctx.rs`,
+  `src/service.rs`, service requesters, security/cross-node/stream/pubsub
+  tests, and fuzz coverage. Local task, backpressure, peer-stopped, closed,
+  delivery, ack, disconnect, stale, and 38-node 1400-step valid-churn fuzz
+  checks passed. Reviewer `Newton the 2nd` returned `NO_NEW_CRITICAL` after
+  independently running shutdown, drop, requester, channel, closed, full,
+  task, metrics, service_drop, stale, backpressure, and 34-node 1400-step
+  sanitized churn fuzz slices. Rejected candidates mapped to concurrency/task
+  lifecycle, pending sync retry, peer-control closure, helper task drop, and
+  main-loop closure issues ISSUE-117/156/217/220/221/222/223/238,
+  RC-3/RC-4/RC-6, and cycles 20/24/32/34/36/38/42/44; closed/full channels,
+  local delivery pressure, acked-unicast pressure, full peer-control queues,
+  and false success to ISSUE-043/100 through ISSUE-105/119/121/123 through
+  ISSUE-126/218 through ISSUE-230/234 through ISSUE-236/240 through
+  ISSUE-243/246, RC-3/RC-4/RC-6, and cycles 30/33/34/36/38/40/42/44;
+  requester/service/drop liveness to ISSUE-052/053/060/072/073/076/091/
+  234/235/246 and RC-6; metrics cleanup, stale stats, scan retry/
+  backpressure, and duplicate scan suppression to ISSUE-064/068/102/104/105/
+  128/129/165/200 through ISSUE-204/226/232, RC-1/RC-3/RC-6, and cycles
+  29/34/36/38/40/43; graceful shutdown, stopped-peer delivery, disconnect
+  notification under full queues, route/service cleanup, duplicate connection
+  cleanup, and stop-delivery backpressure to ISSUE-001/004/170/215 through
+  ISSUE-225/231, RC-3/RC-6/RC-7, and cycles 18/24/32/34/36/38/39/41/42/44;
+  and high-load bad-network churn to fuzz cycles 20/24/28/31/32/34/36/38/39/
+  40/41/42/43/44. No distinct score-80+ concurrency, lifecycle, closed/full
+  channel, spawned retry task, requester/drop liveness, metrics cleanup,
+  graceful shutdown, or high-load backpressure issue had concrete failing-test
+  evidence.
 - Critical-only no-new cycle 44 reviewed public network lifecycle, config,
   examples, and malformed external-input behavior in `src/lib.rs`,
   `src/requester.rs`, `src/quic.rs`, `src/secure.rs`, `src/msg.rs`,
