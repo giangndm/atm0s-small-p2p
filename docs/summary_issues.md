@@ -7,11 +7,47 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Accepted issues: 247
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 31
-- Current audit continuation: critical-only pubsub protocol, RPC,
-  membership, heartbeat/chunking, backpressure, state cleanup, and
+- Current consecutive no-new-issue cycles: 32
+- Current audit continuation: critical-only transport/auth/codec, handshake
+  identity binding, frame/object caps, duplicate connections, shutdown, and
   bad-network churn
   review found no new score-80+ issue with concrete failing-test evidence.
+- Critical-only no-new cycle 32 after ISSUE-247 reviewed transport auth,
+  secure handshake, codec/frame/object bounds, duplicate connection races,
+  QUIC stream admission, graceful shutdown, connection cleanup, and high-load
+  churn across `src/secure.rs`, `src/quic.rs`, `src/peer.rs`,
+  `src/peer/peer_internal.rs`, `src/stream.rs`, `src/lib.rs`, `src/msg.rs`,
+  security tests, stream tests, and fuzz surfaces. Local secure (10), quic
+  (2), codec (3), handshake (10), security (55), connection (24), frame (1),
+  shutdown (8), auth (8), duplicate (20), stopped (19), and 82-node 6200-step
+  adversarial fuzz seed `121049` checks passed; `malformed` matched 0 tests
+  and was not used as positive evidence. Reviewer `Helmholtz` returned
+  `NO_NEW_CRITICAL` after independently reviewing the same slice and passing
+  secure::tests (10), quic::tests (2), codec (3), handshake (10),
+  inbound_handshake (3), unauthenticated (2), duplicate (20), shutdown (8),
+  stream (30), object (4), and frame (1), with malformed matching 0 tests.
+  Rejected candidates mapped handshake freshness, replay, identity,
+  destination, initiator/responder role binding, inbound static peer bindings,
+  and response verification to ISSUE-002, ISSUE-021, ISSUE-146, ISSUE-176,
+  ISSUE-207, ISSUE-223, ISSUE-244, RC-1, and RC-4; malformed or oversized
+  peer frames, setup objects, bincode encode/decode failures, and packet/object
+  size handling to ISSUE-024, ISSUE-094, ISSUE-097, ISSUE-098, ISSUE-174, and
+  RC-5; QUIC stream admission, unauthenticated inbound caps, setup/open-stream
+  timeouts, local service delivery, and control backpressure to ISSUE-011,
+  ISSUE-012, ISSUE-013, ISSUE-225, ISSUE-231, ISSUE-238, RC-3, RC-4, and
+  RC-6; and duplicate connection races, stale internal events, graceful
+  shutdown, stopped-peer propagation, connection alias cleanup, and high-load
+  bad-network churn to ISSUE-136, ISSUE-144, ISSUE-162, ISSUE-211 through
+  ISSUE-225, ISSUE-231, ISSUE-238, ISSUE-244, RC-6, and RC-7. No distinct
+  score-80+ transport/auth/codec issue had reviewer-accepted failing-test
+  evidence. Smallest future fix proposal if this family regresses: pin the
+  exact handshake `from`/`to`/role/timestamp/token, inbound binding, remote
+  socket, certificate or shared key, frame length, serialized object length,
+  QUIC stream type/count, connection id, peer id, duplicate race ordering,
+  queue state, shutdown/stopped event, or fuzz seed with one focused failing
+  test, then patch only the failed handshake validator, replay cache,
+  authorization gate, codec/object cap, stream admission limit, setup timeout,
+  duplicate connection cleanup, or stopped/shutdown propagation.
 - Critical-only no-new cycle 31 after ISSUE-247 reviewed pubsub protocol,
   RPC, membership, heartbeat/chunking, queue-pressure, state cleanup,
   graceful-stop/disconnect cleanup, and high-load churn across

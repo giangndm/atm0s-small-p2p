@@ -11,11 +11,74 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 31
-- Current audit continuation: critical-only pubsub protocol, RPC,
-  membership, heartbeat/chunking, backpressure, state cleanup, and
+- Current consecutive no-new-issue cycles: 32
+- Current audit continuation: critical-only transport/auth/codec, handshake
+  identity binding, frame/object caps, duplicate connections, shutdown, and
   bad-network churn
   review found no new score-80+ issue with concrete failing-test evidence.
+
+### Critical-only no-new cycle 32 after ISSUE-247: transport auth, codec, and connection setup
+
+- Scope: reviewer-style critical-only pass over `src/secure.rs`,
+  `src/quic.rs`, `src/peer.rs`, `src/peer/peer_internal.rs`,
+  `src/stream.rs`, `src/lib.rs`, `src/msg.rs`, security tests, stream tests,
+  and fuzz surfaces. Focus areas were handshake identity binding,
+  certificate/shared-key validation, replay windows, inbound static peer
+  bindings, duplicate connection races, malformed and oversized frames,
+  setup object size caps, QUIC stream admission, graceful shutdown
+  notification, connection task cleanup, and high-load bad-network churn.
+- Verification:
+  - `RUST_LOG=error cargo test --lib secure`: passed 10 tests.
+  - `RUST_LOG=error cargo test --lib quic`: passed 2 tests.
+  - `RUST_LOG=error cargo test --lib codec`: passed 3 tests.
+  - `RUST_LOG=error cargo test --lib handshake`: passed 10 tests.
+  - `RUST_LOG=error cargo test --lib security`: passed 55 tests.
+  - `RUST_LOG=error cargo test --lib connection`: passed 24 tests.
+  - `RUST_LOG=error cargo test --lib frame`: passed 1 test.
+  - `RUST_LOG=error cargo test --lib shutdown`: passed 8 tests.
+  - `RUST_LOG=error cargo test --lib auth`: passed 8 tests.
+  - `RUST_LOG=error cargo test --lib duplicate`: passed 20 tests.
+  - `RUST_LOG=error cargo test --lib stopped`: passed 19 tests.
+  - `RUST_LOG=error cargo test --lib malformed`: matched 0 tests, so it was
+    not used as positive evidence.
+  - `RUST_LOG=error P2P_FUZZ_NODES=82 P2P_FUZZ_STEPS=6200 P2P_FUZZ_SEED=121049 cargo test --lib fuzz_random_adversarial_node_actions_must_not_panic_connection_tasks -- --nocapture`:
+    passed 1 test.
+- Reviewer cross-check: `Helmholtz` returned `NO_NEW_CRITICAL` after
+  independently reviewing the same transport/auth/codec/secure-setup slice.
+  Reviewer verification included secure::tests (10 passed), quic::tests (2
+  passed), codec (3 passed), handshake (10 passed), inbound_handshake (3
+  passed), unauthenticated (2 passed), duplicate (20 passed), shutdown (8
+  passed), stream (30 passed), object (4 passed), frame (1 passed), and
+  malformed (0 matched, not positive evidence).
+- Duplicate mapping:
+  - Handshake freshness, replay, identity, destination, initiator/responder
+    role binding, inbound static peer bindings, and response verification map
+    to ISSUE-002, ISSUE-021, ISSUE-146, ISSUE-176, ISSUE-207, ISSUE-223,
+    ISSUE-244, RC-1, and RC-4. Current checks bind `from`, `to`, role,
+    timestamp freshness, and replay tokens, reject self and third-party peer
+    claims, and verify response auth against the expected destination.
+  - Malformed or oversized peer frames, setup objects, bincode encode/decode
+    failures, and packet/object size handling map to ISSUE-024, ISSUE-094,
+    ISSUE-097, ISSUE-098, ISSUE-174, and RC-5. Current checks use bounded
+    length-delimited peer frames and bounded two-byte setup objects, and reject
+    oversized service payloads before appending partial frames.
+  - QUIC stream admission, unauthenticated inbound caps, setup/open-stream
+    timeouts, local service delivery, and control backpressure map to
+    ISSUE-011, ISSUE-012, ISSUE-013, ISSUE-225, ISSUE-231, ISSUE-238, RC-3,
+    RC-4, and RC-6. Current checks disable unidirectional streams, cap
+    bidirectional streams, bound unauthenticated inbound setup, and avoid
+    blocking connection tasks on full main or service queues.
+  - Duplicate connection races, stale internal events, graceful shutdown,
+    stopped-peer propagation, connection alias cleanup, and high-load
+    bad-network churn map to ISSUE-136, ISSUE-144, ISSUE-162, ISSUE-211
+    through ISSUE-225, ISSUE-231, ISSUE-238, ISSUE-244, RC-6, and RC-7. The
+    82-node churn run produced expected refused connection, duplicate
+    connection, timeout, closed-service, oversized-frame, peer-stopped, and
+    connection-lost logs without panic or invariant failure.
+- Result: no distinct score-80+ transport/auth/codec, handshake binding,
+  malformed-frame, duplicate-connection, graceful-shutdown, connection-cleanup,
+  or high-load bad-network issue had concrete reviewer-accepted failing-test
+  evidence in this cycle.
 
 ### Critical-only no-new cycle 31 after ISSUE-247: pubsub protocol, RPC, and state cleanup
 
