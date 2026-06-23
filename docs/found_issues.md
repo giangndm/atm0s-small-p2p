@@ -11,11 +11,73 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 32
-- Current audit continuation: critical-only transport/auth/codec, handshake
-  identity binding, frame/object caps, duplicate connections, shutdown, and
+- Current consecutive no-new-issue cycles: 33
+- Current audit continuation: critical-only public API/requester/service
+  lifecycle, service id bounds, false success, queue pressure, stale state, and
   bad-network churn
   review found no new score-80+ issue with concrete failing-test evidence.
+
+### Critical-only no-new cycle 33 after ISSUE-247: public API requester and service lifecycle
+
+- Scope: reviewer-style critical-only pass over `src/requester.rs`,
+  `src/service.rs`, `src/ctx.rs`, `src/lib.rs`, `src/tests/security.rs`,
+  `src/tests/cross_nodes.rs`, `src/tests/stream.rs`, pubsub requester tests,
+  and related fuzz surfaces. Focus areas were dropped requesters continuing to
+  send, service id bounds and reuse, duplicate service creation, unregistered
+  service handles, false success for `connect`, broadcast, unicast, and
+  `open_stream`, full or closed local service queues, stale aliases after
+  service/network drop, public disconnect/stopped semantics, and high-load
+  bad-network churn.
+- Verification:
+  - `RUST_LOG=error cargo test --lib requester`: passed 13 tests.
+  - `RUST_LOG=error cargo test --lib service`: passed 199 tests.
+  - `RUST_LOG=error cargo test --lib dropped_service`: passed 4 tests.
+  - `RUST_LOG=error cargo test --lib duplicate_service`: passed 2 tests.
+  - `RUST_LOG=error cargo test --lib cross_nodes`: passed 9 tests.
+  - `RUST_LOG=error cargo test --lib open_stream`: passed 10 tests.
+  - `RUST_LOG=error cargo test --lib full`: passed 58 tests.
+  - `RUST_LOG=error cargo test --lib closed`: passed 5 tests.
+  - `RUST_LOG=error cargo test --lib stale`: passed 25 tests.
+  - `RUST_LOG=error cargo test --lib out_of_range`: passed 4 tests.
+  - `RUST_LOG=error cargo test --lib reusable`: passed 1 test.
+  - `RUST_LOG=error cargo test --lib security`: passed 55 tests.
+  - `RUST_LOG=error P2P_FUZZ_NODES=84 P2P_FUZZ_STEPS=6400 P2P_FUZZ_SEED=122049 cargo test --lib fuzz_random_adversarial_node_actions_must_not_panic_connection_tasks -- --nocapture`:
+    passed 1 test.
+- Reviewer cross-check: `Confucius` returned `NO_NEW_CRITICAL` after
+  independently reviewing the same public API/requester/service lifecycle
+  slice. Reviewer verification included requester (13 passed), service (199
+  passed), connect (62 passed), lifecycle (3 passed), duplicate (20 passed),
+  full (58 passed), stale (25 passed, serial), and the same 84-node 6400-step
+  adversarial fuzz seed `122049` (1 passed).
+- Duplicate mapping:
+  - Dropped `P2pServiceRequester`, stale service aliases, and network/requester
+    drop behavior map to ISSUE-072, ISSUE-073, ISSUE-108, ISSUE-246, and
+    RC-6. Current checks use `Weak` liveness for service requesters and return
+    stale/closed/full errors before send, broadcast, or open-stream paths
+    continue.
+  - Service id bounds, duplicate live service creation, unregistered handles,
+    highest valid id, out-of-range ids, and reusable dropped service ids map to
+    ISSUE-052, ISSUE-053, RC-3, and RC-6. Current checks reject out-of-range
+    service ids, reject duplicate live registrations, mark unregistered
+    services/requesters, and allow reuse after the old receiver is dropped.
+  - False success for awaited connect, same-peer pending connect, local-peer
+    connect, unicast, broadcast, relayed unicast, direct and relayed
+    `open_stream`, and full/closed service queues maps to ISSUE-011,
+    ISSUE-012, ISSUE-013, ISSUE-119, ISSUE-120, ISSUE-217 through ISSUE-230,
+    RC-3, RC-4, and RC-6. Current checks require at least one accepted
+    broadcast peer, ack unicast delivery, reject closed/full stream
+    destinations, and bound or report full control/service queues.
+  - Public disconnect/stopped semantics, stale internal events, alias cleanup,
+    graceful stop, stopped-peer propagation, and high-load bad-network churn
+    map to ISSUE-136, ISSUE-144, ISSUE-162, ISSUE-211 through ISSUE-225,
+    ISSUE-231, ISSUE-238, ISSUE-244, RC-6, and RC-7. The 84-node churn run
+    produced expected refused connection, duplicate connection, timeout,
+    closed-service, peer-stopped, local-service-ack-ended, and connection-lost
+    logs without panic or invariant failure.
+- Result: no distinct score-80+ public API/requester/service lifecycle,
+  service-id, dropped requester, false-success, queue-pressure, stale-state,
+  public-disconnect, or high-load bad-network issue had concrete
+  reviewer-accepted failing-test evidence in this cycle.
 
 ### Critical-only no-new cycle 32 after ISSUE-247: transport auth, codec, and connection setup
 

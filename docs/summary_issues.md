@@ -7,11 +7,49 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Accepted issues: 247
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 32
-- Current audit continuation: critical-only transport/auth/codec, handshake
-  identity binding, frame/object caps, duplicate connections, shutdown, and
+- Current consecutive no-new-issue cycles: 33
+- Current audit continuation: critical-only public API/requester/service
+  lifecycle, service id bounds, false success, queue pressure, stale state, and
   bad-network churn
   review found no new score-80+ issue with concrete failing-test evidence.
+- Critical-only no-new cycle 33 after ISSUE-247 reviewed public
+  API/requester/service lifecycle, dropped requester behavior, service id
+  bounds and reuse, duplicate service creation, unregistered service handles,
+  false success for `connect`, broadcast, unicast, and `open_stream`, full or
+  closed local service queues, stale aliases after service/network drop,
+  public disconnect/stopped semantics, and high-load churn across
+  `src/requester.rs`, `src/service.rs`, `src/ctx.rs`, `src/lib.rs`,
+  `src/tests/security.rs`, `src/tests/cross_nodes.rs`,
+  `src/tests/stream.rs`, pubsub requester tests, and fuzz surfaces. Local
+  requester (13), service (199), dropped_service (4), duplicate_service (2),
+  cross_nodes (9), open_stream (10), full (58), closed (5), stale (25),
+  out_of_range (4), reusable (1), security (55), and 84-node 6400-step
+  adversarial fuzz seed `122049` checks passed. Reviewer `Confucius` returned
+  `NO_NEW_CRITICAL` after independently reviewing the same slice and passing
+  requester (13), service (199), connect (62), lifecycle (3), duplicate (20),
+  full (58), stale (25, serial), and the same fuzz seed. Rejected candidates
+  mapped dropped `P2pServiceRequester`, stale service aliases, and
+  network/requester drop behavior to ISSUE-072, ISSUE-073, ISSUE-108,
+  ISSUE-246, and RC-6; service id bounds, duplicate live service creation,
+  unregistered handles, highest valid id, out-of-range ids, and reusable
+  dropped service ids to ISSUE-052, ISSUE-053, RC-3, and RC-6; false success
+  for awaited connect, same-peer pending connect, local-peer connect, unicast,
+  broadcast, relayed unicast, direct and relayed `open_stream`, and full/closed
+  service queues to ISSUE-011, ISSUE-012, ISSUE-013, ISSUE-119, ISSUE-120,
+  ISSUE-217 through ISSUE-230, RC-3, RC-4, and RC-6; and public
+  disconnect/stopped semantics, stale internal events, alias cleanup, graceful
+  stop, stopped-peer propagation, and high-load churn to ISSUE-136, ISSUE-144,
+  ISSUE-162, ISSUE-211 through ISSUE-225, ISSUE-231, ISSUE-238, ISSUE-244,
+  RC-6, and RC-7. No distinct score-80+ public API/requester/service lifecycle
+  issue had reviewer-accepted failing-test evidence. Smallest future fix
+  proposal if this family regresses: pin the exact service id, registration
+  result, service/requester liveness, route action, connection id, peer id,
+  queue state, connect sender, unicast ack, broadcast acceptance count, stream
+  setup response, dropped receiver, stale internal event, public event, or fuzz
+  seed with one focused failing test, then patch only the failed registration
+  gate, liveness guard, route/alias lookup, queue admission, delivery ack,
+  stream setup response, requester error propagation, or disconnect/stopped
+  fanout.
 - Critical-only no-new cycle 32 after ISSUE-247 reviewed transport auth,
   secure handshake, codec/frame/object bounds, duplicate connection races,
   QUIC stream admission, graceful shutdown, connection cleanup, and high-load
