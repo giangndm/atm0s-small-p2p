@@ -7,12 +7,29 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Accepted issues: 246
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 28
-- Current audit continuation: critical-only alias/requester lifecycle
-  no-new cycle 30 found no new score-80+ issue across alias lookup
-  correlation, stale hint cleanup, requester liveness, queue admission,
-  shutdown/drop handling, malformed service payload handling, and high-load
-  churn behavior.
+- Current consecutive no-new-issue cycles: 29
+- Current audit continuation: critical-only pubsub lifecycle and RPC
+  no-new cycle 31 found no new score-80+ issue across pubsub membership
+  lifecycle, heartbeat/chunk reconciliation, RPC responder correlation,
+  bounded queues/resources, requester drop/shutdown handling, malformed
+  payload handling, and high-load churn behavior.
+- Critical-only no-new cycle 31 reviewed pubsub lifecycle and RPC behavior in
+  `pubsub_service.rs`, `publisher.rs`, and `subscriber.rs`. Focused pubsub,
+  heartbeat, RPC, stale, tombstone, bounded, queue, pending, disconnect,
+  shutdown, malformed-payload filters, chunk, drop, and a 24-node valid-action
+  fuzz seed passed. Reviewers `Avicenna the 2nd` and `Bacon the 2nd` returned
+  `NO_NEW_CRITICAL`. Rejected candidates mapped to RC-2 for stale lifecycle
+  and RPC-correlation issues, RC-3/RC-5 for queue, channel, member, tombstone,
+  heartbeat, method, and pending-RPC caps, RC-6 for requester drop, service
+  drop, shutdown, graceful-stop, and disconnect cleanup, ISSUE-020,
+  ISSUE-039, ISSUE-043, ISSUE-072, ISSUE-073, ISSUE-076, ISSUE-080,
+  ISSUE-094, ISSUE-100, ISSUE-102 through ISSUE-105, ISSUE-115, ISSUE-116,
+  ISSUE-121, ISSUE-123 through ISSUE-126, ISSUE-155, ISSUE-178, ISSUE-205,
+  ISSUE-206, ISSUE-228, ISSUE-231, ISSUE-234 through ISSUE-236,
+  ISSUE-240 through ISSUE-243, ISSUE-246, and existing pubsub lifecycle,
+  bounded, chunked-heartbeat, requester-drop, shutdown, malformed-input, and
+  fuzz coverage. No distinct score-80+ pubsub lifecycle or RPC failure had
+  concrete failing-test evidence.
 - Critical-only no-new cycle 30 reviewed alias service and requester lifecycle
   behavior in `alias_service.rs`, `requester.rs`, and `service.rs`. Focused
   alias, requester, stale, bounded, pending, shutdown, dropped, unsolicited,

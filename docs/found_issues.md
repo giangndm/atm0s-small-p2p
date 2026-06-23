@@ -11,12 +11,74 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 28
-- Current audit continuation: critical-only alias/requester lifecycle
-  no-new cycle 30 found no new score-80+ issue across alias lookup
-  correlation, stale hint cleanup, requester liveness, queue admission,
-  shutdown/drop handling, malformed service payload handling, and high-load
-  churn behavior.
+- Current consecutive no-new-issue cycles: 29
+- Current audit continuation: critical-only pubsub lifecycle and RPC
+  no-new cycle 31 found no new score-80+ issue across pubsub membership
+  lifecycle, heartbeat/chunk reconciliation, RPC responder correlation,
+  bounded queues/resources, requester drop/shutdown handling, malformed
+  payload handling, and high-load churn behavior.
+
+### Critical-only no-new cycle 31: pubsub lifecycle and RPC
+
+- Scope: reviewer-style critical-only pass over
+  `src/service/pubsub_service.rs`, `src/service/pubsub_service/publisher.rs`,
+  `src/service/pubsub_service/subscriber.rs`, focused pubsub/security tests,
+  and message paths feeding pubsub joins/leaves, heartbeats, heartbeat chunks,
+  publish/feedback, guest RPC, regular RPC, RPC answers, and peer disconnects.
+- Focus areas: stale publisher/subscriber joins and leaves after heartbeat,
+  disconnect, restart, and tombstone pressure; heartbeat chunk
+  ordering/replay/completion and pending-state growth; unauthorized publish,
+  feedback, and RPC traffic; RPC answer correlation; local/remote queue
+  backpressure; remote-created channel/member/tombstone/RPC-waiter bounds;
+  malformed service payloads; requester drop, service shutdown, and graceful
+  stop cleanup; and high-load churn.
+- Verification:
+  - `RUST_LOG=error cargo test pubsub --lib -- --nocapture`: passed 92 tests.
+  - `RUST_LOG=error cargo test heartbeat --lib -- --nocapture`: passed 15 tests.
+  - `RUST_LOG=error cargo test rpc --lib -- --nocapture`: passed 32 tests.
+  - `RUST_LOG=error cargo test stale --lib -- --nocapture`: passed 25 tests.
+  - `RUST_LOG=error cargo test tombstone --lib -- --nocapture`: passed 12 tests.
+  - `RUST_LOG=error cargo test bounded --lib -- --nocapture`: passed 30 tests.
+  - `RUST_LOG=error cargo test queue --lib -- --nocapture`: passed 37 tests.
+  - `RUST_LOG=error cargo test pending --lib -- --nocapture`: passed 17 tests.
+  - `RUST_LOG=error cargo test disconnect --lib -- --nocapture`: passed 16 tests.
+  - `RUST_LOG=error cargo test shutdown --lib -- --nocapture`: passed 8 tests.
+  - `RUST_LOG=error cargo test malformed --lib -- --nocapture`: matched 0 tests.
+  - `RUST_LOG=error cargo test chunk --lib -- --nocapture`: passed 5 tests.
+  - `RUST_LOG=error cargo test drop --lib -- --nocapture`: passed 25 tests.
+  - `RUST_LOG=error P2P_FUZZ_NODES=24 P2P_FUZZ_STEPS=900 P2P_FUZZ_SEED=69001 cargo test fuzz_random_valid_node_actions_must_not_panic_connection_tasks --lib -- --nocapture`: passed.
+- Reviewer cross-check:
+  - `Avicenna the 2nd` returned `NO_NEW_CRITICAL` after reading pubsub code,
+    focused pubsub/security tests, issue mappings, and running pubsub,
+    heartbeat, RPC, stale, tombstone, bounded, queue, pending, disconnect,
+    shutdown, malformed, and 24-node churn-fuzz verification.
+  - `Bacon the 2nd` returned `NO_NEW_CRITICAL` after reading the same pubsub
+    lifecycle/RPC surface and running focused pubsub, heartbeat, chunk,
+    tombstone, pending, bounded, malformed, drop, shutdown, and 24-node
+    valid-action fuzz verification.
+- Duplicate mapping:
+  - Stale publisher/subscriber joins/leaves, reconnect/reset generation,
+    tombstones, disconnect cleanup, and dropped registration handles map to
+    ISSUE-080, ISSUE-155, ISSUE-205, ISSUE-206, ISSUE-231, ISSUE-246, RC-2,
+    and RC-6.
+  - Heartbeat batching, chunk ordering/replay/completion, sparse chunk indexes,
+    and chunk pending-state growth map to ISSUE-228 and ISSUE-240 through
+    ISSUE-243.
+  - Unauthorized publish/feedback/member RPC traffic, mismatched RPC answers,
+    and request-correlation candidates map to ISSUE-020, ISSUE-039,
+    ISSUE-043, ISSUE-115, ISSUE-116, ISSUE-236, and RC-2.
+  - Local/remote queue backpressure, pending RPC caps, remote-created channel
+    caps, remote member caps, tombstone caps, RPC method bounds, and local
+    event queue bounds map to ISSUE-043, ISSUE-100, ISSUE-102 through
+    ISSUE-105, ISSUE-121, ISSUE-123 through ISSUE-126, ISSUE-178, ISSUE-228,
+    ISSUE-246, RC-3, and RC-5.
+  - Malformed payload and object serialization handling maps to ISSUE-094,
+    RC-2, RC-5, and existing pubsub serialization-error/RPC-method-bound tests.
+  - Requester drop, service drop, shutdown, and graceful-stop cleanup map to
+    ISSUE-072, ISSUE-073, ISSUE-076, ISSUE-234, ISSUE-235, ISSUE-246, and
+    RC-6.
+- Result: no distinct score-80+ pubsub lifecycle or RPC issue had concrete
+  failing-test evidence in this cycle.
 
 ### Critical-only no-new cycle 30: alias and requester lifecycle
 
