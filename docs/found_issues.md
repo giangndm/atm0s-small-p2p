@@ -11,10 +11,70 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 8
-- Current audit continuation: critical-only transport/auth/framing/resource
-  boundary review found no new score-80+ issue with concrete failing-test
-  evidence.
+- Current consecutive no-new-issue cycles: 9
+- Current audit continuation: critical-only service-layer review found no new
+  score-80+ issue with concrete failing-test evidence.
+
+### Critical-only no-new cycle 9 after ISSUE-247: service-layer protocols and resource boundaries
+
+- Scope: reviewer-style critical-only pass over `src/service.rs`,
+  `src/service/alias_service.rs`, `src/service/pubsub_service.rs`,
+  `src/service/pubsub_service/publisher.rs`,
+  `src/service/pubsub_service/subscriber.rs`,
+  `src/service/replicate_kv_service.rs`,
+  `src/service/replicate_kv_service/local_storage.rs`,
+  `src/service/replicate_kv_service/messages.rs`,
+  `src/service/replicate_kv_service/remote_storage.rs`,
+  `src/service/metrics_service.rs`, `src/service/visualization_service.rs`,
+  service test files, fuzz coverage, and the issue ledgers. Focus areas were
+  unbounded queues/maps, stale subscriptions, topic/session spoofing, source
+  binding, request/response lifecycle leaks, missed stop propagation, false
+  success under closed channels, replicated-KV divergence or panic, malformed
+  service messages, and high-load bad-network churn.
+- Verification:
+  - `RUST_LOG=error cargo test --lib alias -- --nocapture`: passed 47 tests.
+  - `RUST_LOG=error cargo test --lib metrics -- --nocapture`: passed 14
+    tests.
+  - `RUST_LOG=error cargo test --lib visualization -- --nocapture`: passed
+    19 tests.
+  - `RUST_LOG=error cargo test --lib pubsub -- --nocapture`: passed 92
+    tests.
+  - `RUST_LOG=error cargo test --lib replicate -- --nocapture`: passed 65
+    tests.
+  - `RUST_LOG=error cargo test --lib service -- --nocapture`: passed 199
+    tests.
+  - `RUST_LOG=error P2P_FUZZ_NODES=36 P2P_FUZZ_STEPS=2000 P2P_FUZZ_SEED=98049 cargo test --lib fuzz_random_adversarial_node_actions_must_not_panic_connection_tasks -- --nocapture`:
+    passed.
+- Reviewer cross-check: `Socrates the 2nd` returned `NO_NEW_CRITICAL` after
+  independently reviewing the same service-layer slice. Reviewer verification
+  included alias, pubsub, replicate-KV, metrics, visualization, and 32-node
+  1200-step adversarial fuzz seed `98031`; all passed.
+- Duplicate mapping:
+  - Alias control queue pressure, stale find waiters, cache/hint bounds,
+    lifecycle spoofing, shutdown handling, and alias peer cleanup map to the
+    existing alias/resource/lifecycle families, RC-3, RC-6, and RC-7.
+  - Pubsub stale membership, tombstones, heartbeat chunks, RPC correlation,
+    queue/full-channel behavior, dropped requesters, and source role binding
+    map to ISSUE-020, ISSUE-039, ISSUE-048, ISSUE-080, ISSUE-108,
+    ISSUE-115, ISSUE-116, ISSUE-155, ISSUE-205, ISSUE-206, ISSUE-228,
+    ISSUE-236, ISSUE-240 through ISSUE-243, ISSUE-246, RC-1, RC-2, RC-3,
+    and RC-6.
+  - Replicated-KV remote caps, unsolicited responses, version overflow,
+    snapshot/page validation, pending changed bounds, serialization failure,
+    and graceful-stop cleanup map to existing replicated-KV overflow,
+    resource, divergence, and lifecycle families, RC-3, RC-5, RC-6, and
+    RC-7.
+  - Metrics and visualization unsolicited `Info`, non-collector `Scan`
+    disclosure, stale info after disconnect, row caps, scan task
+    accumulation, and base-service close handling map to existing
+    observability spoofing/resource/lifecycle families, RC-1, RC-3, and
+    RC-6.
+  - Bad-network churn, forged service frames, queue pressure, graceful stop,
+    duplicate/refused connections, and endpoint drops map to existing
+    fuzz-cycle families, ISSUE-001, ISSUE-004, ISSUE-170,
+    ISSUE-215 through ISSUE-225, ISSUE-231, RC-3, RC-6, and RC-7.
+- Result: no distinct score-80+ service-layer correctness, security, or
+  high-load stability issue had concrete failing-test evidence in this cycle.
 
 ### Critical-only no-new cycle 8 after ISSUE-247: transport, auth, framing, and resource boundaries
 

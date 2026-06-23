@@ -7,10 +7,43 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Accepted issues: 247
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 8
-- Current audit continuation: critical-only transport/auth/framing/resource
-  boundary review found no new score-80+ issue with concrete failing-test
-  evidence.
+- Current consecutive no-new-issue cycles: 9
+- Current audit continuation: critical-only service-layer review found no new
+  score-80+ issue with concrete failing-test evidence.
+- Critical-only no-new cycle 9 after ISSUE-247 reviewed `src/service.rs`,
+  alias, pubsub, replicated-KV, metrics, visualization service modules, their
+  tests, fuzz coverage, and the issue ledgers. Local alias, metrics,
+  visualization, pubsub, replicate, service, and 36-node 2000-step
+  adversarial fuzz seed `98049` checks passed. Reviewer `Socrates the 2nd`
+  returned `NO_NEW_CRITICAL` after independently reviewing the same
+  service-layer slice, then passing alias, pubsub, replicate-KV, metrics,
+  visualization, and 32-node 1200-step adversarial fuzz seed `98031`.
+  Rejected candidates mapped alias control queues, stale find waiters,
+  cache/hint bounds, lifecycle spoofing, shutdown handling, and alias peer
+  cleanup to existing alias/resource/lifecycle families, RC-3, RC-6, and
+  RC-7; pubsub stale membership, tombstones, heartbeat chunks, RPC
+  correlation, queue/full-channel behavior, dropped requesters, and source
+  role binding to ISSUE-020, ISSUE-039, ISSUE-048, ISSUE-080, ISSUE-108,
+  ISSUE-115, ISSUE-116, ISSUE-155, ISSUE-205, ISSUE-206, ISSUE-228,
+  ISSUE-236, ISSUE-240 through ISSUE-243, ISSUE-246, RC-1, RC-2, RC-3, and
+  RC-6; replicated-KV remote caps, unsolicited responses, version overflow,
+  snapshot/page validation, pending changed bounds, serialization failure, and
+  graceful-stop cleanup to existing replicated-KV overflow, resource,
+  divergence, and lifecycle families, RC-3, RC-5, RC-6, and RC-7; metrics and
+  visualization unsolicited `Info`, non-collector `Scan` disclosure, stale
+  info after disconnect, row caps, scan task accumulation, and base-service
+  close handling to existing observability spoofing/resource/lifecycle
+  families, RC-1, RC-3, and RC-6; and bad-network churn, forged service
+  frames, queue pressure, graceful stop, duplicate/refused connections, and
+  endpoint drops to existing fuzz-cycle families, ISSUE-001, ISSUE-004,
+  ISSUE-170, ISSUE-215 through ISSUE-225, ISSUE-231, RC-3, RC-6, and RC-7.
+  No distinct score-80+ service-layer issue had concrete failing-test
+  evidence. Smallest future fix proposal if this family regresses: pin the
+  exact service message, peer/source, queue state, timeout, or fuzz seed;
+  determine whether the missing guard belongs at service admission, role/source
+  correlation, request lifecycle cleanup, remote snapshot validation, or
+  observability scan gating; patch that boundary only and add one focused
+  regression.
 - Critical-only no-new cycle 8 after ISSUE-247 reviewed `src/secure.rs`,
   `src/stream.rs`, `src/msg.rs`, `src/quic.rs`, `src/lib.rs`,
   `src/peer.rs`, `src/peer/peer_internal.rs`, `src/tests/security.rs`,
