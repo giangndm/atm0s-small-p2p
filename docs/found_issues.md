@@ -11,10 +11,71 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 27
-- Current audit continuation: critical-only dependency, feature, package,
-  example credential, and secure-setup review found no new score-80+ issue
-  with concrete failing-test evidence.
+- Current consecutive no-new-issue cycles: 28
+- Current audit continuation: critical-only alias, metrics, visualization,
+  replicated-KV, serialization/state export, timeout/overflow, and
+  bad-network resource-bound review found no new score-80+ issue with concrete
+  failing-test evidence.
+
+### Critical-only no-new cycle 28 after ISSUE-247: alias, observability, and replicated-KV state
+
+- Scope: reviewer-style critical-only pass over `src/service/alias_service.rs`,
+  `src/service/metrics_service.rs`, `src/service/visualization_service.rs`,
+  `src/service/replicate_kv_service.rs`,
+  `src/service/replicate_kv_service/local_storage.rs`,
+  `src/service/replicate_kv_service/remote_storage.rs`,
+  `src/service/replicate_kv_service/messages.rs`, and related tests. Focus
+  areas were alias cache/waiter/find lifecycle bounds, local alias refcounts,
+  shutdown and disconnect cleanup, metrics/visualization scan trust,
+  stale/oversized `Info` admission, scan task/backpressure cleanup,
+  replicated-KV snapshot pagination, staged snapshot caps, `FetchChanged`
+  repair, serialization failure handling, version arithmetic, remote-store
+  cleanup, graceful-stop data deletion, and high-load bad-network churn.
+- Verification:
+  - `RUST_LOG=error cargo test --lib alias -- --nocapture`: passed 47 tests.
+  - `RUST_LOG=error cargo test --lib metrics -- --nocapture`: passed 14
+    tests.
+  - `RUST_LOG=error cargo test --lib visualization -- --nocapture`: passed 19
+    tests.
+  - `RUST_LOG=error cargo test --lib replicate -- --nocapture`: passed 65
+    tests.
+  - `RUST_LOG=error cargo test --lib state -- --nocapture`: passed 18 tests.
+  - `RUST_LOG=error cargo test --lib timeout -- --nocapture`: passed 19
+    tests.
+  - `RUST_LOG=error cargo test --lib overflow -- --nocapture`: passed 12
+    tests.
+  - `RUST_LOG=error P2P_FUZZ_NODES=74 P2P_FUZZ_STEPS=5400 P2P_FUZZ_SEED=117049 cargo test --lib fuzz_random_adversarial_node_actions_must_not_panic_connection_tasks -- --nocapture`:
+    passed 1 test.
+- Reviewer cross-check: `Dewey` returned `NO_NEW_CRITICAL` after
+  independently reviewing the same alias/observability/replicated-KV state
+  slice. Reviewer verification included `replicated_kv` (3 passed), `metrics`
+  (14 passed), `visualization` (19 passed), `alias` (47 passed), `snapshot`
+  (23 passed), `fetch_changed` (13 passed), `overflow` (12 passed), `stale`
+  (25 passed), `bounded` (31 passed), and 74-node 5400-step adversarial fuzz
+  seed `117049` (1 passed).
+- Duplicate mapping:
+  - Alias waiter/cache/lifecycle/shutdown, local refcount saturation, stale
+    generation handling, hint validation, peer-disconnect cleanup, and
+    control-queue admission map to existing alias lifecycle/resource families,
+    ISSUE-211 through ISSUE-225, ISSUE-231, ISSUE-238, ISSUE-244, RC-3,
+    RC-6, and RC-7.
+  - Metrics and visualization trusted collector gates, stale `Info` rejection,
+    row caps, scan task cleanup, zero intervals, disconnect cleanup, and
+    topology/metric disclosure posture map to existing observability and
+    public-lifecycle families, ISSUE-211 through ISSUE-225, ISSUE-231,
+    ISSUE-238, RC-3, RC-6, and RC-7.
+  - Replicated-KV snapshot pagination, staged snapshot caps, `FetchChanged`
+    repair, local and remote version overflow, serialization failure,
+    remote-store caps, stale/unsolicited responses, graceful-stop deletion,
+    and bad-network resync churn map to existing replicated-KV families,
+    including ISSUE-245, ISSUE-247, RC-3, RC-5, RC-6, and RC-7.
+  - High-load churn produced expected refused connection, timeout, duplicate
+    connection, closed-service, full-queue, and stopped-peer logs, but the
+    focused tests and fuzz run passed without panic or invariant failure.
+- Result: no distinct score-80+ alias, metrics, visualization,
+  replicated-KV, serialization/state export, timeout/overflow, shutdown,
+  disconnect-cleanup, resource-bound, or high-load bad-network issue had
+  concrete failing-test evidence in this cycle.
 
 ### Critical-only no-new cycle 27 after ISSUE-247: dependency, feature, package, and secure setup
 

@@ -7,10 +7,47 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Accepted issues: 247
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 27
-- Current audit continuation: critical-only dependency, feature, package,
-  example credential, and secure-setup review found no new score-80+ issue
-  with concrete failing-test evidence.
+- Current consecutive no-new-issue cycles: 28
+- Current audit continuation: critical-only alias, metrics, visualization,
+  replicated-KV, serialization/state export, timeout/overflow, and
+  bad-network resource-bound review found no new score-80+ issue with concrete
+  failing-test evidence.
+- Critical-only no-new cycle 28 after ISSUE-247 reviewed alias,
+  observability, and replicated-KV state across `src/service/alias_service.rs`,
+  `src/service/metrics_service.rs`, `src/service/visualization_service.rs`,
+  `src/service/replicate_kv_service.rs`,
+  `src/service/replicate_kv_service/local_storage.rs`,
+  `src/service/replicate_kv_service/remote_storage.rs`,
+  `src/service/replicate_kv_service/messages.rs`, and related tests. Local
+  alias (47), metrics (14), visualization (19), replicate (65), state (18),
+  timeout (19), overflow (12), and 74-node 5400-step adversarial fuzz seed
+  `117049` checks passed. Reviewer `Dewey` returned `NO_NEW_CRITICAL` after
+  independently reviewing the same slice and passing replicated_kv (3),
+  metrics (14), visualization (19), alias (47), snapshot (23), fetch_changed
+  (13), overflow (12), stale (25), bounded (31), and the same fuzz seed.
+  Rejected candidates mapped alias waiter/cache/lifecycle/shutdown,
+  refcount-saturation, stale generation, hint validation, peer-disconnect
+  cleanup, and control-queue admission to existing alias lifecycle/resource
+  families, ISSUE-211 through ISSUE-225, ISSUE-231, ISSUE-238, ISSUE-244,
+  RC-3, RC-6, and RC-7; metrics and visualization trusted collector gates,
+  stale `Info` rejection, row caps, scan task cleanup, zero intervals,
+  disconnect cleanup, and topology/metric disclosure posture to existing
+  observability/public-lifecycle families, ISSUE-211 through ISSUE-225,
+  ISSUE-231, ISSUE-238, RC-3, RC-6, and RC-7; replicated-KV snapshot
+  pagination, staged snapshot caps, `FetchChanged` repair, local/remote
+  version overflow, serialization failure, remote-store caps, stale or
+  unsolicited responses, graceful-stop deletion, and bad-network resync churn
+  to existing replicated-KV families including ISSUE-245, ISSUE-247, RC-3,
+  RC-5, RC-6, and RC-7. No distinct score-80+ state-service issue had
+  concrete failing-test evidence. Smallest future fix proposal if this family
+  regresses: pin the exact alias id/generation/refcount, hint peer, pending
+  find or waiter, scan collector, `Info` row count, metrics/topology task,
+  replicated-KV version, snapshot page, staged slot count, `FetchChanged`
+  range, serialization error, remote id, disconnect event, or fuzz seed with
+  one focused failing test, then patch only the failed admission guard,
+  lifecycle cleanup, timeout/overflow calculation, task/backpressure boundary,
+  snapshot validator, repair continuation, serialization error path, or remote
+  cleanup rule.
 - Critical-only no-new cycle 27 after ISSUE-247 reviewed dependency, feature,
   package, credential, and secure-setup posture across `Cargo.toml`,
   `Cargo.lock`, README/examples, development certificates, `src/secure.rs`,
