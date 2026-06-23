@@ -11,10 +11,71 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 24
-- Current audit continuation: critical-only production panic, overflow,
-  framing, and error-boundary review found no new score-80+ issue with
-  concrete failing-test evidence.
+- Current consecutive no-new-issue cycles: 25
+- Current audit continuation: critical-only public API, config, examples, and
+  runtime lifecycle review found no new score-80+ issue with concrete
+  failing-test evidence.
+
+### Critical-only no-new cycle 25 after ISSUE-247: public API, config, examples, and lifecycle
+
+- Scope: reviewer-style critical-only pass over README/getting-started
+  examples, Cargo metadata, `src/lib.rs`, `src/requester.rs`,
+  `src/service.rs`, `src/ctx.rs`, network construction, public
+  `P2pNetworkRequester` and `P2pServiceRequester` APIs, zero/invalid config,
+  advertised address and seed filtering, static inbound bindings, service
+  registration and stale handles, duplicate service ids, shutdown and
+  graceful-stop notification, non-seed cleanup after stop, full/closed local
+  and peer queues, endpoint drops/refusals, example compilation, and
+  high-load bad-network public API actions.
+- Verification:
+  - `RUST_LOG=error cargo test --lib readme -- --nocapture`: passed 1 test.
+  - `RUST_LOG=error cargo test --lib config -- --nocapture`: passed 6 tests.
+  - `RUST_LOG=error cargo test --lib requester -- --nocapture`: passed 13
+    tests.
+  - `RUST_LOG=error cargo test --lib shutdown -- --nocapture`: passed 8
+    tests.
+  - `RUST_LOG=error cargo test --lib lifecycle -- --nocapture`: passed 3
+    tests.
+  - `cargo check --examples`: passed with non-critical unused/dead-code
+    warnings.
+  - `RUST_LOG=error cargo test --lib stopped -- --nocapture`: passed 19
+    tests.
+  - `RUST_LOG=error cargo test --lib drop -- --nocapture`: passed 25 tests.
+  - `RUST_LOG=error cargo test --lib closed -- --nocapture`: passed 5 tests.
+  - `RUST_LOG=error cargo test --lib full -- --nocapture`: passed 58 tests.
+  - `RUST_LOG=error P2P_FUZZ_NODES=68 P2P_FUZZ_STEPS=4800 P2P_FUZZ_SEED=114049 cargo test --lib fuzz_random_adversarial_node_actions_must_not_panic_connection_tasks -- --nocapture`:
+    passed.
+- Reviewer cross-check: `Copernicus` returned `NO_NEW_CRITICAL` after
+  independently reviewing the same public API/config/runtime lifecycle slice.
+  Reviewer verification included `requester` (13 passed), `shutdown` (8
+  passed), `stopped` (19 passed), `closed` (5 passed), `full` (58 passed),
+  `drop` (25 passed), `advertise` (16 passed), `seed` (15 passed), `tick` (5
+  passed), `readme` (1 passed), `cargo check --examples` with non-critical
+  warnings, and 64-node 4400-step adversarial fuzz seed `114049` (1 passed).
+- Duplicate mapping:
+  - Zero tick setup, bind/listen failure handling, advertise filtering, seed
+    deduplication, configured seed/self-loop handling, static inbound binding,
+    and open-cluster posture map to ISSUE-001, ISSUE-003, ISSUE-004,
+    ISSUE-167, ISSUE-170, ISSUE-211 through ISSUE-225, ISSUE-231, ISSUE-244,
+    RC-1, RC-6, and RC-7.
+  - Public requester/control queue pressure, stale requesters after service or
+    network drop, duplicate service ids, service-id reuse after drop, duplicate
+    connects, awaited connect liveness, closed/full service queues, and false
+    success paths map to ISSUE-043, ISSUE-052, ISSUE-053, ISSUE-060,
+    ISSUE-072, ISSUE-073, ISSUE-076, ISSUE-091, ISSUE-108, ISSUE-217 through
+    ISSUE-230, ISSUE-234, ISSUE-235, ISSUE-246, RC-3, RC-4, and RC-6.
+  - Graceful shutdown notification, `PeerStopped` admission, seed vs non-seed
+    cleanup, stop tombstones, public disconnect events, full-queue stop
+    delivery, endpoint drops/refusals, and high-load churn map to
+    ISSUE-211 through ISSUE-225, ISSUE-231, ISSUE-238, RC-3, RC-6, and RC-7.
+  - README/examples/package/release-profile concerns and example compilation
+    warnings map to existing build/docs cycle families and no current
+    score-80+ failing path.
+- Result: no distinct score-80+ public API, config, README/example,
+  requester, stale handle, service registration, duplicate service, graceful
+  shutdown, stopped-peer cleanup, queue/backpressure, endpoint lifecycle,
+  package/build, or high-load bad-network public-lifecycle issue had concrete
+  failing-test evidence in this cycle.
 
 ### Critical-only no-new cycle 24 after ISSUE-247: production panic and error boundaries
 

@@ -7,10 +7,46 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Accepted issues: 247
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 24
-- Current audit continuation: critical-only production panic, overflow,
-  framing, and error-boundary review found no new score-80+ issue with
-  concrete failing-test evidence.
+- Current consecutive no-new-issue cycles: 25
+- Current audit continuation: critical-only public API, config, examples, and
+  runtime lifecycle review found no new score-80+ issue with concrete
+  failing-test evidence.
+- Critical-only no-new cycle 25 after ISSUE-247 reviewed public API/config/
+  examples/runtime lifecycle across README/getting-started examples, Cargo
+  metadata, `src/lib.rs`, `src/requester.rs`, `src/service.rs`, `src/ctx.rs`,
+  network construction, `P2pNetworkRequester`/`P2pServiceRequester`, zero/
+  invalid config, advertise/seed filtering, static inbound bindings, service
+  registration/stale handles, duplicate service ids, graceful shutdown and
+  `PeerStopped` cleanup, full/closed queues, endpoint drops/refusals, and
+  high-load bad-network public API actions. Local readme (1), config (6),
+  requester (13), shutdown (8), lifecycle (3), stopped (19), drop (25),
+  closed (5), full (58), `cargo check --examples`, and 68-node 4800-step
+  adversarial fuzz seed `114049` checks passed; example check emitted only
+  non-critical unused/dead-code warnings. Reviewer `Copernicus` returned
+  `NO_NEW_CRITICAL` after independently reviewing the same slice, then passing
+  requester (13), shutdown (8), stopped (19), closed (5), full (58), drop
+  (25), advertise (16), seed (15), tick (5), readme (1), `cargo check
+  --examples`, and 64-node 4400-step fuzz seed `114049`. Rejected candidates
+  mapped setup/config/advertise/seed/static-binding/open-cluster posture to
+  ISSUE-001, ISSUE-003, ISSUE-004, ISSUE-167, ISSUE-170, ISSUE-211 through
+  ISSUE-225, ISSUE-231, ISSUE-244, RC-1, RC-6, and RC-7; requester/control
+  queue pressure, stale handles, duplicate service ids, service-id reuse,
+  duplicate connects, awaited connect liveness, closed/full queues, and false
+  success to ISSUE-043, ISSUE-052, ISSUE-053, ISSUE-060, ISSUE-072,
+  ISSUE-073, ISSUE-076, ISSUE-091, ISSUE-108, ISSUE-217 through ISSUE-230,
+  ISSUE-234, ISSUE-235, ISSUE-246, RC-3, RC-4, and RC-6; graceful
+  shutdown/PeerStopped/seed-vs-non-seed cleanup/public disconnect/full-queue
+  stop delivery/endpoint churn to ISSUE-211 through ISSUE-225, ISSUE-231,
+  ISSUE-238, RC-3, RC-6, and RC-7; and README/examples/package/release
+  warnings to existing build/docs cycle families. No distinct score-80+
+  public lifecycle issue had concrete failing-test evidence. Smallest future
+  fix proposal if this family regresses: pin the exact config field, public
+  requester/service call, stale handle, service id, control queue state,
+  bind/advertise address, seed row, inbound binding, shutdown event, stopped
+  peer, endpoint failure, example command, or fuzz seed with one focused
+  failing test, then patch only the failed validation, liveness guard,
+  admission path, shutdown/stop cleanup, queue/backpressure boundary,
+  docs/example contract, or task cleanup.
 - Critical-only no-new cycle 24 after ISSUE-247 reviewed production
   panic/error boundaries across `src/**/*.rs`, including
   `unwrap`/`expect`/panic candidates, unchecked indexing, integer overflow,
