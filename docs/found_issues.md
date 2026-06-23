@@ -11,10 +11,63 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 22
-- Current audit continuation: critical-only service registry, service-id, and
-  local/remote delivery boundary review found no new score-80+ issue with
-  concrete failing-test evidence.
+- Current consecutive no-new-issue cycles: 23
+- Current audit continuation: critical-only alias discovery and cache
+  lifecycle review found no new score-80+ issue with concrete failing-test
+  evidence.
+
+### Critical-only no-new cycle 23 after ISSUE-247: alias discovery and cache lifecycle
+
+- Scope: reviewer-style critical-only pass over `src/service/alias_service.rs`,
+  `src/service.rs`, `src/ctx.rs`, requester/service interactions, alias
+  integration/security/fuzz/pubsub wrappers, register/unregister guards,
+  local/cached/scan find behavior, timeout handling, stale
+  `NotifySet`/`NotifyDel`/`Found`/`NotFound` handling, peer
+  disconnect/shutdown cleanup, pending find/waiter/cache/lifecycle/control
+  bounds, generation reset and restart behavior, unchecked or forged `Found`
+  responses, and high-load bad-network alias actions.
+- Verification:
+  - `RUST_LOG=error cargo test --lib alias -- --nocapture`: passed 47 tests.
+  - `RUST_LOG=error cargo test --lib hint -- --nocapture`: passed 11 tests.
+  - `RUST_LOG=error cargo test --lib find -- --nocapture`: passed 15 tests.
+  - `RUST_LOG=error cargo test --lib shutdown -- --nocapture`: passed 8
+    tests.
+  - `RUST_LOG=error cargo test --lib stale -- --nocapture`: passed 25 tests.
+  - `RUST_LOG=error cargo test --lib generation -- --nocapture`: passed 6
+    tests.
+  - `RUST_LOG=error cargo test --lib bounded -- --nocapture`: passed 31
+    tests.
+  - `RUST_LOG=error cargo test --lib control_queue -- --nocapture`: passed
+    14 tests.
+  - `RUST_LOG=error P2P_FUZZ_NODES=64 P2P_FUZZ_STEPS=4400 P2P_FUZZ_SEED=112049 cargo test --lib fuzz_random_adversarial_node_actions_must_not_panic_connection_tasks -- --nocapture`:
+    passed.
+- Reviewer cross-check: `Galileo` returned `NO_NEW_CRITICAL` after
+  independently reviewing the same alias discovery/cache lifecycle slice.
+  Reviewer verification included `alias` (47 passed), `shutdown` (8 passed),
+  `found` (9 passed), `cache` (15 passed), `lifecycle` (3 passed),
+  `requester` (13 passed), `pubsub` (92 passed), and 64-node 4400-step
+  adversarial fuzz seed `112049` (1 passed).
+- Duplicate mapping:
+  - Alias control queue admission, register/find/shutdown/drop liveness, and
+    closed base/control channel behavior map to ISSUE-100 through ISSUE-105,
+    ISSUE-119, ISSUE-121, ISSUE-123 through ISSUE-126, ISSUE-234, ISSUE-235,
+    RC-3, and RC-6.
+  - Stale or unchecked `Found`/`NotFound`, `NotifySet`/`NotifyDel`
+    generation ordering, reset after disconnect, and peer shutdown/disconnect
+    cleanup map to ISSUE-115, ISSUE-116, ISSUE-234, ISSUE-235, RC-2, RC-6,
+    and RC-7.
+  - Pending find, waiter, cache hint, lifecycle, and control queue caps plus
+    timeout arithmetic map to existing alias resource families under RC-3,
+    RC-5, RC-6, ISSUE-228, ISSUE-240, ISSUE-241, ISSUE-242, and ISSUE-243.
+  - Alias open-stream/service requester/pubsub wrappers, high-load churn,
+    queue pressure, duplicate closes, refused connects, and frame-size errors
+    map to ISSUE-217 through ISSUE-230, ISSUE-246, RC-3, RC-4, RC-6, and
+    RC-7.
+- Result: no distinct score-80+ alias register/unregister, local/cached/scan
+  find, stale lifecycle, forged response, disconnect/shutdown cleanup, pending
+  lookup bound, cache bound, timeout overflow, queue backpressure, pubsub
+  wrapper, or high-load bad-network alias issue had concrete failing-test
+  evidence in this cycle.
 
 ### Critical-only no-new cycle 22 after ISSUE-247: service boundary and delivery admission
 

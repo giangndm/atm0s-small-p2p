@@ -7,10 +7,39 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Accepted issues: 247
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 22
-- Current audit continuation: critical-only service registry, service-id, and
-  local/remote delivery boundary review found no new score-80+ issue with
-  concrete failing-test evidence.
+- Current consecutive no-new-issue cycles: 23
+- Current audit continuation: critical-only alias discovery and cache
+  lifecycle review found no new score-80+ issue with concrete failing-test
+  evidence.
+- Critical-only no-new cycle 23 after ISSUE-247 reviewed alias discovery,
+  alias cache lifecycle, register/unregister guards, local/cached/scan find
+  behavior, timeouts, stale `NotifySet`/`NotifyDel`/`Found`/`NotFound`
+  handling, peer disconnect/shutdown cleanup, pending find/waiter/cache/
+  lifecycle/control bounds, generation reset/restart, unchecked or forged
+  `Found`, service/pubsub wrappers, and high-load bad-network alias actions.
+  Local alias (47), hint (11), find (15), shutdown (8), stale (25),
+  generation (6), bounded (31), control_queue (14), and 64-node 4400-step
+  adversarial fuzz seed `112049` checks passed. Reviewer `Galileo` returned
+  `NO_NEW_CRITICAL` after independently reviewing the same alias
+  discovery/cache lifecycle slice, then passing alias (47), shutdown (8),
+  found (9), cache (15), lifecycle (3), requester (13), pubsub (92), and the
+  same fuzz seed. Rejected candidates mapped alias control queue admission,
+  register/find/shutdown/drop liveness, and closed base/control channels to
+  ISSUE-100 through ISSUE-105, ISSUE-119, ISSUE-121, ISSUE-123 through
+  ISSUE-126, ISSUE-234, ISSUE-235, RC-3, and RC-6; stale or unchecked
+  `Found`/`NotFound`, `NotifySet`/`NotifyDel` generation ordering, reset after
+  disconnect, and peer shutdown/disconnect cleanup to ISSUE-115, ISSUE-116,
+  ISSUE-234, ISSUE-235, RC-2, RC-6, and RC-7; pending find, waiter, cache
+  hint, lifecycle, and control queue caps plus timeout arithmetic to RC-3,
+  RC-5, RC-6, ISSUE-228, and ISSUE-240 through ISSUE-243; and alias
+  open-stream/service requester/pubsub wrappers plus high-load churn to
+  ISSUE-217 through ISSUE-230, ISSUE-246, RC-3, RC-4, RC-6, and RC-7. No
+  distinct score-80+ alias lifecycle issue had concrete failing-test evidence.
+  Smallest future fix proposal if this family regresses: pin the exact alias
+  id, generation, peer id, pending request state, hint/cache entry, queue
+  state, shutdown/disconnect event, or fuzz seed with one focused failing
+  test, then patch only the failed liveness guard, generation gate, cache
+  mutation, pending-finder cap, timeout arithmetic, or cleanup boundary.
 - Critical-only no-new cycle 22 after ISSUE-247 reviewed service registry,
   service-id indexing, requester liveness, duplicate service creation,
   service-id reuse after drop, local and relayed unicast/broadcast/stream
