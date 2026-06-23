@@ -11,13 +11,73 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 36
-- Current audit continuation: critical-only cancellation, drop, and
-  task-lifetime no-new cycle 38 found no new score-80+ issue across detached
-  Tokio tasks, JoinHandle ownership, shutdown/graceful-shutdown paths, peer
-  connection task exits, channel closure, stale requester/service liveness,
-  retry loops/timers, stream setup/copy tasks, scan response/broadcast tasks,
+- Current consecutive no-new-issue cycles: 37
+- Current audit continuation: critical-only authentication, identity, and
+  source-binding no-new cycle 39 found no new score-80+ issue across
+  `SharedKeyHandshake`, QUIC setup, inbound static/open-cluster admission,
+  peer-id to connection binding, unicast/broadcast/stream source normalization,
+  stale connection events, route/discovery sync admission, stopped tombstones,
   and high-load churn.
+
+### Critical-only no-new cycle 39: authentication, identity, and source binding
+
+- Scope: reviewer-style critical-only pass over `src/secure.rs`,
+  `src/quic.rs`, `src/peer.rs`, `src/peer/peer_internal.rs`, `src/msg.rs`,
+  `src/ctx.rs`, `src/router.rs`, `src/discovery.rs`,
+  `src/tests/security.rs`, `src/tests/cross_nodes.rs`, and stream/security
+  source-binding coverage.
+- Focus areas: `SharedKeyHandshake` peer-id/role binding, timestamp
+  skew/timeout, replay cache pressure, QUIC setup, inbound peer binding checks,
+  authenticated `PeerId` to `ConnectionId` binding, wrong-address/wrong-id
+  connect rejection, unicast/broadcast/stream source normalization, stale
+  main-event confusion, route/discovery sync admission, stopped tombstones,
+  non-dialable advertisements, duplicate connection handling, and bad-network
+  churn.
+- Verification:
+  - `RUST_LOG=error cargo test auth --lib -- --nocapture`: passed 8 tests.
+  - `RUST_LOG=error cargo test source --lib -- --nocapture`: passed 7 tests.
+  - `RUST_LOG=error cargo test forged --lib -- --nocapture`: passed 4 tests.
+  - `RUST_LOG=error cargo test handshake --lib -- --nocapture`: passed 10
+    tests.
+  - `RUST_LOG=error cargo test peer_id --lib -- --nocapture`: passed 3 tests.
+  - `RUST_LOG=error cargo test connect --lib -- --nocapture`: passed 61 tests.
+  - `RUST_LOG=error cargo test duplicate --lib -- --nocapture`: passed 20
+    tests.
+  - `RUST_LOG=error P2P_FUZZ_NODES=30 P2P_FUZZ_STEPS=1200 P2P_FUZZ_SEED=78039 cargo test fuzz_random_sanitized_node_churn_actions_must_not_panic_connection_tasks --lib -- --nocapture`:
+    passed.
+- Reviewer cross-check: `Parfit the 2nd` returned `NO_NEW_CRITICAL` after
+  reviewing `SharedKeyHandshake` peer-id/role binding, timestamp skew/timeout,
+  replay cache and bounded replay pressure, QUIC setup, authenticated
+  `PeerId` to `ConnectionId` binding, inbound binding checks, source
+  normalization, stale connection events, message claims, broadcast dedup,
+  route/discovery sync admission, stopped tombstones, and stale route cleanup.
+  Reviewer verification included handshake, source-binding, peer-stopped,
+  wrong-peer-id connect, discovery, router, unauthenticated admission, and
+  serial stale-event tests.
+- Duplicate mapping:
+  - Shared-key freshness, replay, role binding, and peer-id binding map to
+    ISSUE-002, ISSUE-021, ISSUE-146, ISSUE-176, ISSUE-207, ISSUE-244, RC-1,
+    and cycle 33.
+  - Inbound static/open-cluster peer binding, wrong-address rejection, and
+    wrong-peer-id connect rejection map to ISSUE-189, ISSUE-194, ISSUE-244,
+    cycle 33, and existing inbound handshake/connect tests.
+  - Forged unicast, broadcast, and stream source claims map to ISSUE-014,
+    ISSUE-015, ISSUE-018, ISSUE-017, RC-2, cycle 33, and existing
+    source-binding tests.
+  - PeerStopped forgery, stale connection confusion, stop-route resurrection,
+    duplicate connection cleanup, and graceful-stop forwarding map to
+    ISSUE-001, ISSUE-004, ISSUE-215 through ISSUE-225, ISSUE-231, RC-6, and
+    cycles 18/24/32/34/36/38.
+  - Route/discovery admission, caps, stale sync, direct-route priority,
+    non-dialable advertise addresses, stopped tombstones, and seed behavior
+    map to ISSUE-003, ISSUE-009, ISSUE-010, ISSUE-063, ISSUE-103, ISSUE-164,
+    ISSUE-211 through ISSUE-213, RC-5, RC-7, and cycles 28/32/37.
+  - High-load authentication/identity churn mapped to the existing fuzz
+    families from cycles 20/24/32/34/36/38; this cycle's 30-node 1200-step
+    sanitized churn seed produced no failing evidence.
+- Result: no distinct score-80+ authentication, identity, source-binding,
+  admission, stale-event, route/discovery, or high-load churn issue had
+  concrete failing-test evidence in this cycle.
 
 ### Critical-only no-new cycle 38: cancellation, drop, and task lifetime
 

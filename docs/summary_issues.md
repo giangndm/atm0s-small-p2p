@@ -7,13 +7,44 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Accepted issues: 246
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 36
-- Current audit continuation: critical-only cancellation, drop, and
-  task-lifetime no-new cycle 38 found no new score-80+ issue across detached
-  Tokio tasks, JoinHandle ownership, shutdown/graceful-shutdown paths, peer
-  connection task exits, channel closure, stale requester/service liveness,
-  retry loops/timers, stream setup/copy tasks, scan response/broadcast tasks,
+- Current consecutive no-new-issue cycles: 37
+- Current audit continuation: critical-only authentication, identity, and
+  source-binding no-new cycle 39 found no new score-80+ issue across
+  `SharedKeyHandshake`, QUIC setup, inbound static/open-cluster admission,
+  peer-id to connection binding, unicast/broadcast/stream source normalization,
+  stale connection events, route/discovery sync admission, stopped tombstones,
   and high-load churn.
+- Critical-only no-new cycle 39 reviewed authentication, identity, and
+  source-binding surfaces in `src/secure.rs`, `src/quic.rs`, `src/peer.rs`,
+  `src/peer/peer_internal.rs`, `src/msg.rs`, `src/ctx.rs`, `src/router.rs`,
+  `src/discovery.rs`, `src/tests/security.rs`, `src/tests/cross_nodes.rs`,
+  and stream/security source-binding tests. Focused auth, source, forged,
+  handshake, peer-id, connect, duplicate, and a 30-node 1200-step sanitized
+  churn fuzz seed passed locally. Reviewer `Parfit the 2nd` returned
+  `NO_NEW_CRITICAL` after independently reviewing `SharedKeyHandshake`
+  peer-id/role binding, timestamp skew/timeout, replay cache and bounded
+  replay pressure, QUIC setup, authenticated `PeerId` to `ConnectionId`
+  binding, inbound binding checks, source normalization, stale connection
+  events, message claims, broadcast dedup, route/discovery sync admission,
+  stopped tombstones, and stale route cleanup. Rejected candidates mapped to
+  ISSUE-002, ISSUE-021, ISSUE-146, ISSUE-176, ISSUE-207, ISSUE-244, RC-1,
+  and cycle 33 for shared-key freshness/replay/role/peer-id binding;
+  ISSUE-189, ISSUE-194, ISSUE-244, cycle 33, and existing inbound
+  handshake/connect tests for inbound static/open-cluster peer binding and
+  wrong-address/wrong-id rejection; ISSUE-014, ISSUE-015, ISSUE-018,
+  ISSUE-017, RC-2, cycle 33, and existing source-binding tests for forged
+  unicast/broadcast/stream source claims; ISSUE-001, ISSUE-004, ISSUE-215
+  through ISSUE-225, ISSUE-231, RC-6, and cycles 18/24/32/34/36/38 for
+  PeerStopped forgery, stale connection confusion, stop-route resurrection,
+  duplicate connection cleanup, and graceful-stop forwarding; ISSUE-003,
+  ISSUE-009, ISSUE-010, ISSUE-063, ISSUE-103, ISSUE-164, ISSUE-211 through
+  ISSUE-213, RC-5, RC-7, and cycles 28/32/37 for route/discovery admission,
+  caps, stale sync, direct-route priority, non-dialable advertise addresses,
+  stopped tombstones, and seed behavior; and fuzz cycles 20/24/32/34/36/38
+  for high-load authentication/identity churn. No distinct score-80+
+  authentication, identity, source-binding, admission, stale-event,
+  route/discovery, or high-load churn issue had concrete failing-test
+  evidence.
 - Critical-only no-new cycle 38 reviewed cancellation, drop, and task
   lifetime surfaces in `src/lib.rs`, `src/peer.rs`,
   `src/peer/peer_internal.rs`, `src/ctx.rs`, `src/quic.rs`,
