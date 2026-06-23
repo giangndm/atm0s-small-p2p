@@ -5,13 +5,23 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 ## Audit Status
 
-- Accepted issues: 247
+- Accepted issues: 248
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 36
-- Current audit continuation: critical-only replicated-KV state sync,
-  metrics, visualization, stale observability responses, resource caps, and
-  service lifecycle review found no new score-80+ issue with concrete
-  failing-test evidence.
+- Current consecutive no-new-issue cycles: 0
+- Current audit continuation: ISSUE-248 accepted and fixed after the
+  benchmark/profile/report tooling review found the long-run stream benchmark
+  could report repeated short clusters as plain pass while the RSS chart showed
+  sharp process memory growth.
+- ISSUE-248, score 82: fixed stream-limit benchmark report evidence validity.
+  Root cause: `--min-run-seconds` repeats fresh short `run_profile` executions
+  and the report status only checked stream counters, so the checked-in
+  30-minute report marked 60 short clusters as `pass` while max RSS grew from
+  `40640` KiB to `691708` KiB. Smallest fix: keep execution unchanged but make
+  the report label repeated short-cluster iterations, detect sharp RSS growth
+  across profile iterations, mark affected clean stream rows as
+  `resource-warning`, and update the checked-in report. Verification:
+  `CARGO_BUILD_JOBS=8 cargo test --example stream_limit_benchmark -- --nocapture`
+  covers the red evidence and fixed report contract.
 - Critical-only no-new cycle 36 after ISSUE-247 reviewed replicated-KV state
   sync, local/remote storage, snapshot continuation, changed repair,
   overflow/resource caps, metrics scan/Info correlation, visualization

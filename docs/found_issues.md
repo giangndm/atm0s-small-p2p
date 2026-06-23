@@ -11,11 +11,70 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 36
-- Current audit continuation: critical-only replicated-KV state sync,
-  metrics, visualization, stale observability responses, resource caps, and
-  service lifecycle review found no new score-80+ issue with concrete
-  failing-test evidence.
+- Current consecutive no-new-issue cycles: 0
+- Current audit continuation: ISSUE-248 accepted and fixed after the
+  benchmark/profile/report tooling review found the long-run stream benchmark
+  could report repeated short clusters as plain pass while the RSS chart showed
+  sharp process memory growth.
+
+### ISSUE-248: Stream-limit benchmark can report repeated short clusters as a long-run pass while RSS grows
+
+- Status: fixed by making repeated-iteration semantics explicit and by marking
+  sharp RSS growth as `resource-warning` instead of plain `pass`.
+- Category: stability evidence, benchmark/report tooling, resource reporting
+- Score: 82
+- Reviewers:
+  - `Copernicus` accepted this as a distinct score-80+ issue after reviewing
+    `examples/stream_limit_benchmark.rs`,
+    `benchmarks/stream_limit_profiles.yaml`, and
+    `docs/stream_limit_benchmark_report.md`.
+- Affected code:
+  - `examples/stream_limit_benchmark.rs`: `--min-run-seconds` repeatedly calls
+    `run_profile`, which creates a fresh cluster per iteration and aborts node
+    tasks at the end of each short run.
+  - `examples/stream_limit_benchmark.rs`: `render_report` previously marked a
+    row `pass` whenever stream-open/write/read counters were clean, ignoring
+    resource-sample trends.
+  - `docs/stream_limit_benchmark_report.md`: the prior 30-minute report showed
+    60 separate short `stream-limit-10-nodes` iterations marked `pass` while
+    max RSS grew from `40640` KiB to `691708` KiB.
+- Impact: the benchmark could mislead high-load stability conclusions. The
+  report looked like one successful 30-minute 10-node stream-limit run, but it
+  was actually repeated fresh short clusters; it also presented a large
+  process RSS increase as success because the status ignored memory trend.
+- Distinctness: prior package/example and RC resource families cover README
+  examples, demo certs, package contents, open-cluster posture, and library
+  resource caps. This issue is specific to benchmark evidence validity and the
+  report status contract.
+- Root cause: the long-run mode's repeated-iteration semantics were not
+  surfaced in the report, and report success was derived only from stream
+  counters.
+- Minimal fix proposal: leave benchmark execution scoped, but make the report
+  state that repeated rows are fresh short-cluster iterations, detect large RSS
+  growth across iterations of the same profile, mark affected rows
+  `resource-warning`, and update the checked-in report so the previous run is
+  not advertised as plain pass.
+- Fix: `render_report` now adds a long-run mode note for repeated profile
+  iterations, emits RSS growth warnings when max RSS at least doubles and grows
+  by at least 128 MiB, and marks affected clean stream rows as
+  `resource-warning`. The existing 30-minute report was updated with the
+  warning and resource-warning rows.
+- Evidence tests:
+  - Red evidence before fix:
+    `CARGO_BUILD_JOBS=8 cargo test --example stream_limit_benchmark -- --nocapture`
+    failed two tests:
+    `report_labels_repeated_short_iterations_as_not_one_continuous_cluster`
+    failed because the report did not contain
+    `repeated short-cluster iterations`, and
+    `report_does_not_mark_large_rss_growth_as_plain_pass` failed because the
+    report did not contain `RSS growth warning`.
+  - Reviewer evidence:
+    `Copernicus` reported `NEW_ACCEPTED_CANDIDATE`, score 82, citing the
+    repeated `run_profile` loop, per-iteration fresh node setup/abort, status
+    logic that ignored resources, and the checked-in report's RSS growth.
+  - Verification after fix:
+    `CARGO_BUILD_JOBS=8 cargo test --example stream_limit_benchmark -- --nocapture`
+    passed 2 tests.
 
 ### Critical-only no-new cycle 36 after ISSUE-247: replicated-KV and observability boundaries
 

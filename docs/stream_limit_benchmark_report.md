@@ -6,68 +6,74 @@ This benchmark opens streams from one source node to random peer nodes. Each ope
 
 CPU and memory samples are process-level because the benchmark hosts all nodes inside one OS process. Per-node tables report stream and byte counters collected inside the benchmark.
 
+Long-run mode note: this report contains repeated short-cluster iterations. Each table row is one fresh cluster run; it is not one continuous cluster unless a row's elapsed time covers the requested duration.
+
+RSS growth warning: the `stream-limit-10-nodes` profile's max RSS increased sharply across repeated iterations. Treat rows marked `resource-warning` as stability evidence that needs investigation, even when stream counters are clean.
+
+- `stream-limit-10-nodes` RSS grew from `40640` KiB to `691708` KiB.
+
 | Iteration | Profile | Nodes | Attempts | Opened | Failed | Inbound streams | Sent bytes | Received bytes | Max latency | Elapsed | Result |
 | ---: | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
-| 1 | stream-limit-10-nodes | 10 | 90 | 90 | 0 | 90 | 9210460 | 9210460 | 499ms | 31.05s | pass |
-| 2 | stream-limit-10-nodes | 10 | 90 | 90 | 0 | 90 | 9210460 | 9210460 | 499ms | 31.06s | pass |
-| 3 | stream-limit-10-nodes | 10 | 90 | 90 | 0 | 90 | 9210460 | 9210460 | 499ms | 30.04s | pass |
-| 4 | stream-limit-10-nodes | 10 | 90 | 90 | 0 | 90 | 9203211 | 9203211 | 499ms | 31.06s | pass |
-| 5 | stream-limit-10-nodes | 10 | 90 | 90 | 0 | 90 | 9210460 | 9210460 | 499ms | 31.04s | pass |
-| 6 | stream-limit-10-nodes | 10 | 90 | 90 | 0 | 90 | 9210460 | 9210460 | 499ms | 31.05s | pass |
-| 7 | stream-limit-10-nodes | 10 | 90 | 90 | 0 | 90 | 9202185 | 9202185 | 499ms | 31.07s | pass |
-| 8 | stream-limit-10-nodes | 10 | 90 | 90 | 0 | 90 | 9209110 | 9209110 | 499ms | 31.04s | pass |
-| 9 | stream-limit-10-nodes | 10 | 90 | 90 | 0 | 90 | 9210460 | 9210460 | 499ms | 31.05s | pass |
-| 10 | stream-limit-10-nodes | 10 | 90 | 90 | 0 | 90 | 9210460 | 9210460 | 499ms | 31.04s | pass |
-| 11 | stream-limit-10-nodes | 10 | 90 | 90 | 0 | 90 | 9210460 | 9210460 | 499ms | 31.04s | pass |
-| 12 | stream-limit-10-nodes | 10 | 90 | 90 | 0 | 90 | 9210460 | 9210460 | 499ms | 31.06s | pass |
-| 13 | stream-limit-10-nodes | 10 | 90 | 90 | 0 | 90 | 9210460 | 9210460 | 499ms | 30.04s | pass |
-| 14 | stream-limit-10-nodes | 10 | 90 | 90 | 0 | 90 | 9210460 | 9210460 | 499ms | 30.04s | pass |
-| 15 | stream-limit-10-nodes | 10 | 90 | 90 | 0 | 90 | 9210460 | 9210460 | 499ms | 31.05s | pass |
-| 16 | stream-limit-10-nodes | 10 | 90 | 90 | 0 | 90 | 9210460 | 9210460 | 499ms | 31.04s | pass |
-| 17 | stream-limit-10-nodes | 10 | 90 | 90 | 0 | 90 | 9210460 | 9210460 | 499ms | 31.05s | pass |
-| 18 | stream-limit-10-nodes | 10 | 90 | 90 | 0 | 90 | 9210460 | 9210460 | 499ms | 31.05s | pass |
-| 19 | stream-limit-10-nodes | 10 | 90 | 90 | 0 | 90 | 9210460 | 9210460 | 499ms | 30.04s | pass |
-| 20 | stream-limit-10-nodes | 10 | 90 | 90 | 0 | 90 | 9210460 | 9210460 | 499ms | 31.04s | pass |
-| 21 | stream-limit-10-nodes | 10 | 90 | 90 | 0 | 90 | 9210460 | 9210460 | 499ms | 30.05s | pass |
-| 22 | stream-limit-10-nodes | 10 | 90 | 90 | 0 | 90 | 9210460 | 9210460 | 499ms | 31.04s | pass |
-| 23 | stream-limit-10-nodes | 10 | 90 | 90 | 0 | 90 | 9210460 | 9210460 | 499ms | 30.04s | pass |
-| 24 | stream-limit-10-nodes | 10 | 90 | 90 | 0 | 90 | 9210460 | 9210460 | 499ms | 30.04s | pass |
-| 25 | stream-limit-10-nodes | 10 | 90 | 90 | 0 | 90 | 9210460 | 9210460 | 499ms | 30.04s | pass |
-| 26 | stream-limit-10-nodes | 10 | 90 | 90 | 0 | 90 | 9210460 | 9210460 | 499ms | 30.04s | pass |
-| 27 | stream-limit-10-nodes | 10 | 90 | 90 | 0 | 90 | 9210460 | 9210460 | 499ms | 30.04s | pass |
-| 28 | stream-limit-10-nodes | 10 | 90 | 90 | 0 | 90 | 9210460 | 9210460 | 499ms | 31.04s | pass |
-| 29 | stream-limit-10-nodes | 10 | 90 | 90 | 0 | 90 | 9210460 | 9210460 | 499ms | 31.05s | pass |
-| 30 | stream-limit-10-nodes | 10 | 90 | 90 | 0 | 90 | 9210460 | 9210460 | 499ms | 31.05s | pass |
-| 31 | stream-limit-10-nodes | 10 | 90 | 90 | 0 | 90 | 9210460 | 9210460 | 499ms | 31.05s | pass |
-| 32 | stream-limit-10-nodes | 10 | 90 | 90 | 0 | 90 | 9210460 | 9210460 | 499ms | 30.05s | pass |
-| 33 | stream-limit-10-nodes | 10 | 90 | 90 | 0 | 90 | 9210460 | 9210460 | 499ms | 30.04s | pass |
-| 34 | stream-limit-10-nodes | 10 | 90 | 90 | 0 | 90 | 9210460 | 9210460 | 499ms | 31.04s | pass |
-| 35 | stream-limit-10-nodes | 10 | 90 | 90 | 0 | 90 | 9210460 | 9210460 | 499ms | 31.60s | pass |
-| 36 | stream-limit-10-nodes | 10 | 90 | 90 | 0 | 90 | 9210460 | 9210460 | 499ms | 30.03s | pass |
-| 37 | stream-limit-10-nodes | 10 | 90 | 90 | 0 | 90 | 9210460 | 9210460 | 499ms | 30.04s | pass |
-| 38 | stream-limit-10-nodes | 10 | 90 | 90 | 0 | 90 | 9210460 | 9210460 | 499ms | 30.04s | pass |
-| 39 | stream-limit-10-nodes | 10 | 90 | 90 | 0 | 90 | 9210460 | 9210460 | 499ms | 30.03s | pass |
-| 40 | stream-limit-10-nodes | 10 | 90 | 90 | 0 | 90 | 9210460 | 9210460 | 499ms | 30.04s | pass |
-| 41 | stream-limit-10-nodes | 10 | 90 | 90 | 0 | 90 | 9210460 | 9210460 | 499ms | 30.03s | pass |
-| 42 | stream-limit-10-nodes | 10 | 90 | 90 | 0 | 90 | 9210460 | 9210460 | 499ms | 30.04s | pass |
-| 43 | stream-limit-10-nodes | 10 | 90 | 90 | 0 | 90 | 9210460 | 9210460 | 499ms | 30.04s | pass |
-| 44 | stream-limit-10-nodes | 10 | 90 | 90 | 0 | 90 | 9210460 | 9210460 | 499ms | 30.04s | pass |
-| 45 | stream-limit-10-nodes | 10 | 90 | 90 | 0 | 90 | 9210460 | 9210460 | 499ms | 30.04s | pass |
-| 46 | stream-limit-10-nodes | 10 | 90 | 90 | 0 | 90 | 9210460 | 9210460 | 499ms | 30.04s | pass |
-| 47 | stream-limit-10-nodes | 10 | 90 | 90 | 0 | 90 | 9210460 | 9210460 | 499ms | 31.04s | pass |
-| 48 | stream-limit-10-nodes | 10 | 90 | 90 | 0 | 90 | 9210460 | 9210460 | 499ms | 30.04s | pass |
-| 49 | stream-limit-10-nodes | 10 | 90 | 90 | 0 | 90 | 9210460 | 9210460 | 499ms | 30.04s | pass |
-| 50 | stream-limit-10-nodes | 10 | 90 | 90 | 0 | 90 | 9210460 | 9210460 | 499ms | 30.04s | pass |
-| 51 | stream-limit-10-nodes | 10 | 90 | 90 | 0 | 90 | 9210460 | 9210460 | 499ms | 30.04s | pass |
-| 52 | stream-limit-10-nodes | 10 | 90 | 90 | 0 | 90 | 9210460 | 9210460 | 499ms | 30.04s | pass |
-| 53 | stream-limit-10-nodes | 10 | 90 | 90 | 0 | 90 | 9210460 | 9210460 | 499ms | 30.04s | pass |
-| 54 | stream-limit-10-nodes | 10 | 90 | 90 | 0 | 90 | 9210460 | 9210460 | 499ms | 30.04s | pass |
-| 55 | stream-limit-10-nodes | 10 | 90 | 90 | 0 | 90 | 9210460 | 9210460 | 499ms | 30.04s | pass |
-| 56 | stream-limit-10-nodes | 10 | 90 | 90 | 0 | 90 | 9210460 | 9210460 | 499ms | 30.03s | pass |
-| 57 | stream-limit-10-nodes | 10 | 90 | 90 | 0 | 90 | 9210460 | 9210460 | 499ms | 30.04s | pass |
-| 58 | stream-limit-10-nodes | 10 | 90 | 90 | 0 | 90 | 9210460 | 9210460 | 499ms | 30.04s | pass |
-| 59 | stream-limit-10-nodes | 10 | 90 | 90 | 0 | 90 | 9210460 | 9210460 | 499ms | 30.04s | pass |
-| 60 | stream-limit-10-nodes | 10 | 90 | 90 | 0 | 90 | 9210460 | 9210460 | 499ms | 30.03s | pass |
+| 1 | stream-limit-10-nodes | 10 | 90 | 90 | 0 | 90 | 9210460 | 9210460 | 499ms | 31.05s | resource-warning |
+| 2 | stream-limit-10-nodes | 10 | 90 | 90 | 0 | 90 | 9210460 | 9210460 | 499ms | 31.06s | resource-warning |
+| 3 | stream-limit-10-nodes | 10 | 90 | 90 | 0 | 90 | 9210460 | 9210460 | 499ms | 30.04s | resource-warning |
+| 4 | stream-limit-10-nodes | 10 | 90 | 90 | 0 | 90 | 9203211 | 9203211 | 499ms | 31.06s | resource-warning |
+| 5 | stream-limit-10-nodes | 10 | 90 | 90 | 0 | 90 | 9210460 | 9210460 | 499ms | 31.04s | resource-warning |
+| 6 | stream-limit-10-nodes | 10 | 90 | 90 | 0 | 90 | 9210460 | 9210460 | 499ms | 31.05s | resource-warning |
+| 7 | stream-limit-10-nodes | 10 | 90 | 90 | 0 | 90 | 9202185 | 9202185 | 499ms | 31.07s | resource-warning |
+| 8 | stream-limit-10-nodes | 10 | 90 | 90 | 0 | 90 | 9209110 | 9209110 | 499ms | 31.04s | resource-warning |
+| 9 | stream-limit-10-nodes | 10 | 90 | 90 | 0 | 90 | 9210460 | 9210460 | 499ms | 31.05s | resource-warning |
+| 10 | stream-limit-10-nodes | 10 | 90 | 90 | 0 | 90 | 9210460 | 9210460 | 499ms | 31.04s | resource-warning |
+| 11 | stream-limit-10-nodes | 10 | 90 | 90 | 0 | 90 | 9210460 | 9210460 | 499ms | 31.04s | resource-warning |
+| 12 | stream-limit-10-nodes | 10 | 90 | 90 | 0 | 90 | 9210460 | 9210460 | 499ms | 31.06s | resource-warning |
+| 13 | stream-limit-10-nodes | 10 | 90 | 90 | 0 | 90 | 9210460 | 9210460 | 499ms | 30.04s | resource-warning |
+| 14 | stream-limit-10-nodes | 10 | 90 | 90 | 0 | 90 | 9210460 | 9210460 | 499ms | 30.04s | resource-warning |
+| 15 | stream-limit-10-nodes | 10 | 90 | 90 | 0 | 90 | 9210460 | 9210460 | 499ms | 31.05s | resource-warning |
+| 16 | stream-limit-10-nodes | 10 | 90 | 90 | 0 | 90 | 9210460 | 9210460 | 499ms | 31.04s | resource-warning |
+| 17 | stream-limit-10-nodes | 10 | 90 | 90 | 0 | 90 | 9210460 | 9210460 | 499ms | 31.05s | resource-warning |
+| 18 | stream-limit-10-nodes | 10 | 90 | 90 | 0 | 90 | 9210460 | 9210460 | 499ms | 31.05s | resource-warning |
+| 19 | stream-limit-10-nodes | 10 | 90 | 90 | 0 | 90 | 9210460 | 9210460 | 499ms | 30.04s | resource-warning |
+| 20 | stream-limit-10-nodes | 10 | 90 | 90 | 0 | 90 | 9210460 | 9210460 | 499ms | 31.04s | resource-warning |
+| 21 | stream-limit-10-nodes | 10 | 90 | 90 | 0 | 90 | 9210460 | 9210460 | 499ms | 30.05s | resource-warning |
+| 22 | stream-limit-10-nodes | 10 | 90 | 90 | 0 | 90 | 9210460 | 9210460 | 499ms | 31.04s | resource-warning |
+| 23 | stream-limit-10-nodes | 10 | 90 | 90 | 0 | 90 | 9210460 | 9210460 | 499ms | 30.04s | resource-warning |
+| 24 | stream-limit-10-nodes | 10 | 90 | 90 | 0 | 90 | 9210460 | 9210460 | 499ms | 30.04s | resource-warning |
+| 25 | stream-limit-10-nodes | 10 | 90 | 90 | 0 | 90 | 9210460 | 9210460 | 499ms | 30.04s | resource-warning |
+| 26 | stream-limit-10-nodes | 10 | 90 | 90 | 0 | 90 | 9210460 | 9210460 | 499ms | 30.04s | resource-warning |
+| 27 | stream-limit-10-nodes | 10 | 90 | 90 | 0 | 90 | 9210460 | 9210460 | 499ms | 30.04s | resource-warning |
+| 28 | stream-limit-10-nodes | 10 | 90 | 90 | 0 | 90 | 9210460 | 9210460 | 499ms | 31.04s | resource-warning |
+| 29 | stream-limit-10-nodes | 10 | 90 | 90 | 0 | 90 | 9210460 | 9210460 | 499ms | 31.05s | resource-warning |
+| 30 | stream-limit-10-nodes | 10 | 90 | 90 | 0 | 90 | 9210460 | 9210460 | 499ms | 31.05s | resource-warning |
+| 31 | stream-limit-10-nodes | 10 | 90 | 90 | 0 | 90 | 9210460 | 9210460 | 499ms | 31.05s | resource-warning |
+| 32 | stream-limit-10-nodes | 10 | 90 | 90 | 0 | 90 | 9210460 | 9210460 | 499ms | 30.05s | resource-warning |
+| 33 | stream-limit-10-nodes | 10 | 90 | 90 | 0 | 90 | 9210460 | 9210460 | 499ms | 30.04s | resource-warning |
+| 34 | stream-limit-10-nodes | 10 | 90 | 90 | 0 | 90 | 9210460 | 9210460 | 499ms | 31.04s | resource-warning |
+| 35 | stream-limit-10-nodes | 10 | 90 | 90 | 0 | 90 | 9210460 | 9210460 | 499ms | 31.60s | resource-warning |
+| 36 | stream-limit-10-nodes | 10 | 90 | 90 | 0 | 90 | 9210460 | 9210460 | 499ms | 30.03s | resource-warning |
+| 37 | stream-limit-10-nodes | 10 | 90 | 90 | 0 | 90 | 9210460 | 9210460 | 499ms | 30.04s | resource-warning |
+| 38 | stream-limit-10-nodes | 10 | 90 | 90 | 0 | 90 | 9210460 | 9210460 | 499ms | 30.04s | resource-warning |
+| 39 | stream-limit-10-nodes | 10 | 90 | 90 | 0 | 90 | 9210460 | 9210460 | 499ms | 30.03s | resource-warning |
+| 40 | stream-limit-10-nodes | 10 | 90 | 90 | 0 | 90 | 9210460 | 9210460 | 499ms | 30.04s | resource-warning |
+| 41 | stream-limit-10-nodes | 10 | 90 | 90 | 0 | 90 | 9210460 | 9210460 | 499ms | 30.03s | resource-warning |
+| 42 | stream-limit-10-nodes | 10 | 90 | 90 | 0 | 90 | 9210460 | 9210460 | 499ms | 30.04s | resource-warning |
+| 43 | stream-limit-10-nodes | 10 | 90 | 90 | 0 | 90 | 9210460 | 9210460 | 499ms | 30.04s | resource-warning |
+| 44 | stream-limit-10-nodes | 10 | 90 | 90 | 0 | 90 | 9210460 | 9210460 | 499ms | 30.04s | resource-warning |
+| 45 | stream-limit-10-nodes | 10 | 90 | 90 | 0 | 90 | 9210460 | 9210460 | 499ms | 30.04s | resource-warning |
+| 46 | stream-limit-10-nodes | 10 | 90 | 90 | 0 | 90 | 9210460 | 9210460 | 499ms | 30.04s | resource-warning |
+| 47 | stream-limit-10-nodes | 10 | 90 | 90 | 0 | 90 | 9210460 | 9210460 | 499ms | 31.04s | resource-warning |
+| 48 | stream-limit-10-nodes | 10 | 90 | 90 | 0 | 90 | 9210460 | 9210460 | 499ms | 30.04s | resource-warning |
+| 49 | stream-limit-10-nodes | 10 | 90 | 90 | 0 | 90 | 9210460 | 9210460 | 499ms | 30.04s | resource-warning |
+| 50 | stream-limit-10-nodes | 10 | 90 | 90 | 0 | 90 | 9210460 | 9210460 | 499ms | 30.04s | resource-warning |
+| 51 | stream-limit-10-nodes | 10 | 90 | 90 | 0 | 90 | 9210460 | 9210460 | 499ms | 30.04s | resource-warning |
+| 52 | stream-limit-10-nodes | 10 | 90 | 90 | 0 | 90 | 9210460 | 9210460 | 499ms | 30.04s | resource-warning |
+| 53 | stream-limit-10-nodes | 10 | 90 | 90 | 0 | 90 | 9210460 | 9210460 | 499ms | 30.04s | resource-warning |
+| 54 | stream-limit-10-nodes | 10 | 90 | 90 | 0 | 90 | 9210460 | 9210460 | 499ms | 30.04s | resource-warning |
+| 55 | stream-limit-10-nodes | 10 | 90 | 90 | 0 | 90 | 9210460 | 9210460 | 499ms | 30.04s | resource-warning |
+| 56 | stream-limit-10-nodes | 10 | 90 | 90 | 0 | 90 | 9210460 | 9210460 | 499ms | 30.03s | resource-warning |
+| 57 | stream-limit-10-nodes | 10 | 90 | 90 | 0 | 90 | 9210460 | 9210460 | 499ms | 30.04s | resource-warning |
+| 58 | stream-limit-10-nodes | 10 | 90 | 90 | 0 | 90 | 9210460 | 9210460 | 499ms | 30.04s | resource-warning |
+| 59 | stream-limit-10-nodes | 10 | 90 | 90 | 0 | 90 | 9210460 | 9210460 | 499ms | 30.04s | resource-warning |
+| 60 | stream-limit-10-nodes | 10 | 90 | 90 | 0 | 90 | 9210460 | 9210460 | 499ms | 30.03s | resource-warning |
 
 ## Resource Charts
 

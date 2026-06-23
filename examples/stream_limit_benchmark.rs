@@ -1,4 +1,5 @@
 use std::{
+    collections::{BTreeMap, BTreeSet},
     fs,
     net::UdpSocket,
     path::PathBuf,
@@ -452,6 +453,9 @@ fn render_report(results: &[BenchmarkResult]) -> String {
     let generated = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_or_else(|_| "unknown".to_string(), |duration| duration.as_secs().to_string());
+    let repeated_short_iterations = has_repeated_profile_iterations(results);
+    let rss_warnings = rss_growth_warnings(results);
+    let rss_warning_profiles = rss_warnings.iter().map(|warning| warning.profile.as_str()).collect::<BTreeSet<_>>();
     let mut report = String::new();
     report.push_str("# Stream Limit Benchmark Report\n\n");
     report.push_str(&format!("Generated at unix timestamp: `{generated}`\n\n"));
@@ -459,14 +463,27 @@ fn render_report(results: &[BenchmarkResult]) -> String {
     report.push_str(
         "CPU and memory samples are process-level because the benchmark hosts all nodes inside one OS process. Per-node tables report stream and byte counters collected inside the benchmark.\n\n",
     );
+    if repeated_short_iterations {
+        report.push_str("Long-run mode note: this report contains repeated short-cluster iterations. Each table row is one fresh cluster run; it is not one continuous cluster unless a row's elapsed time covers the requested duration.\n\n");
+    }
+    if !rss_warnings.is_empty() {
+        report.push_str("RSS growth warning: at least one profile's max RSS increased sharply across repeated iterations. Treat rows marked `resource-warning` as stability evidence that needs investigation, even when stream counters are clean.\n\n");
+        for warning in &rss_warnings {
+            report.push_str(&format!("- `{}` RSS grew from `{}` KiB to `{}` KiB.\n", warning.profile, warning.first_rss_kb, warning.max_rss_kb));
+        }
+        report.push('\n');
+    }
     report.push_str("| Iteration | Profile | Nodes | Attempts | Opened | Failed | Inbound streams | Sent bytes | Received bytes | Max latency | Elapsed | Result |\n");
     report.push_str("| ---: | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |\n");
 
     for result in results {
-        let status = if result.failed.is_empty() && result.opened == result.profile.attempts && result.write_errors == 0 && result.read_errors == 0 {
-            "pass"
-        } else {
+        let stream_ok = result.failed.is_empty() && result.opened == result.profile.attempts && result.write_errors == 0 && result.read_errors == 0;
+        let status = if !stream_ok {
             "limited"
+        } else if rss_warning_profiles.contains(result.profile.name.as_str()) {
+            "resource-warning"
+        } else {
+            "pass"
         };
         report.push_str(&format!(
             "| {} | {} | {} | {} | {} | {} | {} | {} | {} | {}ms | {:.2}s | {} |\n",
@@ -557,6 +574,57 @@ fn render_report(results: &[BenchmarkResult]) -> String {
     report
 }
 
+fn has_repeated_profile_iterations(results: &[BenchmarkResult]) -> bool {
+    let mut seen = BTreeSet::new();
+    for result in results {
+        if !seen.insert(result.profile.name.as_str()) {
+            return true;
+        }
+    }
+    false
+}
+
+#[derive(Debug)]
+struct RssGrowthWarning {
+    profile: String,
+    first_rss_kb: u64,
+    max_rss_kb: u64,
+}
+
+fn rss_growth_warnings(results: &[BenchmarkResult]) -> Vec<RssGrowthWarning> {
+    const MIN_ABSOLUTE_GROWTH_KIB: u64 = 128 * 1024;
+    const MIN_GROWTH_FACTOR: u64 = 2;
+
+    let mut by_profile = BTreeMap::<&str, (Option<u64>, u64)>::new();
+    for result in results {
+        let profile = result.profile.name.as_str();
+        let max_rss = result.resource_samples.iter().map(|sample| sample.rss_kb).max().unwrap_or(0);
+        let entry = by_profile.entry(profile).or_insert((None, 0));
+        if entry.0.is_none() && max_rss > 0 {
+            entry.0 = Some(max_rss);
+        }
+        entry.1 = entry.1.max(max_rss);
+    }
+
+    by_profile
+        .into_iter()
+        .filter_map(|(profile, (first_rss_kb, max_rss_kb))| {
+            let first_rss_kb = first_rss_kb?;
+            let absolute_growth = max_rss_kb.saturating_sub(first_rss_kb);
+            let factor_growth = max_rss_kb >= first_rss_kb.saturating_mul(MIN_GROWTH_FACTOR);
+            if absolute_growth >= MIN_ABSOLUTE_GROWTH_KIB && factor_growth {
+                Some(RssGrowthWarning {
+                    profile: profile.to_string(),
+                    first_rss_kb,
+                    max_rss_kb,
+                })
+            } else {
+                None
+            }
+        })
+        .collect()
+}
+
 fn render_svg_chart(samples: &[ResourceSample], metric: &str) -> String {
     const WIDTH: f64 = 720.0;
     const HEIGHT: f64 = 180.0;
@@ -597,4 +665,71 @@ fn render_svg_chart(samples: &[ResourceSample], metric: &str) -> String {
     format!(
         "<svg width=\"720\" height=\"180\" viewBox=\"0 0 720 180\" xmlns=\"http://www.w3.org/2000/svg\" role=\"img\" aria-label=\"{label} over time\"><rect width=\"720\" height=\"180\" fill=\"#fff\"/><line x1=\"24\" y1=\"156\" x2=\"696\" y2=\"156\" stroke=\"#bbb\"/><line x1=\"24\" y1=\"24\" x2=\"24\" y2=\"156\" stroke=\"#bbb\"/><polyline points=\"{points}\" fill=\"none\" stroke=\"#2563eb\" stroke-width=\"2\"/><text x=\"24\" y=\"16\" font-family=\"monospace\" font-size=\"12\">{label}, max {max_y:.2}, last {last:.2}</text><text x=\"24\" y=\"176\" font-family=\"monospace\" font-size=\"11\">0s</text><text x=\"650\" y=\"176\" font-family=\"monospace\" font-size=\"11\">{max_x:.0}s</text></svg>"
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn test_profile() -> BenchmarkProfile {
+        BenchmarkProfile {
+            name: "stream-limit-test".to_string(),
+            nodes: 3,
+            source_peer: 1,
+            attempts: 2,
+            seed: 7,
+            min_latency_ms: 1,
+            max_latency_ms: 2,
+            min_stream_kbps: 32,
+            max_stream_kbps: 64,
+            min_live_seconds: 1,
+            max_live_seconds: 2,
+            open_timeout_ms: 100,
+            settle_ms: 1,
+        }
+    }
+
+    fn test_result(iteration: usize, elapsed_seconds: u64, rss_kb: u64) -> BenchmarkResult {
+        BenchmarkResult {
+            iteration,
+            profile: test_profile(),
+            opened: 2,
+            failed: Vec::new(),
+            inbound_streams: 2,
+            sent_bytes: 2000,
+            received_bytes: 2000,
+            write_errors: 0,
+            read_errors: 0,
+            elapsed: Duration::from_secs(elapsed_seconds),
+            max_latency_ms: 2,
+            node_stats: vec![NodeStatsSnapshot {
+                peer: PeerId::from(1),
+                opened_streams: 2,
+                inbound_streams: 0,
+                sent_bytes: 2000,
+                received_bytes: 0,
+            }],
+            resource_samples: vec![ResourceSample {
+                at_seconds: elapsed_seconds,
+                cpu_percent: 1.0,
+                rss_kb,
+            }],
+        }
+    }
+
+    #[test]
+    fn report_labels_repeated_short_iterations_as_not_one_continuous_cluster() {
+        let report = render_report(&[test_result(1, 30, 40_000), test_result(2, 30, 45_000)]);
+
+        assert!(report.contains("repeated short-cluster iterations"));
+        assert!(report.contains("not one continuous cluster"));
+    }
+
+    #[test]
+    fn report_does_not_mark_large_rss_growth_as_plain_pass() {
+        let report = render_report(&[test_result(1, 30, 40_000), test_result(2, 30, 700_000)]);
+
+        assert!(report.contains("RSS growth warning"));
+        assert!(!report.contains("| 2 | stream-limit-test | 3 | 2 | 2 | 0 | 2 | 2000 | 2000 | 2ms | 30.00s | pass |"));
+    }
 }
