@@ -7,11 +7,38 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Accepted issues: 247
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 35
-- Current audit continuation: critical-only routing/path stability, neighbour
-  selection, alias cleanup, stream/open_stream/pipe behavior, graceful stop,
-  and bad-network churn under the current `<50` node and max-8-CPU fuzz limit
-  review found no new score-80+ issue with concrete failing-test evidence.
+- Current consecutive no-new-issue cycles: 36
+- Current audit continuation: critical-only replicated-KV state sync,
+  metrics, visualization, stale observability responses, resource caps, and
+  service lifecycle review found no new score-80+ issue with concrete
+  failing-test evidence.
+- Critical-only no-new cycle 36 after ISSUE-247 reviewed replicated-KV state
+  sync, local/remote storage, snapshot continuation, changed repair,
+  overflow/resource caps, metrics scan/Info correlation, visualization
+  scan/Info correlation, stale disconnect cleanup, trusted collector gates,
+  and observability resource boundaries across
+  `src/service/replicate_kv_service.rs`,
+  `src/service/replicate_kv_service/*`,
+  `src/service/metrics_service.rs`, `src/service/visualization_service.rs`,
+  `src/tests/replicate_kv.rs`, `src/tests/metrics.rs`, and
+  `src/tests/visualization.rs`. Local bounded verification with
+  `CARGO_BUILD_JOBS=8` passed replicated_kv (65), metrics (14), and
+  visualization (19). Forked reviewer `Dalton` returned `NO_NEW_CRITICAL` and
+  mapped full-sync snapshot validation/staging/completion to ISSUE-037,
+  ISSUE-038, ISSUE-059, ISSUE-083, ISSUE-131, ISSUE-143, ISSUE-171,
+  ISSUE-237, ISSUE-245, ISSUE-247, unknown replicated-KV response admission
+  to ISSUE-233, metrics scan authorization/coalescing/stale cleanup/row caps
+  to ISSUE-202, ISSUE-204, ISSUE-226, ISSUE-232, and visualization
+  correlation/allowlist/disconnect cleanup/row and peer caps to ISSUE-203,
+  ISSUE-226, ISSUE-232, and existing visualization lifecycle/resource
+  families. No distinct score-80+ replicated-KV, metrics, visualization,
+  resource-boundary, or stale-response issue had reviewer-accepted failing-test
+  evidence. Smallest future fix proposal if this family regresses: pin the
+  exact snapshot page, version, cursor, pending changed range, remote peer,
+  scan requester, pending responder, disconnect ordering, row count, or
+  resource cap with one focused failing test, then patch only the failed
+  snapshot validator, repair request, unsolicited-response gate,
+  pending-responder cleanup, row cap, or peer-state cleanup branch.
 - Critical-only no-new cycle 35 after ISSUE-247 reviewed routing/path
   stability, neighbour selection, alias cleanup, stream/open_stream/pipe
   behavior, graceful stop, duplicate connections, and bad-network churn across

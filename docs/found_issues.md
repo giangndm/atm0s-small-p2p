@@ -11,11 +11,64 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 35
-- Current audit continuation: critical-only routing/path stability, neighbour
-  selection, alias cleanup, stream/open_stream/pipe behavior, graceful stop,
-  and bad-network churn under the current `<50` node and max-8-CPU fuzz limit
-  review found no new score-80+ issue with concrete failing-test evidence.
+- Current consecutive no-new-issue cycles: 36
+- Current audit continuation: critical-only replicated-KV state sync,
+  metrics, visualization, stale observability responses, resource caps, and
+  service lifecycle review found no new score-80+ issue with concrete
+  failing-test evidence.
+
+### Critical-only no-new cycle 36 after ISSUE-247: replicated-KV and observability boundaries
+
+- Scope: reviewer-style critical-only pass over
+  `src/service/replicate_kv_service.rs`,
+  `src/service/replicate_kv_service/messages.rs`,
+  `src/service/replicate_kv_service/local_storage.rs`,
+  `src/service/replicate_kv_service/remote_storage.rs`,
+  `src/service/metrics_service.rs`, `src/service/visualization_service.rs`,
+  `src/tests/replicate_kv.rs`, `src/tests/metrics.rs`, and
+  `src/tests/visualization.rs`. Focus areas were replicated-KV full-sync
+  snapshot validation, cursor/version consistency, staged snapshot caps,
+  changed repair, overflow behavior, unsolicited RPC response admission,
+  remote cleanup, metrics/visualization scan authorization, pending responder
+  correlation, stale disconnect cleanup, row caps, remote peer caps, and
+  bad-network observability stability.
+- Verification:
+  - `RUST_LOG=error CARGO_BUILD_JOBS=8 cargo test --lib replicate_kv -- --nocapture`:
+    passed 65 tests.
+  - `RUST_LOG=error CARGO_BUILD_JOBS=8 cargo test --lib metrics -- --nocapture`:
+    passed 14 tests.
+  - `RUST_LOG=error CARGO_BUILD_JOBS=8 cargo test --lib visualization -- --nocapture`:
+    passed 19 tests.
+- Reviewer cross-check: `Dalton` returned `NO_NEW_CRITICAL` after
+  independently reviewing the replicated-KV, metrics, and visualization slice.
+  The reviewer found no distinct score-80+ correctness/security/stability
+  issue not already covered by the ledgers.
+- Duplicate mapping:
+  - Replicated-KV full-sync snapshot validation, cursor checks, staging,
+    terminal page handling, and completion behavior map to ISSUE-037,
+    ISSUE-038, ISSUE-059, ISSUE-083, ISSUE-131, ISSUE-143, ISSUE-171,
+    ISSUE-237, ISSUE-245, ISSUE-247, RC-5, RC-6, and RC-7. Current
+    replicated-KV tests cover page caps, cumulative staged caps, stale
+    terminal snapshots, version mismatch, next-key progress, unordered or
+    duplicate slots, overflow, and repair continuation.
+  - Unknown-peer replicated-KV response admission maps to ISSUE-233; current
+    code rejects unsolicited `RpcRes` before allocating remote state.
+  - Metrics scan authorization, trusted collector gating, pending response
+    coalescing, stale disconnect cleanup, pending responder correlation, and
+    bounded Info rows map to ISSUE-202, ISSUE-204, ISSUE-226, ISSUE-232, RC-2,
+    RC-3, RC-5, and RC-6.
+  - Visualization pending responder correlation, scan allowlist, stale
+    disconnect cleanup, row cap, remote-peer cap, and topology disclosure
+    gating map to ISSUE-203, ISSUE-226, ISSUE-232, RC-2, RC-3, RC-5, and
+    existing visualization lifecycle/resource families.
+  - The reviewer noted a non-critical liveness edge where completed metrics
+    scan-response tasks are reaped at loop top, so an immediately following
+    scan can be coalesced until the marker is cleared; this maps to
+    ISSUE-202/ISSUE-204 scan-response coalescing/backpressure rather than a
+    distinct critical issue.
+- Result: no distinct score-80+ replicated-KV consistency, metrics,
+  visualization, stale-response, resource-boundary, or observability lifecycle
+  issue had concrete reviewer-accepted failing-test evidence in this cycle.
 
 ### Critical-only no-new cycle 35 after ISSUE-247: routing, path stability, streams, and churn
 
