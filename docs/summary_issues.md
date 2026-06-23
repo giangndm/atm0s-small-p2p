@@ -7,12 +7,37 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Accepted issues: 246
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 43
-- Current audit continuation: critical-only concurrency, task-lifecycle, and
-  closed/full-channel no-new cycle 45 found no new score-80+ issue across
-  pending sync retry tasks, peer-control closure, local service delivery,
-  acked unicast pressure, requester/service drop liveness, metrics cleanup,
-  graceful shutdown, disconnect notification, and high-load backpressure churn.
+- Current consecutive no-new-issue cycles: 44
+- Current audit continuation: critical-only pubsub service-protocol and
+  state-machine no-new cycle 46 found no new score-80+ issue across RPC
+  correlation, responder binding, stale requester answers, remote membership
+  authorization, heartbeat chunking/reassembly, stale tombstones, resource
+  caps, queue/full-channel behavior, drop liveness, graceful peer stop, and
+  high-load bad-network churn.
+- Critical-only no-new cycle 46 reviewed `src/service/pubsub_service.rs`,
+  `src/service/pubsub_service/publisher.rs`,
+  `src/service/pubsub_service/subscriber.rs`, base service/requester
+  interactions, pubsub tests, and fuzz coverage. Local pubsub, RPC,
+  heartbeat, tombstone, chunk, membership, service-drop, and 38-node
+  1450-step valid-action fuzz checks passed. Reviewer `Ampere the 2nd`
+  returned `NO_NEW_CRITICAL` after independently running pubsub, heartbeat,
+  RPC, requester, bounded, full, stale, backpressure, and 34-node 1400-step
+  sanitized churn fuzz slices. Rejected candidates mapped to pubsub RPC
+  answer correlation, forged/stale answers, and local requester binding
+  issues ISSUE-020/115/116/236, RC-2; publisher/subscriber requester
+  lifecycle and phantom-channel cleanup ISSUE-072/073/076/108/234/235/246,
+  RC-6; remote membership authorization ISSUE-039/048, RC-1/RC-2; pending
+  RPC caps, timeout overflow, no-destination behavior, internal control
+  backlog, and full local queues ISSUE-043/100 through ISSUE-105/121/123
+  through ISSUE-126/178/228/231/240 through ISSUE-243/246, RC-3/RC-5/RC-6;
+  heartbeat stale cleanup, chunk sequence/reassembly, tombstone caps, and
+  restart generation handling ISSUE-080/155/205/206/228/240 through
+  ISSUE-243, RC-6; malformed serialization and oversized method/batch caps
+  ISSUE-094/097/098/174, RC-5; and graceful stop/high-load bad-network churn
+  ISSUE-001/004/170/215 through ISSUE-225/231, RC-3/RC-6/RC-7, and fuzz
+  cycles 20/24/28/31/32/34/36/38/39/40/41/42/43/44/45. No distinct
+  score-80+ pubsub protocol, state-machine, resource-cap, queue/full-channel,
+  lifecycle, or high-load churn issue had concrete failing-test evidence.
 - Critical-only no-new cycle 45 reviewed concurrency/task lifecycle and
   closed/full-channel behavior in `src/lib.rs`, `src/peer.rs`,
   `src/peer/peer_internal.rs`, `src/peer/peer_alias.rs`, `src/ctx.rs`,
