@@ -11,11 +11,78 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 33
-- Current audit continuation: critical-only public API/requester/service
-  lifecycle, service id bounds, false success, queue pressure, stale state, and
+- Current consecutive no-new-issue cycles: 34
+- Current audit continuation: critical-only configuration, package, examples,
+  dependency, secure setup, default cert/key, feature, production panic, and
   bad-network churn
   review found no new score-80+ issue with concrete failing-test evidence.
+
+### Critical-only no-new cycle 34 after ISSUE-247: configuration, package, and example setup
+
+- Scope: reviewer-style critical-only pass over `Cargo.toml`, `Cargo.lock`,
+  `README.md`, `examples`, `certs/dev.cluster.*`, `src/lib.rs`,
+  `src/quic.rs`, `src/secure.rs`, `src/tests/readme.rs`, package contents,
+  features, and dependency surfaces. Focus areas were packaged dev cert/key
+  leakage, default open-cluster posture, README/example insecure production
+  guidance, `tick_ms == 0`, `InboundPeerBindings` defaults, no-default-feature
+  builds, production `unwrap`/`expect`/panic paths, dependency duplicates, and
+  high-load bad-network churn.
+- Verification:
+  - `cargo check`: passed with existing warnings only.
+  - `cargo check --examples`: passed with existing warnings only.
+  - `cargo check --no-default-features`: passed with existing warnings only.
+  - `cargo package --list`: passed; package contents include
+    `certs/dev.cluster.cert`, `certs/dev.cluster.key`, `Cargo.toml.orig`,
+    examples, docs, and source files.
+  - `cargo tree -d`: inspected duplicate dependency versions; no distinct
+    score-80+ dependency failure was found locally.
+  - `cargo tree -e features`: inspected feature surface; no distinct
+    score-80+ feature failure was found locally.
+  - `RUST_LOG=error cargo test --lib readme -- --nocapture`: passed 1 test.
+  - `RUST_LOG=error cargo test --lib config -- --nocapture`: passed 6 tests.
+  - `RUST_LOG=error cargo test --lib secure -- --nocapture`: passed 10 tests.
+  - `RUST_LOG=error cargo test --lib quic -- --nocapture`: passed 2 tests.
+  - `RUST_LOG=error cargo test --lib zero -- --nocapture`: passed 11 tests.
+  - `RUST_LOG=error P2P_FUZZ_NODES=86 P2P_FUZZ_STEPS=6600 P2P_FUZZ_SEED=123049 cargo test --lib fuzz_random_adversarial_node_actions_must_not_panic_connection_tasks -- --nocapture`:
+    passed 1 test.
+- Reviewer cross-check: `Einstein` returned `NO_NEW_CRITICAL` after
+  independently reviewing the same configuration/package/examples/dependency
+  slice. Reviewer verification included `cargo check`, `cargo check
+  --examples`, `cargo check --no-default-features`, `cargo package --list`,
+  `cargo tree -d`, `cargo tree -e features`, readme (1 passed), secure (10
+  passed), quic (2 passed), zero (11 passed), and the same 86-node 6600-step
+  adversarial fuzz seed `123049` (1 passed).
+- Duplicate mapping:
+  - Packaged dev cert/key files, `Cargo.toml.orig`, README/example
+    open-cluster snippets, example shared key defaults, and setup wording map
+    to prior package/config/example setup reviews, ISSUE-207, ISSUE-223,
+    ISSUE-244, RC-1, and RC-4. Current library API requires explicit
+    key/cert/secure inputs; examples mark open-cluster usage as demo/example
+    setup.
+  - `InboundPeerBindings` default, explicit `insecure_open_cluster()`, static
+    peer binding authorization, shared-key/certificate setup, and peer identity
+    binding map to ISSUE-002, ISSUE-021, ISSUE-146, ISSUE-176, ISSUE-207,
+    ISSUE-223, ISSUE-244, RC-1, and RC-4. Current default is strict
+    `Static(HashMap::new())`, while open-cluster admission is opt-in.
+  - Zero or invalid timing/config paths map to ISSUE-001 and RC-4. Current
+    `P2pNetwork::new` rejects `tick_ms == 0`, and zero-interval service tests
+    pass without panic.
+  - Production `unwrap`/`expect`/panic candidates in this slice map to prior
+    codec, lifecycle, and config review families, especially RC-5 and RC-6;
+    inspected sites were test-only, constant/invariant conversions, or already
+    covered by existing checks.
+  - Feature/dependency/package build posture maps to prior package/dependency
+    reviews and RC-1/RC-5. `cargo check`, examples, no-default-features,
+    package listing, duplicate tree, and feature tree did not expose a new
+    score-80+ failing case.
+  - High-load bad-network churn maps to RC-6 and RC-7. The 86-node churn run
+    produced expected refused connection, timeout, duplicate connection,
+    peer-stopped, no-available-capacity, and connection-lost logs without panic
+    or invariant failure.
+- Result: no distinct score-80+ configuration/package/examples/dependency
+  setup, default cert/key, insecure example, feature, production panic, or
+  high-load bad-network issue had concrete reviewer-accepted failing-test
+  evidence in this cycle.
 
 ### Critical-only no-new cycle 33 after ISSUE-247: public API requester and service lifecycle
 

@@ -7,11 +7,43 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Accepted issues: 247
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 33
-- Current audit continuation: critical-only public API/requester/service
-  lifecycle, service id bounds, false success, queue pressure, stale state, and
+- Current consecutive no-new-issue cycles: 34
+- Current audit continuation: critical-only configuration, package, examples,
+  dependency, secure setup, default cert/key, feature, production panic, and
   bad-network churn
   review found no new score-80+ issue with concrete failing-test evidence.
+- Critical-only no-new cycle 34 after ISSUE-247 reviewed configuration,
+  package, examples, dependency, secure setup, default cert/key, feature,
+  production panic, and high-load churn surfaces across `Cargo.toml`,
+  `Cargo.lock`, `README.md`, `examples`, `certs/dev.cluster.*`, `src/lib.rs`,
+  `src/quic.rs`, `src/secure.rs`, `src/tests/readme.rs`, package contents,
+  features, and dependency trees. Local `cargo check`, `cargo check
+  --examples`, `cargo check --no-default-features`, `cargo package --list`,
+  `cargo tree -d`, `cargo tree -e features`, readme (1), config (6), secure
+  (10), quic (2), zero (11), and 86-node 6600-step adversarial fuzz seed
+  `123049` checks passed; `cargo package --list` still includes
+  `certs/dev.cluster.cert`, `certs/dev.cluster.key`, and `Cargo.toml.orig`,
+  but no distinct score-80+ failing path was accepted. Reviewer `Einstein`
+  returned `NO_NEW_CRITICAL` after independently reviewing the same slice and
+  passing check, examples, no-default-features, package list, dependency tree,
+  feature tree, readme (1), secure (10), quic (2), zero (11), and the same
+  fuzz seed. Rejected candidates mapped packaged dev cert/key files,
+  `Cargo.toml.orig`, README/example open-cluster snippets, example shared key
+  defaults, and setup wording to prior package/config/example setup reviews,
+  ISSUE-207, ISSUE-223, ISSUE-244, RC-1, and RC-4; `InboundPeerBindings`
+  default, explicit `insecure_open_cluster()`, static peer binding
+  authorization, shared-key/certificate setup, and peer identity binding to
+  ISSUE-002, ISSUE-021, ISSUE-146, ISSUE-176, ISSUE-207, ISSUE-223,
+  ISSUE-244, RC-1, and RC-4; zero timing/config paths to ISSUE-001 and RC-4;
+  production `unwrap`/`expect`/panic candidates to RC-5 and RC-6; and
+  high-load churn to RC-6 and RC-7. No distinct score-80+ setup/package issue
+  had reviewer-accepted failing-test evidence. Smallest future fix proposal if
+  this family regresses: pin the exact manifest feature, package path, cert/key
+  file, example line, config value, tick interval, inbound binding, production
+  panic/unwrap site, dependency edge, or fuzz seed with one focused failing
+  test, then patch only the failed manifest/package exclusion, config
+  default/validator, README/example warning, feature gate, constructor error
+  path, unwrap removal, dependency setting, or secure setup gate.
 - Critical-only no-new cycle 33 after ISSUE-247 reviewed public
   API/requester/service lifecycle, dropped requester behavior, service id
   bounds and reuse, duplicate service creation, unregistered service handles,
