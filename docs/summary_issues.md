@@ -7,10 +7,50 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Accepted issues: 247
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 25
-- Current audit continuation: critical-only public API, config, examples, and
-  runtime lifecycle review found no new score-80+ issue with concrete
+- Current consecutive no-new-issue cycles: 26
+- Current audit continuation: critical-only wire-message integrity and
+  forged/invalid peer-event review found no new score-80+ issue with concrete
   failing-test evidence.
+- Critical-only no-new cycle 26 after ISSUE-247 reviewed wire-message
+  integrity and forged/invalid peer events across `src/msg.rs`,
+  `src/stream.rs`, `src/quic.rs`, `src/peer.rs`,
+  `src/peer/peer_internal.rs`, `src/peer/peer_alias.rs`, `src/ctx.rs`,
+  `src/router.rs`, `src/discovery.rs`, `src/service.rs`, pubsub message
+  paths, and related tests. The requested `src/conn.rs`, `src/endpoint.rs`,
+  `src/proto.rs`, and `src/base.rs` files do not exist; active equivalents
+  were reviewed instead. Local forged (4), source (7), ack (30), route (27),
+  frame (1), stream (30), pubsub (92), security (55), and 70-node 5000-step
+  adversarial fuzz seed `115049` checks passed. Reviewer `Socrates` returned
+  `NO_NEW_CRITICAL` after independently reviewing the same slice, then passing
+  message (3), frame (1), codec (3), replay (6), forged (4), source (7), conn
+  (62), endpoint (0 matched because there is no endpoint module/test name),
+  router (20), pubsub (92), quic (2), and the same fuzz seed. Rejected
+  candidates mapped forged unicast/broadcast/stream source binding and
+  previous-hop normalization to ISSUE-014, ISSUE-015, ISSUE-017, ISSUE-018,
+  ISSUE-039, ISSUE-115, ISSUE-116, ISSUE-197, ISSUE-226, RC-1, and RC-2;
+  handshake replay/freshness and frame/object-size boundaries to ISSUE-002,
+  ISSUE-021, ISSUE-146, ISSUE-176, ISSUE-189, ISSUE-194, ISSUE-207,
+  ISSUE-223, ISSUE-244, RC-1, RC-3, and RC-4; stale or non-direct
+  `PeerData`, `PeerStopped`, disconnect/stat events, graceful-stop cleanup,
+  duplicate connection churn, full/closed queues, and bad-network task churn
+  to ISSUE-211 through ISSUE-225, ISSUE-231, ISSUE-238, RC-3, RC-6, and RC-7;
+  router sync poisoning, duplicate/oversized route rows, route loops,
+  stopped-peer route cleanup, and path stability to ISSUE-003, ISSUE-004,
+  ISSUE-167, ISSUE-170, ISSUE-211 through ISSUE-225, ISSUE-231, RC-6, and
+  RC-7; and pubsub membership spoofing, stale generations, RPC answer binding,
+  heartbeat/chunk bounds, requester/service liveness, and queue pressure to
+  ISSUE-020, ISSUE-039, ISSUE-048, ISSUE-080, ISSUE-108, ISSUE-115,
+  ISSUE-116, ISSUE-155, ISSUE-205, ISSUE-206, ISSUE-228, ISSUE-236,
+  ISSUE-240 through ISSUE-243, ISSUE-246, RC-1, RC-2, RC-3, RC-5, and RC-6.
+  No distinct score-80+ wire-message issue had concrete failing-test evidence.
+  Smallest future fix proposal if this family regresses: pin the exact peer
+  id, authenticated ingress peer, claimed source, destination, service id,
+  ack id, route row, frame/object length, stream handshake state, pubsub
+  channel/generation/RPC id, queue state, connection id, or fuzz seed with one
+  focused failing test, then patch only the failed source-binding guard,
+  route admission rule, frame bound, replay/freshness check, ack lifecycle,
+  stream-connect handshake, service-delivery backpressure path, pubsub
+  membership gate, or cleanup boundary.
 - Critical-only no-new cycle 25 after ISSUE-247 reviewed public API/config/
   examples/runtime lifecycle across README/getting-started examples, Cargo
   metadata, `src/lib.rs`, `src/requester.rs`, `src/service.rs`, `src/ctx.rs`,

@@ -11,10 +11,70 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 25
-- Current audit continuation: critical-only public API, config, examples, and
-  runtime lifecycle review found no new score-80+ issue with concrete
+- Current consecutive no-new-issue cycles: 26
+- Current audit continuation: critical-only wire-message integrity and
+  forged/invalid peer-event review found no new score-80+ issue with concrete
   failing-test evidence.
+
+### Critical-only no-new cycle 26 after ISSUE-247: wire-message integrity and forged peer events
+
+- Scope: reviewer-style critical-only pass over `src/msg.rs`, `src/stream.rs`,
+  `src/quic.rs`, `src/peer.rs`, `src/peer/peer_internal.rs`,
+  `src/peer/peer_alias.rs`, `src/ctx.rs`, `src/router.rs`,
+  `src/discovery.rs`, `src/service.rs`, pubsub message paths, and relevant
+  tests. Focus areas were forged unicast/broadcast/stream sources, previous-hop
+  normalization, `PeerStopped` spoofing and forwarding, stale/non-direct main
+  events, route-sync poisoning, duplicate and oversized route rows, route loops,
+  path stability, frame/object size bounds, handshake replay/freshness,
+  unicast ack admission and timeout behavior, local service delivery
+  backpressure, pubsub membership/RPC-answer spoofing, heartbeat/chunk bounds,
+  endpoint stream admission, and bad-network wire churn. The requested
+  `src/conn.rs`, `src/endpoint.rs`, `src/proto.rs`, and `src/base.rs` files do
+  not exist in this repository; their active equivalents are the files above.
+- Verification:
+  - `RUST_LOG=error cargo test --lib forged -- --nocapture`: passed 4 tests.
+  - `RUST_LOG=error cargo test --lib source -- --nocapture`: passed 7 tests.
+  - `RUST_LOG=error cargo test --lib ack -- --nocapture`: passed 30 tests.
+  - `RUST_LOG=error cargo test --lib route -- --nocapture`: passed 27 tests.
+  - `RUST_LOG=error cargo test --lib frame -- --nocapture`: passed 1 test.
+  - `RUST_LOG=error cargo test --lib stream -- --nocapture`: passed 30 tests.
+  - `RUST_LOG=error cargo test --lib pubsub -- --nocapture`: passed 92 tests.
+  - `RUST_LOG=error cargo test --lib security -- --nocapture`: passed 55
+    tests.
+  - `RUST_LOG=error P2P_FUZZ_NODES=70 P2P_FUZZ_STEPS=5000 P2P_FUZZ_SEED=115049 cargo test --lib fuzz_random_adversarial_node_actions_must_not_panic_connection_tasks -- --nocapture`:
+    passed.
+- Reviewer cross-check: `Socrates` returned `NO_NEW_CRITICAL` after
+  independently reviewing the same wire-integrity and forged-event slice.
+  Reviewer verification included `message` (3 passed), `frame` (1 passed),
+  `codec` (3 passed), `replay` (6 passed), `forged` (4 passed), `source` (7
+  passed), `conn` (62 passed), `endpoint` (0 matched because there is no
+  endpoint module/test name), `router` (20 passed), `pubsub` (92 passed),
+  `quic` (2 passed), and 70-node 5000-step adversarial fuzz seed `115049` (1
+  passed).
+- Duplicate mapping:
+  - Forged unicast/broadcast/stream source binding and previous-hop
+    normalization map to ISSUE-014, ISSUE-015, ISSUE-017, ISSUE-018,
+    ISSUE-039, ISSUE-115, ISSUE-116, ISSUE-197, ISSUE-226, RC-1, and RC-2.
+  - Handshake replay/freshness and frame/object-size boundaries map to
+    ISSUE-002, ISSUE-021, ISSUE-146, ISSUE-176, ISSUE-189, ISSUE-194,
+    ISSUE-207, ISSUE-223, ISSUE-244, RC-1, RC-3, and RC-4.
+  - Stale or non-direct `PeerData`, `PeerStopped`, disconnect/stat events,
+    graceful-stop cleanup, duplicate connection churn, full/closed queues, and
+    bad-network task churn map to ISSUE-211 through ISSUE-225, ISSUE-231,
+    ISSUE-238, RC-3, RC-6, and RC-7.
+  - Router sync poisoning, duplicate or oversized route rows, route loops,
+    stopped-peer route cleanup, and active path stability map to ISSUE-003,
+    ISSUE-004, ISSUE-167, ISSUE-170, ISSUE-211 through ISSUE-225, ISSUE-231,
+    RC-6, and RC-7.
+  - Pubsub membership spoofing, stale generations, RPC answer binding,
+    heartbeat/chunk bounds, requester/service liveness, and queue pressure map
+    to ISSUE-020, ISSUE-039, ISSUE-048, ISSUE-080, ISSUE-108, ISSUE-115,
+    ISSUE-116, ISSUE-155, ISSUE-205, ISSUE-206, ISSUE-228, ISSUE-236,
+    ISSUE-240 through ISSUE-243, ISSUE-246, RC-1, RC-2, RC-3, RC-5, and RC-6.
+- Result: no distinct score-80+ wire-message, forged-source, forged-stop,
+  route-poisoning, replay/frame, ack, stream-connect, pubsub spoofing,
+  service-delivery, endpoint admission, or high-load bad-network wire issue had
+  concrete failing-test evidence in this cycle.
 
 ### Critical-only no-new cycle 25 after ISSUE-247: public API, config, examples, and lifecycle
 
