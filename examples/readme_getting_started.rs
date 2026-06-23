@@ -6,6 +6,7 @@ use rustls::pki_types::{CertificateDer, PrivatePkcs8KeyDer};
 pub const DEFAULT_CLUSTER_CERT: &[u8] = include_bytes!("../certs/dev.cluster.cert");
 pub const DEFAULT_CLUSTER_KEY: &[u8] = include_bytes!("../certs/dev.cluster.key");
 
+#[allow(dead_code)]
 async fn readme_snippet(addr: SocketAddr, advertise: bool) -> anyhow::Result<()> {
     let priv_key: PrivatePkcs8KeyDer<'_> = PrivatePkcs8KeyDer::from(DEFAULT_CLUSTER_KEY.to_vec());
     let cert = CertificateDer::from(DEFAULT_CLUSTER_CERT.to_vec());

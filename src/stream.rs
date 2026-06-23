@@ -7,7 +7,7 @@ use std::{
 };
 
 use anyhow::anyhow;
-use serde::{Serialize, de::DeserializeOwned};
+use serde::{de::DeserializeOwned, Serialize};
 use tokio_util::codec::LengthDelimitedCodec;
 use tokio_util::codec::{Decoder, Encoder};
 
@@ -139,15 +139,15 @@ mod tests {
     use std::cell::Cell;
 
     use futures::FutureExt;
-    use serde::{Serializer, ser::SerializeSeq};
+    use serde::{ser::SerializeSeq, Serializer};
     use tokio_util::{
         bytes::BytesMut,
         codec::{Decoder, Encoder},
     };
 
     use crate::{
-        PeerId,
         msg::{P2pServiceId, PeerMessage},
+        PeerId,
     };
 
     use super::*;

@@ -176,7 +176,7 @@ impl SharedKeyHandshake {
         let mut oldest: Option<(ReplayScope, [u8; 32], u64)> = None;
         for (scope, tokens) in accepted_tokens.iter() {
             for (token_id, token) in tokens.iter() {
-                if oldest.map_or(true, |(_, _, accepted_at)| token.accepted_at < accepted_at) {
+                if oldest.is_none_or(|(_, _, accepted_at)| token.accepted_at < accepted_at) {
                     oldest = Some((*scope, *token_id, token.accepted_at));
                 }
             }

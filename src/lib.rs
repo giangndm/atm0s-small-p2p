@@ -326,9 +326,7 @@ impl<SECURE: HandshakeProtocol> P2pNetwork<SECURE> {
 
     fn process_incoming(&mut self, incoming: Incoming) -> anyhow::Result<P2pNetworkEvent> {
         let remote = incoming.remote_address();
-        if self.neighbours.pending_unauthenticated_inbound_count(|conn_id| self.ctx.conn(conn_id).is_some())
-            >= MAX_PENDING_UNAUTHENTICATED_INBOUND_CONNECTIONS
-        {
+        if self.neighbours.pending_unauthenticated_inbound_count(|conn_id| self.ctx.conn(conn_id).is_some()) >= MAX_PENDING_UNAUTHENTICATED_INBOUND_CONNECTIONS {
             log::warn!("[P2pNetwork] incoming connect from {remote} => refuse, pending unauthenticated inbound limit reached");
             incoming.refuse();
             return Ok(P2pNetworkEvent::Continue);

@@ -907,15 +907,12 @@ mod tests {
         let _dummy = main_rx.recv().await.expect("dummy event should drain from the full queue");
         let delivered = tokio::time::timeout(Duration::from_secs(1), async {
             loop {
-                match main_rx.recv().await.expect("peer task should keep main event channel open") {
-                    MainEvent::PeerData(event_conn, remote_peer, PeerMainData::Sync { route, advertise }) => {
-                        assert_eq!(event_conn, conn_id, "sync must come from the authenticated connection");
-                        assert_eq!(remote_peer, remote_id, "sync must be attributed to the authenticated peer");
-                        ctx.router().apply_sync(event_conn, route);
-                        let _ = advertise;
-                        break;
-                    }
-                    _ => {}
+                if let MainEvent::PeerData(event_conn, remote_peer, PeerMainData::Sync { route, advertise }) = main_rx.recv().await.expect("peer task should keep main event channel open") {
+                    assert_eq!(event_conn, conn_id, "sync must come from the authenticated connection");
+                    assert_eq!(remote_peer, remote_id, "sync must be attributed to the authenticated peer");
+                    ctx.router().apply_sync(event_conn, route);
+                    let _ = advertise;
+                    break;
                 }
             }
         })
@@ -1095,8 +1092,10 @@ mod tests {
                         }
                     }
                 }
-                if node.ctx.conns().into_iter().next().is_some() && raw_framed.is_some() {
-                    return raw_framed.expect("raw framed should be available");
+                if node.ctx.conns().into_iter().next().is_some() {
+                    if let Some(framed) = raw_framed {
+                        return framed;
+                    }
                 }
             }
         })
@@ -1194,8 +1193,10 @@ mod tests {
                         }
                     }
                 }
-                if node.ctx.conns().into_iter().next().is_some() && raw_framed.is_some() {
-                    return raw_framed.expect("raw framed should be available");
+                if node.ctx.conns().into_iter().next().is_some() {
+                    if let Some(framed) = raw_framed {
+                        return framed;
+                    }
                 }
             }
         })

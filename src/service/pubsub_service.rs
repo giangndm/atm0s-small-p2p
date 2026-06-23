@@ -12,9 +12,13 @@ use std::{
 
 use anyhow::anyhow;
 use derive_more::derive::{Display, From};
-use publisher::{PublisherHandleId, PublisherLocalId};
+use publisher::PublisherHandleId;
+#[cfg(test)]
+use publisher::PublisherLocalId;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
-use subscriber::{SubscriberHandleId, SubscriberLocalId};
+use subscriber::SubscriberHandleId;
+#[cfg(test)]
+use subscriber::SubscriberLocalId;
 use thiserror::Error;
 use tokio::{
     select,
@@ -277,6 +281,7 @@ impl PubsubChannelState {
         self.remote_subscribers.get(&peer).is_some_and(|state| state.active)
     }
 
+    #[cfg(test)]
     fn active_remote_publishers_count(&self) -> usize {
         self.active_remote_publishers().count()
     }

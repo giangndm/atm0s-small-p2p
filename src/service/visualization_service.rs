@@ -217,8 +217,8 @@ impl VisualizationService {
         }
 
         let now = now_ms();
-        if self.neighbours.contains_key(&from) {
-            self.neighbours.insert(from, now);
+        if let std::collections::hash_map::Entry::Occupied(mut entry) = self.neighbours.entry(from) {
+            entry.insert(now);
             self.outs.push_back(VisualizationServiceEvent::PeerUpdated(from, neighbours));
             return;
         }

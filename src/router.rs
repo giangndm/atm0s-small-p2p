@@ -417,9 +417,9 @@ impl SharedRouterTable {
 
 #[cfg(test)]
 mod tests {
-    use crate::{ConnectionId, PeerId, router::RouterTableSync};
+    use crate::{router::RouterTableSync, ConnectionId, PeerId};
 
-    use super::{MAX_HOPS, MAX_SYNC_ENTRIES, RouteAction, RouterTable};
+    use super::{RouteAction, RouterTable, MAX_HOPS, MAX_SYNC_ENTRIES};
 
     #[test_log::test]
     fn route_local() {

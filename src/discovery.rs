@@ -161,9 +161,9 @@ impl PeerDiscovery {
 
 #[cfg(test)]
 mod test {
-    use crate::{PeerAddress, PeerId, discovery::PeerDiscoverySync};
+    use crate::{discovery::PeerDiscoverySync, PeerAddress, PeerId};
 
-    use super::{MAX_STOPPED_TOMBSTONES, MAX_SYNC_ENTRIES, PeerDiscovery, TIMEOUT_AFTER, is_dialable_advertise_address};
+    use super::{is_dialable_advertise_address, PeerDiscovery, MAX_STOPPED_TOMBSTONES, MAX_SYNC_ENTRIES, TIMEOUT_AFTER};
 
     fn peer_addr(addr: &str) -> PeerAddress {
         addr.parse().expect("should parse peer address")

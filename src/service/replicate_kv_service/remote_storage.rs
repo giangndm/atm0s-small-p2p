@@ -226,7 +226,6 @@ where
 
     fn on_tick(&mut self, ctx: &mut StateCtx<N, K, V>, now: Instant) {
         if let Some((sent_at, req)) = self.sending_req.as_mut() {
-            let now = now;
             if now - *sent_at >= REQUEST_TIMEOUT {
                 log::warn!("[RemoteStore {:?}] syncFull timeout => resend", ctx.remote);
                 *sent_at = now;
