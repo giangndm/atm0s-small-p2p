@@ -7,13 +7,38 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Accepted issues: 246
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 34
-- Current audit continuation: critical-only production panic, overflow, and
-  resource-bound no-new cycle 36 found no new score-80+ issue across
-  production panic/unwrap/expect paths, serialization/deserialization errors,
-  timestamp/arithmetic overflow, bounded caches/maps/channels/semaphores,
-  pending RPC/ack/stream state, malformed inputs, timers/deadlines, and
-  high-load churn fuzz behavior.
+- Current consecutive no-new-issue cycles: 35
+- Current audit continuation: critical-only build, package, feature-gating,
+  platform, and release-profile no-new cycle 37 found no new score-80+ issue
+  across manifest dependency split, package contents, examples, README build
+  contract, downstream release consumer compileability, crate-local cfg/feature
+  surfaces, public exports, release-mode panic/overflow behavior, and
+  all-target builds.
+- Critical-only no-new cycle 37 reviewed build, package, feature-gating,
+  platform, and release-profile surfaces in `Cargo.toml`, package contents,
+  examples, README build contract, public exports in `lib.rs`, crate-local
+  `cfg`/feature assumptions, dev/prod dependency split, release behavior, and
+  downstream consumer compileability. `cargo metadata`, `cargo package
+  --list`, `cargo package --allow-dirty`, `cargo tree -e features`, release
+  lib/example checks, all-target checks, a downstream release consumer smoke,
+  release panic tests, release overflow tests, and release README tests passed
+  with existing warnings only. Reviewer `Singer the 2nd` returned
+  `NO_NEW_CRITICAL` after independently reviewing dependency/dev-dependency
+  split, empty feature set, feature unification, package metadata and
+  contents, examples, README build commands, public exports, release-profile
+  panic behavior, downstream consumer compileability, and platform/cfg
+  surfaces. Rejected candidates mapped to cycles 19/23/35, ISSUE-244, and
+  RC-1 for demo certs, shared-key strings, open-cluster examples, and package
+  assumptions; cycle 35 for dependency/default-feature and downstream
+  consumer concerns; ISSUE-052, ISSUE-053, ISSUE-060, ISSUE-072, ISSUE-073,
+  ISSUE-076, ISSUE-091, ISSUE-234, ISSUE-235, ISSUE-246, RC-6, and cycles
+  33/35 for public API/config/service misuse; cycle 36 plus panic/overflow
+  tests for release panic/overflow concerns; and ISSUE-211 through ISSUE-213,
+  RC-7, and cycle 32 for seed/discovery config behavior. Missing manifest
+  repository/homepage/documentation metadata and packaged `Cargo.toml.orig`
+  had no concrete score-80+ failing-test evidence. No distinct score-80+
+  build, package, feature-gating, platform, downstream consumer, all-target,
+  or release-profile issue had concrete failing-test evidence.
 - Critical-only no-new cycle 36 reviewed production panic, overflow, and
   resource-bound surfaces in non-test code across `secure.rs`, `router.rs`,
   `discovery.rs`, `stream.rs`, `ctx.rs`, `peer.rs`, `peer_internal.rs`,

@@ -11,13 +11,77 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 34
-- Current audit continuation: critical-only production panic, overflow, and
-  resource-bound no-new cycle 36 found no new score-80+ issue across
-  production panic/unwrap/expect paths, serialization/deserialization errors,
-  timestamp/arithmetic overflow, bounded caches/maps/channels/semaphores,
-  pending RPC/ack/stream state, malformed inputs, timers/deadlines, and
-  high-load churn fuzz behavior.
+- Current consecutive no-new-issue cycles: 35
+- Current audit continuation: critical-only build, package, feature-gating,
+  platform, and release-profile no-new cycle 37 found no new score-80+ issue
+  across manifest dependency split, package contents, examples, README build
+  contract, downstream release consumer compileability, crate-local cfg/feature
+  surfaces, public exports, release-mode panic/overflow behavior, and
+  all-target builds.
+
+### Critical-only no-new cycle 37: build, package, feature, and release profile
+
+- Scope: reviewer-style critical-only pass over `Cargo.toml`, package
+  contents, examples, README build contract, public exports in `src/lib.rs`,
+  crate-local `cfg`/feature/platform assumptions, dev/prod dependency split,
+  feature unification, release-profile behavior, and downstream consumer
+  compileability.
+- Focus areas: package verification from the generated tarball, example/dev
+  certificate packaging, feature graph and dev-only dependencies, empty crate
+  feature set, platform-specific cfg gaps, all-target compilation, release
+  check behavior, downstream consumer release build behavior without
+  dev-dependency feature unification, and release-mode panic/overflow
+  divergence.
+- Verification:
+  - `cargo metadata --no-deps --format-version 1`: passed and showed no crate
+    features plus normal/dev dependency kinds.
+  - `cargo package --list`: passed; package contained 60 files including
+    docs, examples, tests, dev certs, and `Cargo.toml.orig`.
+  - `cargo package --allow-dirty`: packaged and verified successfully with
+    existing warnings only.
+  - `cargo tree -e features`: passed; reviewed feature graph and dev feature
+    resolution.
+  - `cargo check --release --lib`: passed with existing warnings only.
+  - `cargo check --release --examples`: passed with existing warnings only.
+  - `cargo check --all-targets`: passed with existing warnings only.
+  - Temporary downstream crate using `atm0s-small-p2p = { path = ... }` and a
+    small `PeerAddress`/`NetworkAddress` public API smoke in release mode:
+    `cargo check --release` passed with existing warnings only.
+  - `RUST_LOG=error cargo test --release panic --lib -- --nocapture`: passed
+    32 tests.
+  - `RUST_LOG=error cargo test --release overflow --lib -- --nocapture`:
+    passed 12 tests.
+  - `RUST_LOG=error cargo test --release readme --lib -- --nocapture`: passed
+    1 test.
+- Reviewer cross-check: `Singer the 2nd` returned `NO_NEW_CRITICAL` after
+  reviewing `Cargo.toml`, dependency/dev-dependency split, empty feature set,
+  feature unification, package metadata and contents, examples, README build
+  commands, public exports, release-profile panic behavior, downstream
+  consumer compileability, and platform/cfg surfaces. Reviewer verification
+  included package listing and package verification, feature tree, metadata,
+  release lib/examples/all-target checks, downstream release consumer check,
+  release panic/config tests, and relevant test listing review.
+- Duplicate mapping:
+  - Packaged demo cert/key files, example shared-key strings, explicit
+    open-cluster examples, and package-content assumptions map to cycles 19,
+    23, and 35, ISSUE-244, and RC-1.
+  - Dependency/default-feature and downstream consumer concerns map to cycle
+    35, the temporary consumer compile checks, and the package/dependency
+    candidates rejected there.
+  - Public exports, public service/config misuse, requester/service drop
+    behavior, and service-id bounds map to ISSUE-052, ISSUE-053, ISSUE-060,
+    ISSUE-072, ISSUE-073, ISSUE-076, ISSUE-091, ISSUE-234, ISSUE-235,
+    ISSUE-246, RC-6, and cycles 33/35.
+  - Release panic/overflow concerns map to cycle 36 plus existing panic and
+    overflow tests.
+  - Seed/discovery config, non-dialable addresses, and high-load seed cap
+    behavior map to ISSUE-211 through ISSUE-213, RC-7, and cycle 32.
+  - Missing manifest repository/homepage/documentation metadata and packaged
+    `Cargo.toml.orig` had no concrete score-80+ correctness, security, or
+    stability failing-test evidence.
+- Result: no distinct score-80+ build, package, feature-gating, platform,
+  downstream consumer, all-target, or release-profile issue had concrete
+  failing-test evidence in this cycle.
 
 ### Critical-only no-new cycle 36: production panic, overflow, and resource bounds
 
