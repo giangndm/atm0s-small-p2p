@@ -11,10 +11,71 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 16
-- Current audit continuation: critical-only high-load resource cap,
-  backpressure, and unbounded-state review found no new score-80+ issue with
-  concrete failing-test evidence.
+- Current consecutive no-new-issue cycles: 17
+- Current audit continuation: critical-only replicated-KV consistency,
+  version arithmetic, snapshot/change replay, and lifecycle review found no
+  new score-80+ issue with concrete failing-test evidence.
+
+### Critical-only no-new cycle 17 after ISSUE-247: replicated-KV consistency and version lifecycle
+
+- Scope: reviewer-style critical-only pass over
+  `src/service/replicate_kv_service.rs`,
+  `src/service/replicate_kv_service/local_storage.rs`,
+  `src/service/replicate_kv_service/remote_storage.rs`,
+  `src/service/replicate_kv_service/messages.rs`, related replicated-KV tests,
+  and service/network interactions in `src/ctx.rs`, `src/service.rs`,
+  `src/lib.rs`, `src/msg.rs`, and `src/peer.rs` as needed. Focus areas were
+  version monotonicity, checked snapshot/change arithmetic, snapshot page and
+  staged-slot admission, malformed/oversized snapshots, remote changed-version
+  replay, pending future changes, delete/set edge cases, local/remote
+  divergence under partitions, stale source acceptance, shutdown cleanup,
+  full/closed outbound queues, task leaks, panic/overflow paths, and
+  high-load/bad-network random actions.
+- Verification:
+  - `RUST_LOG=error cargo test --lib replicate -- --nocapture`: passed 65
+    tests.
+  - `RUST_LOG=error cargo test --lib snapshot -- --nocapture`: passed 23 tests.
+  - `RUST_LOG=error cargo test --lib changed -- --nocapture`: passed 18 tests.
+  - `RUST_LOG=error cargo test --lib version -- --nocapture`: passed 11 tests.
+  - `RUST_LOG=error cargo test --lib remote -- --nocapture`: passed 86 tests.
+  - `RUST_LOG=error cargo test --lib stale -- --nocapture`: passed 25 tests.
+  - `RUST_LOG=error cargo test --lib shutdown -- --nocapture`: passed 8 tests.
+  - `RUST_LOG=error cargo test --lib malformed -- --nocapture`: 0 matching
+    tests.
+  - `RUST_LOG=error cargo test --lib overflow -- --nocapture`: passed 12 tests.
+  - `RUST_LOG=error P2P_FUZZ_NODES=52 P2P_FUZZ_STEPS=3200 P2P_FUZZ_SEED=106049 cargo test --lib fuzz_random_adversarial_node_actions_must_not_panic_connection_tasks -- --nocapture`:
+    passed.
+- Reviewer cross-check: `Heisenberg the 2nd` initially returned
+  `NEW_CRITICAL` for an alleged `WorkingState` version overflow path. The
+  proposed focused test,
+  `working_state_remote_max_version_broadcast_must_not_panic`, was run locally
+  and passed on the current debug build: `Version(0)` plus a remote
+  `Version(u64::MAX)` computes `from = Version(1)`, `count = u64::MAX`, and
+  `requested_to = u64::MAX` without overflow. A second narrow reviewer,
+  `Darwin the 2nd`, returned `NO_NEW_CRITICAL` and confirmed the candidate is
+  not live because the relevant `WorkingState` arithmetic is guarded by
+  ordered-version checks; a remote can initialize a store at `u64::MAX`, but no
+  higher version exists to drive the overflow branches.
+- Duplicate mapping:
+  - Local replicated-KV version increment, `FetchChanged` range arithmetic,
+    max-version set/delete behavior, and overflow handling map to ISSUE-023,
+    ISSUE-031, existing replicated-KV overflow families, RC-5, and RC-6.
+  - Snapshot pagination, continuation bounds, stale terminal snapshots,
+    malformed or oversized pages, staged-slot caps, zero compose budgets, and
+    full-sync replacement behavior map to existing replicated-KV
+    snapshot/resource/divergence families, RC-3, RC-5, RC-6, and RC-7.
+  - Working-state gap repair, duplicate/out-of-range changed versions, stale
+    fetch responses, pending future changed caps, partial repair, and full
+    resync fallback map to existing replicated-KV repair/liveness/resource
+    families, RC-3, RC-6, and RC-7.
+  - Remote store creation caps, unsolicited RPC responses, peer graceful stop,
+    stale remote cleanup, service queue closure, serialization failure, and
+    high-load churn map to ISSUE-217 through ISSUE-230, ISSUE-246,
+    replicated-KV lifecycle families, RC-3, RC-5, RC-6, and RC-7.
+- Result: no distinct score-80+ replicated-KV version arithmetic, snapshot
+  pagination, changed replay, divergence, queue lifecycle, graceful shutdown,
+  malformed input, or high-load bad-network stability issue had concrete
+  failing-test evidence in this cycle.
 
 ### Critical-only no-new cycle 16 after ISSUE-247: high-load resource caps and backpressure
 

@@ -7,10 +7,48 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Accepted issues: 247
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 16
-- Current audit continuation: critical-only high-load resource cap,
-  backpressure, and unbounded-state review found no new score-80+ issue with
-  concrete failing-test evidence.
+- Current consecutive no-new-issue cycles: 17
+- Current audit continuation: critical-only replicated-KV consistency,
+  version arithmetic, snapshot/change replay, and lifecycle review found no
+  new score-80+ issue with concrete failing-test evidence.
+- Critical-only no-new cycle 17 after ISSUE-247 reviewed replicated-KV service,
+  local storage, remote storage, message/version types, service/network
+  interactions, and replicated-KV, snapshot, changed, version, remote, stale,
+  shutdown, malformed, overflow, and adversarial fuzz tests. Local replicate,
+  snapshot, changed, version, remote, stale, shutdown, overflow, and 52-node
+  3200-step adversarial fuzz seed `106049` checks passed; `malformed` had zero
+  matching tests. Reviewer `Heisenberg the 2nd` initially proposed a
+  score-90 `WorkingState` remote-version overflow candidate, but the exact
+  proposed focused test passed locally because `Version(0)` plus remote
+  `Version(u64::MAX)` computes `from = Version(1)`, `count = u64::MAX`, and
+  `requested_to = u64::MAX` without overflowing. Narrow reviewer `Darwin the
+  2nd` returned `NO_NEW_CRITICAL`, confirming the live arithmetic is guarded:
+  `version - self.version` only runs after `version > self.version`,
+  remaining-response subtraction only runs after `self.version < requested_to`,
+  pending gap math only uses accepted higher versions, and no version higher
+  than `u64::MAX` can be accepted after a max-version full sync. Rejected
+  candidates mapped local replicated-KV version increment, `FetchChanged`
+  arithmetic, max-version set/delete, and overflow handling to ISSUE-023,
+  ISSUE-031, existing replicated-KV overflow families, RC-5, and RC-6;
+  snapshot pagination, continuation bounds, stale terminal snapshots,
+  malformed or oversized pages, staged-slot caps, zero compose budgets, and
+  full-sync replacement behavior to existing replicated-KV snapshot/resource/
+  divergence families, RC-3, RC-5, RC-6, and RC-7; working-state gap repair,
+  duplicate/out-of-range changed versions, stale fetch responses, pending
+  future changed caps, partial repair, and full-resync fallback to existing
+  replicated-KV repair/liveness/resource families, RC-3, RC-6, and RC-7; and
+  remote store creation caps, unsolicited RPC responses, graceful stop, stale
+  remote cleanup, service queue closure, serialization failure, and high-load
+  churn to ISSUE-217 through ISSUE-230, ISSUE-246, replicated-KV lifecycle
+  families, RC-3, RC-5, RC-6, and RC-7. No distinct score-80+ replicated-KV
+  version arithmetic, snapshot pagination, changed replay, divergence, queue
+  lifecycle, graceful shutdown, malformed input, or high-load bad-network
+  stability issue had concrete failing-test evidence. Smallest future fix
+  proposal if this family regresses: pin the exact remote version, snapshot
+  page, changed range, pending map, graceful-stop event, queue closure,
+  serialization failure, or fuzz seed with one focused failing test, then
+  patch only the failed checked arithmetic, pagination bound, replay
+  admission, full-resync transition, cleanup, or backpressure boundary.
 - Critical-only no-new cycle 16 after ISSUE-247 reviewed `src/secure.rs`,
   `src/discovery.rs`, `src/router.rs`, `src/lib.rs`, `src/ctx.rs`,
   `src/peer.rs`, `src/peer/peer_internal.rs`, `src/msg.rs`,
