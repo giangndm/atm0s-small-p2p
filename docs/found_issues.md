@@ -11,10 +11,63 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 14
-- Current audit continuation: critical-only identity/source-binding and
-  authorization review found no new score-80+ issue with concrete failing-test
-  evidence.
+- Current consecutive no-new-issue cycles: 15
+- Current audit continuation: critical-only public config, binding, address,
+  discovery, and QUIC endpoint review found no new score-80+ issue with
+  concrete failing-test evidence.
+
+### Critical-only no-new cycle 15 after ISSUE-247: config, bindings, and endpoint setup
+
+- Scope: reviewer-style critical-only pass over `src/lib.rs`, `src/quic.rs`,
+  `src/peer.rs`, `src/secure.rs`, `src/discovery.rs`, `src/requester.rs`,
+  README/examples, and config, discovery, connect, QUIC, readme, requester,
+  handshake, unauthenticated inbound, address, duplicate, seed, advertise, and
+  adversarial fuzz tests. Focus areas were public config safety, static
+  inbound peer bindings, peer-id/address mismatch, self-connect, duplicate
+  connect coalescing, advertised-address validation, seed/non-seed cleanup,
+  QUIC/TLS endpoint assumptions, setup timeouts, unauthenticated admission
+  pressure, and insecure-open-cluster posture.
+- Verification:
+  - `RUST_LOG=error cargo test --lib config -- --nocapture`: passed 6 tests.
+  - `RUST_LOG=error cargo test --lib discovery -- --nocapture`: passed 37
+    tests.
+  - `RUST_LOG=error cargo test --lib connect -- --nocapture`: passed 62 tests.
+  - `RUST_LOG=error cargo test --lib quic -- --nocapture`: passed 2 tests.
+  - `RUST_LOG=error cargo test --lib readme -- --nocapture`: passed 1 test.
+  - `cargo check --examples`: passed with existing warnings only.
+  - `RUST_LOG=error cargo test --lib static -- --nocapture`: 0 matching tests.
+  - `RUST_LOG=error P2P_FUZZ_NODES=48 P2P_FUZZ_STEPS=2800 P2P_FUZZ_SEED=104049 cargo test --lib fuzz_random_adversarial_node_actions_must_not_panic_connection_tasks -- --nocapture`:
+    passed.
+- Reviewer cross-check: `Curie the 2nd` returned `NO_NEW_CRITICAL` after
+  independently reviewing the same config/binding/endpoint slice. Reviewer
+  verification included address, peer-id, own-peer-address, duplicate, seed,
+  advertise, QUIC, requester, inbound-handshake, unauthenticated, readme,
+  source, forged, and examples checks; all matching tests passed. Reviewer
+  `binding/open_cluster` filter had zero matching tests, and one invalid
+  combined Cargo command was rerun as separate valid filters.
+- Duplicate mapping:
+  - Static inbound binding, wrong peer-id/address, self-connect, duplicate
+    connect, reconnect coalescing, and open-cluster posture map to ISSUE-189,
+    ISSUE-194, ISSUE-244, RC-1, RC-4, RC-6, and prior public API/identity
+    cycles 10 and 14.
+  - Advertised address validation, non-dialable addresses, seed/non-seed
+    cleanup, stale discovery, stopped tombstones, duplicate discovery rows,
+    local-peer advertisements, and configured seed behavior map to ISSUE-001,
+    ISSUE-003, ISSUE-004, ISSUE-167, ISSUE-170, ISSUE-211 through ISSUE-225,
+    ISSUE-231, RC-6, and RC-7.
+  - QUIC/TLS setup, control-stream open/write timeouts, stream admission,
+    unused unidirectional stream admission, unauthenticated inbound pressure,
+    requester/control backpressure, and endpoint drop/refusal behavior map to
+    ISSUE-117, ISSUE-172, ISSUE-173, ISSUE-217, ISSUE-220 through ISSUE-223,
+    ISSUE-238, ISSUE-246, RC-3, and RC-4.
+  - Source/remote authorization, forged source handling, peer-data peer-id
+    validation, and direct-route ownership checks map to ISSUE-014,
+    ISSUE-015, ISSUE-017, ISSUE-018, ISSUE-039, ISSUE-115, ISSUE-116,
+    ISSUE-197, ISSUE-226, RC-1, and RC-2.
+- Result: no distinct score-80+ public config, static binding, address
+  parsing, advertise/seed cleanup, QUIC/TLS endpoint setup, unauthenticated
+  admission, requester/connect, or high-load bad-network stability issue had
+  concrete failing-test evidence in this cycle.
 
 ### Critical-only no-new cycle 14 after ISSUE-247: identity and source binding
 

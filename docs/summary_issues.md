@@ -7,10 +7,49 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Accepted issues: 247
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 14
-- Current audit continuation: critical-only identity/source-binding and
-  authorization review found no new score-80+ issue with concrete failing-test
-  evidence.
+- Current consecutive no-new-issue cycles: 15
+- Current audit continuation: critical-only public config, binding, address,
+  discovery, and QUIC endpoint review found no new score-80+ issue with
+  concrete failing-test evidence.
+- Critical-only no-new cycle 15 after ISSUE-247 reviewed `src/lib.rs`,
+  `src/quic.rs`, `src/peer.rs`, `src/secure.rs`, `src/discovery.rs`,
+  `src/requester.rs`, README/examples, and config, discovery, connect, QUIC,
+  readme, requester, handshake, unauthenticated inbound, address, duplicate,
+  seed, advertise, and fuzz tests. Local config, discovery, connect, QUIC,
+  readme, examples, and 48-node 2800-step adversarial fuzz seed `104049`
+  checks passed; `static` had zero matching tests, so direct binding coverage
+  came through connect/auth tests and reviewer cross-checks. `cargo
+  check --examples` passed with existing warnings only. Reviewer `Curie the
+  2nd` returned `NO_NEW_CRITICAL` after independently reviewing the same
+  config/binding/endpoint slice, then passing address, peer-id,
+  own-peer-address, duplicate, seed, advertise, QUIC, requester,
+  inbound-handshake, unauthenticated, readme, source, forged, and examples
+  checks; `binding/open_cluster` had zero matching tests, and one invalid
+  combined Cargo command was rerun as separate valid filters. Rejected
+  candidates mapped static inbound binding, wrong peer-id/address,
+  self-connect, duplicate connect, reconnect coalescing, and open-cluster
+  posture to ISSUE-189, ISSUE-194, ISSUE-244, RC-1, RC-4, RC-6, and cycles 10
+  and 14; advertised-address validation, non-dialable addresses,
+  seed/non-seed cleanup, stale discovery, stopped tombstones, duplicate
+  discovery rows, local-peer advertisements, and configured seed behavior to
+  ISSUE-001, ISSUE-003, ISSUE-004, ISSUE-167, ISSUE-170, ISSUE-211 through
+  ISSUE-225, ISSUE-231, RC-6, and RC-7; QUIC/TLS setup, control-stream
+  open/write timeouts, stream admission, unused unidirectional stream
+  admission, unauthenticated inbound pressure, requester/control backpressure,
+  and endpoint drop/refusal behavior to ISSUE-117, ISSUE-172, ISSUE-173,
+  ISSUE-217, ISSUE-220 through ISSUE-223, ISSUE-238, ISSUE-246, RC-3, and
+  RC-4; and source/remote authorization, forged source handling, peer-data
+  peer-id validation, and direct-route ownership checks to ISSUE-014,
+  ISSUE-015, ISSUE-017, ISSUE-018, ISSUE-039, ISSUE-115, ISSUE-116,
+  ISSUE-197, ISSUE-226, RC-1, and RC-2. No distinct score-80+ public config,
+  static binding, address parsing, advertise/seed cleanup, QUIC/TLS endpoint
+  setup, unauthenticated admission, requester/connect, or high-load
+  bad-network stability issue had concrete failing-test evidence. Smallest
+  future fix proposal if this family regresses: pin the exact config value,
+  claimed peer/address, advertised row, seed/tombstone transition, endpoint
+  setup step, or admission queue with one focused failing test, then patch only
+  the failed parse/validation, binding comparison, discovery admission,
+  connection coalescing, setup timeout, or admission-cap boundary.
 - Critical-only no-new cycle 14 after ISSUE-247 reviewed `src/secure.rs`,
   `src/discovery.rs`, `src/router.rs`, `src/lib.rs`, `src/ctx.rs`,
   `src/msg.rs`, `src/peer/peer_internal.rs`, pubsub, alias, requester, and
