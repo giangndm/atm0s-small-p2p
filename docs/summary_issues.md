@@ -7,11 +7,50 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Accepted issues: 247
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 4
-- Current audit continuation: critical-only lifecycle, public requester/API,
-  service registration, control/event queue, graceful shutdown, stale event,
-  duplicate/stopped peer, and high-load churn no-new cycle after ISSUE-247
-  found no new score-80+ issue.
+- Current consecutive no-new-issue cycles: 5
+- Current audit continuation: critical-only panic/error boundary,
+  serialization/framing, handshake/auth, timeout overflow, queue/resource
+  exhaustion, and high-load churn no-new cycle after ISSUE-247 found no new
+  score-80+ issue. Per the five-clean-cycle steering rule, the next discovery
+  cycle should shift to fuzz-heavy randomized node/action coverage.
+- Critical-only no-new cycle 5 after ISSUE-247 reviewed `src/msg.rs`,
+  `src/stream.rs`, `src/secure.rs`, `src/quic.rs`, `src/utils.rs`,
+  `src/lib.rs`, `src/ctx.rs`, `src/peer.rs`,
+  `src/peer/peer_internal.rs`, service serialization/resource-limit paths,
+  `src/tests/security.rs`, `src/tests/stream.rs`, `src/tests/fuzz.rs`, and
+  the issue ledgers. Local secure, stream, codec, object, malformed,
+  overflow, security, bounded, and 38-node 1600-step sanitized churn fuzz
+  checks passed. Reviewer `Cicero the 2nd` returned `NO_NEW_CRITICAL` after
+  independently running handshake, stream, object, codec, security,
+  service-id, timeout, queue, malformed, 40-node 1800-step valid-action fuzz,
+  and 36-node 1800-step sanitized churn fuzz slices. Rejected candidates
+  mapped malformed/oversized frames, object length-prefix handling, bincode
+  failures, and service payload size limits to ISSUE-024, ISSUE-094,
+  ISSUE-097, ISSUE-098, ISSUE-174, and RC-5; handshake replay/freshness/
+  identity, timestamp overflow, replay pressure, and unauthenticated
+  admission to ISSUE-002, ISSUE-021, ISSUE-146, ISSUE-176, ISSUE-189,
+  ISSUE-194, ISSUE-207, ISSUE-244, RC-1, RC-3, and RC-4; QUIC setup, stalled
+  control/app streams, timeout behavior, and open-stream false success to
+  ISSUE-117, ISSUE-172, ISSUE-173, ISSUE-217, ISSUE-220 through ISSUE-223,
+  ISSUE-238, RC-3, and RC-4; service IDs, stale/dropped requesters,
+  duplicate services, closed/full queues, local delivery, and ack admission
+  to ISSUE-043, ISSUE-052, ISSUE-053, ISSUE-060, ISSUE-072, ISSUE-073,
+  ISSUE-076, ISSUE-091, ISSUE-100 through ISSUE-105, ISSUE-119, ISSUE-121,
+  ISSUE-123 through ISSUE-126, ISSUE-217 through ISSUE-230, ISSUE-234,
+  ISSUE-235, ISSUE-238, ISSUE-246, RC-3, RC-4, and RC-6; source forgery and
+  previous-hop binding to ISSUE-014, ISSUE-015, ISSUE-017, ISSUE-018,
+  ISSUE-039, ISSUE-115, ISSUE-116, ISSUE-197, ISSUE-226, RC-1, and RC-2;
+  and graceful stop, `PeerStopped`, bad-network churn, duplicate connections,
+  and endpoint/drop noise to ISSUE-001, ISSUE-004, ISSUE-170, ISSUE-215
+  through ISSUE-225, ISSUE-231, RC-3, RC-6, RC-7, and existing fuzz families.
+  No distinct score-80+ panic/error-boundary, serialization/framing,
+  handshake/auth, timeout-overflow, queue/resource, source-binding,
+  graceful-stop, or high-load bad-network issue had concrete failing-test
+  evidence. Smallest future fix proposal if a new issue appears in this
+  family: add the narrow missing fallible-result handling, size/admission cap,
+  checked arithmetic, or source/liveness validation at the exact boundary
+  where the failing regression reproduces; avoid broad rewrites unless the
+  failing proof crosses module boundaries.
 - Critical-only no-new cycle 4 after ISSUE-247 reviewed `src/lib.rs`,
   `src/ctx.rs`, `src/service.rs`, `src/requester.rs`, `src/peer.rs`,
   `src/peer/peer_internal.rs`, `src/peer/peer_alias.rs`,

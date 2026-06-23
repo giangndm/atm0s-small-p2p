@@ -11,11 +11,78 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 4
-- Current audit continuation: critical-only lifecycle, public requester/API,
-  service registration, control/event queue, graceful shutdown, stale event,
-  duplicate/stopped peer, and high-load churn no-new cycle after ISSUE-247
-  found no new score-80+ issue.
+- Current consecutive no-new-issue cycles: 5
+- Current audit continuation: critical-only panic/error boundary,
+  serialization/framing, handshake/auth, timeout overflow, queue/resource
+  exhaustion, and high-load churn no-new cycle after ISSUE-247 found no new
+  score-80+ issue. Per the five-clean-cycle steering rule, the next discovery
+  cycle should shift to fuzz-heavy randomized node/action coverage.
+
+### Critical-only no-new cycle 5 after ISSUE-247: panic and serialization boundaries
+
+- Scope: reviewer-style critical-only pass over `src/msg.rs`, `src/stream.rs`,
+  `src/secure.rs`, `src/quic.rs`, `src/utils.rs`, `src/lib.rs`,
+  `src/ctx.rs`, `src/peer.rs`, `src/peer/peer_internal.rs`,
+  `src/service/alias_service.rs`, `src/service/metrics_service.rs`,
+  `src/service/visualization_service.rs`, selected replicated-KV and pubsub
+  serialization/resource paths, `src/tests/security.rs`,
+  `src/tests/stream.rs`, `src/tests/fuzz.rs`, and the issue ledgers.
+- Focus areas: production `unwrap`/`expect`/panic boundaries, malformed or
+  oversized bincode/object frames, two-byte object length prefixes, handshake
+  replay/freshness/timestamp overflow, QUIC setup/admission limits,
+  service-id validation, timeout arithmetic, bounded local/peer queues,
+  source binding, and bad-network high-load churn.
+- Verification:
+  - `RUST_LOG=error cargo test --lib secure -- --nocapture`: passed 10 tests.
+  - `RUST_LOG=error cargo test --lib stream -- --nocapture`: passed 30 tests.
+  - `RUST_LOG=error cargo test --lib codec -- --nocapture`: passed 3 tests.
+  - `RUST_LOG=error cargo test --lib object -- --nocapture`: passed 4 tests.
+  - `RUST_LOG=error cargo test --lib malformed -- --nocapture`: matched 0
+    tests.
+  - `RUST_LOG=error cargo test --lib overflow -- --nocapture`: passed 12
+    tests.
+  - `RUST_LOG=error cargo test --lib security -- --nocapture`: passed 55
+    tests.
+  - `RUST_LOG=error cargo test --lib bounded -- --nocapture`: passed 31
+    tests.
+  - `RUST_LOG=error P2P_FUZZ_NODES=38 P2P_FUZZ_STEPS=1600 P2P_FUZZ_SEED=94049 cargo test --lib fuzz_random_sanitized_node_churn_actions_must_not_panic_connection_tasks -- --nocapture`:
+    passed.
+- Reviewer cross-check: `Cicero the 2nd` returned `NO_NEW_CRITICAL` after
+  independently reviewing panic/error, framing, auth, resource-limit, and fuzz
+  surfaces. Reviewer verification included handshake, stream, object, codec,
+  security, service-id, timeout, queue, malformed, a 40-node 1800-step
+  valid-action fuzz seed `94050`, and a 36-node 1800-step sanitized churn fuzz
+  seed `94051`; all passed.
+- Duplicate mapping:
+  - Malformed/oversized frames, object length-prefix handling, bincode
+    serialize/deserialize failure, and service payload size limits map to
+    ISSUE-024, ISSUE-094, ISSUE-097, ISSUE-098, ISSUE-174, and RC-5.
+  - Handshake replay/freshness/identity, timestamp overflow, replay pressure,
+    and unauthenticated admission map to ISSUE-002, ISSUE-021, ISSUE-146,
+    ISSUE-176, ISSUE-189, ISSUE-194, ISSUE-207, ISSUE-244, RC-1, RC-3, and
+    RC-4.
+  - QUIC setup, stalled control/app streams, timeout behavior, and open-stream
+    false success map to ISSUE-117, ISSUE-172, ISSUE-173, ISSUE-217,
+    ISSUE-220 through ISSUE-223, ISSUE-238, RC-3, and RC-4.
+  - Service IDs, stale/dropped requesters, duplicate services, closed/full
+    queues, local delivery, and ack admission map to ISSUE-043, ISSUE-052,
+    ISSUE-053, ISSUE-060, ISSUE-072, ISSUE-073, ISSUE-076, ISSUE-091,
+    ISSUE-100 through ISSUE-105, ISSUE-119, ISSUE-121, ISSUE-123 through
+    ISSUE-126, ISSUE-217 through ISSUE-230, ISSUE-234, ISSUE-235,
+    ISSUE-238, ISSUE-246, RC-3, RC-4, and RC-6.
+  - Source forgery, previous-hop binding, forged broadcast/unicast/stream
+    claims, and membership/data injection map to ISSUE-014, ISSUE-015,
+    ISSUE-017, ISSUE-018, ISSUE-039, ISSUE-115, ISSUE-116, ISSUE-197,
+    ISSUE-226, RC-1, and RC-2.
+  - Graceful stop, `PeerStopped`, bad-network churn, duplicate connections,
+    and endpoint/drop noise map to ISSUE-001, ISSUE-004, ISSUE-170,
+    ISSUE-215 through ISSUE-225, ISSUE-231, RC-3, RC-6, RC-7, and existing
+    fuzz families from cycles 20, 24, 28, 31, 32, 34, 36, 38, 39, 40, 41,
+    42, 43, 44, 45, 47, and 48.
+- Result: no distinct score-80+ panic/error-boundary,
+  serialization/framing, handshake/auth, timeout-overflow, queue/resource,
+  source-binding, graceful-stop, or high-load bad-network issue had concrete
+  failing-test evidence in this cycle.
 
 ### Critical-only no-new cycle 4 after ISSUE-247: lifecycle and public API control paths
 
