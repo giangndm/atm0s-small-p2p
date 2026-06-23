@@ -7,11 +7,49 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Accepted issues: 248
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 1
-- Current audit continuation: critical-only discovery, neighbour admission,
-  connection lifecycle, stopped-peer, duplicate-connect, and bad-network churn
-  review after ISSUE-248 found no new score-80+ issue with concrete
-  failing-test evidence.
+- Current consecutive no-new-issue cycles: 2
+- Current audit continuation: critical-only service/requester/control
+  boundary, local delivery, queue pressure, dropped handles, duplicate
+  service registration, and bad-network churn review after ISSUE-248 found no
+  new score-80+ issue with concrete failing-test evidence.
+- Critical-only no-new cycle 2 after ISSUE-248 reviewed core
+  service/requester/control boundaries across `src/service.rs`,
+  `src/requester.rs`, `src/ctx.rs`, `src/lib.rs`,
+  `src/peer/peer_internal.rs`, `src/tests/security.rs`,
+  `src/tests/cross_nodes.rs`, `src/tests/fuzz.rs`, and related service/stream
+  tests. Local bounded verification with `CARGO_BUILD_JOBS=8` passed service
+  (199), requester (13), cross_nodes (9), security (55), and the `<50` node
+  adversarial fuzz seed
+  `P2P_FUZZ_NODES=44 P2P_FUZZ_STEPS=3600 P2P_FUZZ_SEED=249050` (1). One local
+  ad hoc cargo invocation with multiple test names was invalid and is not used
+  as evidence. Forked reviewer `Ptolemy` returned `NO_NEW_CRITICAL` after
+  independently reviewing the same boundary and passing requester (13),
+  service (199), full (58), closed (5), duplicate_service (2), out_of_range
+  (4), pending (17), `peer_stopped_must_not_wait_behind_full` (2), and a
+  48-node adversarial fuzz seed. Rejected candidates mapped stale
+  `P2pServiceRequester` unicast/broadcast/stream sends to ISSUE-072,
+  ISSUE-073, ISSUE-108, ISSUE-246, and cycle 33; duplicate service
+  registration, rejected duplicate handles, service-id reuse, and out-of-range
+  IDs to ISSUE-052, ISSUE-053, ISSUE-234, RC-3, RC-6, and cycle 33;
+  queue-full false success, closed destination services, local delivery
+  backpressure, acked-unicast pressure, and stream setup under service queue
+  pressure to ISSUE-011, ISSUE-012, ISSUE-013, ISSUE-119, ISSUE-120,
+  ISSUE-217 through ISSUE-230, ISSUE-238, RC-3, RC-4, RC-6, and cycle 35;
+  requester/control queue full or closed behavior, pending connect answers,
+  duplicate pending connects, and stale network requesters to ISSUE-028,
+  ISSUE-125, ISSUE-215 through ISSUE-225, ISSUE-231, and requester/security
+  tests; and main-loop pressure, `PeerStopped` under full queues, graceful
+  shutdown fanout, disconnect cleanup, and churn noise to ISSUE-207,
+  ISSUE-215 through ISSUE-225, ISSUE-231, ISSUE-238, ISSUE-244, RC-6, RC-7,
+  and cycle 1 after ISSUE-248. No distinct score-80+
+  service/requester/control-boundary issue had reviewer-accepted failing-test
+  evidence. Smallest future fix proposal if this family regresses: pin the
+  exact service id, registration state, requester liveness token,
+  control-queue fill level, destination route, destination service state,
+  local delivery queue state, ack id, connection id, or fuzz seed with one
+  focused failing test, then patch only the failed registration guard,
+  requester liveness guard, queue admission branch, pending-connect answer
+  path, local-delivery backpressure path, or connection cleanup branch.
 - Critical-only no-new cycle 1 after ISSUE-248 reviewed discovery sync,
   neighbour admission, incoming/outgoing connection lifecycle, peer identity
   validation, stopped-peer tombstones, seed/non-seed retention, duplicate

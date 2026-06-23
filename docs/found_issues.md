@@ -11,11 +11,73 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 1
-- Current audit continuation: critical-only discovery, neighbour admission,
-  connection lifecycle, stopped-peer, duplicate-connect, and bad-network churn
-  review after ISSUE-248 found no new score-80+ issue with concrete
-  failing-test evidence.
+- Current consecutive no-new-issue cycles: 2
+- Current audit continuation: critical-only service/requester/control
+  boundary, local delivery, queue pressure, dropped handles, duplicate
+  service registration, and bad-network churn review after ISSUE-248 found no
+  new score-80+ issue with concrete failing-test evidence.
+
+### Critical-only no-new cycle 2 after ISSUE-248: service, requester, control queues, and local delivery
+
+- Scope: reviewer-style critical-only pass over `src/service.rs`,
+  `src/requester.rs`, `src/ctx.rs`, `src/lib.rs`,
+  `src/peer/peer_internal.rs`, `src/tests/security.rs`,
+  `src/tests/cross_nodes.rs`, `src/tests/fuzz.rs`, and related service/stream
+  tests. Focus areas were dropped service/requester liveness, duplicate
+  service registration, service-id bounds, network control queue pressure,
+  pending connect answers, closed network/service channels, queue-full false
+  success, local delivery backpressure, and bad-network churn with fewer than
+  50 nodes and `CARGO_BUILD_JOBS=8`.
+- Verification:
+  - `CARGO_BUILD_JOBS=8 RUST_LOG=error cargo test --lib service -- --nocapture`:
+    passed 199 tests.
+  - `CARGO_BUILD_JOBS=8 RUST_LOG=error cargo test --lib requester -- --nocapture`:
+    passed 13 tests.
+  - `CARGO_BUILD_JOBS=8 RUST_LOG=error cargo test --lib cross_nodes -- --nocapture`:
+    passed 9 tests.
+  - `CARGO_BUILD_JOBS=8 RUST_LOG=error cargo test --lib security -- --nocapture`:
+    passed 55 tests.
+  - `CARGO_BUILD_JOBS=8 P2P_FUZZ_NODES=44 P2P_FUZZ_STEPS=3600 P2P_FUZZ_SEED=249050 RUST_LOG=error cargo test --lib fuzz_random_adversarial_node_actions_must_not_panic_connection_tasks -- --nocapture`:
+    passed 1 test in 27.60s.
+  - An attempted local ad hoc cargo command with multiple test-name filters
+    was invalid and is not used as evidence.
+- Reviewer cross-check: `Ptolemy` returned `NO_NEW_CRITICAL` after
+  independently reviewing the same service/requester/control boundary.
+  Reviewer commands passed requester (13), service (199), full (58), closed
+  (5), duplicate_service (2), out_of_range (4), pending (17),
+  `peer_stopped_must_not_wait_behind_full` (2), and
+  `P2P_FUZZ_NODES=48 P2P_FUZZ_STEPS=2400 P2P_FUZZ_SEED=248250`
+  adversarial fuzz (1).
+- Duplicate mapping:
+  - Dropped or stale `P2pServiceRequester` unicast, broadcast, and stream
+    sends map to ISSUE-072, ISSUE-073, ISSUE-108, ISSUE-246, and cycle 33.
+  - Duplicate service registration, rejected duplicate handles, service-id
+    reuse, and out-of-range service IDs map to ISSUE-052, ISSUE-053,
+    ISSUE-234, RC-3, RC-6, and cycle 33.
+  - Queue-full false success, closed destination services, local delivery
+    backpressure, acked-unicast queue pressure, and stream setup under service
+    queue pressure map to ISSUE-011, ISSUE-012, ISSUE-013, ISSUE-119,
+    ISSUE-120, ISSUE-217 through ISSUE-230, ISSUE-238, RC-3, RC-4, RC-6, and
+    cycle 35.
+  - Requester/control queue full or closed behavior, pending connect answers,
+    duplicate pending connects, and stale network requester behavior map to
+    ISSUE-028, ISSUE-125, ISSUE-215 through ISSUE-225, ISSUE-231, and
+    existing requester/security tests.
+  - Main-loop pressure, `PeerStopped` under full queues, graceful shutdown
+    fanout, disconnect cleanup, and churn noise map to ISSUE-207, ISSUE-215
+    through ISSUE-225, ISSUE-231, ISSUE-238, ISSUE-244, RC-6, RC-7, and
+    cycle 1 after ISSUE-248.
+- Result: no distinct score-80+ service/requester/control-boundary, local
+  delivery, queue-pressure, dropped-handle, duplicate-registration, or
+  bad-network churn issue had concrete reviewer-accepted failing-test evidence
+  in this cycle.
+- Smallest future fix proposal if this family regresses: pin the exact
+  service id, registration state, requester liveness token, control queue fill
+  level, destination route, destination service state, local delivery queue
+  state, ack id, connection id, or fuzz seed with one focused failing test,
+  then patch only the failed registration guard, requester liveness guard,
+  queue admission branch, pending-connect answer path, local-delivery
+  backpressure path, or connection cleanup branch.
 
 ### Critical-only no-new cycle 1 after ISSUE-248: discovery, neighbours, connection lifecycle, and churn
 
