@@ -11,11 +11,78 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 30
-- Current audit continuation: critical-only routing/path-stability,
-  pipe/stream-delivery, relay-loop, source-binding, queue-pressure, and
+- Current consecutive no-new-issue cycles: 31
+- Current audit continuation: critical-only pubsub protocol, RPC,
+  membership, heartbeat/chunking, backpressure, state cleanup, and
   bad-network churn
   review found no new score-80+ issue with concrete failing-test evidence.
+
+### Critical-only no-new cycle 31 after ISSUE-247: pubsub protocol, RPC, and state cleanup
+
+- Scope: reviewer-style critical-only pass over `src/service/pubsub_service.rs`,
+  `src/service/pubsub_service/publisher.rs`,
+  `src/service/pubsub_service/subscriber.rs`, `src/service.rs`,
+  `src/ctx.rs`, `src/requester.rs`, `src/tests/pubsub.rs`, and related
+  security, cross-node, stale-state, full-queue, and fuzz surfaces. Focus
+  areas were pubsub RPC responder correlation, remote forged answers, stale
+  requester answers, publish/feedback/RPC membership authorization, heartbeat
+  chunk reassembly and cleanup, stale role/tombstone generations, remote
+  channel/member caps, local publisher/subscriber queue pressure, pending RPC
+  caps, no-destination behavior, graceful stop/disconnect cleanup, and
+  high-load bad-network churn.
+- Verification:
+  - `RUST_LOG=error cargo test --lib pubsub -- --nocapture`: passed 92
+    tests.
+  - `RUST_LOG=error cargo test --lib rpc -- --nocapture`: passed 32 tests.
+  - `RUST_LOG=error cargo test --lib heartbeat -- --nocapture`: passed 15
+    tests.
+  - `RUST_LOG=error cargo test --lib chunk -- --nocapture`: passed 5 tests.
+  - `RUST_LOG=error cargo test --lib membership -- --nocapture`: passed 13
+    tests.
+  - `RUST_LOG=error cargo test --lib stale -- --nocapture --test-threads=1`:
+    passed 25 tests.
+  - `RUST_LOG=error cargo test --lib full`: passed 58 tests.
+  - `RUST_LOG=error cargo test --lib service`: passed 199 tests.
+  - `RUST_LOG=error P2P_FUZZ_NODES=80 P2P_FUZZ_STEPS=6000 P2P_FUZZ_SEED=120049 cargo test --lib fuzz_random_adversarial_node_actions_must_not_panic_connection_tasks -- --nocapture`:
+    passed 1 test.
+- Reviewer cross-check: `Heisenberg` returned `NO_NEW_CRITICAL` after
+  independently reviewing the same pubsub RPC, membership, heartbeat/chunking,
+  backpressure, and state-cleanup slice. Reviewer verification included
+  pubsub (92 passed), rpc (32 passed), heartbeat (15 passed), membership (13
+  passed), service (199 passed), backpressure (3 passed), security (55
+  passed), cross_nodes (9 passed), and the same 80-node 6000-step adversarial
+  fuzz seed `120049` (1 passed).
+- Duplicate mapping:
+  - Pubsub RPC answer correlation, remote forged answers, and stale local
+    requester answers map to ISSUE-020, ISSUE-039, ISSUE-048, ISSUE-080,
+    ISSUE-108, ISSUE-115, ISSUE-116, ISSUE-155, ISSUE-205, ISSUE-206,
+    ISSUE-228, ISSUE-236, ISSUE-240 through ISSUE-243, ISSUE-246, RC-1,
+    RC-2, RC-3, RC-5, and RC-6. Current checks bind pending RPC responses to
+    expected responders and local handle ids and cap pending RPC state.
+  - Publish, feedback, and RPC membership authorization and source binding
+    map to ISSUE-014, ISSUE-015, ISSUE-017, ISSUE-018, ISSUE-039,
+    ISSUE-115, ISSUE-116, ISSUE-197, ISSUE-226, RC-1, and RC-2. Current
+    checks require remote publisher membership for publish paths and remote
+    subscriber membership for feedback paths.
+  - Heartbeat chunk reassembly, sparse chunk indexes, stale role generations,
+    tombstones, restart generation, channel/member caps, and disconnect
+    cleanup map to the existing pubsub heartbeat/chunk/resource/stale
+    families, ISSUE-155, ISSUE-228, ISSUE-236, ISSUE-240 through ISSUE-243,
+    RC-3, RC-5, RC-6, and RC-7. Current checks bound heartbeat batches,
+    chunks, channels, members, remote-created channels, and tombstones.
+  - Internal-control queue pressure, closed or full local publisher/subscriber
+    queues, no-destination behavior, pending requester guards, graceful
+    stop/disconnect cleanup, and high-load bad-network churn map to
+    ISSUE-043, ISSUE-052, ISSUE-053, ISSUE-060, ISSUE-072, ISSUE-073,
+    ISSUE-076, ISSUE-091, ISSUE-108, ISSUE-211 through ISSUE-225, ISSUE-217
+    through ISSUE-230, ISSUE-231, ISSUE-238, ISSUE-244, ISSUE-246, RC-3,
+    RC-4, RC-6, and RC-7. The 80-node churn run produced expected refused
+    connection, duplicate-connection, timeout, closed-service, oversized-frame,
+    and stopped-peer logs without panic or invariant failure.
+- Result: no distinct score-80+ pubsub protocol, RPC, membership,
+  heartbeat/chunking, queue-pressure, state-cleanup, graceful-stop, or
+  high-load bad-network issue had concrete reviewer-accepted failing-test
+  evidence in this cycle.
 
 ### Critical-only no-new cycle 30 after ISSUE-247: routing path stability and pipe/stream delivery
 

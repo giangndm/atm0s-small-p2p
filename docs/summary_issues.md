@@ -7,11 +7,51 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Accepted issues: 247
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 30
-- Current audit continuation: critical-only routing/path-stability,
-  pipe/stream-delivery, relay-loop, source-binding, queue-pressure, and
+- Current consecutive no-new-issue cycles: 31
+- Current audit continuation: critical-only pubsub protocol, RPC,
+  membership, heartbeat/chunking, backpressure, state cleanup, and
   bad-network churn
   review found no new score-80+ issue with concrete failing-test evidence.
+- Critical-only no-new cycle 31 after ISSUE-247 reviewed pubsub protocol,
+  RPC, membership, heartbeat/chunking, queue-pressure, state cleanup,
+  graceful-stop/disconnect cleanup, and high-load churn across
+  `src/service/pubsub_service.rs`,
+  `src/service/pubsub_service/publisher.rs`,
+  `src/service/pubsub_service/subscriber.rs`, `src/service.rs`,
+  `src/ctx.rs`, `src/requester.rs`, `src/tests/pubsub.rs`, and related
+  security, cross-node, stale-state, full-queue, and fuzz surfaces. Local
+  pubsub (92), rpc (32), heartbeat (15), chunk (5), membership (13), stale
+  (25), full (58), service (199), and 80-node 6000-step adversarial fuzz seed
+  `120049` checks passed. Reviewer `Heisenberg` returned `NO_NEW_CRITICAL`
+  after independently reviewing the same slice and passing pubsub (92), rpc
+  (32), heartbeat (15), membership (13), service (199), backpressure (3),
+  security (55), cross_nodes (9), and the same fuzz seed. Rejected candidates
+  mapped RPC answer correlation, forged answers, and stale local requester
+  answers to ISSUE-020, ISSUE-039, ISSUE-048, ISSUE-080, ISSUE-108,
+  ISSUE-115, ISSUE-116, ISSUE-155, ISSUE-205, ISSUE-206, ISSUE-228,
+  ISSUE-236, ISSUE-240 through ISSUE-243, ISSUE-246, RC-1, RC-2, RC-3,
+  RC-5, and RC-6; publish, feedback, and RPC membership/source binding to
+  ISSUE-014, ISSUE-015, ISSUE-017, ISSUE-018, ISSUE-039, ISSUE-115,
+  ISSUE-116, ISSUE-197, ISSUE-226, RC-1, and RC-2; heartbeat chunk
+  reassembly, sparse chunk indexes, stale role generations, tombstones,
+  restart generation, channel/member caps, and disconnect cleanup to existing
+  pubsub heartbeat/chunk/resource/stale families, ISSUE-155, ISSUE-228,
+  ISSUE-236, ISSUE-240 through ISSUE-243, RC-3, RC-5, RC-6, and RC-7; and
+  internal-control queue pressure, closed/full local pubsub queues,
+  no-destination behavior, pending requester guards, graceful stop/disconnect
+  cleanup, and high-load churn to ISSUE-043, ISSUE-052, ISSUE-053,
+  ISSUE-060, ISSUE-072, ISSUE-073, ISSUE-076, ISSUE-091, ISSUE-108,
+  ISSUE-211 through ISSUE-225, ISSUE-217 through ISSUE-230, ISSUE-231,
+  ISSUE-238, ISSUE-244, ISSUE-246, RC-3, RC-4, RC-6, and RC-7. No distinct
+  score-80+ pubsub issue had reviewer-accepted failing-test evidence.
+  Smallest future fix proposal if this family regresses: pin the exact
+  channel, peer, role, generation, RPC id, responder, local handle id,
+  heartbeat snapshot/chunk index, channel/member/tombstone cap, queue state,
+  dropped requester, service sender, disconnect event, or fuzz seed with one
+  focused failing test, then patch only the failed membership admission,
+  responder correlation, generation/tombstone comparison, chunk
+  reassembly/omission cleanup, pending-RPC cap, queue/no-destination response,
+  dropped requester guard, or disconnect cleanup.
 - Critical-only no-new cycle 30 after ISSUE-247 reviewed routing
   path-stability and pipe/stream delivery across `src/router.rs`,
   `src/stream.rs`, `src/peer/peer_internal.rs`,
