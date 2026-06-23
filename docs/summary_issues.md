@@ -7,11 +7,39 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Accepted issues: 247
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 28
-- Current audit continuation: critical-only alias, metrics, visualization,
-  replicated-KV, serialization/state export, timeout/overflow, and
-  bad-network resource-bound review found no new score-80+ issue with concrete
-  failing-test evidence.
+- Current consecutive no-new-issue cycles: 29
+- Current audit continuation: critical-only lifecycle, task-cleanup,
+  shutdown-boundary, queue-pressure, pending-state, and bad-network churn
+  review found no new score-80+ issue with concrete failing-test evidence.
+- Critical-only no-new cycle 29 after ISSUE-247 reviewed lifecycle, shutdown,
+  task-cleanup, pending-state, queue-pressure, direct/graceful disconnect,
+  graceful-stop notification, unauthenticated inbound caps, control admission,
+  and high-load churn across `src/lib.rs`, `src/peer.rs`,
+  `src/peer/peer_internal.rs`, `src/peer/peer_alias.rs`, `src/ctx.rs`,
+  `src/requester.rs`, `src/neighbours.rs`, `src/quic.rs`, and related
+  tests/docs. Local shutdown (8), lifecycle (3), stopped (19), disconnected
+  (8), full (58), closed (5), control_queue (14), pending (17), and 76-node
+  5600-step adversarial fuzz seed `118049` checks passed. A reviewer rejected
+  the synthetic `direct_peer_disconnected_must_unregister_connection_alias`
+  failing test as non-critical hardening because production
+  `PeerConnection` teardown unregisters the alias before emitting
+  `PeerDisconnected`; the reviewer mapped it to ISSUE-136 and ISSUE-222 with
+  an estimated score of 62-68. Rejected candidates mapped direct-injected
+  disconnect cleanup to ISSUE-136/ISSUE-222, graceful stop and stopped-peer
+  lifecycle to ISSUE-211 through ISSUE-225, ISSUE-231, ISSUE-238,
+  ISSUE-244, RC-3, RC-6, and RC-7, and pending connects, pending sync tasks,
+  full/closed queues, requester/control queue admission, and task cleanup to
+  ISSUE-043, ISSUE-052, ISSUE-053, ISSUE-060, ISSUE-072, ISSUE-073,
+  ISSUE-076, ISSUE-091, ISSUE-108, ISSUE-217 through ISSUE-230, ISSUE-234,
+  ISSUE-235, ISSUE-246, RC-3, RC-4, and RC-6. No distinct score-80+
+  lifecycle or shutdown issue had reviewer-accepted failing-test evidence.
+  Smallest future fix proposal if this family regresses: pin the exact
+  connection id, peer id, event variant, production teardown path, pending
+  connect responder, pending sync task, queue state, unauthenticated inbound
+  slot, graceful-stop notification, or fuzz seed with one focused failing
+  test, then patch only the failed unregister, neighbour/router cleanup,
+  pending-map removal, task abort, global shutdown deadline, admission guard,
+  or queue/backpressure boundary.
 - Critical-only no-new cycle 28 after ISSUE-247 reviewed alias,
   observability, and replicated-KV state across `src/service/alias_service.rs`,
   `src/service/metrics_service.rs`, `src/service/visualization_service.rs`,

@@ -11,11 +11,69 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 28
-- Current audit continuation: critical-only alias, metrics, visualization,
-  replicated-KV, serialization/state export, timeout/overflow, and
-  bad-network resource-bound review found no new score-80+ issue with concrete
-  failing-test evidence.
+- Current consecutive no-new-issue cycles: 29
+- Current audit continuation: critical-only lifecycle, task-cleanup,
+  shutdown-boundary, queue-pressure, pending-state, and bad-network churn
+  review found no new score-80+ issue with concrete failing-test evidence.
+
+### Critical-only no-new cycle 29 after ISSUE-247: lifecycle, shutdown, and task cleanup
+
+- Scope: reviewer-style critical-only pass over `src/lib.rs`, `src/peer.rs`,
+  `src/peer/peer_internal.rs`, `src/peer/peer_alias.rs`, `src/ctx.rs`,
+  `src/requester.rs`, `src/neighbours.rs`, `src/quic.rs`, and related
+  tests/docs. Focus areas were spawned peer task cleanup,
+  `pending_connects` and `pending_sync_tasks` cleanup, graceful shutdown
+  notification, direct versus graceful disconnect, `PeerStopped` and
+  `PeerDisconnected` alias cleanup, unauthenticated inbound pending caps,
+  control queue admission, full/closed local and peer queues, and high-load
+  bad-network churn.
+- Verification:
+  - `RUST_LOG=error cargo test --lib shutdown -- --nocapture`: passed 8
+    tests.
+  - `RUST_LOG=error cargo test --lib lifecycle -- --nocapture`: passed 3
+    tests.
+  - `RUST_LOG=error cargo test --lib stopped -- --nocapture`: passed 19
+    tests.
+  - `RUST_LOG=error cargo test --lib disconnected -- --nocapture`: passed 8
+    tests.
+  - `RUST_LOG=error cargo test --lib full -- --nocapture`: passed 58 tests.
+  - `RUST_LOG=error cargo test --lib closed -- --nocapture`: passed 5 tests.
+  - `RUST_LOG=error cargo test --lib control_queue -- --nocapture`: passed
+    14 tests.
+  - `RUST_LOG=error cargo test --lib pending -- --nocapture`: passed 17
+    tests.
+  - `RUST_LOG=error P2P_FUZZ_NODES=76 P2P_FUZZ_STEPS=5600 P2P_FUZZ_SEED=118049 cargo test --lib fuzz_random_adversarial_node_actions_must_not_panic_connection_tasks -- --nocapture`:
+    passed 1 test.
+- Reviewer cross-check: a reviewer rejected the synthetic
+  `direct_peer_disconnected_must_unregister_connection_alias` failing test as
+  a non-critical hardening regression rather than a distinct score-80+
+  issue. The reviewer confirmed that normal production teardown in
+  `src/peer.rs` unregisters the connection alias before sending
+  `MainEvent::PeerDisconnected`, and classified the direct internal-event
+  injection as overlapping ISSUE-136 and ISSUE-222 lifecycle cleanup families
+  with an estimated non-critical score of 62-68.
+- Duplicate mapping:
+  - Direct-injected `PeerDisconnected` alias cleanup maps to ISSUE-136 and
+    ISSUE-222 because production `PeerConnection` teardown already calls
+    `ctx.unregister_conn(&conn_id)` before emitting `PeerDisconnected`.
+  - `PeerStopped` cleanup, forwarded graceful-stop deduplication, stopped-peer
+    route deletion, tombstones, seed versus non-seed behavior, and graceful
+    shutdown notification map to ISSUE-211 through ISSUE-225, ISSUE-231,
+    ISSUE-238, ISSUE-244, RC-3, RC-6, and RC-7.
+  - `pending_connects`, `pending_sync_tasks`, full main event queues,
+    full/closed service queues, full peer-control queues, requester control
+    queue admission, and task-abort boundaries map to ISSUE-043, ISSUE-052,
+    ISSUE-053, ISSUE-060, ISSUE-072, ISSUE-073, ISSUE-076, ISSUE-091,
+    ISSUE-108, ISSUE-217 through ISSUE-230, ISSUE-234, ISSUE-235, ISSUE-246,
+    RC-3, RC-4, and RC-6.
+  - High-load churn produced expected refused connection, timeout,
+    duplicate-connection, closed-service, stopped-peer, and oversized-frame
+    logs, but the focused tests and 76-node 5600-step fuzz run passed without
+    panic or invariant failure.
+- Result: no distinct score-80+ lifecycle, spawned-task, pending-state,
+  shutdown-notification, direct-disconnect, graceful-stop, queue-pressure,
+  unauthenticated-inbound, control-admission, or high-load bad-network issue
+  had concrete reviewer-accepted failing-test evidence in this cycle.
 
 ### Critical-only no-new cycle 28 after ISSUE-247: alias, observability, and replicated-KV state
 
