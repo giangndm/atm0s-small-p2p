@@ -7,11 +7,34 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Accepted issues: 247
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 0
-- Current audit continuation: ISSUE-247 accepted and fixed a critical
-  replicated-KV full-sync resource-bound issue. Full sync now caps cumulative
-  staged snapshot slots across continuation pages, not only slots per page.
-  Reviewer `Beauvoir the 2nd` accepted the finding as distinct, score 88.
+- Current consecutive no-new-issue cycles: 1
+- Current audit continuation: critical-only transport, auth, stream/framing,
+  service-id, peer-control, and high-load churn no-new cycle after ISSUE-247
+  found no new score-80+ issue across malformed/oversized frames, object
+  length caps, handshake replay/freshness/identity, QUIC admission, stalled
+  setup, source binding, closed/full queues, and fuzz churn.
+- Critical-only no-new cycle after ISSUE-247 reviewed `src/stream.rs`,
+  `src/secure.rs`, `src/quic.rs`, `src/msg.rs`, `src/peer.rs`,
+  `src/peer/peer_internal.rs`, `src/ctx.rs`, `src/service.rs`,
+  `src/tests/security.rs`, `src/tests/stream.rs`, fuzz tests, and ledgers.
+  Local stream codec/object, handshake, service-id, stream setup, timeout,
+  unicast, ack, malformed, inbound-handshake, unauthenticated, bounded, and
+  34-node 1450-step valid-action fuzz checks passed. Reviewer `Gauss the 2nd`
+  returned `NO_NEW_CRITICAL` after independently running secure, stream,
+  QUIC, peer, security, object, service-id, full-channel, and fuzz slices.
+  Rejected candidates mapped malformed/oversized frames and object limits to
+  ISSUE-024/094/097/098/174 and RC-5; handshake replay/freshness/identity and
+  replay pressure to ISSUE-002/021/146/176/189/194/207/244 and RC-1; QUIC
+  admission and stalled setup/open timeouts to ISSUE-117/172/173/217/220
+  through ISSUE-223/238 and RC-3/RC-4; service-id, stale requester, duplicate
+  service, and closed/full queues to ISSUE-052/053/060/072/073/076/091/234/
+  235/246 and RC-6; source forgery and previous-hop binding to ISSUE-014/015/
+  017/018/039/115/116/197/226 and RC-1/RC-2; and graceful-stop/high-load churn
+  to ISSUE-001/004/170/215 through ISSUE-225/231, RC-3/RC-6/RC-7, and fuzz
+  cycles 20/24/28/31/32/34/36/38/39/40/41/42/43/44/45/47. No distinct
+  score-80+ transport, auth, stream/framing, service-id, peer-control,
+  source-binding, queue/backpressure, or high-load churn issue had concrete
+  failing-test evidence.
 - ISSUE-247, score 88: fixed replicated-KV cumulative full-sync snapshot
   staging. Root cause: `SyncFullState` capped each snapshot page but retained
   all accepted non-terminal pages in `staged_slots` until terminal commit

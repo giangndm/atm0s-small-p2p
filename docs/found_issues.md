@@ -11,14 +11,12 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 0
-- Current audit continuation: ISSUE-247 accepted and fixed a critical
-  replicated-KV full-sync resource-bound issue. A malicious authenticated
-  remote could send many valid non-terminal snapshot continuation pages and
-  grow staged full-sync slots without a total cap. Failing evidence:
-  `RUST_LOG=error cargo test full_sync_staged_snapshot_slots_must_be_bounded_across_pages --lib -- --nocapture`
-  failed before the fix with `got 17408`; reviewer `Beauvoir the 2nd`
-  accepted the finding as distinct, score 88.
+- Current consecutive no-new-issue cycles: 1
+- Current audit continuation: critical-only transport, auth, stream/framing,
+  service-id, peer-control, and high-load churn no-new cycle after ISSUE-247
+  found no new score-80+ issue across malformed/oversized frames, object
+  length caps, handshake replay/freshness/identity, QUIC admission, stalled
+  setup, source binding, closed/full queues, and fuzz churn.
 
 ### Critical-only no-new cycle 42: transport, stream, and backpressure
 
@@ -23585,3 +23583,82 @@ the source of truth for evidence and reviewer decisions.
 - Fix proposal: no new fix is proposed because no distinct critical issue was
   accepted; continue critical-only review/fuzzing for score-80+ findings.
 - Current consecutive no-new cycles after ISSUE-246: 46.
+
+### Critical-only no-new cycle after ISSUE-247: transport, auth, stream/framing, and peer-control review
+
+- Scope: reviewed the current issue ledgers and summary, then audited
+  `src/stream.rs`, `src/secure.rs`, `src/quic.rs`, `src/msg.rs`,
+  `src/peer.rs`, `src/peer/peer_internal.rs`, `src/ctx.rs`,
+  `src/service.rs`, `src/tests/security.rs`, `src/tests/stream.rs`, fuzz
+  tests, and related transport/auth/framing documentation.
+- Focus areas: malformed and oversized peer frames, bincode encode/decode
+  behavior, object length-prefix caps, handshake replay/freshness/identity
+  binding, replay-cache pressure and false-positive DoS candidates, QUIC
+  unidirectional/bidirectional stream admission, stalled setup/open_bi
+  timeouts, service-id parsing, full/closed peer-control and service queues,
+  unicast/broadcast/stream source forgery, previous-hop binding, and
+  high-load bad-network churn.
+- Reviewer: `Gauss the 2nd` (forked RED-team reviewer) returned
+  `NO_NEW_CRITICAL` and found no distinct score-80+ transport, auth,
+  stream/framing, service-id, peer-control, source-binding, queue/full-channel,
+  or high-load churn issue with concrete failing-test evidence.
+- Local verification:
+  - `RUST_LOG=error cargo test --lib stream::tests -- --nocapture`
+  - `RUST_LOG=error cargo test --lib handshake -- --nocapture`
+  - `RUST_LOG=error cargo test --lib service_id -- --nocapture`
+  - `RUST_LOG=error cargo test --lib oversize -- --nocapture`
+  - `RUST_LOG=error cargo test --lib stream -- --nocapture`
+  - `RUST_LOG=error cargo test --lib setup_must_timeout -- --nocapture`
+  - `RUST_LOG=error cargo test --lib open_stream_must_timeout -- --nocapture`
+  - `RUST_LOG=error cargo test --lib unicast -- --nocapture`
+  - `RUST_LOG=error cargo test --lib ack -- --nocapture`
+  - `RUST_LOG=error cargo test --lib malformed -- --nocapture` (0 matched tests)
+  - `RUST_LOG=error cargo test --lib inbound_handshake -- --nocapture`
+  - `RUST_LOG=error cargo test --lib unauthenticated -- --nocapture`
+  - `RUST_LOG=error cargo test --lib bounded -- --nocapture`
+  - `RUST_LOG=error P2P_FUZZ_NODES=34 P2P_FUZZ_STEPS=1450 P2P_FUZZ_SEED=90049 cargo test --lib fuzz_random_valid_node_actions_must_not_panic_connection_tasks -- --nocapture`
+- Reviewer verification:
+  - `RUST_LOG=error cargo test --lib secure::tests -- --nocapture`
+  - `RUST_LOG=error cargo test --lib stream::tests -- --nocapture`
+  - `RUST_LOG=error cargo test --lib quic::tests -- --nocapture`
+  - `RUST_LOG=error cargo test --lib peer::tests -- --nocapture`
+  - `RUST_LOG=error cargo test --lib security -- --nocapture`
+  - `RUST_LOG=error cargo test --lib stream -- --nocapture`
+  - `RUST_LOG=error cargo test --lib object -- --nocapture`
+  - `RUST_LOG=error cargo test --lib malformed -- --nocapture` (0 matched tests)
+  - `RUST_LOG=error cargo test --lib service_id -- --nocapture`
+  - `RUST_LOG=error cargo test --lib full -- --nocapture`
+  - `RUST_LOG=error P2P_FUZZ_NODES=36 P2P_FUZZ_STEPS=1500 P2P_FUZZ_SEED=90050 cargo test --lib fuzz_random_valid_node_actions_must_not_panic_connection_tasks -- --nocapture`
+  - `RUST_LOG=error P2P_FUZZ_NODES=32 P2P_FUZZ_STEPS=1400 P2P_FUZZ_SEED=90050 cargo test --lib fuzz_random_sanitized_node_churn_actions_must_not_panic_connection_tasks -- --nocapture`
+- Duplicate mapping:
+  - Malformed/oversized peer frames, bincode decode errors, object
+    length-prefix overflow, and payload caps map to ISSUE-024, ISSUE-094,
+    ISSUE-097, ISSUE-098, ISSUE-174, RC-5, and prior malformed/object cycles.
+  - Handshake replay/freshness/identity binding, timestamp overflow/future
+    skew, replay-cache pressure, and replay false-positive DoS candidates map
+    to ISSUE-002, ISSUE-021, ISSUE-146, ISSUE-176, ISSUE-189, ISSUE-194,
+    ISSUE-207, ISSUE-244, and RC-1.
+  - QUIC admission, unidirectional stream denial, bidirectional stream caps,
+    stalled setup/open_bi timeouts, and control-stream setup failure map to
+    ISSUE-117, ISSUE-172, ISSUE-173, ISSUE-217, ISSUE-220 through ISSUE-223,
+    ISSUE-238, RC-3, and RC-4.
+  - Service-id parsing, out-of-range service IDs, stale/dropped
+    service/requester liveness, duplicate service handles, and closed/full
+    local queues map to ISSUE-052, ISSUE-053, ISSUE-060, ISSUE-072,
+    ISSUE-073, ISSUE-076, ISSUE-091, ISSUE-234, ISSUE-235, ISSUE-246, and
+    RC-6.
+  - Source forgery and previous-hop binding for unicast, broadcast, stream,
+    and relayed paths map to ISSUE-014, ISSUE-015, ISSUE-017, ISSUE-018,
+    ISSUE-039, ISSUE-115, ISSUE-116, ISSUE-197, ISSUE-226, RC-1, and RC-2.
+  - `PeerStopped`, graceful shutdown, disconnect cleanup under full queues,
+    duplicate connection churn, endpoint-drop noise, and bad-network/high-load
+    churn map to ISSUE-001, ISSUE-004, ISSUE-170, ISSUE-215 through
+    ISSUE-225, ISSUE-231, RC-3, RC-6, RC-7, and fuzz cycles 20, 24, 28, 31,
+    32, 34, 36, 38, 39, 40, 41, 42, 43, 44, 45, and 47.
+- Root-cause summary: no new root cause was accepted; rejected candidates fit
+  existing malformed/object-bound, handshake/authentication, stream setup and
+  admission, service/requester liveness, source-binding, graceful-stop, and
+  high-load churn families.
+- Fix proposal: no new fix is proposed because no distinct critical issue was
+  accepted; continue critical-only review/fuzzing for score-80+ findings.
+- Current consecutive no-new cycles after ISSUE-247: 1.
