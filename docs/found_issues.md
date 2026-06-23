@@ -11,13 +11,70 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 30
-- Current audit continuation: critical-only route/discovery active-path and
-  stream/pipe stability no-new cycle 32 found no new score-80+ issue across
-  route selection hysteresis, direct-vs-relayed priority, discovery stale
-  cleanup, seed/non-seed lifecycle, route/discovery sync validation, relay loop
-  rejection, stream setup, pipe delivery, backpressure cleanup, and high-load
-  churn behavior.
+- Current consecutive no-new-issue cycles: 31
+- Current audit continuation: critical-only auth, framing, and service-boundary
+  no-new cycle 33 found no new score-80+ issue across shared-key handshake
+  freshness/replay/role binding, inbound identity binding, unauthenticated
+  admission, QUIC stream admission, bincode/object frame caps, service-id
+  bounds, source identity normalization, stream setup stalls, malformed raw and
+  service payloads, and high-load churn behavior.
+
+### Critical-only no-new cycle 33: auth, framing, and service boundaries
+
+- Scope: reviewer-style critical-only pass over `src/secure.rs`, `src/msg.rs`,
+  `src/stream.rs`, `src/peer.rs` inbound/outbound handshake setup,
+  `src/peer/peer_internal.rs` service-id/object/stream handling, `src/lib.rs`
+  inbound admission and main-loop peer binding, `src/service.rs`, `src/ctx.rs`,
+  focused security/stream/codec/service-id tests, and fuzz churn behavior.
+- Focus areas: shared-key handshake freshness, replay, overflow, request and
+  response role binding, self or third-party identity claims, inbound static
+  bindings versus open-cluster mode, unauthenticated connection admission,
+  QUIC unidirectional and bidirectional stream admission, bincode frame caps,
+  object length caps, malformed service IDs, service queue false success,
+  stream setup response stalls, source identity forgery after auth, malformed
+  raw peer messages, panic/unwrap paths reachable from untrusted input, and
+  high-load bad-network churn.
+- Verification:
+  - `RUST_LOG=error cargo test handshake --lib -- --nocapture`: passed 10 tests.
+  - `RUST_LOG=error cargo test service_id --lib -- --nocapture`: passed 4 tests.
+  - `RUST_LOG=error cargo test codec --lib -- --nocapture`: passed 3 tests.
+  - `RUST_LOG=error cargo test object --lib -- --nocapture`: passed 4 tests.
+  - `RUST_LOG=error cargo test stream --lib -- --nocapture`: passed 30 tests.
+  - `RUST_LOG=error cargo test source --lib -- --nocapture`: passed 7 tests.
+  - `RUST_LOG=error cargo test unauthenticated --lib -- --nocapture`: passed 2 tests.
+  - `RUST_LOG=error P2P_FUZZ_NODES=24 P2P_FUZZ_STEPS=900 P2P_FUZZ_SEED=71033 cargo test fuzz_random_valid_node_churn_actions_must_not_panic_connection_tasks --lib -- --nocapture`: passed.
+- Reviewer cross-check: `Leibniz the 2nd` returned `NO_NEW_CRITICAL` after
+  reviewing handshake, inbound binding, unauthenticated admission, stream
+  admission, object/framing caps, service ID bounds, source normalization,
+  queue/backpressure, malformed input, panic/unwrap, and fuzz behavior.
+  Reviewer verification included handshake, inbound, service-id, forged-source,
+  stream, frame, queue, and a 24-node 900-step churn fuzz seed.
+- Duplicate mapping:
+  - Shared-key handshake timestamp, future skew, overflow, replay, cache
+    pressure, and role binding map to ISSUE-146, ISSUE-176, ISSUE-207,
+    ISSUE-244, and RC-1.
+  - Self identity, third-party identity, inbound static binding defaults, and
+    open-cluster behavior map to ISSUE-001, ISSUE-004, ISSUE-170, ISSUE-189,
+    ISSUE-194, ISSUE-223, ISSUE-244, and RC-1.
+  - Unauthenticated admission, authenticated inbound cap release, QUIC stream
+    admission, stream setup stalls, and false open-stream success map to
+    ISSUE-117, ISSUE-156, ISSUE-217, ISSUE-220, ISSUE-221 through ISSUE-223,
+    ISSUE-238, RC-3, and RC-4.
+  - Bincode frame caps, object length caps, malformed raw peer messages, and
+    serialization errors map to ISSUE-024, ISSUE-094, ISSUE-097, ISSUE-098,
+    ISSUE-174, and RC-5.
+  - Malformed or out-of-range service IDs map to ISSUE-052, ISSUE-053,
+    ISSUE-060, ISSUE-072, ISSUE-073, ISSUE-076, ISSUE-091, ISSUE-234,
+    ISSUE-235, RC-5, and RC-6.
+  - Service queue false success, peer control backpressure, local delivery
+    backpressure, and ack waiter bounds map to ISSUE-043, ISSUE-119,
+    ISSUE-123 through ISSUE-126, ISSUE-218 through ISSUE-225, ISSUE-230,
+    RC-3, and RC-6.
+  - Source forgery after authentication maps to ISSUE-014, ISSUE-015,
+    ISSUE-018, ISSUE-039, ISSUE-115, ISSUE-116, ISSUE-197, ISSUE-226, and
+    RC-1.
+- Result: no distinct score-80+ auth, framing, service-boundary, or stream
+  admission issue had concrete failing-test evidence in this cycle.
 
 ### Critical-only no-new cycle 32: route/discovery active path and pipe stability
 

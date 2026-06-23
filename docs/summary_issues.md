@@ -7,13 +7,34 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Accepted issues: 246
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 30
-- Current audit continuation: critical-only route/discovery active-path and
-  stream/pipe stability no-new cycle 32 found no new score-80+ issue across
-  route selection hysteresis, direct-vs-relayed priority, discovery stale
-  cleanup, seed/non-seed lifecycle, route/discovery sync validation, relay loop
-  rejection, stream setup, pipe delivery, backpressure cleanup, and high-load
-  churn behavior.
+- Current consecutive no-new-issue cycles: 31
+- Current audit continuation: critical-only auth, framing, and service-boundary
+  no-new cycle 33 found no new score-80+ issue across shared-key handshake
+  freshness/replay/role binding, inbound identity binding, unauthenticated
+  admission, QUIC stream admission, bincode/object frame caps, service-id
+  bounds, source identity normalization, stream setup stalls, malformed raw and
+  service payloads, and high-load churn behavior.
+- Critical-only no-new cycle 33 reviewed auth, framing, and service boundaries
+  in `secure.rs`, `msg.rs`, `stream.rs`, `peer.rs`, `peer_internal.rs`,
+  `lib.rs`, `service.rs`, and `ctx.rs`. Focused handshake, service-id, codec,
+  object, stream, source-binding, unauthenticated-admission, and a 24-node
+  900-step churn fuzz seed passed. Reviewer `Leibniz the 2nd` returned
+  `NO_NEW_CRITICAL`. Rejected candidates mapped to ISSUE-146, ISSUE-176,
+  ISSUE-207, ISSUE-244, and RC-1 for handshake freshness/replay/role binding;
+  ISSUE-001, ISSUE-004, ISSUE-170, ISSUE-189, ISSUE-194, ISSUE-223,
+  ISSUE-244, and RC-1 for self/third-party identity and inbound binding;
+  ISSUE-117, ISSUE-156, ISSUE-217, ISSUE-220, ISSUE-221 through ISSUE-223,
+  ISSUE-238, RC-3, and RC-4 for unauthenticated/stream admission and false
+  setup success; ISSUE-024, ISSUE-094, ISSUE-097, ISSUE-098, ISSUE-174, and
+  RC-5 for frame/object caps and malformed raw messages; ISSUE-052,
+  ISSUE-053, ISSUE-060, ISSUE-072, ISSUE-073, ISSUE-076, ISSUE-091,
+  ISSUE-234, ISSUE-235, RC-5, and RC-6 for service-id bounds; ISSUE-043,
+  ISSUE-119, ISSUE-123 through ISSUE-126, ISSUE-218 through ISSUE-225,
+  ISSUE-230, RC-3, and RC-6 for service queue false success and
+  backpressure/ack bounds; and ISSUE-014, ISSUE-015, ISSUE-018, ISSUE-039,
+  ISSUE-115, ISSUE-116, ISSUE-197, ISSUE-226, and RC-1 for authenticated
+  source forgery. No distinct score-80+ auth, framing, service-boundary, or
+  stream-admission issue had concrete failing-test evidence.
 - Critical-only no-new cycle 32 reviewed route/discovery active-path and
   stream/pipe stability in `router.rs`, `discovery.rs`, `lib.rs`,
   `peer_internal.rs`, and `stream.rs`. Focused route, discovery, active-path,
