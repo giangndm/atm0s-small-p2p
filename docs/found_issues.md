@@ -11,10 +11,67 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 19
-- Current audit continuation: critical-only observability, alias, service
-  lifecycle, requester/drop, and queue review found no new score-80+ issue
-  with concrete failing-test evidence.
+- Current consecutive no-new-issue cycles: 20
+- Current audit continuation: critical-only route/path-stability and
+  pipe/relay delivery review found no new score-80+ issue with concrete
+  failing-test evidence.
+
+### Critical-only no-new cycle 20 after ISSUE-247: route stability and relay pipe delivery
+
+- Scope: reviewer-style critical-only pass over `src/router.rs`,
+  `src/discovery.rs`, `src/peer.rs`, `src/peer/peer_internal.rs`,
+  `src/stream.rs`, `src/lib.rs`, `src/ctx.rs`, `src/msg.rs`, `src/quic.rs`,
+  and related discovery, cross-node, stream, security, route, relay, stale,
+  disconnected, pipe, stopped, and adversarial fuzz tests. Focus areas were
+  active path jumping/noisy route switching, route-loop admission, stale
+  `PeerData`/`PeerConnected`/`PeerDisconnected` ordering, duplicate/refused
+  connects, seed vs non-seed cleanup, graceful `PeerStopped` propagation, relay
+  pipe delivery false success, upstream/downstream stream setup ack correctness,
+  unsuccessful pipe behavior, full/closed queues during route churn, relayed
+  source binding, task/permit leaks, and high-load bad-network random actions.
+- Verification:
+  - `RUST_LOG=error cargo test --lib router -- --nocapture`: passed 20 tests.
+  - `RUST_LOG=error cargo test --lib discovery -- --nocapture`: passed 37
+    tests.
+  - `RUST_LOG=error cargo test --lib relay -- --nocapture`: passed 16 tests.
+  - `RUST_LOG=error cargo test --lib route -- --nocapture`: passed 27 tests.
+  - `RUST_LOG=error cargo test --lib stale -- --nocapture`: passed 25 tests.
+  - `RUST_LOG=error cargo test --lib disconnected -- --nocapture`: passed 8
+    tests.
+  - `RUST_LOG=error cargo test --lib pipe -- --nocapture`: 0 matching tests.
+  - `RUST_LOG=error cargo test --lib stream -- --nocapture`: passed 30 tests.
+  - `RUST_LOG=error P2P_FUZZ_NODES=58 P2P_FUZZ_STEPS=3800 P2P_FUZZ_SEED=109049 cargo test --lib fuzz_random_adversarial_node_actions_must_not_panic_connection_tasks -- --nocapture`:
+    passed.
+- Reviewer cross-check: `Herschel` returned `NO_NEW_CRITICAL` after
+  independently reviewing the same route/path-stability and pipe/relay slice.
+  Reviewer verification included `route` (27 passed), `discovery` (37 passed),
+  `stream` (30 passed), `relay` (16 passed), `security` (55 passed), `stopped`
+  (19 passed), and 58-node 3800-step adversarial fuzz seed `109049` (1
+  passed).
+- Duplicate mapping:
+  - Active path jumping, equal-cost routes, and tiny RTT jitter map to existing
+    path-stability tests, RC-6, and RC-7.
+  - Route-loop admission, ingress-loop unicast/stream rejection, stopped-peer
+    route removal, stale route resurrection, seed/non-seed cleanup, and
+    discovery tombstones map to ISSUE-211 through ISSUE-225, ISSUE-231, RC-6,
+    and RC-7.
+  - Stale `PeerData`, `PeerConnected`, `PeerConnectError`, `PeerDisconnected`,
+    duplicate/refused connects, peer-id mismatch, and main-queue backpressure
+    map to existing connection lifecycle/security families, RC-1, RC-4, and
+    RC-6.
+  - Relay pipe false success, stream setup ack/commit correctness,
+    upstream/downstream service queue failures, unsuccessful pipe behavior,
+    route-loop stream rejection, and deferred delivery caps map to ISSUE-011,
+    ISSUE-012, ISSUE-013, ISSUE-056, ISSUE-149, ISSUE-156, ISSUE-169,
+    ISSUE-180, ISSUE-217 through ISSUE-230, ISSUE-238, ISSUE-246, RC-3,
+    RC-4, and RC-6.
+  - Relayed source binding, forged broadcast/unicast/stream sources,
+    task/permit leaks, and high-load bad-network churn map to RC-1, RC-2,
+    RC-3, RC-6, and RC-7.
+- Result: no distinct score-80+ path-jump, route-loop, stale event, duplicate
+  connection, seed/non-seed cleanup, graceful-stop propagation, relay pipe
+  false-success, queue/backpressure, source-binding, task/permit leak, or
+  high-load bad-network issue had concrete failing-test evidence in this cycle.
 
 ### Critical-only no-new cycle 19 after ISSUE-247: observability and service lifecycle
 

@@ -7,10 +7,42 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Accepted issues: 247
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 19
-- Current audit continuation: critical-only observability, alias, service
-  lifecycle, requester/drop, and queue review found no new score-80+ issue
-  with concrete failing-test evidence.
+- Current consecutive no-new-issue cycles: 20
+- Current audit continuation: critical-only route/path-stability and
+  pipe/relay delivery review found no new score-80+ issue with concrete
+  failing-test evidence.
+- Critical-only no-new cycle 20 after ISSUE-247 reviewed router, discovery,
+  peer/internal, stream, network event handling, route/path stability, relay
+  pipe delivery, stale events, stopped-peer propagation, and high-load
+  bad-network paths. Local router (20), discovery (37), relay (16), route (27),
+  stale (25), disconnected (8), stream (30), and 58-node 3800-step adversarial
+  fuzz seed `109049` checks passed; `pipe` had zero matching tests. Reviewer
+  `Herschel` returned `NO_NEW_CRITICAL` after independently reviewing the same
+  route/path-stability and pipe/relay slice, then passing route, discovery,
+  stream, relay, security, stopped, and the same fuzz seed. Rejected candidates
+  mapped active path jumping, equal-cost routes, and tiny RTT jitter to
+  existing path-stability tests, RC-6, and RC-7; route-loop admission,
+  ingress-loop unicast/stream rejection, stopped-peer route removal, stale
+  route resurrection, seed/non-seed cleanup, and discovery tombstones to
+  ISSUE-211 through ISSUE-225, ISSUE-231, RC-6, and RC-7; stale `PeerData`,
+  `PeerConnected`, `PeerConnectError`, `PeerDisconnected`, duplicate/refused
+  connects, peer-id mismatch, and main-queue backpressure to existing
+  connection lifecycle/security families, RC-1, RC-4, and RC-6; relay pipe
+  false success, stream setup ack/commit correctness, upstream/downstream
+  service queue failures, unsuccessful pipe behavior, route-loop stream
+  rejection, and deferred delivery caps to ISSUE-011, ISSUE-012, ISSUE-013,
+  ISSUE-056, ISSUE-149, ISSUE-156, ISSUE-169, ISSUE-180, ISSUE-217 through
+  ISSUE-230, ISSUE-238, ISSUE-246, RC-3, RC-4, and RC-6; and relayed source
+  binding, forged broadcast/unicast/stream sources, task/permit leaks, and
+  high-load bad-network churn to RC-1, RC-2, RC-3, RC-6, and RC-7. No distinct
+  score-80+ route/path/pipe/relay issue had concrete failing-test evidence.
+  Smallest future fix proposal if this family regresses: pin the exact route
+  sync, direct connection id, peer lifecycle event, stopped tombstone, stream
+  setup request/ack/commit, service queue state, forged source, permit count,
+  or fuzz seed with one focused failing test, then patch only the failed
+  hysteresis/direct-preference rule, stale-event validation, tombstone gate,
+  relay commit boundary, queue/backpressure handling, source normalization, or
+  task/permit cleanup.
 - Critical-only no-new cycle 19 after ISSUE-247 reviewed metrics,
   visualization, alias, service lifecycle, requester/drop, service queue,
   stale, shutdown, and high-load bad-network paths. Local metrics and
