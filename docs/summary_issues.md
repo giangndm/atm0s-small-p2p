@@ -7,13 +7,47 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Accepted issues: 246
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 33
-- Current audit continuation: critical-only public API, config, and docs
-  boundary no-new cycle 35 found no new score-80+ issue across README/example
-  contract, downstream compileability, package/dependency assumptions,
-  address/config validation, static/open-cluster binding defaults,
-  service/requester misuse after drop, public service-id misuse, metrics/stats
-  helpers, and high-load valid API action behavior.
+- Current consecutive no-new-issue cycles: 34
+- Current audit continuation: critical-only production panic, overflow, and
+  resource-bound no-new cycle 36 found no new score-80+ issue across
+  production panic/unwrap/expect paths, serialization/deserialization errors,
+  timestamp/arithmetic overflow, bounded caches/maps/channels/semaphores,
+  pending RPC/ack/stream state, malformed inputs, timers/deadlines, and
+  high-load churn fuzz behavior.
+- Critical-only no-new cycle 36 reviewed production panic, overflow, and
+  resource-bound surfaces in non-test code across `secure.rs`, `router.rs`,
+  `discovery.rs`, `stream.rs`, `ctx.rs`, `peer.rs`, `peer_internal.rs`,
+  service modules, `utils.rs`, and `quic.rs`. Focused panic, overflow,
+  bounded, queue, malformed, serialize, deserialize, timeout, and a 24-node
+  900-step sanitized churn fuzz seed passed locally. Reviewer `Faraday the
+  2nd` returned `NO_NEW_CRITICAL` after independently reviewing non-test
+  panic/unwrap/expect surfaces, resource bounds in alias/pubsub/metrics/
+  visualization/replicated-KV/discovery/router/peer task paths, and bincode
+  serialization/deserialization across peer frames, service payloads, object
+  helpers, pubsub, alias, metrics/visualization, and replicated-KV messages.
+  Rejected candidates mapped to ISSUE-002, ISSUE-021, ISSUE-146, ISSUE-176,
+  ISSUE-207, ISSUE-244, RC-1, and cycle 33 for handshake/timestamp/replay;
+  ISSUE-024, ISSUE-094, ISSUE-097, ISSUE-098, ISSUE-174, RC-5, and cycle 33
+  for frame/object bincode caps; ISSUE-003, ISSUE-009, ISSUE-010, ISSUE-063,
+  ISSUE-103, ISSUE-164, ISSUE-211 through ISSUE-213, RC-5, RC-7, and cycle
+  32 for router/discovery overflow and active-path behavior; ISSUE-052,
+  ISSUE-053, ISSUE-060, ISSUE-072, ISSUE-073, ISSUE-076, ISSUE-091,
+  ISSUE-234, ISSUE-235, ISSUE-246, RC-6, and cycles 33/35 for public service
+  API misuse; ISSUE-043, ISSUE-100 through ISSUE-105, ISSUE-117, ISSUE-119,
+  ISSUE-121, ISSUE-123 through ISSUE-126, ISSUE-156, ISSUE-217 through
+  ISSUE-225, ISSUE-228, ISSUE-230, ISSUE-238, RC-3, RC-4, RC-6, and cycles
+  30/33/34 for queue/backpressure/pending state; ISSUE-023, ISSUE-025,
+  ISSUE-027, ISSUE-031, ISSUE-034, ISSUE-037, ISSUE-038, ISSUE-059,
+  ISSUE-081 through ISSUE-089, ISSUE-110, ISSUE-131, ISSUE-138, ISSUE-141,
+  ISSUE-154, ISSUE-233, ISSUE-237, ISSUE-245, and cycle 28 for replicated-KV
+  snapshot/repair/cap/serialization behavior; pubsub issues through
+  ISSUE-246 plus RC-2/RC-3/RC-5/RC-6 and cycle 31 for pubsub bounds/RPC/
+  shutdown cleanup; and ISSUE-064, ISSUE-068, ISSUE-078, ISSUE-079,
+  ISSUE-102, ISSUE-104, ISSUE-105, ISSUE-128, ISSUE-129, ISSUE-165,
+  ISSUE-200 through ISSUE-204, ISSUE-226, ISSUE-232, RC-1, RC-3, RC-5,
+  RC-6, and cycle 29 for metrics/visualization bounds. No distinct score-80+
+  production panic, overflow, serialization, resource-bound, malformed-input,
+  deadline, or high-load churn issue had concrete failing-test evidence.
 - Critical-only no-new cycle 35 reviewed public API, config, and docs/spec
   boundaries in `README.md`, `Cargo.toml`, examples, `readme.rs`, `utils.rs`,
   `stats.rs`, `requester.rs`, `service.rs`, `ctx.rs`, and public exports in

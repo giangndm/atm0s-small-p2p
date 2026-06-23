@@ -11,13 +11,89 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 33
-- Current audit continuation: critical-only public API, config, and docs
-  boundary no-new cycle 35 found no new score-80+ issue across README/example
-  contract, downstream compileability, package/dependency assumptions,
-  address/config validation, static/open-cluster binding defaults,
-  service/requester misuse after drop, public service-id misuse, metrics/stats
-  helpers, and high-load valid API action behavior.
+- Current consecutive no-new-issue cycles: 34
+- Current audit continuation: critical-only production panic, overflow, and
+  resource-bound no-new cycle 36 found no new score-80+ issue across
+  production panic/unwrap/expect paths, serialization/deserialization errors,
+  timestamp/arithmetic overflow, bounded caches/maps/channels/semaphores,
+  pending RPC/ack/stream state, malformed inputs, timers/deadlines, and
+  high-load churn fuzz behavior.
+
+### Critical-only no-new cycle 36: production panic, overflow, and resource bounds
+
+- Scope: reviewer-style critical-only pass over non-test code in
+  `src/secure.rs`, `src/router.rs`, `src/discovery.rs`, `src/stream.rs`,
+  `src/ctx.rs`, `src/peer.rs`, `src/peer/peer_internal.rs`, `src/service.rs`,
+  `src/service/alias_service.rs`, `src/service/pubsub_service.rs`,
+  `src/service/replicate_kv_service/*.rs`, `src/service/metrics_service.rs`,
+  `src/service/visualization_service.rs`, `src/utils.rs`, and `src/quic.rs`.
+- Focus areas: non-test `unwrap`/`expect`/`panic`/`todo`/`unreachable`
+  paths, arithmetic overflow, timestamps/deadlines, bincode on untrusted or
+  user-controlled data, object/frame caps, LRU/map/channel/semaphore/pending
+  state bounds, spawned task lifetimes, retry loops, malformed inputs, and
+  high-load/bad-network churn.
+- Verification:
+  - `RUST_LOG=error cargo test panic --lib -- --nocapture`: passed 32 tests.
+  - `RUST_LOG=error cargo test overflow --lib -- --nocapture`: passed 12 tests.
+  - `RUST_LOG=error cargo test bounded --lib -- --nocapture`: passed 30 tests.
+  - `RUST_LOG=error cargo test queue --lib -- --nocapture`: passed 37 tests.
+  - `RUST_LOG=error cargo test malformed --lib -- --nocapture`: 0 matched.
+  - `RUST_LOG=error cargo test serialize --lib -- --nocapture`: passed 4 tests.
+  - `RUST_LOG=error cargo test deserialize --lib -- --nocapture`: 0 matched.
+  - `RUST_LOG=error cargo test timeout --lib -- --nocapture`: passed 19 tests.
+  - `RUST_LOG=error P2P_FUZZ_NODES=24 P2P_FUZZ_STEPS=900 P2P_FUZZ_SEED=74036 cargo test fuzz_random_sanitized_node_churn_actions_must_not_panic_connection_tasks --lib -- --nocapture`: passed.
+- Reviewer cross-check: `Faraday the 2nd` returned `NO_NEW_CRITICAL` after
+  reviewing non-test panic/unwrap/expect surfaces, resource bounds in alias,
+  pubsub, metrics/visualization, replicated KV, discovery/router sync, peer
+  queues/semaphores/pending ack maps/replay caches/LRU caches/spawned tasks,
+  and bincode serialization/deserialization across peer frames, service
+  payloads, object helpers, pubsub, alias, metrics/visualization, and
+  replicated-KV RPC/broadcast events. Reviewer verification included panic,
+  bounded, queue, serialize, deserialize, resource, overflow, codec, object,
+  and a 24-node 900-step churn fuzz seed.
+- Duplicate mapping:
+  - Handshake serialization, timestamp, replay, role binding, and replay-cache
+    concerns map to ISSUE-002, ISSUE-021, ISSUE-146, ISSUE-176, ISSUE-207,
+    ISSUE-244, RC-1, and cycle 33.
+  - Bincode frame/object allocation and malformed raw peer-message concerns
+    map to ISSUE-024, ISSUE-094, ISSUE-097, ISSUE-098, ISSUE-174, RC-5, and
+    cycle 33.
+  - Router/discovery overflow, route sync caps, timestamp bounds, direct-route
+    priority, and active-path stability map to ISSUE-003, ISSUE-009,
+    ISSUE-010, ISSUE-063, ISSUE-103, ISSUE-164, ISSUE-211 through ISSUE-213,
+    RC-5, RC-7, and cycle 32.
+  - Public service-id misuse, requester/service use after drop, and invalid
+    service API behavior map to ISSUE-052, ISSUE-053, ISSUE-060, ISSUE-072,
+    ISSUE-073, ISSUE-076, ISSUE-091, ISSUE-234, ISSUE-235, ISSUE-246, RC-6,
+    and cycles 33/35.
+  - Queue/backpressure, pending ack/RPC/stream state, spawned-task lifetimes,
+    and control-channel bounds map to ISSUE-043, ISSUE-100 through ISSUE-105,
+    ISSUE-117, ISSUE-119, ISSUE-121, ISSUE-123 through ISSUE-126, ISSUE-156,
+    ISSUE-217 through ISSUE-225, ISSUE-228, ISSUE-230, ISSUE-238, RC-3,
+    RC-4, RC-6, and cycles 30/33/34.
+  - Replicated-KV arithmetic, snapshot/repair/fetch state, remote-store caps,
+    and serialization candidates map to ISSUE-023, ISSUE-025, ISSUE-027,
+    ISSUE-031, ISSUE-034, ISSUE-037, ISSUE-038, ISSUE-059, ISSUE-081 through
+    ISSUE-089, ISSUE-110, ISSUE-131, ISSUE-138, ISSUE-141, ISSUE-154,
+    ISSUE-233, ISSUE-237, ISSUE-245, and cycle 28.
+  - Pubsub local/remote bounds, tombstones, heartbeat chunks/batches, RPC
+    correlation, method caps, requester drop, and shutdown cleanup map to
+    ISSUE-020, ISSUE-039, ISSUE-043, ISSUE-072, ISSUE-073, ISSUE-076,
+    ISSUE-080, ISSUE-100, ISSUE-102 through ISSUE-105, ISSUE-115,
+    ISSUE-116, ISSUE-121, ISSUE-123 through ISSUE-126, ISSUE-155, ISSUE-178,
+    ISSUE-205, ISSUE-206, ISSUE-228, ISSUE-231, ISSUE-234 through ISSUE-236,
+    ISSUE-240 through ISSUE-243, ISSUE-246, RC-2, RC-3, RC-5, RC-6, and
+    cycle 31.
+  - Metrics/visualization bounds and stale stats behavior map to ISSUE-064,
+    ISSUE-068, ISSUE-078, ISSUE-079, ISSUE-102, ISSUE-104, ISSUE-105,
+    ISSUE-128, ISSUE-129, ISSUE-165, ISSUE-200 through ISSUE-204, ISSUE-226,
+    ISSUE-232, RC-1, RC-3, RC-5, RC-6, and cycle 29.
+  - `now_ms` system-time-backwards panic had no concrete score-80+ failing
+    test evidence under library-controlled input, so it was not accepted as a
+    new critical issue in this cycle.
+- Result: no distinct score-80+ production panic, overflow, serialization,
+  resource-bound, malformed-input, deadline, or high-load churn issue had
+  concrete failing-test evidence in this cycle.
 
 ### Critical-only no-new cycle 35: public API, config, and docs boundary
 
