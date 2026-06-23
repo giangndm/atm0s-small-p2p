@@ -7,10 +7,39 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Accepted issues: 247
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 10
-- Current audit continuation: critical-only public API, lifecycle, config, and
-  example review found no new score-80+ issue with concrete failing-test
-  evidence.
+- Current consecutive no-new-issue cycles: 11
+- Current audit continuation: critical-only route stability, pipe/open-stream,
+  and unicast relay review found no new score-80+ issue with concrete
+  failing-test evidence.
+- Critical-only no-new cycle 11 after ISSUE-247 reviewed `src/router.rs`,
+  `src/ctx.rs`, `src/lib.rs`, `src/msg.rs`, `src/peer/peer_internal.rs`, and
+  route, cross-node, stream, unicast, security, and fuzz tests. Local router,
+  cross-nodes, stream, unicast, and 42-node 2600-step adversarial fuzz seed
+  `100049` checks passed. Reviewer `Huygens the 2nd` returned
+  `NO_NEW_CRITICAL` after independently reviewing the same route/path stability
+  and pipe/unicast delivery slice, then passing route, router tests,
+  open-stream, unicast, cross-nodes, stream, source, relay-stream, a zero-match
+  `PeerData` filter, 36-node 1200-step adversarial fuzz seed `100049`, and
+  36-node 1200-step sanitized churn fuzz seed `100050`. Rejected candidates
+  mapped active path jumping, equal-cost route stability, tiny RTT jitter, and
+  direct-route priority to ISSUE-003 and RC-7; failed pipes, `open_stream`
+  false success, stream relay commit ordering, setup/open-stream timeout,
+  connection admission, and queue pressure to ISSUE-011, ISSUE-012, ISSUE-013,
+  ISSUE-056, ISSUE-117, ISSUE-149, ISSUE-156, ISSUE-169, ISSUE-180,
+  ISSUE-217, ISSUE-220, ISSUE-229, ISSUE-230, ISSUE-238, RC-3, RC-4, and
+  RC-6; unicast and acked-unicast delivery, ingress-loop rejection,
+  destination service closure, and local service queue pressure to ISSUE-119,
+  ISSUE-224, ISSUE-225, ISSUE-229, ISSUE-230, RC-3, and RC-6; and stale or
+  forged route sync, stopped-peer cleanup, discovery expiry, seed retention,
+  and lifecycle route cleanup to ISSUE-001, ISSUE-004, ISSUE-167, ISSUE-170,
+  ISSUE-211 through ISSUE-225, ISSUE-231, RC-3, RC-6, and RC-7. No distinct
+  score-80+ route stability, pipe/open-stream, unicast relay, stale route sync,
+  or high-churn route delivery issue had concrete failing-test evidence.
+  Smallest future fix proposal if this family regresses: pin the exact
+  route-change, route-sync, send, or stream-open event with one focused
+  failing test, then patch only the route selection hysteresis, route-sync
+  admission, live-alias lookup, ack propagation, or stream relay commit
+  boundary that failed.
 - Critical-only no-new cycle 10 after ISSUE-247 reviewed `src/lib.rs`,
   `src/ctx.rs`, `src/peer.rs`, `src/peer/peer_internal.rs`,
   `src/requester.rs`, `src/neighbours.rs`, `src/stats.rs`, `src/utils.rs`,
