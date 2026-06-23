@@ -7,10 +7,44 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Accepted issues: 247
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 29
-- Current audit continuation: critical-only lifecycle, task-cleanup,
-  shutdown-boundary, queue-pressure, pending-state, and bad-network churn
+- Current consecutive no-new-issue cycles: 30
+- Current audit continuation: critical-only routing/path-stability,
+  pipe/stream-delivery, relay-loop, source-binding, queue-pressure, and
+  bad-network churn
   review found no new score-80+ issue with concrete failing-test evidence.
+- Critical-only no-new cycle 30 after ISSUE-247 reviewed routing
+  path-stability and pipe/stream delivery across `src/router.rs`,
+  `src/stream.rs`, `src/peer/peer_internal.rs`,
+  `src/peer/peer_alias.rs`, `src/ctx.rs`, `src/requester.rs`, `src/lib.rs`,
+  cross-node stream/unicast tests, and related service, discovery, and pubsub
+  surfaces. Local route (27), stream (30), path (7), relay (16), unicast (12),
+  source (7), full (58), loop (6), and 78-node 5800-step adversarial fuzz
+  seed `119049` checks passed. Reviewer `Ramanujan` returned
+  `NO_NEW_CRITICAL` after independently reviewing the same slice and passing
+  router (20), route (27), stream (30), relay (16), requester (13), service
+  (199), discovery (37), pubsub (92), cross_nodes (9), and the same fuzz
+  seed. Rejected candidates mapped active-path jumping to ISSUE-003 and
+  RC-7, where current router behavior has equal-cost stickiness, tiny RTT
+  jitter hysteresis, direct-route priority, stale-sync rejection,
+  route-loop filtering, and sync caps; pipe or relay false success to
+  ISSUE-011, ISSUE-012, ISSUE-013, ISSUE-056, ISSUE-117, ISSUE-149,
+  ISSUE-156, ISSUE-169, ISSUE-180, ISSUE-217, ISSUE-220, ISSUE-229,
+  ISSUE-230, ISSUE-238, RC-3, RC-4, and RC-6; source binding and relay-loop
+  behavior to ISSUE-014, ISSUE-015, ISSUE-017, ISSUE-018, ISSUE-039,
+  ISSUE-115, ISSUE-116, ISSUE-119, ISSUE-197, ISSUE-224, ISSUE-225,
+  ISSUE-226, ISSUE-229, ISSUE-230, RC-1, RC-2, RC-3, RC-4, and RC-6; and
+  discovery/stale-route/graceful-stop churn to ISSUE-001, ISSUE-004,
+  ISSUE-051, ISSUE-063, ISSUE-164, ISSUE-167, ISSUE-170, ISSUE-211 through
+  ISSUE-225, ISSUE-231, RC-5, RC-6, and RC-7. No distinct score-80+ routing
+  or pipe/stream issue had reviewer-accepted failing-test evidence. Smallest
+  future fix proposal if this family regresses: pin the exact destination,
+  previous and candidate next-hop connection ids, metrics, route sync row,
+  authenticated ingress peer, stream service id, relay commit state,
+  destination service queue state, removed-connection id, or fuzz seed with
+  one focused failing test, then patch only the failed best-path selection
+  rule, route admission/filter, direct-route cleanup, ingress-loop guard,
+  stream setup timeout, relay commit propagation, source normalization, or
+  queue/backpressure boundary.
 - Critical-only no-new cycle 29 after ISSUE-247 reviewed lifecycle, shutdown,
   task-cleanup, pending-state, queue-pressure, direct/graceful disconnect,
   graceful-stop notification, unauthenticated inbound caps, control admission,

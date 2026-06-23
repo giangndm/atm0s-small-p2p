@@ -11,10 +11,76 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 29
-- Current audit continuation: critical-only lifecycle, task-cleanup,
-  shutdown-boundary, queue-pressure, pending-state, and bad-network churn
+- Current consecutive no-new-issue cycles: 30
+- Current audit continuation: critical-only routing/path-stability,
+  pipe/stream-delivery, relay-loop, source-binding, queue-pressure, and
+  bad-network churn
   review found no new score-80+ issue with concrete failing-test evidence.
+
+### Critical-only no-new cycle 30 after ISSUE-247: routing path stability and pipe/stream delivery
+
+- Scope: reviewer-style critical-only pass over `src/router.rs`,
+  `src/stream.rs`, `src/peer/peer_internal.rs`,
+  `src/peer/peer_alias.rs`, `src/ctx.rs`, `src/requester.rs`,
+  `src/lib.rs`, cross-node stream/unicast tests, and related route,
+  service-delivery, discovery, and pubsub surfaces. Focus areas were active
+  path jumping under equal-cost or small RTT jitter, direct-route priority,
+  stale-sync and removed-connection route cleanup, route-loop rejection,
+  outbound and inbound stream setup, relay pipe commit semantics, false stream
+  success when a destination service is full or closed, source binding,
+  unicast/stream backpressure, and high-load bad-network churn.
+- Verification:
+  - `RUST_LOG=error cargo test --lib route -- --nocapture`: passed 27 tests.
+  - `RUST_LOG=error cargo test --lib stream -- --nocapture`: passed 30
+    tests.
+  - `RUST_LOG=error cargo test --lib path -- --nocapture`: passed 7 tests.
+  - `RUST_LOG=error cargo test --lib relay -- --nocapture`: passed 16 tests.
+  - `RUST_LOG=error cargo test --lib unicast -- --nocapture`: passed 12
+    tests.
+  - `RUST_LOG=error cargo test --lib source -- --nocapture`: passed 7
+    tests.
+  - `RUST_LOG=error cargo test --lib full -- --nocapture`: passed 58 tests.
+  - `RUST_LOG=error cargo test --lib loop -- --nocapture`: passed 6 tests.
+  - `RUST_LOG=error P2P_FUZZ_NODES=78 P2P_FUZZ_STEPS=5800 P2P_FUZZ_SEED=119049 cargo test --lib fuzz_random_adversarial_node_actions_must_not_panic_connection_tasks -- --nocapture`:
+    passed 1 test.
+- Reviewer cross-check: `Ramanujan` returned `NO_NEW_CRITICAL` after
+  independently reviewing the same routing/path-stability and pipe/stream
+  delivery slice. Reviewer verification included `router` (20 passed),
+  `route` (27 passed), `stream` (30 passed), `relay` (16 passed),
+  `requester` (13 passed), `service` (199 passed), `discovery` (37 passed),
+  `pubsub` (92 passed), `cross_nodes` (9 passed), and the same 78-node
+  5800-step adversarial fuzz seed `119049` (1 passed).
+- Duplicate mapping:
+  - Active-path jumping maps to ISSUE-003 and RC-7. Current router coverage
+    includes equal-cost path stickiness, tiny RTT jitter hysteresis,
+    direct-route priority over relayed paths, removed-direct stale-sync
+    rejection, local-peer route rejection, duplicate route-row rejection,
+    MAX_HOPS enforcement, route-loop advertisement filtering, and outbound
+    sync caps.
+  - Pipe or relay false success maps to ISSUE-011, ISSUE-012, ISSUE-013,
+    ISSUE-056, ISSUE-117, ISSUE-149, ISSUE-156, ISSUE-169, ISSUE-180,
+    ISSUE-217, ISSUE-220, ISSUE-229, ISSUE-230, ISSUE-238, RC-3, RC-4, and
+    RC-6. Current stream coverage includes destination service closed/full
+    errors, relayed final-service-full errors, withheld `StreamConnectRes`
+    timeout, connect-request write stall timeout, deferred relay commit,
+    upstream setup close/stall rejection, accept-permit bounds, and local
+    service queue reservation behavior.
+  - Source binding and relay-loop behavior maps to ISSUE-014, ISSUE-015,
+    ISSUE-017, ISSUE-018, ISSUE-039, ISSUE-115, ISSUE-116, ISSUE-119,
+    ISSUE-197, ISSUE-224, ISSUE-225, ISSUE-226, ISSUE-229, ISSUE-230,
+    RC-1, RC-2, RC-3, RC-4, and RC-6. Current checks normalize stream and
+    unicast sources to the authenticated ingress peer and reject forwarding
+    streams or unicasts back to the ingress connection.
+  - Discovery, stale-route, graceful-stop, and bad-network churn map to
+    ISSUE-001, ISSUE-004, ISSUE-051, ISSUE-063, ISSUE-164, ISSUE-167,
+    ISSUE-170, ISSUE-211 through ISSUE-225, ISSUE-231, RC-5, RC-6, and
+    RC-7. The 78-node churn run produced expected refused connection,
+    duplicate-connection, timeout, closed-service, oversized-frame, and
+    stopped-peer logs without panic or invariant failure.
+- Result: no distinct score-80+ routing, path-stability, relay-loop,
+  source-binding, pipe/stream delivery, queue-pressure, stale-route, or
+  high-load bad-network issue had concrete reviewer-accepted failing-test
+  evidence in this cycle.
 
 ### Critical-only no-new cycle 29 after ISSUE-247: lifecycle, shutdown, and task cleanup
 
