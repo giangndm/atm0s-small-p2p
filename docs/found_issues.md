@@ -11,10 +11,64 @@ must resolve.
 
 ## Audit Status
 
-- Current consecutive no-new-issue cycles: 18
-- Current audit continuation: critical-only transport, framing, stream setup,
-  service-id, and raw/forged ingress review found no new score-80+ issue with
-  concrete failing-test evidence.
+- Current consecutive no-new-issue cycles: 19
+- Current audit continuation: critical-only observability, alias, service
+  lifecycle, requester/drop, and queue review found no new score-80+ issue
+  with concrete failing-test evidence.
+
+### Critical-only no-new cycle 19 after ISSUE-247: observability and service lifecycle
+
+- Scope: reviewer-style critical-only pass over
+  `src/service/metrics_service.rs`,
+  `src/service/visualization_service.rs`,
+  `src/service/alias_service.rs`, `src/service.rs`, `src/ctx.rs`,
+  `src/requester.rs`, `src/lib.rs`, `src/msg.rs`, and related metrics,
+  visualization, alias, security, pubsub, discovery, service-lifecycle,
+  requester, stale, drop, closed, full, shutdown, and adversarial fuzz tests.
+  Focus areas were metrics/visualization source spoofing or stale observer
+  data, trusted collector gating, scan task leaks/coalescing, pending
+  responder/resource caps, peer-disconnect cleanup, alias
+  registration/find/shutdown lifecycle, dropped service/requester liveness,
+  service-id reuse, full/closed service queues, false success,
+  panic/unwrap boundaries, and high-load bad-network random actions.
+- Verification:
+  - `RUST_LOG=error cargo test --lib metrics -- --nocapture`: passed 14 tests.
+  - `RUST_LOG=error cargo test --lib requester -- --nocapture`: passed 13
+    tests.
+  - Initial sandboxed `cargo test` attempts for metrics, visualization, alias,
+    and requester failed before Cargo started with `bwrap: setting up uid map:
+    Permission denied`; the metrics and requester filters were rerun outside
+    that sandbox and passed.
+- Reviewer cross-check: `Plato` returned `NO_NEW_CRITICAL` after independently
+  reviewing the same observability/service-lifecycle slice. Reviewer
+  verification included `metrics` (14 passed), `visualization` (19 passed),
+  `alias` (47 passed), `requester` (13 passed), `service` (199 passed),
+  `stale` (25 passed), `drop` (25 passed), `closed` (5 passed), `full` (58
+  passed), `shutdown` (8 passed), and 56-node 3600-step adversarial fuzz seed
+  `108049` (1 passed). The reviewer also saw the same sandbox `bwrap` setup
+  failure before rerunning the fuzz command successfully outside the sandbox.
+- Duplicate mapping:
+  - Metrics and visualization source spoofing, stale `Info`, collector trust,
+    oversized info/topology rows, stale observer data, and scan coalescing map
+    to existing observability/resource families, RC-1, RC-3, RC-5, and RC-6.
+  - Alias register/find/shutdown, cache hints, stale lifecycle generations,
+    pending find caps, waiter caps, hint caps, disconnect cleanup, and graceful
+    stop handling map to existing alias lifecycle/resource families,
+    ISSUE-100 through ISSUE-105, ISSUE-119, ISSUE-121, ISSUE-123 through
+    ISSUE-126, ISSUE-234, ISSUE-235, RC-3, RC-5, and RC-6.
+  - Dropped service/requester liveness, duplicate service ids, service-id
+    reuse, full/closed service queues, false success, and stream/unicast
+    failure reporting map to ISSUE-043, ISSUE-052, ISSUE-053, ISSUE-060,
+    ISSUE-072, ISSUE-073, ISSUE-091, ISSUE-217 through ISSUE-230, ISSUE-246,
+    RC-3, RC-4, and RC-6.
+  - Peer disconnect, graceful shutdown cleanup, non-seed removal, stale
+    service events, and high-load bad-network churn map to existing
+    shutdown/discovery/router/resource families, ISSUE-211 through ISSUE-225,
+    ISSUE-231, RC-6, and RC-7.
+- Result: no distinct score-80+ metrics/visualization spoofing, stale
+  observer, collector trust, alias lifecycle, service/requester liveness,
+  queue/backpressure, disconnect/graceful-shutdown, or high-load bad-network
+  issue had concrete failing-test evidence in this cycle.
 
 ### Critical-only no-new cycle 18 after ISSUE-247: transport framing and message ingress
 

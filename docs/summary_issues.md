@@ -7,10 +7,41 @@ reviewer decisions, scores, and failing tests remain in `docs/found_issues.md`.
 
 - Accepted issues: 247
 - Missing issue scores: 0
-- Current consecutive no-new-issue cycles: 18
-- Current audit continuation: critical-only transport, framing, stream setup,
-  service-id, and raw/forged ingress review found no new score-80+ issue with
-  concrete failing-test evidence.
+- Current consecutive no-new-issue cycles: 19
+- Current audit continuation: critical-only observability, alias, service
+  lifecycle, requester/drop, and queue review found no new score-80+ issue
+  with concrete failing-test evidence.
+- Critical-only no-new cycle 19 after ISSUE-247 reviewed metrics,
+  visualization, alias, service lifecycle, requester/drop, service queue,
+  stale, shutdown, and high-load bad-network paths. Local metrics and
+  requester filters passed after sandbox `bwrap` setup failures were rerun
+  outside the failing sandbox. Reviewer `Plato` returned `NO_NEW_CRITICAL`
+  after independently reviewing the same slice, then passing `metrics` (14),
+  `visualization` (19), `alias` (47), `requester` (13), `service` (199),
+  `stale` (25), `drop` (25), `closed` (5), `full` (58), `shutdown` (8), and
+  56-node 3600-step adversarial fuzz seed `108049`. Rejected candidates mapped
+  metrics/visualization source spoofing, stale `Info`, collector trust,
+  oversized info/topology rows, stale observer data, and scan coalescing to
+  existing observability/resource families, RC-1, RC-3, RC-5, and RC-6; alias
+  register/find/shutdown, cache hints, stale lifecycle generations, pending
+  find caps, waiter caps, hint caps, disconnect cleanup, and graceful stop
+  handling to ISSUE-100 through ISSUE-105, ISSUE-119, ISSUE-121, ISSUE-123
+  through ISSUE-126, ISSUE-234, ISSUE-235, RC-3, RC-5, and RC-6; dropped
+  service/requester liveness, duplicate service ids, service-id reuse,
+  full/closed service queues, false success, and stream/unicast failure
+  reporting to ISSUE-043, ISSUE-052, ISSUE-053, ISSUE-060, ISSUE-072,
+  ISSUE-073, ISSUE-091, ISSUE-217 through ISSUE-230, ISSUE-246, RC-3, RC-4,
+  and RC-6; and peer disconnect, graceful shutdown cleanup, non-seed removal,
+  stale service events, and high-load bad-network churn to ISSUE-211 through
+  ISSUE-225, ISSUE-231, RC-6, and RC-7. No distinct score-80+ observability,
+  alias lifecycle, service/requester liveness, queue/backpressure,
+  disconnect/graceful-shutdown, or high-load bad-network issue had concrete
+  failing-test evidence. Smallest future fix proposal if this family regresses:
+  pin the exact metric/topology frame, alias generation, pending waiter, queue
+  state, dropped requester, disconnect/shutdown event, stale observer, or fuzz
+  seed with one focused failing test, then patch only the failed trust gate,
+  stale cleanup, lifecycle generation check, waiter cap, queue/backpressure
+  boundary, task cleanup, or requester liveness guard.
 - Critical-only no-new cycle 18 after ISSUE-247 reviewed `src/msg.rs`,
   `src/quic.rs`, `src/stream.rs`, `src/peer.rs`,
   `src/peer/peer_internal.rs`, `src/lib.rs`, `src/ctx.rs`, `src/service.rs`,
