@@ -1,5 +1,6 @@
 use std::{fmt::Debug, marker::PhantomData};
 use std::{
+    future::Future,
     io,
     pin::Pin,
     task::{Context, Poll},
@@ -31,6 +32,10 @@ impl P2pQuicStream {
     pub fn new(read: RecvStream, write: SendStream) -> Self {
         Self { read, write }
     }
+
+    pub(crate) fn write_stopped(&self) -> impl Future<Output = Result<Option<quinn::VarInt>, quinn::StoppedError>> + Send + Sync + 'static {
+        self.write.stopped()
+    }
 }
 
 impl AsyncRead for P2pQuicStream {
@@ -57,6 +62,15 @@ impl AsyncWrite for P2pQuicStream {
 pub struct BincodeCodec<Item> {
     length_decode: LengthDelimitedCodec,
     _tmp: PhantomData<Item>,
+}
+
+impl<Item> BincodeCodec<Item> {
+    pub(crate) fn with_max_frame_length(max: usize) -> Self {
+        Self {
+            length_decode: LengthDelimitedCodec::builder().max_frame_length(max).new_codec(),
+            _tmp: Default::default(),
+        }
+    }
 }
 
 impl<Item> Default for BincodeCodec<Item> {
@@ -106,14 +120,143 @@ pub async fn wait_object<R: AsyncRead + Unpin, O: DeserializeOwned, const MAX_SI
 }
 
 pub async fn write_object<W: AsyncWrite + Send + Unpin, O: Serialize, const MAX_SIZE: usize>(writer: &mut W, object: &O) -> anyhow::Result<()> {
-    let estimate_buffer_len = bincode::serialized_size(object).expect("Should convert to binary") as usize;
-    if estimate_buffer_len > MAX_SIZE {
-        return Err(anyhow!("buffer to big {} vs {MAX_SIZE}", estimate_buffer_len));
+    let data_buf: Vec<u8> = bincode::serialize(object)?;
+    if data_buf.len() > MAX_SIZE {
+        return Err(anyhow!("buffer to big {} vs {MAX_SIZE}", data_buf.len()));
     }
-    let data_buf: Vec<u8> = bincode::serialize(&object).expect("Should convert to binary");
+    if data_buf.len() > u16::MAX as usize {
+        return Err(anyhow!("buffer too big for u16 length prefix: {}", data_buf.len()));
+    }
     let len_buf = (data_buf.len() as u16).to_be_bytes();
 
     writer.write_all(&len_buf).await?;
     writer.write_all(&data_buf).await?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use std::cell::Cell;
+
+    use futures::FutureExt;
+    use serde::{ser::SerializeSeq, Serializer};
+    use tokio_util::{
+        bytes::BytesMut,
+        codec::{Decoder, Encoder},
+    };
+
+    use crate::{
+        msg::{P2pServiceId, PeerMessage},
+        PeerId,
+    };
+
+    use super::*;
+
+    struct FailingSerialize;
+
+    impl Serialize for FailingSerialize {
+        fn serialize<S>(&self, _serializer: S) -> Result<S::Ok, S::Error>
+        where
+            S: Serializer,
+        {
+            Err(serde::ser::Error::custom("intentional stream serialization failure"))
+        }
+    }
+
+    struct GrowingSerialize {
+        first_pass: Cell<bool>,
+    }
+
+    impl Serialize for GrowingSerialize {
+        fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+        where
+            S: Serializer,
+        {
+            let len = if self.first_pass.replace(false) {
+                1
+            } else {
+                32
+            };
+            let mut seq = serializer.serialize_seq(Some(len))?;
+            for _ in 0..len {
+                seq.serialize_element(&7u8)?;
+            }
+            seq.end()
+        }
+    }
+
+    #[test]
+    fn peer_message_codec_must_reject_oversized_service_payloads() {
+        let mut codec = BincodeCodec::<PeerMessage>::with_max_frame_length(60_000);
+        let mut dst = BytesMut::new();
+        let oversized = vec![0; 70_000];
+
+        let result = codec.encode(PeerMessage::Unicast(PeerId::from(1), PeerId::from(2), P2pServiceId::from(0), oversized), &mut dst);
+
+        assert!(result.is_err(), "main peer message codec must reject oversized service payloads before framing");
+        assert!(dst.is_empty(), "oversized peer messages must not append partial frames");
+    }
+
+    #[test]
+    fn peer_message_codec_must_reject_oversized_inbound_frames() {
+        let mut codec = BincodeCodec::<PeerMessage>::with_max_frame_length(60_000);
+        let mut src = BytesMut::new();
+        src.extend_from_slice(&(70_000u32.to_be_bytes()));
+
+        let result = codec.decode(&mut src);
+
+        assert!(result.is_err(), "main peer message codec must reject oversized inbound frames before payload allocation");
+    }
+
+    #[test]
+    fn peer_message_codec_must_allow_small_messages() {
+        let mut codec = BincodeCodec::<PeerMessage>::with_max_frame_length(60_000);
+        let mut framed = BytesMut::new();
+        codec
+            .encode(PeerMessage::Unicast(PeerId::from(1), PeerId::from(2), P2pServiceId::from(0), b"ok".to_vec()), &mut framed)
+            .expect("small peer message should encode");
+
+        let decoded = codec.decode(&mut framed).expect("small peer message should decode");
+
+        assert!(
+            matches!(decoded, Some(PeerMessage::Unicast(source, dest, service, payload)) if source == PeerId::from(1) && dest == PeerId::from(2) && service == P2pServiceId::from(0) && payload == b"ok")
+        );
+    }
+
+    #[tokio::test]
+    async fn write_object_must_return_error_on_serialize_failure() {
+        let (mut writer, _reader) = tokio::io::duplex(1024);
+
+        let result = std::panic::AssertUnwindSafe(write_object::<_, _, 1024>(&mut writer, &FailingSerialize)).catch_unwind().await;
+
+        assert!(matches!(result, Ok(Err(_))), "write_object must return Err instead of panicking when serialization fails");
+    }
+
+    #[tokio::test]
+    async fn write_object_must_reject_payloads_larger_than_u16_length_prefix() {
+        let mut writer = Vec::new();
+        let payload = vec![7u8; 70_000];
+
+        let result = write_object::<_, _, 100_000>(&mut writer, &payload).await;
+
+        assert!(result.is_err(), "write_object must reject objects larger than the two-byte length prefix can represent");
+    }
+
+    #[tokio::test]
+    async fn write_object_must_recheck_actual_serialized_size() {
+        let mut writer = Vec::new();
+        let payload = GrowingSerialize { first_pass: Cell::new(true) };
+
+        let result = write_object::<_, _, 16>(&mut writer, &payload).await;
+
+        assert!(
+            result.is_err(),
+            "write_object must reject the actual serialized payload when it exceeds MAX_SIZE, not only the estimate"
+        );
+        assert!(
+            writer.len() <= 18,
+            "write_object must not write an oversized frame after a smaller serialized_size estimate, wrote {} bytes",
+            writer.len()
+        );
+    }
 }

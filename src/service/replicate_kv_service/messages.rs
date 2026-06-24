@@ -27,8 +27,16 @@ pub struct Changed<K, V> {
     pub(crate) action: Action<V>,
 }
 
+/// Monotonic replication sequence number; local mutation code must allocate
+/// successors with checked arithmetic.
 #[derive(Debug, PartialEq, Eq, Clone, Copy, Serialize, Deserialize)]
 pub struct Version(pub(super) u64);
+
+impl Version {
+    pub(super) fn checked_next(self) -> Option<Self> {
+        self.0.checked_add(1).map(Self)
+    }
+}
 
 impl Add<u64> for Version {
     type Output = Self;
@@ -54,7 +62,7 @@ impl Ord for Version {
 
 impl PartialOrd for Version {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        self.0.partial_cmp(&other.0)
+        Some(self.cmp(other))
     }
 }
 

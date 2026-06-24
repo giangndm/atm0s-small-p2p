@@ -1,4 +1,5 @@
 use std::{
+    collections::HashMap,
     fmt::{Debug, Display},
     net::SocketAddr,
     ops::Deref,
@@ -21,9 +22,10 @@ use serde::{Deserialize, Serialize};
 use tokio::{
     select,
     sync::{
-        mpsc::{channel, unbounded_channel, Receiver, Sender, UnboundedReceiver, UnboundedSender},
+        mpsc::{channel, Receiver, Sender},
         oneshot,
     },
+    task::JoinHandle,
     time::Interval,
 };
 
@@ -106,7 +108,38 @@ impl FromStr for PeerAddress {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum InboundPeerBindings {
+    InsecureOpenCluster,
+    Static(HashMap<PeerId, NetworkAddress>),
+}
+
+impl Default for InboundPeerBindings {
+    fn default() -> Self {
+        Self::Static(HashMap::new())
+    }
+}
+
+impl InboundPeerBindings {
+    pub fn static_bindings(bindings: impl IntoIterator<Item = PeerAddress>) -> Self {
+        Self::Static(bindings.into_iter().map(|addr| (addr.peer_id(), addr.network_address().clone())).collect())
+    }
+
+    pub fn insecure_open_cluster() -> Self {
+        Self::InsecureOpenCluster
+    }
+
+    pub(crate) fn is_authorized(&self, peer: PeerId, remote: SocketAddr) -> bool {
+        match self {
+            Self::InsecureOpenCluster => true,
+            Self::Static(bindings) => bindings.get(&peer).is_some_and(|expected| **expected == remote),
+        }
+    }
+}
+
 pub const CERT_DOMAIN_NAME: &str = "cluster";
+pub(crate) const NETWORK_CONTROL_QUEUE_SIZE: usize = 1024;
+pub(crate) const MAX_PENDING_UNAUTHENTICATED_INBOUND_CONNECTIONS: usize = 16;
 
 #[derive(Debug)]
 enum PeerMainData {
@@ -118,6 +151,7 @@ enum MainEvent {
     PeerConnected(ConnectionId, PeerId, u16),
     PeerConnectError(ConnectionId, Option<PeerId>, anyhow::Error),
     PeerData(ConnectionId, PeerId, PeerMainData),
+    PeerStopped(ConnectionId, PeerId),
     PeerStats(ConnectionId, PeerId, PeerConnectionMetric),
     PeerDisconnected(ConnectionId, PeerId),
 }
@@ -130,6 +164,7 @@ pub struct P2pNetworkConfig<SECURE> {
     pub peer_id: PeerId,
     pub listen_addr: SocketAddr,
     pub advertise: Option<NetworkAddress>,
+    pub inbound_peer_bindings: InboundPeerBindings,
     pub priv_key: PrivatePkcs8KeyDer<'static>,
     pub cert: CertificateDer<'static>,
     pub tick_ms: u64,
@@ -147,24 +182,31 @@ pub enum P2pNetworkEvent {
 pub struct P2pNetwork<SECURE> {
     local_id: PeerId,
     endpoint: Endpoint,
-    control_tx: UnboundedSender<ControlCmd>,
-    control_rx: UnboundedReceiver<ControlCmd>,
+    control_tx: Sender<ControlCmd>,
+    control_rx: Receiver<ControlCmd>,
     main_tx: Sender<MainEvent>,
     main_rx: Receiver<MainEvent>,
     neighbours: NetworkNeighbours,
     ticker: Interval,
     router: SharedRouterTable,
     discovery: PeerDiscovery,
+    pending_sync_tasks: HashMap<ConnectionId, JoinHandle<()>>,
+    pending_connects: HashMap<ConnectionId, oneshot::Sender<anyhow::Result<()>>>,
     ctx: SharedCtx,
     secure: Arc<SECURE>,
+    inbound_peer_bindings: Arc<InboundPeerBindings>,
 }
 
 impl<SECURE: HandshakeProtocol> P2pNetwork<SECURE> {
     pub async fn new(cfg: P2pNetworkConfig<SECURE>) -> anyhow::Result<Self> {
         log::info!("[P2pNetwork] starting node {}@{}", cfg.peer_id, cfg.listen_addr);
+        if cfg.tick_ms == 0 {
+            anyhow::bail!("P2pNetworkConfig.tick_ms must be greater than 0");
+        }
+
         let endpoint = make_server_endpoint(cfg.listen_addr, cfg.priv_key, cfg.cert)?;
         let (main_tx, main_rx) = channel(10);
-        let (control_tx, control_rx) = unbounded_channel();
+        let (control_tx, control_rx) = channel(NETWORK_CONTROL_QUEUE_SIZE);
         let mut discovery = PeerDiscovery::new(cfg.seeds);
         let router = SharedRouterTable::new(cfg.peer_id);
 
@@ -184,13 +226,17 @@ impl<SECURE: HandshakeProtocol> P2pNetwork<SECURE> {
             ctx: SharedCtx::new(cfg.peer_id, router.clone()),
             router,
             discovery,
+            pending_sync_tasks: HashMap::new(),
+            pending_connects: HashMap::new(),
             secure: Arc::new(cfg.secure),
+            inbound_peer_bindings: Arc::new(cfg.inbound_peer_bindings),
         })
     }
 
     pub fn create_service(&mut self, service_id: P2pServiceId) -> P2pService {
-        let (service, tx) = P2pService::build(service_id, self.ctx.clone());
-        self.ctx.set_service(service_id, tx);
+        let (mut service, tx) = P2pService::build(service_id, self.ctx.clone());
+        let registered = self.ctx.set_service(service_id, tx);
+        service.set_registered(registered);
         service
     }
 
@@ -220,8 +266,28 @@ impl<SECURE: HandshakeProtocol> P2pNetwork<SECURE> {
         self.endpoint.close(VarInt::from_u32(0), "Shutdown".as_bytes());
     }
 
+    pub async fn shutdown_gracefully(&mut self) {
+        let conns = self.ctx.conns();
+        let local_id = self.local_id;
+        let notifications = conns.into_iter().map(|conn| async move { conn.send_wait(PeerMessage::PeerStopped(local_id)).await });
+        let notify_all = async {
+            for result in futures::future::join_all(notifications).await {
+                if let Err(err) = result {
+                    log::warn!("[P2pNetwork] graceful shutdown notify failed: {err}");
+                }
+            }
+        };
+        if let Err(err) = tokio::time::timeout(Duration::from_secs(1), notify_all).await {
+            log::warn!("[P2pNetwork] graceful shutdown notify timeout: {err}");
+        }
+        self.shutdown();
+    }
+
     fn process_tick(&mut self, now_ms: u64) -> anyhow::Result<P2pNetworkEvent> {
-        self.discovery.clear_timeout(now_ms);
+        for peer in self.discovery.clear_timeout(now_ms) {
+            self.router.del_learned_peer(&peer);
+        }
+        self.pending_sync_tasks.retain(|_, task| !task.is_finished());
         for conn in self.neighbours.connected_conns() {
             let peer_id = conn.peer_id().expect("connected neighbours should have peer_id");
             let conn_id = conn.conn_id();
@@ -230,11 +296,29 @@ impl<SECURE: HandshakeProtocol> P2pNetwork<SECURE> {
             if let Some(alias) = self.ctx.conn(&conn_id) {
                 if let Err(e) = alias.try_send(PeerMessage::Sync { route, advertise }) {
                     log::error!("[P2pNetwork] try send message to peer {peer_id} over conn {conn_id} error {e}");
+                    if let Some(task) = self.pending_sync_tasks.remove(&conn_id) {
+                        task.abort();
+                    }
+                    let route = self.router.create_sync(&peer_id);
+                    let advertise = self.discovery.create_sync_for(now_ms, &peer_id);
+                    self.pending_sync_tasks.insert(
+                        conn_id,
+                        tokio::spawn(async move {
+                            if let Err(err) = alias.send(PeerMessage::Sync { route, advertise }).await {
+                                log::debug!("[P2pNetwork] retry send sync to peer {peer_id} over conn {conn_id} failed: {err}");
+                            }
+                        }),
+                    );
+                } else if let Some(task) = self.pending_sync_tasks.remove(&conn_id) {
+                    task.abort();
                 }
+            } else if let Some(task) = self.pending_sync_tasks.remove(&conn_id) {
+                task.abort();
             }
         }
-        for addr in self.discovery.remotes() {
-            self.control_tx.send(ControlCmd::Connect(addr.clone(), None))?;
+        let remotes: Vec<_> = self.discovery.remotes().collect();
+        for addr in remotes {
+            self.process_connect(addr, None)?;
         }
 
         Ok(P2pNetworkEvent::Continue)
@@ -242,8 +326,14 @@ impl<SECURE: HandshakeProtocol> P2pNetwork<SECURE> {
 
     fn process_incoming(&mut self, incoming: Incoming) -> anyhow::Result<P2pNetworkEvent> {
         let remote = incoming.remote_address();
+        if self.neighbours.pending_unauthenticated_inbound_count(|conn_id| self.ctx.conn(conn_id).is_some()) >= MAX_PENDING_UNAUTHENTICATED_INBOUND_CONNECTIONS {
+            log::warn!("[P2pNetwork] incoming connect from {remote} => refuse, pending unauthenticated inbound limit reached");
+            incoming.refuse();
+            return Ok(P2pNetworkEvent::Continue);
+        }
+
         log::info!("[P2pNetwork] incoming connect from {remote} => accept");
-        let conn = PeerConnection::new_incoming(self.secure.clone(), self.local_id, incoming, self.main_tx.clone(), self.ctx.clone());
+        let conn = PeerConnection::new_incoming(self.secure.clone(), self.local_id, incoming, self.inbound_peer_bindings.clone(), self.main_tx.clone(), self.ctx.clone());
         self.neighbours.insert(conn.conn_id(), conn);
         Ok(P2pNetworkEvent::Continue)
     }
@@ -252,33 +342,113 @@ impl<SECURE: HandshakeProtocol> P2pNetwork<SECURE> {
         match event {
             MainEvent::PeerConnected(conn, peer, ttl_ms) => {
                 log::info!("[P2pNetwork] connection {conn} connected to {peer}");
+                let Some(alias) = self.ctx.conn(&conn) else {
+                    log::warn!("[P2pNetwork] ignore peer connected for {peer} from unknown connection {conn}");
+                    if let Some(tx) = self.pending_connects.remove(&conn) {
+                        tx.send(Err(anyhow!("connected event for unknown connection {conn}"))).print_on_err2("[P2pNetwork] send connect answer");
+                    }
+                    return Ok(P2pNetworkEvent::Continue);
+                };
+                if alias.to_id() != peer {
+                    log::warn!("[P2pNetwork] ignore peer connected for {peer} from connection {conn} bound to {}", alias.to_id());
+                    if let Some(tx) = self.pending_connects.remove(&conn) {
+                        tx.send(Err(anyhow!("connected peer mismatch for connection {conn}: expected {}, got {peer}", alias.to_id())))
+                            .print_on_err2("[P2pNetwork] send connect answer");
+                    }
+                    return Ok(P2pNetworkEvent::Continue);
+                }
+                if self.neighbours.has_peer(&peer) {
+                    if self.router.is_direct_peer(&conn, &peer) {
+                        log::warn!("[P2pNetwork] ignore duplicate peer connected for {peer} from already-direct connection {conn}");
+                    } else {
+                        log::warn!("[P2pNetwork] reject duplicate peer connected for {peer} from connection {conn}");
+                        alias.try_close().print_on_err2("[P2pNetwork] close duplicate peer connection");
+                        self.router.del_direct(&conn);
+                        self.neighbours.remove(&conn);
+                        self.ctx.unregister_conn(&conn);
+                        if let Some(tx) = self.pending_connects.remove(&conn) {
+                            tx.send(Err(anyhow!("duplicate connection to peer {peer}"))).print_on_err2("[P2pNetwork] send connect answer");
+                        }
+                    }
+                    return Ok(P2pNetworkEvent::Continue);
+                }
                 self.router.set_direct(conn, peer, ttl_ms);
                 self.neighbours.mark_connected(&conn, peer);
+                if let Some(tx) = self.pending_connects.remove(&conn) {
+                    tx.send(Ok(())).print_on_err2("[P2pNetwork] send connect answer");
+                }
                 Ok(P2pNetworkEvent::PeerConnected(conn, peer))
             }
             MainEvent::PeerData(conn, peer, data) => {
                 log::debug!("[P2pNetwork] connection {conn} on data {data:?} from {peer}");
+                if !self.router.is_direct_peer(&conn, &peer) {
+                    log::warn!("[P2pNetwork] ignore peer data for {peer} from non-direct connection {conn}");
+                    return Ok(P2pNetworkEvent::Continue);
+                }
+
                 match data {
                     PeerMainData::Sync { route, advertise } => {
-                        self.router.apply_sync(conn, route);
                         self.discovery.apply_sync(now_ms, advertise);
+                        self.router.apply_sync_filtered(conn, route, |peer| self.discovery.is_stopped(now_ms, peer));
                     }
                 }
                 Ok(P2pNetworkEvent::Continue)
             }
+            MainEvent::PeerStopped(conn, peer) => {
+                log::info!("[P2pNetwork] connection {conn} reported peer {peer} stopped");
+                if !self.router.is_direct_peer(&conn, &peer) {
+                    log::warn!("[P2pNetwork] ignore peer stopped for {peer} from non-direct connection {conn}");
+                    return Ok(P2pNetworkEvent::Continue);
+                }
+
+                if let Some(task) = self.pending_sync_tasks.remove(&conn) {
+                    task.abort();
+                }
+                self.discovery.remove_remote(now_ms, &peer);
+                self.router.del_peer(&peer);
+                self.neighbours.remove(&conn);
+                self.ctx.unregister_conn(&conn);
+                self.ctx.try_send_peer_disconnected_to_services(peer);
+                Ok(P2pNetworkEvent::PeerDisconnected(conn, peer))
+            }
             MainEvent::PeerConnectError(conn, peer, err) => {
                 log::error!("[P2pNetwork] connection {conn} outgoing: {peer:?} error {err}");
+                if self.neighbours.get(&conn).is_some_and(|conn| conn.is_connected()) {
+                    log::warn!("[P2pNetwork] ignore stale connect error for already connected {conn}");
+                    return Ok(P2pNetworkEvent::Continue);
+                }
+
+                if let Some(task) = self.pending_sync_tasks.remove(&conn) {
+                    task.abort();
+                }
+                if let Some(tx) = self.pending_connects.remove(&conn) {
+                    tx.send(Err(err)).print_on_err2("[P2pNetwork] send connect answer");
+                }
                 self.neighbours.remove(&conn);
                 Ok(P2pNetworkEvent::Continue)
             }
             MainEvent::PeerDisconnected(conn, peer) => {
                 log::info!("[P2pNetwork] connection {conn} disconnected from {peer}");
+                if !self.router.is_direct_peer(&conn, &peer) {
+                    log::warn!("[P2pNetwork] ignore peer disconnected for {peer} from non-direct connection {conn}");
+                    return Ok(P2pNetworkEvent::Continue);
+                }
+
+                if let Some(task) = self.pending_sync_tasks.remove(&conn) {
+                    task.abort();
+                }
                 self.router.del_direct(&conn);
                 self.neighbours.remove(&conn);
+                self.ctx.try_send_peer_disconnected_to_services(peer);
                 Ok(P2pNetworkEvent::PeerDisconnected(conn, peer))
             }
             MainEvent::PeerStats(conn, to_peer, metrics) => {
                 log::debug!("[P2pNetwork] conn {conn} to peer {to_peer} metrics {:?}", metrics);
+                if !self.router.is_direct_peer(&conn, &to_peer) {
+                    log::warn!("[P2pNetwork] ignore peer stats for {to_peer} from non-direct connection {conn}");
+                    return Ok(P2pNetworkEvent::Continue);
+                }
+
                 self.ctx.update_metrics(&conn, to_peer, metrics);
                 Ok(P2pNetworkEvent::Continue)
             }
@@ -287,27 +457,45 @@ impl<SECURE: HandshakeProtocol> P2pNetwork<SECURE> {
 
     fn process_control(&mut self, cmd: ControlCmd) -> anyhow::Result<P2pNetworkEvent> {
         match cmd {
-            ControlCmd::Connect(addr, tx) => {
-                let res = if self.neighbours.has_peer(&addr.peer_id()) {
-                    Ok(())
-                } else {
-                    log::info!("[P2pNetwork] connecting to {addr}");
-                    match self.endpoint.connect(*addr.network_address().deref(), CERT_DOMAIN_NAME) {
-                        Ok(connecting) => {
-                            let conn = PeerConnection::new_connecting(self.secure.clone(), self.local_id, addr.peer_id(), connecting, self.main_tx.clone(), self.ctx.clone());
-                            self.neighbours.insert(conn.conn_id(), conn);
-                            Ok(())
-                        }
-                        Err(err) => Err(err.into()),
-                    }
-                };
-
-                if let Some(tx) = tx {
-                    tx.send(res).print_on_err2("[P2pNetwork] send connect answer");
-                }
-
-                Ok(P2pNetworkEvent::Continue)
-            }
+            ControlCmd::Connect(addr, tx) => self.process_connect(addr, tx),
         }
+    }
+
+    fn process_connect(&mut self, addr: PeerAddress, tx: Option<oneshot::Sender<anyhow::Result<()>>>) -> anyhow::Result<P2pNetworkEvent> {
+        if addr.peer_id() == self.local_id {
+            let res = Err(anyhow!("refuse to connect to local peer {}", self.local_id));
+            if let Some(tx) = tx {
+                tx.send(res).print_on_err2("[P2pNetwork] send connect answer");
+            }
+            return Ok(P2pNetworkEvent::Continue);
+        }
+
+        let res = if self.neighbours.has_peer_connection_attempt(&addr.peer_id()) {
+            if tx.is_some() {
+                Err(anyhow!("connection attempt to peer {} already exists", addr.peer_id()))
+            } else {
+                Ok(())
+            }
+        } else {
+            log::info!("[P2pNetwork] connecting to {addr}");
+            match self.endpoint.connect(*addr.network_address().deref(), CERT_DOMAIN_NAME) {
+                Ok(connecting) => {
+                    let conn = PeerConnection::new_connecting(self.secure.clone(), self.local_id, addr.peer_id(), connecting, self.main_tx.clone(), self.ctx.clone());
+                    let conn_id = conn.conn_id();
+                    self.neighbours.insert(conn_id, conn);
+                    if let Some(tx) = tx {
+                        self.pending_connects.insert(conn_id, tx);
+                    }
+                    return Ok(P2pNetworkEvent::Continue);
+                }
+                Err(err) => Err(err.into()),
+            }
+        };
+
+        if let Some(tx) = tx {
+            tx.send(res).print_on_err2("[P2pNetwork] send connect answer");
+        }
+
+        Ok(P2pNetworkEvent::Continue)
     }
 }

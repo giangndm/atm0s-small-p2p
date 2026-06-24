@@ -5,7 +5,7 @@ use std::{
 
 use rustls::pki_types::{CertificateDer, PrivatePkcs8KeyDer};
 
-use atm0s_small_p2p::{P2pNetwork, P2pNetworkConfig, PeerAddress, PeerId, SharedKeyHandshake};
+use atm0s_small_p2p::{InboundPeerBindings, P2pNetwork, P2pNetworkConfig, PeerAddress, PeerId, SharedKeyHandshake};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 pub const DEFAULT_CLUSTER_CERT: &[u8] = include_bytes!("../certs/dev.cluster.cert");
@@ -28,6 +28,8 @@ async fn create_node(advertise: bool, peer_id: u64, seeds: Vec<PeerAddress>) -> 
             peer_id,
             listen_addr: addr,
             advertise: advertise.then(|| addr.into()),
+            // Open-cluster benchmark; production deployments should configure static inbound bindings.
+            inbound_peer_bindings: InboundPeerBindings::insecure_open_cluster(),
             priv_key,
             cert,
             tick_ms: 100,
@@ -65,6 +67,7 @@ async fn main() {
         match event {
             atm0s_small_p2p::P2pServiceEvent::Unicast(..) => {}
             atm0s_small_p2p::P2pServiceEvent::Broadcast(..) => {}
+            atm0s_small_p2p::P2pServiceEvent::PeerDisconnected(..) => {}
             atm0s_small_p2p::P2pServiceEvent::Stream(.., mut p2p_quic_stream) => {
                 tokio::spawn(async move {
                     let mut buf = [0; 65000];

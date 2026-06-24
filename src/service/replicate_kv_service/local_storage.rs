@@ -20,6 +20,7 @@ where
     V: Eq + Clone,
 {
     pub fn new(max_changeds: usize, compose_max_pkts: usize) -> Self {
+        let compose_max_pkts = compose_max_pkts.max(1);
         LocalStore {
             slots: BTreeMap::new(),
             changeds: BTreeMap::new(),
@@ -35,8 +36,10 @@ where
     }
 
     pub fn set(&mut self, key: K, value: V) {
-        self.version = self.version + 1;
-        let version = self.version;
+        let Some(version) = self.version.checked_next() else {
+            return;
+        };
+        self.version = version;
         let changed = Changed {
             key: key.clone(),
             version,
@@ -52,8 +55,14 @@ where
     }
 
     pub fn del(&mut self, key: K) {
-        self.version = self.version + 1;
-        let version = self.version;
+        if !self.slots.contains_key(&key) {
+            return;
+        }
+        let Some(version) = self.version.checked_next() else {
+            return;
+        };
+        self.version = version;
+        self.slots.remove(&key);
         let changed = Changed {
             key: key.clone(),
             version,
@@ -65,7 +74,6 @@ where
         while self.changeds.len() > self.max_changeds {
             self.changeds.pop_first();
         }
-        self.slots.remove(&key);
     }
 
     pub fn on_rpc_req(&mut self, from_node: N, req: RpcReq<K>) {
@@ -75,17 +83,23 @@ where
                 self.outs.push_back(Event::NetEvent(NetEvent::Unicast(from_node, RpcEvent::RpcRes(res))));
             }
             RpcReq::FetchSnapshot { from, to, max_version } => {
-                let res = RpcRes::FetchSnapshot(self.snapshot(from, to, max_version), self.version);
+                let snapshot_version = max_version.unwrap_or(self.version).min(self.version);
+                let res = RpcRes::FetchSnapshot(self.snapshot(from, to, Some(snapshot_version)), snapshot_version);
                 self.outs.push_back(Event::NetEvent(NetEvent::Unicast(from_node, RpcEvent::RpcRes(res))));
             }
         }
     }
 
     fn changeds_from_to(&self, from: Version, count: u64) -> Result<Vec<Changed<K, V>>, FetchChangedError> {
-        let to = from + count.min(self.compose_max_pkts as u64);
+        let count = count.min(self.compose_max_pkts as u64);
+        if count == 0 {
+            return Err(FetchChangedError::MissingData);
+        }
+        let to = Version(from.0.checked_add(count).ok_or(FetchChangedError::MissingData)?);
         let first = self.changeds.first_key_value().ok_or(FetchChangedError::MissingData)?.0;
         let last = self.changeds.last_key_value().ok_or(FetchChangedError::MissingData)?.0;
-        if to > *last + 1 || from < *first {
+        let after_last = Version(last.0.checked_add(1).ok_or(FetchChangedError::MissingData)?);
+        if to > after_last || from < *first {
             return Err(FetchChangedError::MissingData);
         }
         Ok(self.changeds.range(from..to).map(|(_, v)| v.clone()).collect())
@@ -98,11 +112,16 @@ where
             let from = from.unwrap_or(first);
             let to = to.unwrap_or(last);
             let max_version = max_version.unwrap_or(self.version);
+            if from > to {
+                return None;
+            }
             let mut slots = Vec::new();
             let mut next_key = None;
             let biggest_key = to.clone();
+            let mut saw_filtered_newer_slot = false;
             for (key, slot) in self.slots.range(from..=to) {
                 if slot.version > max_version {
+                    saw_filtered_newer_slot = true;
                     continue;
                 }
                 if slots.len() >= self.compose_max_pkts {
@@ -110,6 +129,9 @@ where
                     break;
                 }
                 slots.push((key.clone(), slot.clone()));
+            }
+            if saw_filtered_newer_slot {
+                return None;
             }
             Some(SnapshotData { slots, next_key, biggest_key })
         } else {
@@ -252,5 +274,221 @@ mod tests {
         let mut store: LocalStore<u16, u16, u16> = LocalStore::new(10, 2);
         store.on_tick();
         assert_eq!(store.pop_out(), Some(Event::NetEvent(NetEvent::Broadcast(BroadcastEvent::Version(Version(0))))));
+    }
+
+    #[test]
+    fn fetch_changed_with_overflowing_from_version_must_not_panic() {
+        let mut store: LocalStore<u16, u16, u16> = LocalStore::new(10, 2);
+        store.set(1, 1);
+        while store.pop_out().is_some() {}
+
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            store.on_rpc_req(2, RpcReq::FetchChanged { from: Version(u64::MAX), count: 1 });
+        }));
+
+        assert!(result.is_ok(), "untrusted FetchChanged version arithmetic must not panic or wrap");
+        assert_eq!(
+            store.pop_out(),
+            Some(Event::NetEvent(NetEvent::Unicast(2, RpcEvent::RpcRes(RpcRes::FetchChanged(Err(FetchChangedError::MissingData))))))
+        );
+    }
+
+    #[test]
+    fn zero_changed_batch_size_must_not_return_empty_success() {
+        let mut store: LocalStore<u16, u16, u16> = LocalStore::new(10, 0);
+        store.set(1, 1);
+        while store.pop_out().is_some() {}
+
+        store.on_rpc_req(2, RpcReq::FetchChanged { from: Version(1), count: 1 });
+
+        assert_eq!(
+            store.pop_out(),
+            Some(Event::NetEvent(NetEvent::Unicast(
+                2,
+                RpcEvent::RpcRes(RpcRes::FetchChanged(Ok(vec![Changed {
+                    key: 1,
+                    version: Version(1),
+                    action: Action::Set(1)
+                }])))
+            ))),
+            "zero compose budget is normalized to a one-change page so FetchChanged can make progress"
+        );
+    }
+
+    #[test]
+    fn fetch_changed_with_zero_count_must_not_return_empty_success() {
+        let mut store: LocalStore<u16, u16, u16> = LocalStore::new(10, 2);
+        store.set(1, 1);
+        while store.pop_out().is_some() {}
+
+        store.on_rpc_req(2, RpcReq::FetchChanged { from: Version(1), count: 0 });
+
+        assert_ne!(
+            store.pop_out(),
+            Some(Event::NetEvent(NetEvent::Unicast(2, RpcEvent::RpcRes(RpcRes::FetchChanged(Ok(vec![])))))),
+            "FetchChanged with zero count must be rejected instead of returning an empty success"
+        );
+    }
+
+    #[test]
+    fn fetch_snapshot_with_reversed_bounds_must_not_panic() {
+        let mut store: LocalStore<u16, u16, u16> = LocalStore::new(10, 2);
+        store.set(1, 1);
+        store.set(2, 2);
+
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            store.on_rpc_req(
+                2,
+                RpcReq::FetchSnapshot {
+                    from: Some(2),
+                    to: Some(1),
+                    max_version: None,
+                },
+            );
+        }));
+
+        assert!(result.is_ok(), "untrusted FetchSnapshot bounds must be rejected without panicking");
+    }
+
+    #[test]
+    fn local_set_at_max_version_must_not_overflow() {
+        let mut store: LocalStore<u16, u16, u16> = LocalStore::new(10, 2);
+        store.version = Version(u64::MAX);
+
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            store.set(1, 1);
+        }));
+
+        assert!(result.is_ok(), "local version increment must not panic or wrap at u64::MAX");
+        assert_eq!(store.version, Version(u64::MAX), "local version must stay at max when no successor exists");
+        assert_eq!(store.slots, BTreeMap::new(), "set at max version must not create an unreplicable local slot");
+        assert_eq!(store.pop_out(), None, "set at max version must not emit unreplicable events");
+    }
+
+    #[test]
+    fn local_del_at_max_version_must_not_overflow_or_remove_slot() {
+        let mut store: LocalStore<u16, u16, u16> = LocalStore::new(10, 2);
+        store.version = Version(u64::MAX);
+        store.slots.insert(1, Slot::new(1, Version(u64::MAX)));
+
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            store.del(1);
+        }));
+
+        assert!(result.is_ok(), "local delete version increment must not panic or wrap at u64::MAX");
+        assert_eq!(store.version, Version(u64::MAX), "local version must stay at max when no successor exists");
+        assert_eq!(
+            store.slots,
+            BTreeMap::from([(1, Slot::new(1, Version(u64::MAX)))]),
+            "delete at max version must not remove an unreplicable slot"
+        );
+        assert_eq!(store.pop_out(), None, "delete at max version must not emit unreplicable events");
+    }
+
+    #[test]
+    fn deleting_absent_key_must_not_emit_delete_event() {
+        let mut store: LocalStore<u16, u16, u16> = LocalStore::new(10, 2);
+
+        store.del(99);
+
+        assert_eq!(store.pop_out(), None, "deleting a key that was never present must not broadcast or emit a delete event");
+        assert_eq!(store.version, Version(0), "deleting a key that was never present must not advance the replicated version");
+    }
+
+    #[test]
+    fn snapshot_with_zero_compose_budget_must_make_progress() {
+        let mut store: LocalStore<u16, u16, u16> = LocalStore::new(10, 0);
+        store.set(1, 1);
+
+        let snapshot = store.snapshot(None, None, None).expect("snapshot should exist");
+
+        assert_eq!(
+            snapshot,
+            SnapshotData {
+                slots: vec![(1, Slot::new(1, Version(1)))],
+                next_key: None,
+                biggest_key: 1
+            },
+            "zero compose budget is normalized to a one-slot page so snapshot sync can make progress"
+        );
+    }
+
+    #[test]
+    fn multi_slot_snapshot_with_zero_compose_budget_must_advance_by_one_slot() {
+        let mut store: LocalStore<u16, u16, u16> = LocalStore::new(10, 0);
+        store.set(1, 1);
+        store.set(2, 2);
+        store.set(3, 3);
+
+        let first = store.snapshot(None, None, None).expect("first snapshot page should exist");
+        assert_eq!(
+            first,
+            SnapshotData {
+                slots: vec![(1, Slot::new(1, Version(1)))],
+                next_key: Some(2),
+                biggest_key: 3
+            }
+        );
+
+        let second = store.snapshot(first.next_key, Some(first.biggest_key), Some(Version(3))).expect("second snapshot page should exist");
+        assert_eq!(
+            second,
+            SnapshotData {
+                slots: vec![(2, Slot::new(2, Version(2)))],
+                next_key: Some(3),
+                biggest_key: 3
+            }
+        );
+    }
+
+    #[test]
+    fn snapshot_must_not_return_terminal_empty_page_for_newer_updated_keys() {
+        let mut store: LocalStore<u16, u16, u16> = LocalStore::new(10, 2);
+        store.set(3, 30);
+        store.set(1, 10);
+        store.set(3, 31);
+
+        let snapshot = store.snapshot(Some(3), Some(3), Some(Version(2)));
+
+        assert!(
+            snapshot.as_ref().is_none_or(|snapshot| !snapshot.slots.is_empty() || snapshot.next_key.is_some()),
+            "snapshot at max_version must not silently complete an empty page for a key range containing only newer current slots"
+        );
+    }
+
+    #[test]
+    fn continuation_snapshot_response_must_preserve_requested_max_version() {
+        let mut store: LocalStore<u16, u16, u16> = LocalStore::new(10, 1);
+        store.set(1, 10);
+        store.set(2, 20);
+        while store.pop_out().is_some() {}
+
+        store.set(3, 30);
+        while store.pop_out().is_some() {}
+
+        store.on_rpc_req(
+            2,
+            RpcReq::FetchSnapshot {
+                from: Some(2),
+                to: Some(2),
+                max_version: Some(Version(2)),
+            },
+        );
+
+        assert_eq!(
+            store.pop_out(),
+            Some(Event::NetEvent(NetEvent::Unicast(
+                2,
+                RpcEvent::RpcRes(RpcRes::FetchSnapshot(
+                    Some(SnapshotData {
+                        slots: vec![(2, Slot::new(20, Version(2)))],
+                        next_key: None,
+                        biggest_key: 2,
+                    }),
+                    Version(2),
+                ))
+            ))),
+            "FetchSnapshot responses constrained by max_version must declare that same snapshot version, not the producer's newer live version"
+        );
     }
 }

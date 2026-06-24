@@ -4,12 +4,14 @@
 use tokio::sync::{mpsc::Sender, oneshot};
 
 use crate::{
-    msg::{P2pServiceId, PeerMessage},
+    msg::{P2pServiceId, PeerMessage, UnicastAckId},
     stream::P2pQuicStream,
     ConnectionId, PeerId,
 };
 
 use super::PeerConnectionControl;
+
+const UNICAST_ACK_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(1);
 
 #[derive(Clone, Debug)]
 pub struct PeerConnectionAlias {
@@ -34,21 +36,38 @@ impl PeerConnectionAlias {
         self.local_id
     }
 
-    pub(super) fn to_id(&self) -> PeerId {
+    pub(crate) fn to_id(&self) -> PeerId {
         self.to_id
     }
 
     pub(crate) fn try_send(&self, msg: PeerMessage) -> anyhow::Result<()> {
-        Ok(self.control_tx.try_send(PeerConnectionControl::Send(msg))?)
+        Ok(self.control_tx.try_send(PeerConnectionControl::Send(msg, None))?)
+    }
+
+    pub(crate) fn try_close(&self) -> anyhow::Result<()> {
+        Ok(self.control_tx.try_send(PeerConnectionControl::Close)?)
     }
 
     pub(crate) async fn send(&self, msg: PeerMessage) -> anyhow::Result<()> {
-        Ok(self.control_tx.send(PeerConnectionControl::Send(msg)).await?)
+        Ok(self.control_tx.send(PeerConnectionControl::Send(msg, None)).await?)
     }
 
-    pub(crate) async fn open_stream(&self, service: P2pServiceId, source: PeerId, dest: PeerId, meta: Vec<u8>) -> anyhow::Result<P2pQuicStream> {
+    pub(crate) async fn send_wait(&self, msg: PeerMessage) -> anyhow::Result<()> {
         let (tx, rx) = oneshot::channel();
-        self.control_tx.send(PeerConnectionControl::OpenStream(service, source, dest, meta, tx)).await?;
+        self.control_tx.send(PeerConnectionControl::Send(msg, Some(tx))).await?;
+        rx.await?
+    }
+
+    pub(crate) async fn send_unicast_with_ack(&self, source: PeerId, dest: PeerId, service: P2pServiceId, data: Vec<u8>) -> anyhow::Result<()> {
+        let ack_id = UnicastAckId::rand();
+        let (tx, rx) = oneshot::channel();
+        self.control_tx.try_send(PeerConnectionControl::SendUnicastWithAck(ack_id, source, dest, service, data, tx))?;
+        tokio::time::timeout(UNICAST_ACK_TIMEOUT, rx).await.map_err(|_| anyhow::anyhow!("unicast ack timed out"))??
+    }
+
+    pub(crate) async fn open_stream(&self, service: P2pServiceId, source: PeerId, dest: PeerId, meta: Vec<u8>, defer_delivery: bool) -> anyhow::Result<P2pQuicStream> {
+        let (tx, rx) = oneshot::channel();
+        self.control_tx.try_send(PeerConnectionControl::OpenStream(service, source, dest, meta, defer_delivery, tx))?;
         rx.await?
     }
 }
