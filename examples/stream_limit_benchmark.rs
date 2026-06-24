@@ -23,6 +23,7 @@ pub const DEFAULT_CLUSTER_KEY: &[u8] = include_bytes!("../certs/dev.cluster.key"
 pub const DEFAULT_SECURE_KEY: &str = "atm0s";
 const SERVICE_ID: u16 = 0;
 const WRITE_TICK: Duration = Duration::from_millis(100);
+const THROUGHPUT_PAYLOAD_BYTES: usize = 64 * 1024;
 
 #[derive(Parser)]
 struct Args {
@@ -44,6 +45,8 @@ struct BenchmarkProfiles {
 #[derive(Clone, Debug, Deserialize)]
 struct BenchmarkProfile {
     name: String,
+    #[serde(default)]
+    mode: BenchmarkMode,
     nodes: usize,
     source_peer: u64,
     attempts: usize,
@@ -56,6 +59,23 @@ struct BenchmarkProfile {
     max_live_seconds: u64,
     open_timeout_ms: u64,
     settle_ms: u64,
+}
+
+#[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+enum BenchmarkMode {
+    #[default]
+    StreamLimit,
+    Throughput,
+}
+
+impl BenchmarkMode {
+    fn as_str(self) -> &'static str {
+        match self {
+            BenchmarkMode::StreamLimit => "stream-limit",
+            BenchmarkMode::Throughput => "throughput",
+        }
+    }
 }
 
 #[derive(Default)]
@@ -103,8 +123,34 @@ struct BenchmarkResult {
     read_errors: usize,
     elapsed: Duration,
     max_latency_ms: u64,
+    transfer_bandwidth: BandwidthSummary,
     node_stats: Vec<NodeStatsSnapshot>,
     resource_samples: Vec<ResourceSample>,
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+struct StreamTransfer {
+    bytes: usize,
+    elapsed: Duration,
+}
+
+impl StreamTransfer {
+    fn kbps(self) -> f64 {
+        let seconds = self.elapsed.as_secs_f64();
+        if seconds <= 0.0 {
+            0.0
+        } else {
+            self.bytes as f64 * 8.0 / seconds / 1000.0
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+struct BandwidthSummary {
+    min_kbps: f64,
+    max_kbps: f64,
+    avg_kbps: f64,
+    sum_kbps: f64,
 }
 
 async fn create_node(advertise: bool, peer_id: u64, seeds: Vec<PeerAddress>) -> anyhow::Result<(P2pNetwork<SharedKeyHandshake>, PeerAddress)> {
@@ -198,6 +244,9 @@ async fn run_profile(profile: BenchmarkProfile, iteration: usize) -> anyhow::Res
     if profile.min_stream_kbps == 0 || profile.min_stream_kbps > profile.max_stream_kbps {
         anyhow::bail!("profile {} stream kbps must be non-zero and min_stream_kbps <= max_stream_kbps", profile.name);
     }
+    if profile.mode == BenchmarkMode::Throughput && profile.min_live_seconds < 300 {
+        anyhow::bail!("throughput profile {} must run streams for at least 300 seconds", profile.name);
+    }
 
     let started = Instant::now();
     let mut rng = StdRng::seed_from_u64(profile.seed);
@@ -284,15 +333,16 @@ async fn run_profile(profile: BenchmarkProfile, iteration: usize) -> anyhow::Res
                 node_stats[source_idx].opened_streams.fetch_add(1, Ordering::Relaxed);
                 let live_seconds = rng.gen_range(profile.min_live_seconds..=profile.max_live_seconds);
                 let writer_seed = rng.gen();
-                writers.push(tokio::spawn(write_stream(
-                    stream,
-                    profile.min_stream_kbps,
-                    profile.max_stream_kbps,
-                    Duration::from_secs(live_seconds),
-                    writer_seed,
-                    stats.clone(),
-                    node_stats[source_idx].clone(),
-                )));
+                let duration = Duration::from_secs(live_seconds);
+                let writer_stats = stats.clone();
+                let writer_node_stats = node_stats[source_idx].clone();
+                let mode = profile.mode;
+                writers.push(tokio::spawn(async move {
+                    match mode {
+                        BenchmarkMode::StreamLimit => write_stream_throttled(stream, profile.min_stream_kbps, profile.max_stream_kbps, duration, writer_seed, writer_stats, writer_node_stats).await,
+                        BenchmarkMode::Throughput => write_stream_unbounded(stream, duration, writer_stats, writer_node_stats).await,
+                    }
+                }));
             }
             Ok(Err(err)) => failed.push(format!("attempt {attempt} to peer {} failed: {err}", dest_idx + 1)),
             Err(_) => failed.push(format!("attempt {attempt} to peer {} timed out after {}ms", dest_idx + 1, profile.open_timeout_ms)),
@@ -300,8 +350,11 @@ async fn run_profile(profile: BenchmarkProfile, iteration: usize) -> anyhow::Res
     }
 
     tokio::time::sleep(Duration::from_millis(profile.max_live_seconds * 1000 + max_latency_ms + 250)).await;
+    let mut transfers = Vec::new();
     for writer in writers {
-        let _ = writer.await;
+        if let Ok(transfer) = writer.await {
+            transfers.push(transfer);
+        }
     }
     for task in node_tasks {
         task.abort();
@@ -333,6 +386,7 @@ async fn run_profile(profile: BenchmarkProfile, iteration: usize) -> anyhow::Res
         read_errors: stats.read_errors.load(Ordering::Relaxed),
         elapsed: started.elapsed(),
         max_latency_ms,
+        transfer_bandwidth: summarize_bandwidth(&transfers),
         node_stats,
         resource_samples,
     })
@@ -350,11 +404,20 @@ fn random_latencies(profile: &BenchmarkProfile, rng: &mut StdRng) -> Vec<Vec<u64
     latencies
 }
 
-async fn write_stream(mut stream: P2pQuicStream, min_stream_kbps: usize, max_stream_kbps: usize, duration: Duration, seed: u64, stats: Arc<StreamStats>, node_stats: Arc<NodeStats>) {
+async fn write_stream_throttled(
+    mut stream: P2pQuicStream,
+    min_stream_kbps: usize,
+    max_stream_kbps: usize,
+    duration: Duration,
+    seed: u64,
+    stats: Arc<StreamStats>,
+    node_stats: Arc<NodeStats>,
+) -> StreamTransfer {
     let mut rng = StdRng::seed_from_u64(seed);
     let mut stream_kbps = rng.gen_range(min_stream_kbps..=max_stream_kbps);
     let mut next_rate_change = Instant::now() + Duration::from_secs(1);
     let started = Instant::now();
+    let mut bytes = 0;
 
     while started.elapsed() < duration {
         let now = Instant::now();
@@ -368,8 +431,9 @@ async fn write_stream(mut stream: P2pQuicStream, min_stream_kbps: usize, max_str
         let payload = vec![0_u8; bytes_per_tick.max(1)];
         if stream.write_all(&payload).await.is_err() {
             stats.write_errors.fetch_add(1, Ordering::Relaxed);
-            return;
+            return StreamTransfer { bytes, elapsed: started.elapsed() };
         }
+        bytes += payload.len();
         stats.sent_bytes.fetch_add(payload.len(), Ordering::Relaxed);
         node_stats.sent_bytes.fetch_add(payload.len(), Ordering::Relaxed);
         tokio::time::sleep(WRITE_TICK).await;
@@ -377,6 +441,44 @@ async fn write_stream(mut stream: P2pQuicStream, min_stream_kbps: usize, max_str
 
     if stream.shutdown().await.is_err() {
         stats.write_errors.fetch_add(1, Ordering::Relaxed);
+    }
+    StreamTransfer { bytes, elapsed: started.elapsed() }
+}
+
+async fn write_stream_unbounded(mut stream: P2pQuicStream, duration: Duration, stats: Arc<StreamStats>, node_stats: Arc<NodeStats>) -> StreamTransfer {
+    let payload = vec![0_u8; THROUGHPUT_PAYLOAD_BYTES];
+    let started = Instant::now();
+    let mut bytes = 0;
+
+    while started.elapsed() < duration {
+        if stream.write_all(&payload).await.is_err() {
+            stats.write_errors.fetch_add(1, Ordering::Relaxed);
+            return StreamTransfer { bytes, elapsed: started.elapsed() };
+        }
+        bytes += payload.len();
+        stats.sent_bytes.fetch_add(payload.len(), Ordering::Relaxed);
+        node_stats.sent_bytes.fetch_add(payload.len(), Ordering::Relaxed);
+        tokio::task::yield_now().await;
+    }
+
+    if stream.shutdown().await.is_err() {
+        stats.write_errors.fetch_add(1, Ordering::Relaxed);
+    }
+    StreamTransfer { bytes, elapsed: started.elapsed() }
+}
+
+fn summarize_bandwidth(transfers: &[StreamTransfer]) -> BandwidthSummary {
+    let mut values = transfers.iter().map(|transfer| transfer.kbps()).collect::<Vec<_>>();
+    if values.is_empty() {
+        return BandwidthSummary::default();
+    }
+    values.sort_by(|a, b| a.total_cmp(b));
+    let sum_kbps = values.iter().sum::<f64>();
+    BandwidthSummary {
+        min_kbps: values[0],
+        max_kbps: values[values.len() - 1],
+        avg_kbps: sum_kbps / values.len() as f64,
+        sum_kbps,
     }
 }
 
@@ -459,7 +561,7 @@ fn render_report(results: &[BenchmarkResult]) -> String {
     let mut report = String::new();
     report.push_str("# Stream Limit Benchmark Report\n\n");
     report.push_str(&format!("Generated at unix timestamp: `{generated}`\n\n"));
-    report.push_str("This benchmark opens streams from one source node to random peer nodes. Each opened stream writes at a random kbps target from the configured range, and that target changes once per second to approximate voice/video user traffic. Random latency is applied before each stream-open attempt to model different global-network paths.\n\n");
+    report.push_str("This benchmark opens streams from one source node to random peer nodes. Stream-limit profiles write at a random kbps target from the configured range, and that target changes once per second to approximate voice/video user traffic. Throughput profiles fork multiple streams and write as fast as the transport allows for at least five minutes per stream. Random latency is applied before each stream-open attempt to model different global-network paths.\n\n");
     report.push_str(
         "CPU and memory samples are process-level because the benchmark hosts all nodes inside one OS process. Per-node tables report stream and byte counters collected inside the benchmark.\n\n",
     );
@@ -473,8 +575,8 @@ fn render_report(results: &[BenchmarkResult]) -> String {
         }
         report.push('\n');
     }
-    report.push_str("| Iteration | Profile | Nodes | Attempts | Opened | Failed | Inbound streams | Sent bytes | Received bytes | Max latency | Elapsed | Result |\n");
-    report.push_str("| ---: | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |\n");
+    report.push_str("| Iteration | Profile | Mode | Nodes | Attempts | Opened | Failed | Inbound streams | Sent bytes | Received bytes | Min kbps | Max kbps | Avg kbps | Sum kbps | Max latency | Elapsed | Result |\n");
+    report.push_str("| ---: | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |\n");
 
     for result in results {
         let stream_ok = result.failed.is_empty() && result.opened == result.profile.attempts && result.write_errors == 0 && result.read_errors == 0;
@@ -486,9 +588,10 @@ fn render_report(results: &[BenchmarkResult]) -> String {
             "pass"
         };
         report.push_str(&format!(
-            "| {} | {} | {} | {} | {} | {} | {} | {} | {} | {}ms | {:.2}s | {} |\n",
+            "| {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {:.2} | {:.2} | {:.2} | {:.2} | {}ms | {:.2}s | {} |\n",
             result.iteration,
             result.profile.name,
+            result.profile.mode.as_str(),
             result.profile.nodes,
             result.profile.attempts,
             result.opened,
@@ -496,6 +599,10 @@ fn render_report(results: &[BenchmarkResult]) -> String {
             result.inbound_streams,
             result.sent_bytes,
             result.received_bytes,
+            result.transfer_bandwidth.min_kbps,
+            result.transfer_bandwidth.max_kbps,
+            result.transfer_bandwidth.avg_kbps,
+            result.transfer_bandwidth.sum_kbps,
             result.max_latency_ms,
             result.elapsed.as_secs_f64(),
             status
@@ -529,8 +636,9 @@ fn render_report(results: &[BenchmarkResult]) -> String {
     report.push_str("\n## Profiles\n\n");
     for result in results {
         report.push_str(&format!(
-            "- `{}`: source peer `{}`, nodes `{}`, latency `{}..={}ms`, target stream rate `{}..={} kbps`, stream live range `{}..={}s`, open timeout `{}ms`, seed `{}`.\n",
+            "- `{}`: mode `{}`, source peer `{}`, nodes `{}`, latency `{}..={}ms`, target stream rate `{}..={} kbps`, stream live range `{}..={}s`, open timeout `{}ms`, seed `{}`.\n",
             result.profile.name,
+            result.profile.mode.as_str(),
             result.profile.source_peer,
             result.profile.nodes,
             result.profile.min_latency_ms,
@@ -570,6 +678,8 @@ fn render_report(results: &[BenchmarkResult]) -> String {
     report.push_str("```bash\n");
     report
         .push_str("RUST_LOG=error CARGO_BUILD_JOBS=8 cargo run --example stream_limit_benchmark -- --profile stream-limit-10-nodes --min-run-seconds 1800 --profiles benchmarks/stream_limit_profiles.yaml --report docs/stream_limit_benchmark_report.md\n");
+    report
+        .push_str("RUST_LOG=error CARGO_BUILD_JOBS=8 cargo run --example stream_limit_benchmark -- --profile throughput-10-nodes --profiles benchmarks/stream_limit_profiles.yaml --report docs/throughput_benchmark_report.md\n");
     report.push_str("```\n");
     report
 }
@@ -674,6 +784,7 @@ mod tests {
     fn test_profile() -> BenchmarkProfile {
         BenchmarkProfile {
             name: "stream-limit-test".to_string(),
+            mode: BenchmarkMode::StreamLimit,
             nodes: 3,
             source_peer: 1,
             attempts: 2,
@@ -702,6 +813,12 @@ mod tests {
             read_errors: 0,
             elapsed: Duration::from_secs(elapsed_seconds),
             max_latency_ms: 2,
+            transfer_bandwidth: BandwidthSummary {
+                min_kbps: 80.0,
+                max_kbps: 160.0,
+                avg_kbps: 120.0,
+                sum_kbps: 240.0,
+            },
             node_stats: vec![NodeStatsSnapshot {
                 peer: PeerId::from(1),
                 opened_streams: 2,
@@ -730,6 +847,36 @@ mod tests {
         let report = render_report(&[test_result(1, 30, 40_000), test_result(2, 30, 700_000)]);
 
         assert!(report.contains("RSS growth warning"));
-        assert!(!report.contains("| 2 | stream-limit-test | 3 | 2 | 2 | 0 | 2 | 2000 | 2000 | 2ms | 30.00s | pass |"));
+        assert!(!report.contains("| 2 | stream-limit-test | stream-limit | 3 | 2 | 2 | 0 | 2 | 2000 | 2000 | 80.00 | 160.00 | 120.00 | 240.00 | 2ms | 30.00s | pass |"));
+    }
+
+    #[test]
+    fn report_includes_transfer_bandwidth_summary() {
+        let report = render_report(&[test_result(1, 30, 40_000)]);
+
+        assert!(report.contains("Min kbps"));
+        assert!(report.contains("Max kbps"));
+        assert!(report.contains("Avg kbps"));
+        assert!(report.contains("Sum kbps"));
+        assert!(report.contains("| 1 | stream-limit-test | stream-limit | 3 | 2 | 2 | 0 | 2 | 2000 | 2000 | 80.00 | 160.00 | 120.00 | 240.00 | 2ms | 30.00s | pass |"));
+    }
+
+    #[test]
+    fn bandwidth_summary_uses_stream_min_max_average_and_sum() {
+        let summary = summarize_bandwidth(&[
+            StreamTransfer {
+                bytes: 10_000,
+                elapsed: Duration::from_secs(1),
+            },
+            StreamTransfer {
+                bytes: 20_000,
+                elapsed: Duration::from_secs(1),
+            },
+        ]);
+
+        assert_eq!(summary.min_kbps, 80.0);
+        assert_eq!(summary.max_kbps, 160.0);
+        assert_eq!(summary.avg_kbps, 120.0);
+        assert_eq!(summary.sum_kbps, 240.0);
     }
 }
