@@ -170,9 +170,9 @@ Send APIs:
 | Method | Behavior |
 | --- | --- |
 | `send_unicast(dest, data).await` | Route to peer and wait for delivery acknowledgement |
-| `try_send_unicast(dest, data).await` | Queue without waiting; errors if route/queue unavailable |
+| `try_send_unicast(dest, data)` | Queue without waiting; errors if route/queue unavailable |
 | `send_broadcast(data).await` | Send to connected peers; returns accepted peer count |
-| `try_send_broadcast(data).await` | Best-effort broadcast; returns accepted peer count |
+| `try_send_broadcast(data)` | Best-effort broadcast; returns accepted peer count |
 | `open_stream(dest, meta).await` | Open a bidirectional `P2pQuicStream` to the destination service |
 
 Important constraints:

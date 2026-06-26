@@ -8,17 +8,20 @@
 use std::{
     collections::{HashMap, VecDeque},
     fmt::Debug,
+    future::poll_fn,
     hash::Hash,
+    pin::Pin,
+    task::{Context, Poll},
 };
 
 use local_storage::LocalStore;
 use remote_storage::RemoteStore;
 use serde::{de::DeserializeOwned, Serialize};
-use tokio::{select, time::Interval};
+use tokio::time::Interval;
 
 use crate::PeerId;
 
-use super::P2pService;
+use super::{P2pService, P2pServiceEvent};
 
 mod local_storage;
 mod messages;
@@ -195,7 +198,7 @@ where
         self.store.del(key);
     }
 
-    pub async fn recv(&mut self) -> Option<KvEvent<PeerId, K, V>> {
+    pub fn poll_recv(&mut self, cx: &mut Context<'_>) -> Poll<Option<KvEvent<PeerId, K, V>>> {
         loop {
             if let Some(event) = self.store.pop() {
                 match event {
@@ -203,7 +206,7 @@ where
                         NetEvent::Broadcast(broadcast_event) => {
                             match bincode::serialize(&broadcast_event) {
                                 Ok(data) => {
-                                    let _ = self.service.try_send_broadcast(data).await;
+                                    let _ = self.service.try_send_broadcast(data);
                                 }
                                 Err(err) => log::error!("[ReplicatedKvService] serialize broadcast error {err}"),
                             }
@@ -212,7 +215,7 @@ where
                         NetEvent::Unicast(to_node, rpc_event) => {
                             match bincode::serialize(&rpc_event) {
                                 Ok(data) => {
-                                    let _ = self.service.try_send_unicast(to_node, data).await;
+                                    let _ = self.service.try_send_unicast(to_node, data);
                                 }
                                 Err(err) => log::error!("[ReplicatedKvService] serialize unicast error {err}"),
                             }
@@ -220,35 +223,47 @@ where
                         }
                     },
                     Event::KvEvent(kv_event) => {
-                        return Some(kv_event);
+                        return Poll::Ready(Some(kv_event));
                     }
                 }
             }
 
-            select! {
-                _ = self.tick.tick() => {
+            match Pin::new(&mut self.tick).poll_tick(cx) {
+                Poll::Ready(_) => {
                     self.store.on_tick();
+                    continue;
                 }
-                event = self.service.recv() => match event? {
-                    super::P2pServiceEvent::Unicast(peer_id, vec) => {
-                        match bincode::deserialize::<RpcEvent<K, V>>(&vec) {
-                            Ok(event) => self.store.on_remote_event(peer_id, NetEvent::Unicast(peer_id, event)),
-                            Err(err) => log::error!("[ReplicatedKvService] deserialize error {err}"),
-                        }
+                Poll::Pending => {}
+            }
+
+            match self.service.poll_recv(cx) {
+                Poll::Ready(Some(P2pServiceEvent::Unicast(peer_id, vec))) => {
+                    match bincode::deserialize::<RpcEvent<K, V>>(&vec) {
+                        Ok(event) => self.store.on_remote_event(peer_id, NetEvent::Unicast(peer_id, event)),
+                        Err(err) => log::error!("[ReplicatedKvService] deserialize error {err}"),
                     }
-                    super::P2pServiceEvent::Broadcast(peer_id, vec) => {
-                        match bincode::deserialize::<BroadcastEvent<K, V>>(&vec) {
-                            Ok(event) => self.store.on_remote_event(peer_id, NetEvent::Broadcast(event)),
-                            Err(err) => log::error!("[ReplicatedKvService] deserialize error {err}"),
-                        }
-                    }
-                    super::P2pServiceEvent::Stream(..) => {}
-                    super::P2pServiceEvent::PeerDisconnected(peer_id) => {
-                        self.store.on_peer_disconnected(peer_id);
-                    }
+                    continue;
                 }
+                Poll::Ready(Some(P2pServiceEvent::Broadcast(peer_id, vec))) => {
+                    match bincode::deserialize::<BroadcastEvent<K, V>>(&vec) {
+                        Ok(event) => self.store.on_remote_event(peer_id, NetEvent::Broadcast(event)),
+                        Err(err) => log::error!("[ReplicatedKvService] deserialize error {err}"),
+                    }
+                    continue;
+                }
+                Poll::Ready(Some(P2pServiceEvent::Stream(..))) => continue,
+                Poll::Ready(Some(P2pServiceEvent::PeerDisconnected(peer_id))) => {
+                    self.store.on_peer_disconnected(peer_id);
+                    continue;
+                }
+                Poll::Ready(None) => return Poll::Ready(None),
+                Poll::Pending => return Poll::Pending,
             }
         }
+    }
+
+    pub async fn recv(&mut self) -> Option<KvEvent<PeerId, K, V>> {
+        poll_fn(|cx| self.poll_recv(cx)).await
     }
 }
 

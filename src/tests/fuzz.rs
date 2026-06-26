@@ -193,7 +193,7 @@ async fn run_random_node_action_fuzz(include_known_invalid_service: bool, defaul
             }
             3 => {
                 let data = format!("fuzz-broadcast-{seed}-{step}-{from}").into_bytes();
-                let _ = service_requesters[from].try_send_broadcast(data).await;
+                let _ = service_requesters[from].try_send_broadcast(data);
             }
             4 => {
                 let meta = format!("fuzz-stream-{seed}-{step}-{from}-{to}").into_bytes();
@@ -213,7 +213,7 @@ async fn run_random_node_action_fuzz(include_known_invalid_service: bool, defaul
             }
             7 => {
                 let data = format!("fuzz-try-unicast-{seed}-{step}-{from}-{to}").into_bytes();
-                let _ = service_requesters[from].try_send_unicast(addrs[to].peer_id(), data).await;
+                let _ = service_requesters[from].try_send_unicast(addrs[to].peer_id(), data);
             }
             8 => {
                 let data = format!("fuzz-send-broadcast-{seed}-{step}-{from}").into_bytes();
@@ -365,7 +365,7 @@ async fn run_random_node_churn_fuzz(include_known_invalid_service: bool, include
             3 => {
                 if let Some(from_node) = &nodes[from] {
                     let data = format!("fuzz-churn-broadcast-{seed}-{step}-{from}").into_bytes();
-                    let _ = from_node.service_requester.try_send_broadcast(data).await;
+                    let _ = from_node.service_requester.try_send_broadcast(data);
                 }
             }
             4 => {
@@ -504,7 +504,7 @@ async fn run_random_adversarial_node_fuzz(profile: FuzzNetworkProfile) {
             4 => {
                 if let (Some(from_node), Some(to_node)) = (&nodes[from], &nodes[to]) {
                     let data = format!("fuzz-adversarial-try-unicast-{seed}-{step}-{from}-{to}").into_bytes();
-                    let _ = from_node.service_requester.try_send_unicast(to_node.addr.peer_id(), data).await;
+                    let _ = from_node.service_requester.try_send_unicast(to_node.addr.peer_id(), data);
                 }
             }
             5 => {
@@ -516,7 +516,7 @@ async fn run_random_adversarial_node_fuzz(profile: FuzzNetworkProfile) {
             6 => {
                 if let Some(from_node) = &nodes[from] {
                     let data = format!("fuzz-adversarial-try-broadcast-{seed}-{step}-{from}").into_bytes();
-                    let _ = from_node.service_requester.try_send_broadcast(data).await;
+                    let _ = from_node.service_requester.try_send_broadcast(data);
                 }
             }
             7 => {
@@ -684,7 +684,7 @@ async fn run_random_steady_valid_node_fuzz(profile: FuzzNetworkProfile) {
             }
             4 => {
                 let data = format!("fuzz-steady-try-unicast-{seed}-{step}-{from}-{to}").into_bytes();
-                let _ = nodes[from].service_requester.try_send_unicast(nodes[to].addr.peer_id(), data).await;
+                let _ = nodes[from].service_requester.try_send_unicast(nodes[to].addr.peer_id(), data);
             }
             5 => {
                 let data = format!("fuzz-steady-broadcast-{seed}-{step}-{from}").into_bytes();

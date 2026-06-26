@@ -84,12 +84,12 @@ impl P2pService {
         self.ctx.send_broadcast(self.service, data).await
     }
 
-    pub async fn try_send_unicast(&self, dest: PeerId, data: Vec<u8>) -> anyhow::Result<()> {
+    pub fn try_send_unicast(&self, dest: PeerId, data: Vec<u8>) -> anyhow::Result<()> {
         self.ensure_registered()?;
         self.ctx.try_send_unicast(self.service, dest, data)
     }
 
-    pub async fn try_send_broadcast(&self, data: Vec<u8>) -> anyhow::Result<usize> {
+    pub fn try_send_broadcast(&self, data: Vec<u8>) -> anyhow::Result<usize> {
         self.ensure_registered()?;
         self.ctx.try_send_broadcast(self.service, data)
     }
@@ -138,12 +138,12 @@ impl P2pServiceRequester {
         self.ctx.send_broadcast(self.service, data).await
     }
 
-    pub async fn try_send_unicast(&self, dest: PeerId, data: Vec<u8>) -> anyhow::Result<()> {
+    pub fn try_send_unicast(&self, dest: PeerId, data: Vec<u8>) -> anyhow::Result<()> {
         self.ensure_live()?;
         self.ctx.try_send_unicast(self.service, dest, data)
     }
 
-    pub async fn try_send_broadcast(&self, data: Vec<u8>) -> anyhow::Result<usize> {
+    pub fn try_send_broadcast(&self, data: Vec<u8>) -> anyhow::Result<usize> {
         self.ensure_live()?;
         self.ctx.try_send_broadcast(self.service, data)
     }

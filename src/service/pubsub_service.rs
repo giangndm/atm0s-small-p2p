@@ -1322,7 +1322,7 @@ impl PubsubService {
             }
             InternalMsg::PublishRpcAnswer(handle_id, rpc_id, peer_src, data) => {
                 if let PeerSrc::Remote(peer) = peer_src {
-                    self.try_send_to(peer, &PubsubMessage::PublishRpcAnswer(data, rpc_id)).await;
+                    self.try_send_to(peer, &PubsubMessage::PublishRpcAnswer(data, rpc_id));
                 } else {
                     if self
                         .publish_rpc_reqs
@@ -1340,7 +1340,7 @@ impl PubsubService {
             }
             InternalMsg::FeedbackRpcAnswer(handle_id, rpc_id, peer_src, data) => {
                 if let PeerSrc::Remote(peer) = peer_src {
-                    self.try_send_to(peer, &PubsubMessage::FeedbackRpcAnswer(data, rpc_id)).await;
+                    self.try_send_to(peer, &PubsubMessage::FeedbackRpcAnswer(data, rpc_id));
                 } else {
                     if self
                         .feedback_rpc_reqs
@@ -1394,10 +1394,9 @@ impl PubsubService {
         result.is_ok()
     }
 
-    async fn try_send_to(&self, dest: PeerId, msg: &PubsubMessage) {
+    fn try_send_to(&self, dest: PeerId, msg: &PubsubMessage) {
         self.service
             .try_send_unicast(dest, bincode::serialize(msg).expect("should convert to binary"))
-            .await
             .print_on_err("[PubsubService] try send data");
     }
 
