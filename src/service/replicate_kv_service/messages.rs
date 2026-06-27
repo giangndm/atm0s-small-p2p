@@ -4,8 +4,8 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Slot<V> {
-    pub(super) value: V,
-    pub(super) version: Version,
+    pub value: V,
+    pub version: Version,
 }
 
 impl<V> Slot<V> {
@@ -22,18 +22,18 @@ pub enum Action<V> {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Changed<K, V> {
-    pub(crate) key: K,
-    pub(crate) version: Version,
-    pub(crate) action: Action<V>,
+    pub key: K,
+    pub version: Version,
+    pub action: Action<V>,
 }
 
 /// Monotonic replication sequence number; local mutation code must allocate
 /// successors with checked arithmetic.
 #[derive(Debug, PartialEq, Eq, Clone, Copy, Serialize, Deserialize)]
-pub struct Version(pub(super) u64);
+pub struct Version(pub u64);
 
 impl Version {
-    pub(super) fn checked_next(self) -> Option<Self> {
+    pub fn checked_next(self) -> Option<Self> {
         self.0.checked_add(1).map(Self)
     }
 }
@@ -92,9 +92,9 @@ pub enum FetchChangedError {
 
 #[derive(Debug, PartialEq, Eq, Serialize, Deserialize, Clone)]
 pub struct SnapshotData<K, V> {
-    pub(super) slots: Vec<(K, Slot<V>)>,
-    pub(super) skipped_newer: Vec<(K, Version)>,
-    pub(super) next_key: Option<K>,
+    pub slots: Vec<(K, Slot<V>)>,
+    pub skipped_newer: Vec<(K, Version)>,
+    pub next_key: Option<K>,
 }
 
 #[derive(Debug, PartialEq, Eq, Serialize, Deserialize, Clone)]

@@ -6,7 +6,7 @@ use std::{
 use super::messages::{Action, BroadcastEvent, Changed, Event, FetchChangedError, KvEvent, NetEvent, RpcEvent, RpcReq, RpcRes, Slot, SnapshotData, Version};
 
 pub struct LocalStore<N, K, V> {
-    slots: BTreeMap<K, Slot<V>>,
+    pub(crate) slots: BTreeMap<K, Slot<V>>,
     changeds: BTreeMap<Version, Changed<K, V>>,
     max_changeds: usize,
     compose_max_pkts: usize,
