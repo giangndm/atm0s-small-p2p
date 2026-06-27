@@ -2496,5 +2496,101 @@ mod tests {
         let has_delete = ctx.outs.iter().any(|event| matches!(event, Event::KvEvent(KvEvent::Del(_, 1))));
         assert!(!has_delete, "A must not emit a KvEvent::Del for key 1 during snapshot commit since it was present at snapshot version 5");
     }
+
+    #[test]
+    fn test_future_deleted_key_causes_premature_delete_event_on_multi_page_snapshot() {
+        use super::super::local_storage::LocalStore;
+
+        // Node 1 (Local/Receiver) and Node 2 (Remote/Sender)
+        let mut receiver_ctx: StateCtx<u16, u16, u16> = StateCtx {
+            req_id: 0,
+            remote: 2,
+            local_session_id: 1,
+            slots: BTreeMap::from([(2, Slot::new(20, Version(2)))]),
+            outs: VecDeque::new(),
+            next_state: None,
+        };
+
+        // Initialize remote (Node 2) local store with compose_max_pkts = 1
+        // so that the snapshot will be split into multiple pages.
+        let mut remote_store: LocalStore<u16, u16, u16> = LocalStore::new(2, 10, 1);
+
+        // Put keys 1, 2, 3 in the remote store (versions 1, 2, 3)
+        remote_store.set(1, 10);
+        remote_store.set(2, 20);
+        remote_store.set(3, 30);
+        while remote_store.pop_out().is_some() {}
+
+        // Receiver starts full sync.
+        let mut state = RemoteStoreState::SyncFull(SyncFullState::default());
+        let now = Instant::now();
+        state.init(&mut receiver_ctx, now);
+
+        // Step 1: Deliver first Page 1 request from A to B.
+        let req_event = receiver_ctx.outs.pop_front().expect("must have request");
+        let Event::NetEvent(NetEvent::Unicast(2, rpc_event)) = req_event else {
+            panic!("expected unicast request");
+        };
+        let RpcEventData::RpcReq(req) = rpc_event.data else {
+            panic!("expected RpcReq");
+        };
+        remote_store.on_rpc_req(1, req);
+
+        // Deliver Page 1 response from B to A.
+        let res_event = remote_store.pop_out().expect("must have response");
+        let Event::NetEvent(NetEvent::Unicast(1, rpc_event)) = res_event else {
+            panic!("expected unicast response");
+        };
+        let RpcEventData::RpcRes(res) = rpc_event.data else {
+            panic!("expected RpcRes");
+        };
+        let accepted = state.on_rpc_res(&mut receiver_ctx, now, res);
+        assert!(accepted);
+        if let Some(mut next_state) = receiver_ctx.next_state.take() {
+            next_state.init(&mut receiver_ctx, now);
+            state = next_state;
+        }
+
+        // A must still be in SyncFullState, and must have sent Page 2 request.
+        assert!(matches!(state, RemoteStoreState::SyncFull(_)));
+
+        // Step 2: B deletes key 2 (making B's version 4).
+        remote_store.del(2);
+        while remote_store.pop_out().is_some() {}
+
+        // Step 3: Deliver Page 2 request from A to B.
+        let req_event2 = receiver_ctx.outs.pop_front().expect("must have request");
+        let Event::NetEvent(NetEvent::Unicast(2, rpc_event2)) = req_event2 else {
+            panic!("expected unicast request");
+        };
+        let RpcEventData::RpcReq(req2) = rpc_event2.data else {
+            panic!("expected RpcReq");
+        };
+        remote_store.on_rpc_req(1, req2);
+
+        // Deliver Page 2 response from B to A.
+        let res_event2 = remote_store.pop_out().expect("must have response");
+        let Event::NetEvent(NetEvent::Unicast(1, rpc_event2)) = res_event2 else {
+            panic!("expected unicast response");
+        };
+        let RpcEventData::RpcRes(res2) = rpc_event2.data else {
+            panic!("expected RpcRes");
+        };
+        let accepted2 = state.on_rpc_res(&mut receiver_ctx, now, res2);
+        assert!(accepted2);
+        if let Some(mut next_state) = receiver_ctx.next_state.take() {
+            next_state.init(&mut receiver_ctx, now);
+            state = next_state;
+        }
+
+        // A must transition to WorkingState now.
+        assert!(matches!(state, RemoteStoreState::Working(_)));
+
+        // The bug causes A to emit a Del(2) event prematurely because key 2 is omitted from skipped_newer.
+        // We assert that NO delete event is emitted for key 2 during the commit of snapshot at version 3.
+        let has_delete = receiver_ctx.outs.iter().any(|event| matches!(event, Event::KvEvent(KvEvent::Del(_, 2))));
+        assert!(!has_delete, "Receiver must not emit a premature KvEvent::Del for key 2 during snapshot commit");
+    }
 }
+
 
