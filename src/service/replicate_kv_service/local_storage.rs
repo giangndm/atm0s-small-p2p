@@ -82,9 +82,9 @@ where
                 let res = RpcRes::FetchChanged(self.changeds_from_to(from, count));
                 self.outs.push_back(Event::NetEvent(NetEvent::Unicast(from_node, RpcEvent::RpcRes(res))));
             }
-            RpcReq::FetchSnapshot { from, to, max_version } => {
+            RpcReq::FetchSnapshot { from, max_version, max_items } => {
                 let snapshot_version = max_version.unwrap_or(self.version).min(self.version);
-                let res = RpcRes::FetchSnapshot(self.snapshot(from, to, Some(snapshot_version)), snapshot_version);
+                let res = RpcRes::FetchSnapshot(self.snapshot(from, Some(snapshot_version), max_items), snapshot_version);
                 self.outs.push_back(Event::NetEvent(NetEvent::Unicast(from_node, RpcEvent::RpcRes(res))));
             }
         }
@@ -105,38 +105,42 @@ where
         Ok(self.changeds.range(from..to).map(|(_, v)| v.clone()).collect())
     }
 
-    fn snapshot(&self, from: Option<K>, to: Option<K>, max_version: Option<Version>) -> Option<SnapshotData<K, V>> {
-        let first = self.slots.first_key_value().map(|(k, _)| k.clone());
-        let last = self.slots.last_key_value().map(|(k, _)| k.clone());
-        if let (Some(first), Some(last)) = (first, last) {
-            let from = from.unwrap_or(first);
-            let to = to.unwrap_or(last);
-            let max_version = max_version.unwrap_or(self.version);
-            if from > to {
-                return None;
-            }
-            let mut slots = Vec::new();
-            let mut next_key = None;
-            let biggest_key = to.clone();
-            let mut saw_filtered_newer_slot = false;
-            for (key, slot) in self.slots.range(from..=to) {
-                if slot.version > max_version {
-                    saw_filtered_newer_slot = true;
-                    continue;
-                }
-                if slots.len() >= self.compose_max_pkts {
-                    next_key = Some(key.clone());
-                    break;
-                }
-                slots.push((key.clone(), slot.clone()));
-            }
-            if saw_filtered_newer_slot {
-                return None;
-            }
-            Some(SnapshotData { slots, next_key, biggest_key })
-        } else {
-            None
+    fn snapshot(&self, from: Option<K>, max_version: Option<Version>, max_items: u64) -> Option<SnapshotData<K, V>> {
+        if self.slots.is_empty() {
+            return None;
         }
+
+        let from = from.or_else(|| self.slots.first_key_value().map(|(k, _)| k.clone()))?;
+        let max_version = max_version.unwrap_or(self.version);
+        let max_items = usize::try_from(max_items).unwrap_or(usize::MAX);
+        if max_items == 0 {
+            return Some(SnapshotData {
+                slots: vec![],
+                skipped_newer: vec![],
+                next_key: None,
+            });
+        }
+        let scan_limit = self.compose_max_pkts.min(max_items);
+        let mut slots = Vec::new();
+        let mut skipped_newer = Vec::new();
+        let mut next_key = None;
+        let mut scanned = 0;
+
+        for (key, slot) in self.slots.range(from..) {
+            if scanned >= scan_limit {
+                next_key = Some(key.clone());
+                break;
+            }
+            scanned += 1;
+
+            if slot.version <= max_version {
+                slots.push((key.clone(), slot.clone()));
+            } else {
+                skipped_newer.push((key.clone(), slot.version));
+            }
+        }
+
+        Some(SnapshotData { slots, skipped_newer, next_key })
     }
 
     pub fn pop_out(&mut self) -> Option<Event<N, K, V>> {
@@ -152,7 +156,7 @@ mod tests {
     fn simple_works() {
         let mut store: LocalStore<u16, u16, u16> = LocalStore::new(10, 3);
 
-        assert_eq!(store.snapshot(None, None, None), None);
+        assert_eq!(store.snapshot(None, None, 3), None);
 
         store.set(1, 101);
 
@@ -168,11 +172,11 @@ mod tests {
         assert_eq!(store.pop_out(), None);
 
         assert_eq!(
-            store.snapshot(None, None, None),
+            store.snapshot(None, None, 3),
             Some(SnapshotData {
                 slots: vec![(1, Slot::new(101, Version(1)))],
+                skipped_newer: vec![],
                 next_key: None,
-                biggest_key: 1
             })
         );
 
@@ -205,7 +209,7 @@ mod tests {
             ])
         );
 
-        assert_eq!(store.snapshot(None, None, None), None);
+        assert_eq!(store.snapshot(None, None, 3), None);
     }
 
     #[test]
@@ -216,30 +220,30 @@ mod tests {
         }
 
         assert_eq!(
-            store.snapshot(None, None, None),
+            store.snapshot(None, None, 2),
             Some(SnapshotData {
                 slots: vec![(1, Slot::new(1, Version(1))), (2, Slot::new(2, Version(2)))],
+                skipped_newer: vec![],
                 next_key: Some(3),
-                biggest_key: 10
             })
         );
 
         assert_eq!(
-            store.snapshot(Some(3), Some(10), Some(Version(10))),
+            store.snapshot(Some(3), Some(Version(10)), 2),
             Some(SnapshotData {
                 slots: vec![(3, Slot::new(3, Version(3))), (4, Slot::new(4, Version(4)))],
+                skipped_newer: vec![],
                 next_key: Some(5),
-                biggest_key: 10
             })
         );
 
         // last pkt
         assert_eq!(
-            store.snapshot(Some(9), Some(10), Some(Version(10))),
+            store.snapshot(Some(9), Some(Version(10)), 2),
             Some(SnapshotData {
                 slots: vec![(9, Slot::new(9, Version(9))), (10, Slot::new(10, Version(10)))],
+                skipped_newer: vec![],
                 next_key: None,
-                biggest_key: 10
             })
         );
     }
@@ -331,7 +335,7 @@ mod tests {
     }
 
     #[test]
-    fn fetch_snapshot_with_reversed_bounds_must_not_panic() {
+    fn fetch_snapshot_with_lower_cursor_past_end_must_not_panic() {
         let mut store: LocalStore<u16, u16, u16> = LocalStore::new(10, 2);
         store.set(1, 1);
         store.set(2, 2);
@@ -340,14 +344,14 @@ mod tests {
             store.on_rpc_req(
                 2,
                 RpcReq::FetchSnapshot {
-                    from: Some(2),
-                    to: Some(1),
+                    from: Some(3),
                     max_version: None,
+                    max_items: 2,
                 },
             );
         }));
 
-        assert!(result.is_ok(), "untrusted FetchSnapshot bounds must be rejected without panicking");
+        assert!(result.is_ok(), "untrusted FetchSnapshot cursor must be handled without panicking");
     }
 
     #[test]
@@ -400,14 +404,14 @@ mod tests {
         let mut store: LocalStore<u16, u16, u16> = LocalStore::new(10, 0);
         store.set(1, 1);
 
-        let snapshot = store.snapshot(None, None, None).expect("snapshot should exist");
+        let snapshot = store.snapshot(None, None, 1).expect("snapshot should exist");
 
         assert_eq!(
             snapshot,
             SnapshotData {
                 slots: vec![(1, Slot::new(1, Version(1)))],
+                skipped_newer: vec![],
                 next_key: None,
-                biggest_key: 1
             },
             "zero compose budget is normalized to a one-slot page so snapshot sync can make progress"
         );
@@ -420,39 +424,73 @@ mod tests {
         store.set(2, 2);
         store.set(3, 3);
 
-        let first = store.snapshot(None, None, None).expect("first snapshot page should exist");
+        let first = store.snapshot(None, None, 1).expect("first snapshot page should exist");
         assert_eq!(
             first,
             SnapshotData {
                 slots: vec![(1, Slot::new(1, Version(1)))],
+                skipped_newer: vec![],
                 next_key: Some(2),
-                biggest_key: 3
             }
         );
 
-        let second = store.snapshot(first.next_key, Some(first.biggest_key), Some(Version(3))).expect("second snapshot page should exist");
+        let second = store.snapshot(first.next_key, Some(Version(3)), 1).expect("second snapshot page should exist");
         assert_eq!(
             second,
             SnapshotData {
                 slots: vec![(2, Slot::new(2, Version(2)))],
+                skipped_newer: vec![],
                 next_key: Some(3),
-                biggest_key: 3
             }
         );
     }
 
     #[test]
-    fn snapshot_must_not_return_terminal_empty_page_for_newer_updated_keys() {
-        let mut store: LocalStore<u16, u16, u16> = LocalStore::new(10, 2);
-        store.set(3, 30);
+    fn snapshot_with_skipped_newer_key_must_continue_to_eligible_slots() {
+        let mut store: LocalStore<u16, u16, u16> = LocalStore::new(10, 3);
         store.set(1, 10);
-        store.set(3, 31);
+        store.set(2, 20);
+        store.set(3, 30);
+        store.set(2, 21);
 
-        let snapshot = store.snapshot(Some(3), Some(3), Some(Version(2)));
+        let snapshot = store.snapshot(Some(2), Some(Version(3)), 3);
 
-        assert!(
-            snapshot.as_ref().is_none_or(|snapshot| !snapshot.slots.is_empty() || snapshot.next_key.is_some()),
-            "snapshot at max_version must not silently complete an empty page for a key range containing only newer current slots"
+        assert_eq!(
+            snapshot,
+            Some(SnapshotData {
+                slots: vec![(3, Slot::new(30, Version(3)))],
+                skipped_newer: vec![(2, Version(4))],
+                next_key: None,
+            }),
+            "snapshot at max_version should skip newer current slots and keep scanning for eligible keys"
+        );
+    }
+
+    #[test]
+    fn snapshot_empty_page_from_skipped_newer_keys_must_advance_or_complete() {
+        let mut store: LocalStore<u16, u16, u16> = LocalStore::new(10, 1);
+        store.set(1, 10);
+        store.set(2, 20);
+        store.set(1, 11);
+        store.set(2, 21);
+
+        assert_eq!(
+            store.snapshot(Some(1), Some(Version(2)), 1),
+            Some(SnapshotData {
+                slots: vec![],
+                skipped_newer: vec![(1, Version(3))],
+                next_key: Some(2),
+            }),
+            "an empty page caused by a skipped newer key must advance to the next key when more keys remain"
+        );
+        assert_eq!(
+            store.snapshot(Some(2), Some(Version(2)), 1),
+            Some(SnapshotData {
+                slots: vec![],
+                skipped_newer: vec![(2, Version(4))],
+                next_key: None,
+            }),
+            "an empty page caused by skipped newer keys may complete when the scan is exhausted"
         );
     }
 
@@ -470,8 +508,8 @@ mod tests {
             2,
             RpcReq::FetchSnapshot {
                 from: Some(2),
-                to: Some(2),
                 max_version: Some(Version(2)),
+                max_items: 1,
             },
         );
 
@@ -482,13 +520,36 @@ mod tests {
                 RpcEvent::RpcRes(RpcRes::FetchSnapshot(
                     Some(SnapshotData {
                         slots: vec![(2, Slot::new(20, Version(2)))],
-                        next_key: None,
-                        biggest_key: 2,
+                        skipped_newer: vec![],
+                        next_key: Some(3),
                     }),
                     Version(2),
                 ))
             ))),
             "FetchSnapshot responses constrained by max_version must declare that same snapshot version, not the producer's newer live version"
         );
+    }
+
+    #[test]
+    fn fetch_snapshot_with_zero_max_items_must_not_return_items() {
+        let mut store: LocalStore<u16, u16, u16> = LocalStore::new(10, 2);
+        store.set(1, 10);
+        while store.pop_out().is_some() {}
+
+        store.on_rpc_req(
+            2,
+            RpcReq::FetchSnapshot {
+                from: None,
+                max_version: None,
+                max_items: 0,
+            },
+        );
+
+        let Some(Event::NetEvent(NetEvent::Unicast(_, RpcEvent::RpcRes(RpcRes::FetchSnapshot(Some(snapshot), _))))) = store.pop_out() else {
+            panic!("local store must answer FetchSnapshot");
+        };
+
+        assert!(snapshot.slots.is_empty(), "FetchSnapshot must not return more slots than the caller's max_items=0 limit");
+        assert_eq!(snapshot.next_key, None, "FetchSnapshot max_items=0 must not return a non-advancing continuation cursor");
     }
 }

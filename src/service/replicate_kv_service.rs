@@ -337,6 +337,96 @@ mod tests {
         assert!(store.outs.len() <= MAX_PENDING_EVENTS, "replicated KV outbound event queue must be bounded, got {}", store.outs.len());
     }
 
+    #[test]
+    fn paginated_full_sync_must_recover_when_snapshot_version_becomes_unavailable() {
+        let mut local: LocalStore<u16, u16, u16> = LocalStore::new(10, 1);
+        local.set(1, 10);
+        local.set(2, 20);
+        while local.pop_out().is_some() {}
+
+        let mut remote: RemoteStore<u16, u16, u16> = RemoteStore::new(1);
+        assert_eq!(
+            remote.pop_out(),
+            Some(Event::NetEvent(NetEvent::Unicast(
+                1,
+                RpcEvent::RpcReq(messages::RpcReq::FetchSnapshot {
+                    from: None,
+                    max_version: None,
+                    max_items: 1024,
+                })
+            )))
+        );
+
+        local.on_rpc_req(
+            1,
+            messages::RpcReq::FetchSnapshot {
+                from: None,
+                max_version: None,
+                max_items: 1024,
+            },
+        );
+        let Some(Event::NetEvent(NetEvent::Unicast(_, RpcEvent::RpcRes(messages::RpcRes::FetchSnapshot(first_page, first_version))))) = local.pop_out() else {
+            panic!("local store must answer the initial snapshot request");
+        };
+        assert_eq!(first_version, Version(2));
+
+        remote.on_rpc_res(messages::RpcRes::FetchSnapshot(first_page, first_version));
+        assert_eq!(
+            remote.pop_out(),
+            Some(Event::NetEvent(NetEvent::Unicast(
+                1,
+                RpcEvent::RpcReq(messages::RpcReq::FetchSnapshot {
+                    from: Some(2),
+                    max_version: Some(Version(2)),
+                    max_items: 1024,
+                })
+            )))
+        );
+
+        local.set(2, 21);
+        while local.pop_out().is_some() {}
+        local.on_rpc_req(
+            1,
+            messages::RpcReq::FetchSnapshot {
+                from: Some(2),
+                max_version: Some(Version(2)),
+                max_items: 1024,
+            },
+        );
+        let Some(Event::NetEvent(NetEvent::Unicast(_, RpcEvent::RpcRes(messages::RpcRes::FetchSnapshot(continuation, continuation_version))))) = local.pop_out() else {
+            panic!("local store must answer the continuation snapshot request");
+        };
+        assert_eq!(
+            continuation,
+            Some(messages::SnapshotData {
+                slots: vec![],
+                skipped_newer: vec![(2, Version(3))],
+                next_key: None,
+            }),
+            "current local storage should skip the newer key and complete this pivoted snapshot page"
+        );
+        assert_eq!(continuation_version, Version(2));
+
+        remote.on_rpc_res(messages::RpcRes::FetchSnapshot(continuation, continuation_version));
+
+        assert_eq!(remote.pop_out(), Some(Event::KvEvent(messages::KvEvent::Set(Some(1), 1, 10))));
+        assert_eq!(
+            remote.pop_out(),
+            Some(Event::NetEvent(NetEvent::Unicast(1, RpcEvent::RpcReq(messages::RpcReq::FetchChanged { from: Version(3), count: 1 })))),
+            "after the pivoted full sync reports a skipped newer key, the remote should catch up without waiting for another broadcast"
+        );
+        assert_eq!(remote.pop_out(), None);
+
+        local.on_rpc_req(1, messages::RpcReq::FetchChanged { from: Version(3), count: 1 });
+        let Some(Event::NetEvent(NetEvent::Unicast(_, RpcEvent::RpcRes(changed)))) = local.pop_out() else {
+            panic!("local store must answer fetch-changed catch-up");
+        };
+        remote.on_rpc_res(changed);
+
+        assert_eq!(remote.pop_out(), Some(Event::KvEvent(messages::KvEvent::Set(Some(1), 2, 21))));
+        assert_eq!(remote.pop_out(), None);
+    }
+
     #[tokio::test]
     async fn replicated_kv_recv_must_not_panic_on_value_serialize_failure() {
         let mut service = ReplicatedKvService::<u16, FailingSerializeValue>::new(test_service(), 10, 10);
