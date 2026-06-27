@@ -74,7 +74,13 @@ impl Deref for Version {
 }
 
 #[derive(Debug, PartialEq, Eq, Serialize, Deserialize, Clone)]
-pub enum BroadcastEvent<K, V> {
+pub struct BroadcastEvent<K, V> {
+    pub session_id: u64,
+    pub data: BroadcastEventData<K, V>,
+}
+
+#[derive(Debug, PartialEq, Eq, Serialize, Deserialize, Clone)]
+pub enum BroadcastEventData<K, V> {
     Changed(Changed<K, V>),
     Version(Version),
 }
@@ -104,7 +110,13 @@ pub enum RpcRes<K, V> {
 }
 
 #[derive(Debug, PartialEq, Eq, Serialize, Deserialize, Clone)]
-pub enum RpcEvent<K, V> {
+pub struct RpcEvent<K, V> {
+    pub session_id: u64,
+    pub data: RpcEventData<K, V>,
+}
+
+#[derive(Debug, PartialEq, Eq, Serialize, Deserialize, Clone)]
+pub enum RpcEventData<K, V> {
     RpcReq(RpcReq<K>),
     RpcRes(RpcRes<K, V>),
 }

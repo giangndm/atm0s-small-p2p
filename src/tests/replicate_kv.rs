@@ -164,7 +164,7 @@ fn fuzz_replicated_kv_convergence_under_network_gaps() {
     use rand::rngs::StdRng;
     use crate::replicate_kv_service::{
         ReplicatedKvStore,
-        messages::{Event, NetEvent, BroadcastEvent}
+        messages::{Event, NetEvent, BroadcastEvent, BroadcastEventData}
     };
     use crate::PeerId;
 
@@ -209,7 +209,7 @@ fn fuzz_replicated_kv_convergence_under_network_gaps() {
                 
                 let is_unstable = step < 1500;
                 let is_broadcast = matches!(net_event, NetEvent::Broadcast(_));
-                let is_changed_broadcast = matches!(net_event, NetEvent::Broadcast(BroadcastEvent::Changed(_)));
+                let is_changed_broadcast = matches!(net_event, NetEvent::Broadcast(BroadcastEvent { data: BroadcastEventData::Changed(_), .. }));
                 
                 let drop_rate = if step >= 900 && is_changed_broadcast {
                     100
@@ -242,7 +242,7 @@ fn fuzz_replicated_kv_convergence_under_network_gaps() {
                 
                 let is_unstable = step < 1500;
                 let is_broadcast = matches!(net_event, NetEvent::Broadcast(_));
-                let is_changed_broadcast = matches!(net_event, NetEvent::Broadcast(BroadcastEvent::Changed(_)));
+                let is_changed_broadcast = matches!(net_event, NetEvent::Broadcast(BroadcastEvent { data: BroadcastEventData::Changed(_), .. }));
                 
                 let drop_rate = if step >= 900 && is_changed_broadcast {
                     100
