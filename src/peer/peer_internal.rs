@@ -319,6 +319,11 @@ impl PeerConnectionInternal {
                 return Err(anyhow!("peer stopped"));
             }
             PeerMessage::Broadcast(source, service_id, msg_id, data) => {
+                if self.ctx.has_broadcast_msg(source, service_id, msg_id) {
+                    log::debug!("[PeerConnectionInternal {}] broadcast msg {msg_id} already deliveried", self.remote);
+                    return Ok(());
+                }
+
                 let effective_source = if source == self.to_id {
                     self.to_id
                 } else {
@@ -337,6 +342,10 @@ impl PeerConnectionInternal {
                             return Ok(());
                         }
                         None => {
+                            if self.ctx.has_broadcast_msg(self.to_id, service_id, msg_id) {
+                                log::debug!("[PeerConnectionInternal {}] broadcast msg {msg_id} already deliveried", self.remote);
+                                return Ok(());
+                            }
                             log::warn!("[PeerConnectionInternal {}] normalize broadcast source {source} to authenticated peer {}", self.remote, self.to_id);
                             self.to_id
                         }

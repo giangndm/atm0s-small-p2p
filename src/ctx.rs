@@ -52,6 +52,10 @@ impl BroadcastDedupCache {
         self.current.put(key, ());
         true
     }
+
+    fn contains(&self, key: &BroadcastDedupKey) -> bool {
+        self.current.contains(key) || self.previous.contains(key)
+    }
 }
 
 #[derive(Debug)]
@@ -125,6 +129,10 @@ impl SharedCtxInternal {
     /// if already it return false and do nothing
     fn check_broadcast_msg(&mut self, source: PeerId, service_id: P2pServiceId, msg_id: BroadcastMsgId) -> bool {
         self.received_broadcast_msg.check(BroadcastDedupKey { source, service_id, msg_id })
+    }
+
+    fn has_broadcast_msg(&self, source: PeerId, service_id: P2pServiceId, msg_id: BroadcastMsgId) -> bool {
+        self.received_broadcast_msg.contains(&BroadcastDedupKey { source, service_id, msg_id })
     }
 
     fn try_mark_peer_stopped_msg_after<F>(&mut self, peer_id: PeerId, admit: F) -> bool
@@ -303,6 +311,10 @@ impl SharedCtx {
     /// if already it return false and do nothing
     pub fn check_broadcast_msg(&self, source: PeerId, service_id: P2pServiceId, msg_id: BroadcastMsgId) -> bool {
         self.ctx.write().check_broadcast_msg(source, service_id, msg_id)
+    }
+
+    pub fn has_broadcast_msg(&self, source: PeerId, service_id: P2pServiceId, msg_id: BroadcastMsgId) -> bool {
+        self.ctx.read().has_broadcast_msg(source, service_id, msg_id)
     }
 
     pub fn try_mark_peer_stopped_msg_after<F>(&self, peer_id: PeerId, admit: F) -> bool
