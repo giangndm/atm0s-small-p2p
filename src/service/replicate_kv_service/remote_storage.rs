@@ -1,5 +1,5 @@
 use std::{
-    collections::{BTreeMap, BTreeSet, VecDeque},
+    collections::{BTreeMap, VecDeque},
     fmt::Debug,
     hash::Hash,
     marker::PhantomData,
@@ -233,6 +233,24 @@ where
     }
 }
 
+impl<N, K, V> SyncFullState<N, K, V>
+where
+    K: Debug + Hash + Ord + Eq + Clone,
+    V: Debug + Eq + Clone,
+    N: Debug + Clone,
+{
+    fn transition_to_working(&mut self, ctx: &mut StateCtx<N, K, V>, now: Instant, version: Version) {
+        self.commit_staged_slots(ctx);
+        log::info!("[RemoteStore {:?}] switch to working with {} slots and version {version:?}", ctx.remote, ctx.slots.len());
+        self.sending_req = None;
+        let mut state = WorkingState::new(version);
+        if let Some(catchup_to) = self.catchup_to.filter(|catchup_to| *catchup_to > version) {
+            state.request_fetch_changed(ctx, now, version + 1, catchup_to - version);
+        }
+        ctx.next_state = Some(RemoteStoreState::Working(state));
+    }
+}
+
 impl<N, K, V> State<N, K, V> for SyncFullState<N, K, V>
 where
     K: Debug + Hash + Ord + Eq + Clone,
@@ -241,11 +259,6 @@ where
 {
     fn init(&mut self, ctx: &mut StateCtx<N, K, V>, now: Instant) {
         log::info!("[RemoteStore {:?}] switch to syncFull", ctx.remote);
-        if self.staged_slots.is_none() {
-            while let Some((k, _v)) = ctx.slots.pop_first() {
-                ctx.outs.push_back(Event::KvEvent(KvEvent::Del(Some(ctx.remote.clone()), k)));
-            }
-        }
         let req = NetEvent::Unicast(
             ctx.remote.clone(),
             RpcEvent {
@@ -281,11 +294,11 @@ where
 
     fn on_rpc_res(&mut self, ctx: &mut StateCtx<N, K, V>, now: Instant, event: RpcRes<K, V>) -> bool {
         match event {
-            RpcRes::FetchChanged { .. } => {
+            RpcRes::FetchChanged(_) => {
                 false
             }
             RpcRes::FetchSnapshot(Some(snapshot), version) => {
-                let Some((_, NetEvent::Unicast(_, RpcEvent { data: RpcEventData::RpcReq(RpcReq::FetchSnapshot { from, max_version, max_items }), .. }))) = self.sending_req.as_ref() else {
+                let Some((_, NetEvent::Unicast(_, RpcEvent { data: RpcEventData::RpcReq(RpcReq::FetchSnapshot { from: _, max_version, max_items }), .. }))) = self.sending_req.as_ref() else {
                     return false;
                 };
                 log::info!(
@@ -364,14 +377,7 @@ where
                     ctx.outs.push_back(Event::NetEvent(req));
                 } else {
                     let version = self.version.expect("should have version");
-                    self.commit_staged_slots(ctx);
-                    log::info!("[RemoteStore {:?}] switch to working with {} slots and version {version:?}", ctx.remote, ctx.slots.len());
-                    self.sending_req = None;
-                    let mut state = WorkingState::new(version);
-                    if let Some(catchup_to) = self.catchup_to.filter(|catchup_to| *catchup_to > version) {
-                        state.request_fetch_changed(ctx, now, version + 1, catchup_to - version);
-                    }
-                    ctx.next_state = Some(RemoteStoreState::Working(state));
+                    self.transition_to_working(ctx, now, version);
                 }
                 true
             }
@@ -384,14 +390,7 @@ where
                     return true;
                 }
                 let version = self.version.unwrap_or(version);
-                self.commit_staged_slots(ctx);
-                log::info!("[RemoteStore {:?}] switch to working with {} slots and version {version:?}", ctx.remote, ctx.slots.len());
-                self.sending_req = None;
-                let mut state = WorkingState::new(version);
-                if let Some(catchup_to) = self.catchup_to.filter(|catchup_to| *catchup_to > version) {
-                    state.request_fetch_changed(ctx, now, version + 1, catchup_to - version);
-                }
-                ctx.next_state = Some(RemoteStoreState::Working(state));
+                self.transition_to_working(ctx, now, version);
                 true
             }
         }
@@ -616,7 +615,7 @@ where
                 ctx.next_state = Some(RemoteStoreState::SyncFull(SyncFullState::preserve_existing_until_complete()));
                 true
             }
-            RpcRes::FetchSnapshot { .. } => {
+            RpcRes::FetchSnapshot(_, _) => {
                 false
             }
         }
