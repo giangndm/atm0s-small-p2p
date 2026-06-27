@@ -24,21 +24,19 @@ use crate::PeerId;
 use super::{P2pService, P2pServiceEvent};
 
 mod local_storage;
-mod messages;
+pub mod messages;
 mod remote_storage;
 
-use messages::{BroadcastEvent, Event, NetEvent, RpcEvent};
-
-pub use messages::KvEvent;
+pub use messages::{BroadcastEvent, Event, KvEvent, NetEvent, RpcEvent};
 
 const REMOTE_TIMEOUT_MS: u128 = 10_000;
 const MAX_PENDING_OUT_EVENTS: usize = 1024;
 const MAX_REMOTE_STORES: usize = 1024;
 
 pub struct ReplicatedKvStore<N, K, V> {
-    remotes: HashMap<N, RemoteStore<N, K, V>>,
-    local: LocalStore<N, K, V>,
-    outs: VecDeque<Event<N, K, V>>,
+    pub(crate) remotes: HashMap<N, RemoteStore<N, K, V>>,
+    pub(crate) local: LocalStore<N, K, V>,
+    pub(crate) outs: VecDeque<Event<N, K, V>>,
 }
 
 impl<N, K, V> ReplicatedKvStore<N, K, V>
@@ -166,7 +164,7 @@ where
         outs.push_back(event);
     }
 
-    fn pop(&mut self) -> Option<Event<N, K, V>> {
+    pub fn pop(&mut self) -> Option<Event<N, K, V>> {
         self.outs.pop_front()
     }
 }

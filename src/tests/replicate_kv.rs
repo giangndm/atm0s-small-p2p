@@ -156,3 +156,193 @@ async fn continuous_sync() {
     assert_eq!(timeout(WAIT, kv2.recv()).await, Ok(Some(KvEvent::Set(Some(addr1.peer_id()), 2, 2))));
     assert_eq!(timeout(WAIT, kv2.recv()).await, Ok(Some(KvEvent::Set(Some(addr1.peer_id()), 3, 3))));
 }
+
+#[test]
+fn fuzz_replicated_kv_convergence_under_network_gaps() {
+    use std::collections::HashMap;
+    use rand::{SeedableRng, Rng};
+    use rand::rngs::StdRng;
+    use crate::replicate_kv_service::{
+        ReplicatedKvStore,
+        messages::{Event, NetEvent, BroadcastEvent}
+    };
+    use crate::PeerId;
+
+    // Fixed seed for reproducible run
+    let mut rng = StdRng::seed_from_u64(12345);
+
+    let node1 = PeerId::from(1);
+    let node2 = PeerId::from(2);
+
+    let mut store1 = ReplicatedKvStore::new(100, 3);
+    let mut store2 = ReplicatedKvStore::new(100, 3);
+
+    struct Packet {
+        from: PeerId,
+        to: PeerId,
+        event: NetEvent<PeerId, u16, u16>,
+        deliver_at: usize,
+    }
+    let mut packet_queue: Vec<Packet> = Vec::new();
+
+    let mut expected_kv: HashMap<u16, u16> = HashMap::new();
+
+    let mut step = 0;
+    let max_steps = 3000;
+
+    while step < max_steps {
+        // 1. Mutate node1 randomly during the first 1000 steps
+        if step < 1000 && rng.gen_ratio(1, 15) {
+            let key = rng.gen_range(0..20);
+            let val = rng.gen_range(0..1000);
+            store1.set(key, val);
+            expected_kv.insert(key, val);
+        }
+
+        // 2. Pop events from store1 and queue them
+        while let Some(event) = store1.pop() {
+            if let Event::NetEvent(net_event) = event {
+                let to = match &net_event {
+                    NetEvent::Broadcast(_) => node2,
+                    NetEvent::Unicast(dest, _) => *dest,
+                };
+                
+                let is_unstable = step < 1500;
+                let is_broadcast = matches!(net_event, NetEvent::Broadcast(_));
+                let is_changed_broadcast = matches!(net_event, NetEvent::Broadcast(BroadcastEvent::Changed(_)));
+                
+                let drop_rate = if step >= 900 && is_changed_broadcast {
+                    100
+                } else if is_unstable && is_broadcast {
+                    30
+                } else {
+                    0
+                };
+                let max_delay = if is_unstable { 100 } else { 0 };
+                
+                if !rng.gen_ratio(drop_rate, 100) {
+                    let delay = rng.gen_range(0..=max_delay);
+                    packet_queue.push(Packet {
+                        from: node1,
+                        to,
+                        event: net_event,
+                        deliver_at: step + delay,
+                    });
+                }
+            }
+        }
+
+        // 3. Pop events from store2 and queue them
+        while let Some(event) = store2.pop() {
+            if let Event::NetEvent(net_event) = event {
+                let to = match &net_event {
+                    NetEvent::Broadcast(_) => node1,
+                    NetEvent::Unicast(dest, _) => *dest,
+                };
+                
+                let is_unstable = step < 1500;
+                let is_broadcast = matches!(net_event, NetEvent::Broadcast(_));
+                let is_changed_broadcast = matches!(net_event, NetEvent::Broadcast(BroadcastEvent::Changed(_)));
+                
+                let drop_rate = if step >= 900 && is_changed_broadcast {
+                    100
+                } else if is_unstable && is_broadcast {
+                    30
+                } else {
+                    0
+                };
+                let max_delay = if is_unstable { 100 } else { 0 };
+                
+                if !rng.gen_ratio(drop_rate, 100) {
+                    let delay = rng.gen_range(0..=max_delay);
+                    packet_queue.push(Packet {
+                        from: node2,
+                        to,
+                        event: net_event,
+                        deliver_at: step + delay,
+                    });
+                }
+            }
+        }
+
+        // 4. Tick both stores every 10 steps to simulate 1s tick
+        if step % 10 == 0 {
+            if step < 1000 {
+                store1.on_tick();
+            }
+            store2.on_tick();
+        }
+
+        // 5. Deliver packets scheduled for this step
+        let mut i = 0;
+        while i < packet_queue.len() {
+            if packet_queue[i].deliver_at <= step {
+                let packet = packet_queue.remove(i);
+                if packet.to == node1 {
+                    store1.on_remote_event(packet.from, packet.event);
+                } else if packet.to == node2 {
+                    store2.on_remote_event(packet.from, packet.event);
+                }
+            } else {
+                i += 1;
+            }
+        }
+
+        step += 1;
+    }
+
+    // 6. Deliver all remaining packets and tick to settle down in stable phase
+    for _ in 0..200 {
+        while !packet_queue.is_empty() {
+            let packet = packet_queue.remove(0);
+            if packet.to == node1 {
+                store1.on_remote_event(packet.from, packet.event);
+            } else if packet.to == node2 {
+                store2.on_remote_event(packet.from, packet.event);
+            }
+        }
+        
+        store2.on_tick();
+        
+        // Pop any new network packets generated by retries/ticks
+        while let Some(event) = store1.pop() {
+            if let Event::NetEvent(net_event) = event {
+                let to = match &net_event {
+                    NetEvent::Broadcast(_) => node2,
+                    NetEvent::Unicast(dest, _) => *dest,
+                };
+                packet_queue.push(Packet {
+                    from: node1,
+                    to,
+                    event: net_event,
+                    deliver_at: 0,
+                });
+            }
+        }
+        while let Some(event) = store2.pop() {
+            if let Event::NetEvent(net_event) = event {
+                let to = match &net_event {
+                    NetEvent::Broadcast(_) => node1,
+                    NetEvent::Unicast(dest, _) => *dest,
+                };
+                packet_queue.push(Packet {
+                    from: node2,
+                    to,
+                    event: net_event,
+                    deliver_at: 0,
+                });
+            }
+        }
+    }
+
+    // Assert that the replica (node2) has converged to the exact same state as node1
+    let remote_store = store2.remotes.get(&node1).expect("remote store for node1 on node2 must exist");
+    
+    for (k, slot1) in &store1.local.slots {
+        let slot2 = remote_store.ctx.slots.get(k).expect("key should exist on remote node2");
+        assert_eq!(slot1.value, slot2.value, "Value mismatch for key {:?}", k);
+        assert_eq!(slot1.version, slot2.version, "Version mismatch for key {:?}", k);
+    }
+    
+    assert_eq!(remote_store.ctx.slots.len(), store1.local.slots.len(), "Remote storage has different number of keys");
+}

@@ -14,7 +14,7 @@ const MAX_STAGED_SNAPSHOT_SLOTS: usize = 16 * MAX_SNAPSHOT_SLOTS_PER_PAGE;
 const MAX_PENDING_CHANGEDS: usize = 1024;
 
 #[derive(Debug, PartialEq, Eq)]
-enum RemoteStoreState<N, K, V> {
+pub(crate) enum RemoteStoreState<N, K, V> {
     SyncFull(SyncFullState<N, K, V>),
     Working(WorkingState<N, K, V>),
     Destroy(DestroyState<N, K, V>),
@@ -59,11 +59,11 @@ where
     }
 }
 
-struct StateCtx<N, K, V> {
-    remote: N,
-    slots: BTreeMap<K, Slot<V>>,
-    outs: VecDeque<Event<N, K, V>>,
-    next_state: Option<RemoteStoreState<N, K, V>>,
+pub(crate) struct StateCtx<N, K, V> {
+    pub(crate) remote: N,
+    pub(crate) slots: BTreeMap<K, Slot<V>>,
+    pub(crate) outs: VecDeque<Event<N, K, V>>,
+    pub(crate) next_state: Option<RemoteStoreState<N, K, V>>,
 }
 
 trait State<N, K, V> {
@@ -74,9 +74,9 @@ trait State<N, K, V> {
 }
 
 pub struct RemoteStore<N, K, V> {
-    ctx: StateCtx<N, K, V>,
-    state: RemoteStoreState<N, K, V>,
-    last_active: Instant,
+    pub(crate) ctx: StateCtx<N, K, V>,
+    pub(crate) state: RemoteStoreState<N, K, V>,
+    pub(crate) last_active: Instant,
 }
 
 impl<N, K, V> RemoteStore<N, K, V>
@@ -147,7 +147,7 @@ where
 }
 
 #[derive(Debug, PartialEq, Eq)]
-struct SyncFullState<N, K, V> {
+pub(crate) struct SyncFullState<N, K, V> {
     version: Option<Version>,
     catchup_to: Option<Version>,
     sending_req: Option<(Instant, NetEvent<N, K, V>)>,
@@ -422,12 +422,25 @@ where
                 };
                 if from.is_some() || max_version.is_some() {
                     log::warn!(
-                        "[RemoteStore {:?}] reject terminal empty snapshot for pending continuation from {:?} max_version {:?}",
+                        "[RemoteStore {:?}] reject terminal empty snapshot for pending continuation from {:?} max_version {:?} => restart full sync",
                         ctx.remote,
                         from,
                         max_version
                     );
-                    return false;
+                    self.version = None;
+                    self.staged_slots = Some(BTreeMap::new());
+                    self.skipped_newer.clear();
+                    let req = NetEvent::Unicast(
+                        ctx.remote.clone(),
+                        RpcEvent::RpcReq(RpcReq::FetchSnapshot {
+                            from: None,
+                            max_version: None,
+                            max_items: MAX_SNAPSHOT_SLOTS_PER_PAGE as u64,
+                        }),
+                    );
+                    self.sending_req = Some((now, req.clone()));
+                    ctx.outs.push_back(Event::NetEvent(req));
+                    return true;
                 }
                 self.commit_staged_slots(ctx);
                 log::info!("[RemoteStore {:?}] switch to working with 0 slots and version {version:?}", ctx.remote);
@@ -444,11 +457,12 @@ where
 }
 
 #[derive(Debug, PartialEq, Eq)]
-struct WorkingState<N, K, V> {
+pub(crate) struct WorkingState<N, K, V> {
     version: Version,
     // this is a list of changeds in order, we use it to detect discontinuity to send fetchChanged
     pendings: BTreeMap<Version, Changed<K, V>>,
     sending_req: Option<(Instant, NetEvent<N, K, V>)>,
+    latest_seen_version: Option<Version>,
     _tmp: PhantomData<(N, V)>,
 }
 
@@ -463,6 +477,7 @@ where
             version,
             pendings: BTreeMap::new(),
             sending_req: None,
+            latest_seen_version: None,
             _tmp: PhantomData,
         }
     }
@@ -529,6 +544,17 @@ where
                 break;
             }
         }
+
+        if self.pendings.is_empty() {
+            if let Some(latest) = self.latest_seen_version {
+                if latest > self.version {
+                    let from = self.version + 1;
+                    let count = latest - self.version;
+                    log::warn!("[RemoteStore {:?}] pendings empty but have newer latest_seen_version => request catch up from {from:?} count {count}", ctx.remote);
+                    self.request_fetch_changed(ctx, now, from, count);
+                }
+            }
+        }
     }
 
     fn enqueue_pending_changed(&mut self, ctx: &mut StateCtx<N, K, V>, changed: Changed<K, V>) -> bool {
@@ -548,6 +574,7 @@ where
             ctx.next_state = Some(RemoteStoreState::SyncFull(SyncFullState::preserve_existing_until_complete()));
             return true;
         }
+        self.latest_seen_version = Some(self.latest_seen_version.map_or(changed.version, |v| v.max(changed.version)));
         self.pendings.insert(changed.version, changed);
         true
     }
@@ -587,12 +614,15 @@ where
                 }
             }
             BroadcastEvent::Version(version) => {
-                if version > self.version && self.pendings.is_empty() {
-                    // resync part
-                    let from = self.version + 1;
-                    let count = version - self.version;
-                    log::warn!("[RemoteStore {:?}] received discontinuity version => request fetch changed from {from:?} count {count}", ctx.remote);
-                    self.request_fetch_changed(ctx, now, from, count);
+                if version > self.version {
+                    self.latest_seen_version = Some(self.latest_seen_version.map_or(version, |v| v.max(version)));
+                    if self.pendings.is_empty() {
+                        // resync part
+                        let from = self.version + 1;
+                        let count = version - self.version;
+                        log::warn!("[RemoteStore {:?}] received discontinuity version => request fetch changed from {from:?} count {count}", ctx.remote);
+                        self.request_fetch_changed(ctx, now, from, count);
+                    }
                     true
                 } else if version == self.version {
                     true
@@ -2509,5 +2539,139 @@ mod tests {
         assert_eq!(ctx.next_state, None);
         assert_eq!(ctx.outs.pop_front(), Some(Event::KvEvent(KvEvent::Del(Some(1), 1))));
         assert_eq!(ctx.outs.pop_front(), None);
+    }
+
+    #[test]
+    fn test_continuation_none_response_must_not_livelock() {
+        let mut ctx: StateCtx<u16, u16, u16> = StateCtx {
+            remote: 1,
+            slots: BTreeMap::new(),
+            outs: VecDeque::new(),
+            next_state: None,
+        };
+
+        let now = Instant::now();
+        let mut state = SyncFullState::default();
+        state.init(&mut ctx, now);
+        ctx.outs.clear();
+
+        // Send first page of snapshot with next_key Some(2)
+        state.on_rpc_res(
+            &mut ctx,
+            now,
+            RpcRes::FetchSnapshot(
+                Some(SnapshotData {
+                    slots: vec![(1, Slot::new(10, Version(1)))],
+                    skipped_newer: vec![],
+                    next_key: Some(2),
+                }),
+                Version(2),
+            ),
+        );
+        ctx.outs.clear();
+
+        // Receive None for continuation snapshot request
+        state.on_rpc_res(&mut ctx, now, RpcRes::FetchSnapshot(None, Version(2)));
+
+        assert_eq!(
+            ctx.outs.pop_front(),
+            Some(Event::NetEvent(NetEvent::Unicast(
+                1,
+                RpcEvent::RpcReq(RpcReq::FetchSnapshot {
+                    from: None,
+                    max_version: None,
+                    max_items: MAX_SNAPSHOT_SLOTS_PER_PAGE as u64,
+                })
+            ))),
+            "continuation None response must restart full sync from the first snapshot page"
+        );
+        assert_eq!(ctx.outs.pop_front(), None);
+
+        // Advance time past timeout and trigger tick
+        state.on_tick(&mut ctx, now + REQUEST_TIMEOUT + Duration::from_millis(1));
+
+        assert_eq!(
+            ctx.outs.pop_front(),
+            Some(Event::NetEvent(NetEvent::Unicast(
+                1,
+                RpcEvent::RpcReq(RpcReq::FetchSnapshot {
+                    from: None,
+                    max_version: None,
+                    max_items: MAX_SNAPSHOT_SLOTS_PER_PAGE as u64,
+                })
+            ))),
+            "timeout after restart must resend the first-page request, not the stale continuation"
+        );
+        assert_eq!(ctx.outs.pop_front(), None);
+    }
+
+    #[test]
+    fn working_state_must_catch_up_new_version_broadcast_received_during_pending_gap() {
+        let mut ctx: StateCtx<u16, u16, u16> = StateCtx {
+            remote: 1,
+            slots: BTreeMap::new(),
+            outs: VecDeque::new(),
+            next_state: None,
+        };
+
+        let now = Instant::now();
+        let mut state = WorkingState::new(Version(10));
+
+        // 1. Receive BroadcastEvent::Changed for version 12.
+        // Since version 11 is missing, this is a gap.
+        // It should request FetchChanged from 11 count 1.
+        state.on_broadcast(&mut ctx, now, BroadcastEvent::Changed(Changed {
+            key: 1,
+            version: Version(12),
+            action: Action::Set(12),
+        }));
+
+        assert_eq!(
+            ctx.outs.pop_front(),
+            Some(Event::NetEvent(NetEvent::Unicast(
+                1,
+                RpcEvent::RpcReq(RpcReq::FetchChanged {
+                    from: Version(11),
+                    count: 1
+                })
+            )))
+        );
+        assert_eq!(ctx.outs.pop_front(), None);
+        assert_eq!(state.version, Version(10));
+        assert!(state.sending_req.is_some());
+        assert!(!state.pendings.is_empty()); // contains 12
+
+        // 2. Receive BroadcastEvent::Version for version 15.
+        // Because self.pendings is not empty, this version heartbeat is currently ignored.
+        state.on_broadcast(&mut ctx, now, BroadcastEvent::Version(Version(15)));
+
+        // 3. Receive the RPC response for version 11.
+        state.on_rpc_res(
+            &mut ctx,
+            now,
+            RpcRes::FetchChanged(Ok(vec![Changed {
+                key: 1,
+                version: Version(11),
+                action: Action::Set(11),
+            }])),
+        );
+
+        // After applying version 11 and 12, state.version must be 12.
+        assert_eq!(state.version, Version(12));
+        assert_eq!(state.pendings.len(), 0);
+
+        // Clear any KvEvents (like Set) from outs to inspect NetEvents
+        let net_events: Vec<_> = ctx.outs.iter().filter(|e| matches!(e, Event::NetEvent(_))).collect();
+        assert_eq!(
+            net_events,
+            vec![&Event::NetEvent(NetEvent::Unicast(
+                1,
+                RpcEvent::RpcReq(RpcReq::FetchChanged {
+                    from: Version(13),
+                    count: 3
+                })
+            ))],
+            "Node B must schedule a catch-up request for the remaining versions 13-15 after resolving the gap"
+        );
     }
 }
