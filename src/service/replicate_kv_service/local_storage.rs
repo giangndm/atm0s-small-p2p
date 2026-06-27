@@ -165,10 +165,7 @@ where
 
         if next_key.is_none() && max_version < self.version {
             for (v, changed) in self.changeds.range(Version(max_version.0 + 1)..) {
-                if &changed.key < &from {
-                    continue;
-                }
-                if !slots.iter().any(|(k, _)| k == &changed.key)
+                if !self.slots.contains_key(&changed.key)
                     && !skipped_newer.iter().any(|(k, _)| k == &changed.key)
                 {
                     skipped_newer.push((changed.key.clone(), *v));
