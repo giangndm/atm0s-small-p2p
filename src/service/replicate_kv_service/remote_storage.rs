@@ -10,7 +10,6 @@ use super::messages::{Action, BroadcastEvent, BroadcastEventData, Changed, Event
 
 const REQUEST_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(1);
 const MAX_SNAPSHOT_SLOTS_PER_PAGE: usize = 1024;
-const MAX_STAGED_SNAPSHOT_SLOTS: usize = 16 * MAX_SNAPSHOT_SLOTS_PER_PAGE;
 const MAX_PENDING_CHANGEDS: usize = 1024;
 
 #[derive(Debug, PartialEq, Eq)]
@@ -334,16 +333,7 @@ where
                     self.restart_full_sync(ctx, now);
                     return true;
                 }
-                if let Some(staged_slots) = self.staged_slots.as_ref() {
-                    if staged_slots.len().saturating_add(self.skipped_newer.len()).saturating_add(page_items) > MAX_STAGED_SNAPSHOT_SLOTS {
-                        log::warn!(
-                            "[RemoteStore {:?}] reject snapshot page because staged slots would exceed limit {MAX_STAGED_SNAPSHOT_SLOTS} => destroy remote",
-                            ctx.remote
-                        );
-                        ctx.next_state = Some(RemoteStoreState::Destroy(DestroyState { _tmp: std::marker::PhantomData }));
-                        return true;
-                    }
-                }
+
                 for (k, slot) in snapshot.slots.into_iter() {
                     if let Some(staged_slots) = self.staged_slots.as_mut() {
                         staged_slots.insert(k, slot);
@@ -1002,55 +992,7 @@ mod tests {
         );
     }
 
-    #[test]
-    fn full_sync_staged_snapshot_slots_must_be_bounded_across_pages() {
-        const MAX_STAGED_FOR_TEST: usize = 16 * MAX_SNAPSHOT_SLOTS_PER_PAGE;
 
-        let mut ctx: StateCtx<u16, u64, u64> = StateCtx {
-            remote: 1,
-            local_session_id: 1,
-            slots: BTreeMap::new(),
-            outs: VecDeque::new(),
-            next_state: None,
-        };
-
-        let now = Instant::now();
-        let mut state = SyncFullState::default();
-        state.init(&mut ctx, now);
-        ctx.outs.clear();
-
-        for page in 0..=16 {
-            let first_key = (page * MAX_SNAPSHOT_SLOTS_PER_PAGE) as u64 + 1;
-            let slots = (0..MAX_SNAPSHOT_SLOTS_PER_PAGE)
-                .map(|offset| {
-                    let key = first_key + offset as u64;
-                    (key, Slot::new(key, Version(key)))
-                })
-                .collect::<Vec<_>>();
-
-            state.on_rpc_res(
-                &mut ctx,
-                now,
-                RpcRes::FetchSnapshot(
-                    Some(SnapshotData {
-                        slots,
-                        skipped_newer: vec![],
-                        next_key: Some(first_key + MAX_SNAPSHOT_SLOTS_PER_PAGE as u64),
-                    }),
-                    Version((MAX_STAGED_FOR_TEST + MAX_SNAPSHOT_SLOTS_PER_PAGE + 1) as u64),
-                ),
-            );
-            ctx.outs.clear();
-        }
-
-        let staged_len = state.staged_slots.as_ref().map(BTreeMap::len).unwrap_or_default();
-
-        assert!(
-            staged_len <= MAX_STAGED_FOR_TEST,
-            "full sync must cap total staged snapshot slots across continuation pages; got {staged_len}"
-        );
-        assert!(ctx.slots.is_empty(), "partial full-sync data must remain staged until the terminal page");
-    }
 
 
 
@@ -2398,51 +2340,5 @@ mod tests {
         );
     }
 
-    #[test]
-    fn full_sync_staged_slots_limit_exceeded_stalls_sync_forever() {
-        let mut ctx: StateCtx<u16, u16, u16> = StateCtx {
-            remote: 1,
-            local_session_id: 1,
-            slots: BTreeMap::new(),
-            outs: VecDeque::new(),
-            next_state: None,
-        };
 
-        let now = Instant::now();
-        let mut state = SyncFullState::default();
-        state.init(&mut ctx, now);
-        ctx.outs.clear();
-
-        // MAX_STAGED_SNAPSHOT_SLOTS is 16384.
-        // Pre-populate staged_slots with 16380 slots.
-        let mut staged = BTreeMap::new();
-        for key in 0..16380 {
-            staged.insert(key, Slot::new(key, Version(1)));
-        }
-        state.staged_slots = Some(staged);
-
-        // We send a page with 10 slots (so total staged would exceed 16384).
-        let slots = (16380..16390)
-            .map(|key| (key, Slot::new(key, Version(1))))
-            .collect::<Vec<_>>();
-
-        let accepted = state.on_rpc_res(
-            &mut ctx,
-            now,
-            RpcRes::FetchSnapshot(
-                Some(SnapshotData {
-                    slots,
-                    skipped_newer: vec![],
-                    next_key: None,
-                }),
-                Version(1),
-            ),
-        );
-
-        assert!(accepted, "snapshot page exceeding limit must be processed and trigger transition");
-        assert!(
-            matches!(ctx.next_state, Some(RemoteStoreState::Destroy(_))),
-            "replicated KV must transition to DestroyState on exceeding staged slots limit"
-        );
-    }
 }
