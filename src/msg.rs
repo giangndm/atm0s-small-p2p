@@ -80,4 +80,17 @@ mod tests {
             "an already accepted broadcast id must be rejected within the configured freshness window after cache churn"
         );
     }
+
+    #[test]
+    fn broadcast_dedup_contains_must_not_insert() {
+        let ctx = SharedCtx::new(PeerId::from(1), SharedRouterTable::new(PeerId::from(1)));
+        let msg_id = BroadcastMsgId(7);
+        let source = PeerId::from(2);
+        let service_id = P2pServiceId::from(0);
+
+        assert!(!ctx.has_broadcast_msg(source, service_id, msg_id));
+        assert!(ctx.check_broadcast_msg(source, service_id, msg_id));
+        assert!(ctx.has_broadcast_msg(source, service_id, msg_id));
+        assert!(!ctx.check_broadcast_msg(source, service_id, msg_id));
+    }
 }
