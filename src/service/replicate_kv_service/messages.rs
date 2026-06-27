@@ -88,7 +88,7 @@ pub enum BroadcastEventData<K, V> {
 #[derive(Debug, PartialEq, Eq, Serialize, Deserialize, Clone)]
 pub enum RpcReq<K> {
     FetchChanged { from: Version, count: u64 },
-    FetchSnapshot { from: Option<K>, max_version: Option<Version>, max_items: u64 },
+    FetchSnapshot { from: Option<K>, max_version: Option<Version>, max_items: u64, req_id: u64 },
 }
 
 #[derive(Debug, PartialEq, Eq, Serialize, Deserialize, Clone)]
@@ -106,7 +106,7 @@ pub struct SnapshotData<K, V> {
 #[derive(Debug, PartialEq, Eq, Serialize, Deserialize, Clone)]
 pub enum RpcRes<K, V> {
     FetchChanged(Result<Vec<Changed<K, V>>, FetchChangedError>),
-    FetchSnapshot(Option<SnapshotData<K, V>>, Version),
+    FetchSnapshot(Option<SnapshotData<K, V>>, Version, u64),
 }
 
 #[derive(Debug, PartialEq, Eq, Serialize, Deserialize, Clone)]
