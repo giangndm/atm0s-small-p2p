@@ -2792,6 +2792,62 @@ mod tests {
         let has_delete = receiver_ctx.outs.iter().any(|event| matches!(event, Event::KvEvent(KvEvent::Del(_, 2))));
         assert!(!has_delete, "Receiver must not emit a premature KvEvent::Del for key 2 during snapshot commit");
     }
+
+    #[test]
+    fn test_session_id_reset_allows_stale_snapshot_response() {
+        use super::super::ReplicatedKvStore;
+        use super::super::messages::{SnapshotData, Slot};
+
+        // 1. Create a ReplicatedKvStore (Node A).
+        let mut store: ReplicatedKvStore<u16, u16, u16> = ReplicatedKvStore::new(10, 3);
+        // Ensure A's session ID is 1.
+        store.session_id = 1;
+        // The local store session ID must also match.
+        store.local.session_id = 1;
+
+        // 2. Simulate Node A receiving a version broadcast or request from Node B (remote node) with session ID 10.
+        // This will create a RemoteStore for B on A with expected session 10.
+        store.on_remote_event(2, NetEvent::Broadcast(BroadcastEvent {
+            session_id: 10,
+            data: BroadcastEventData::Version(Version(0)),
+        }));
+
+        // Node A should have created a RemoteStore for B, and sent a FetchSnapshot request.
+        let remote = store.remotes.get(&2).expect("remote store must exist");
+        assert_eq!(remote.session_id, 10);
+        assert_eq!(remote.ctx.req_id, 1);
+
+        // Clear the outputs from the store
+        store.outs.clear();
+
+        // 3. Now B restarts! Its session ID increases to 11.
+        // B sends a FetchSnapshot response carrying session_id = 11, req_id = 1, but with stale/incorrect snapshot data.
+        let stale_response = NetEvent::Unicast(
+            1,
+            RpcEvent {
+                session_id: 11, // The new session ID of B
+                data: RpcEventData::RpcRes(RpcRes::FetchSnapshot(
+                    Some(SnapshotData {
+                        slots: vec![(999, Slot::new(999, Version(1)))],
+                        skipped_newer: vec![],
+                        next_key: None,
+                    }),
+                    Version(1),
+                    1, // Stale req_id from previous session!
+                )),
+            },
+        );
+
+        // Deliver the stale response to A.
+        store.on_remote_event(2, stale_response);
+
+        // Since the stale response had a new session ID, A must have destroyed B's old remote store,
+        // and must NOT have recreated B's remote store from the unsolicited response.
+        assert!(
+            store.remotes.get(&2).is_none(),
+            "RemoteStore must be destroyed and not recreated on unsolicited stale response"
+        );
+    }
 }
 
 
