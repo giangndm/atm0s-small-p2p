@@ -99,9 +99,9 @@ where
                     },
                 )));
             }
-            RpcReq::FetchSnapshot { from, max_version, max_items } => {
+            RpcReq::FetchSnapshot { from, max_version, max_items, req_id } => {
                 let snapshot_version = max_version.unwrap_or(self.version).min(self.version);
-                let res = RpcRes::FetchSnapshot(self.snapshot(from, Some(snapshot_version), max_items), snapshot_version);
+                let res = RpcRes::FetchSnapshot(self.snapshot(from, Some(snapshot_version), max_items), snapshot_version, req_id);
                 self.outs.push_back(Event::NetEvent(NetEvent::Unicast(
                     from_node,
                     RpcEvent {
@@ -397,6 +397,7 @@ mod tests {
                     from: Some(3),
                     max_version: None,
                     max_items: 2,
+                    req_id: 1,
                 },
             );
         }));
@@ -560,6 +561,7 @@ mod tests {
                 from: Some(2),
                 max_version: Some(Version(2)),
                 max_items: 1,
+                req_id: 1,
             },
         );
 
@@ -576,6 +578,7 @@ mod tests {
                             next_key: Some(3),
                         }),
                         Version(2),
+                        1,
                     ))
                 }
             ))),
@@ -595,10 +598,11 @@ mod tests {
                 from: None,
                 max_version: None,
                 max_items: 0,
+                req_id: 1,
             },
         );
 
-        let Some(Event::NetEvent(NetEvent::Unicast(_, RpcEvent { data: RpcEventData::RpcRes(RpcRes::FetchSnapshot(Some(snapshot), _)), .. }))) = store.pop_out() else {
+        let Some(Event::NetEvent(NetEvent::Unicast(_, RpcEvent { data: RpcEventData::RpcRes(RpcRes::FetchSnapshot(Some(snapshot), _, _)), .. }))) = store.pop_out() else {
             panic!("local store must answer FetchSnapshot");
         };
 

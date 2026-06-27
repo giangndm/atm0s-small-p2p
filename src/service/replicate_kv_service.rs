@@ -399,6 +399,7 @@ mod tests {
                         from: None,
                         max_version: None,
                         max_items: 1024,
+                        req_id: 1,
                     })
                 }
             )))
@@ -410,21 +411,23 @@ mod tests {
                 from: None,
                 max_version: None,
                 max_items: 1024,
+                req_id: 1,
             },
         );
         let Some(Event::NetEvent(NetEvent::Unicast(
             _,
             RpcEvent {
                 session_id: 1,
-                data: RpcEventData::RpcRes(messages::RpcRes::FetchSnapshot(first_page, first_version)),
+                data: RpcEventData::RpcRes(messages::RpcRes::FetchSnapshot(first_page, first_version, req_id)),
             },
         ))) = local.pop_out()
         else {
             panic!("local store must answer the initial snapshot request");
         };
         assert_eq!(first_version, Version(2));
+        assert_eq!(req_id, 1);
 
-        remote.on_rpc_res(messages::RpcRes::FetchSnapshot(first_page, first_version));
+        remote.on_rpc_res(messages::RpcRes::FetchSnapshot(first_page, first_version, 1));
         assert_eq!(
             remote.pop_out(),
             Some(Event::NetEvent(NetEvent::Unicast(
@@ -435,6 +438,7 @@ mod tests {
                         from: Some(2),
                         max_version: Some(Version(2)),
                         max_items: 1024,
+                        req_id: 2,
                     })
                 }
             )))
@@ -448,13 +452,14 @@ mod tests {
                 from: Some(2),
                 max_version: Some(Version(2)),
                 max_items: 1024,
+                req_id: 2,
             },
         );
         let Some(Event::NetEvent(NetEvent::Unicast(
             _,
             RpcEvent {
                 session_id: 1,
-                data: RpcEventData::RpcRes(messages::RpcRes::FetchSnapshot(continuation, continuation_version)),
+                data: RpcEventData::RpcRes(messages::RpcRes::FetchSnapshot(continuation, continuation_version, req_id)),
             },
         ))) = local.pop_out()
         else {
@@ -470,8 +475,9 @@ mod tests {
             "current local storage should skip the newer key and complete this pivoted snapshot page"
         );
         assert_eq!(continuation_version, Version(2));
+        assert_eq!(req_id, 2);
 
-        remote.on_rpc_res(messages::RpcRes::FetchSnapshot(continuation, continuation_version));
+        remote.on_rpc_res(messages::RpcRes::FetchSnapshot(continuation, continuation_version, 2));
 
         assert_eq!(remote.pop_out(), Some(Event::KvEvent(messages::KvEvent::Set(Some(1), 1, 10))));
         assert_eq!(

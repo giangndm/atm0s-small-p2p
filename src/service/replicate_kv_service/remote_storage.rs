@@ -156,6 +156,7 @@ pub(crate) struct SyncFullState<N, K, V> {
     sending_req: Option<(Instant, NetEvent<N, K, V>)>,
     staged_slots: Option<BTreeMap<K, Slot<V>>>,
     skipped_newer: BTreeMap<K, Version>,
+    req_id: u64,
     _tmp: PhantomData<(N, K, V)>,
 }
 
@@ -167,6 +168,7 @@ impl<N, K, V> Default for SyncFullState<N, K, V> {
             sending_req: None,
             staged_slots: Some(BTreeMap::new()),
             skipped_newer: BTreeMap::new(),
+            req_id: 0,
             _tmp: PhantomData,
         }
     }
@@ -176,6 +178,7 @@ impl<N, K, V> SyncFullState<N, K, V> {
     fn preserve_existing_until_complete() -> Self {
         Self {
             staged_slots: Some(BTreeMap::new()),
+            req_id: 0,
             ..Default::default()
         }
     }
@@ -216,6 +219,7 @@ where
         self.version = None;
         self.staged_slots = Some(BTreeMap::new());
         self.skipped_newer.clear();
+        self.req_id += 1;
         let req = NetEvent::Unicast(
             ctx.remote.clone(),
             RpcEvent {
@@ -224,6 +228,7 @@ where
                     from: None,
                     max_version: None,
                     max_items: MAX_SNAPSHOT_SLOTS_PER_PAGE as u64,
+                    req_id: self.req_id,
                 }),
             },
         );
@@ -258,6 +263,7 @@ where
 {
     fn init(&mut self, ctx: &mut StateCtx<N, K, V>, now: Instant) {
         log::info!("[RemoteStore {:?}] switch to syncFull", ctx.remote);
+        self.req_id += 1;
         let req = NetEvent::Unicast(
             ctx.remote.clone(),
             RpcEvent {
@@ -266,6 +272,7 @@ where
                     from: None,
                     max_version: None,
                     max_items: MAX_SNAPSHOT_SLOTS_PER_PAGE as u64,
+                    req_id: self.req_id,
                 }),
             },
         );
@@ -296,22 +303,19 @@ where
             RpcRes::FetchChanged(_) => {
                 false
             }
-            RpcRes::FetchSnapshot(Some(snapshot), version) => {
-                let (_from, max_version, max_items) = if let Some((_, NetEvent::Unicast(_, RpcEvent { data: RpcEventData::RpcReq(RpcReq::FetchSnapshot { from, max_version, max_items }), .. }))) = self.sending_req.as_ref() {
+            RpcRes::FetchSnapshot(Some(snapshot), version, res_req_id) => {
+                let (_from, max_version, max_items) = if let Some((_, NetEvent::Unicast(_, RpcEvent { data: RpcEventData::RpcReq(RpcReq::FetchSnapshot { from, max_version, max_items, .. }), .. }))) = self.sending_req.as_ref() {
                     (from.clone(), *max_version, *max_items)
                 } else {
                     return false;
                 };
-                if self.version.is_none() {
-                    if let Some(catchup_to) = self.catchup_to {
-                        if version < catchup_to {
-                            log::warn!(
-                                "[RemoteStore {:?}] ignore stale snapshot page version {version:?} older than catchup_to {catchup_to:?}",
-                                ctx.remote
-                            );
-                            return false;
-                        }
-                    }
+                if res_req_id != self.req_id {
+                    log::warn!(
+                        "[RemoteStore {:?}] ignore stale snapshot page req_id {res_req_id} (expected {})",
+                        ctx.remote,
+                        self.req_id
+                    );
+                    return false;
                 }
                 self.remember_catchup_to(version);
                 log::info!(
@@ -367,6 +371,7 @@ where
                     let max_version = self.version.expect("should have version");
 
                     log::info!("[RemoteStore {:?}] request more snapshot data with from {next_key:?}, max_version {max_version:?}", ctx.remote);
+                    self.req_id += 1;
                     let req = NetEvent::Unicast(
                         ctx.remote.clone(),
                         RpcEvent {
@@ -375,6 +380,7 @@ where
                                 from: Some(next_key),
                                 max_version: Some(max_version),
                                 max_items: MAX_SNAPSHOT_SLOTS_PER_PAGE as u64,
+                                req_id: self.req_id,
                             }),
                         },
                     );
@@ -386,22 +392,19 @@ where
                 }
                 true
             }
-            RpcRes::FetchSnapshot(None, version) => {
+            RpcRes::FetchSnapshot(None, version, res_req_id) => {
                 let (from, max_version) = if let Some((_, NetEvent::Unicast(_, RpcEvent { data: RpcEventData::RpcReq(RpcReq::FetchSnapshot { from, max_version, .. }), .. }))) = self.sending_req.as_ref() {
                     (from.clone(), *max_version)
                 } else {
                     return false;
                 };
-                if self.version.is_none() {
-                    if let Some(catchup_to) = self.catchup_to {
-                        if version < catchup_to {
-                            log::warn!(
-                                "[RemoteStore {:?}] ignore stale snapshot None page version {version:?} older than catchup_to {catchup_to:?}",
-                                ctx.remote
-                            );
-                            return false;
-                        }
-                    }
+                if res_req_id != self.req_id {
+                    log::warn!(
+                        "[RemoteStore {:?}] ignore stale snapshot None page req_id {res_req_id} (expected {})",
+                        ctx.remote,
+                        self.req_id
+                    );
+                    return false;
                 }
                 self.remember_catchup_to(version);
                 if from.is_some() || max_version.is_some() {
@@ -634,7 +637,7 @@ where
                 ctx.next_state = Some(RemoteStoreState::SyncFull(SyncFullState::preserve_existing_until_complete()));
                 true
             }
-            RpcRes::FetchSnapshot(_, _) => {
+            RpcRes::FetchSnapshot(_, _, _) => {
                 false
             }
         }
@@ -700,7 +703,7 @@ mod tests {
             ctx.outs.pop_front(),
             Some(Event::NetEvent(NetEvent::Unicast(
                 1,
-                RpcEvent { session_id: 1, data: RpcEventData::RpcReq(RpcReq::FetchSnapshot {
+                RpcEvent { session_id: 1, data: RpcEventData::RpcReq(RpcReq::FetchSnapshot { req_id: 1,
                     from: None,
                     max_version: None,
                     max_items: MAX_SNAPSHOT_SLOTS_PER_PAGE as u64
@@ -716,14 +719,11 @@ mod tests {
         state.on_rpc_res(
             &mut ctx,
             now,
-            RpcRes::FetchSnapshot(
-                Some(SnapshotData {
+            RpcRes::FetchSnapshot(Some(SnapshotData {
                     slots: vec![(1, Slot::new(1, Version(1)))],
                     skipped_newer: vec![],
                     next_key: None,
-                }),
-                Version(1),
-            ),
+                }), Version(1), 1),
         );
 
         assert_eq!(ctx.slots, BTreeMap::from([(1, Slot::new(1, Version(1)))]));
@@ -756,14 +756,11 @@ mod tests {
         state.on_rpc_res(
             &mut ctx,
             now,
-            RpcRes::FetchSnapshot(
-                Some(SnapshotData {
+            RpcRes::FetchSnapshot(Some(SnapshotData {
                     slots: vec![(1, Slot::new(10, Version(1)))],
                     skipped_newer: vec![],
                     next_key: Some(2),
-                }),
-                Version(2),
-            ),
+                }), Version(2), 1),
         );
 
         assert!(ctx.slots.is_empty(), "initial full sync must not expose partial remote slots before the terminal snapshot page");
@@ -791,21 +788,18 @@ mod tests {
         state.on_rpc_res(
             &mut ctx,
             now,
-            RpcRes::FetchSnapshot(
-                Some(SnapshotData {
+            RpcRes::FetchSnapshot(Some(SnapshotData {
                     slots: vec![(1, Slot::new(1, Version(1)))],
                     skipped_newer: vec![],
                     next_key: Some(2),
-                }),
-                Version(1),
-            ),
+                }), Version(1), 1),
         );
 
         assert_eq!(
             ctx.outs.pop_back(),
             Some(Event::NetEvent(NetEvent::Unicast(
                 1,
-                RpcEvent { session_id: 1, data: RpcEventData::RpcReq(RpcReq::FetchSnapshot {
+                RpcEvent { session_id: 1, data: RpcEventData::RpcReq(RpcReq::FetchSnapshot { req_id: 2,
                     from: Some(2),
                     max_version: Some(Version(1)),
                     max_items: MAX_SNAPSHOT_SLOTS_PER_PAGE as u64,
@@ -833,35 +827,29 @@ mod tests {
         state.on_rpc_res(
             &mut ctx,
             now,
-            RpcRes::FetchSnapshot(
-                Some(SnapshotData {
+            RpcRes::FetchSnapshot(Some(SnapshotData {
                     slots: vec![(1, Slot::new(1, Version(1)))],
                     skipped_newer: vec![],
                     next_key: Some(2),
-                }),
-                Version(1),
-            ),
+                }), Version(1), 1),
         );
         ctx.outs.clear();
 
         state.on_rpc_res(
             &mut ctx,
             now,
-            RpcRes::FetchSnapshot(
-                Some(SnapshotData {
+            RpcRes::FetchSnapshot(Some(SnapshotData {
                     slots: vec![],
                     skipped_newer: vec![(2, Version(2))],
                     next_key: Some(3),
-                }),
-                Version(1),
-            ),
+                }), Version(1), 2),
         );
 
         assert_eq!(
             ctx.outs.pop_front(),
             Some(Event::NetEvent(NetEvent::Unicast(
                 1,
-                RpcEvent { session_id: 1, data: RpcEventData::RpcReq(RpcReq::FetchSnapshot {
+                RpcEvent { session_id: 1, data: RpcEventData::RpcReq(RpcReq::FetchSnapshot { req_id: 3,
                     from: Some(3),
                     max_version: Some(Version(1)),
                     max_items: MAX_SNAPSHOT_SLOTS_PER_PAGE as u64,
@@ -890,28 +878,22 @@ mod tests {
         state.on_rpc_res(
             &mut ctx,
             now,
-            RpcRes::FetchSnapshot(
-                Some(SnapshotData {
+            RpcRes::FetchSnapshot(Some(SnapshotData {
                     slots: vec![(1, Slot::new(1, Version(1)))],
                     skipped_newer: vec![],
                     next_key: Some(2),
-                }),
-                Version(1),
-            ),
+                }), Version(1), 1),
         );
         ctx.outs.clear();
 
         state.on_rpc_res(
             &mut ctx,
             now,
-            RpcRes::FetchSnapshot(
-                Some(SnapshotData {
+            RpcRes::FetchSnapshot(Some(SnapshotData {
                     slots: vec![],
                     skipped_newer: vec![],
                     next_key: Some(3),
-                }),
-                Version(1),
-            ),
+                }), Version(1), 1),
         );
 
         assert_eq!(ctx.outs.pop_front(), None, "empty continuation with no scanned progress must not request another page");
@@ -936,14 +918,11 @@ mod tests {
         state.on_rpc_res(
             &mut ctx,
             now,
-            RpcRes::FetchSnapshot(
-                Some(SnapshotData {
+            RpcRes::FetchSnapshot(Some(SnapshotData {
                     slots: vec![],
                     skipped_newer: vec![],
                     next_key: None,
-                }),
-                Version(1),
-            ),
+                }), Version(1), 1),
         );
 
         assert_eq!(ctx.next_state, Some(RemoteStoreState::Working(WorkingState::new(Version(1)))));
@@ -968,14 +947,11 @@ mod tests {
         state.on_rpc_res(
             &mut ctx,
             now,
-            RpcRes::FetchSnapshot(
-                Some(SnapshotData {
+            RpcRes::FetchSnapshot(Some(SnapshotData {
                     slots: vec![(2, Slot::new(2, Version(1)))],
                     skipped_newer: vec![],
                     next_key: None,
-                }),
-                Version(1),
-            ),
+                }), Version(1), 1),
         );
 
         assert_eq!(ctx.slots, BTreeMap::from([(2, Slot::new(2, Version(1)))]));
@@ -1003,14 +979,11 @@ mod tests {
         state.on_rpc_res(
             &mut ctx,
             now,
-            RpcRes::FetchSnapshot(
-                Some(SnapshotData {
+            RpcRes::FetchSnapshot(Some(SnapshotData {
                     slots,
                     skipped_newer: vec![],
                     next_key: None,
-                }),
-                Version(MAX_SNAPSHOT_SLOTS_PER_PAGE as u64 + 1),
-            ),
+                }), Version(MAX_SNAPSHOT_SLOTS_PER_PAGE as u64 + 1), 1),
         );
 
         assert!(
@@ -1042,28 +1015,22 @@ mod tests {
         state.on_rpc_res(
             &mut ctx,
             now,
-            RpcRes::FetchSnapshot(
-                Some(SnapshotData {
+            RpcRes::FetchSnapshot(Some(SnapshotData {
                     slots: vec![(1, Slot::new(1, Version(1)))],
                     skipped_newer: vec![],
                     next_key: Some(2),
-                }),
-                Version(1),
-            ),
+                }), Version(1), 1),
         );
         ctx.outs.clear();
 
         state.on_rpc_res(
             &mut ctx,
             now,
-            RpcRes::FetchSnapshot(
-                Some(SnapshotData {
+            RpcRes::FetchSnapshot(Some(SnapshotData {
                     slots: vec![(2, Slot::new(2, Version(2)))],
                     skipped_newer: vec![],
                     next_key: None,
-                }),
-                Version(2),
-            ),
+                }), Version(2), 2),
         );
 
         assert_eq!(
@@ -1072,7 +1039,7 @@ mod tests {
                 1,
                 RpcEvent {
                     session_id: 1,
-                    data: RpcEventData::RpcReq(RpcReq::FetchSnapshot {
+                    data: RpcEventData::RpcReq(RpcReq::FetchSnapshot { req_id: 3,
                         from: None,
                         max_version: None,
                         max_items: MAX_SNAPSHOT_SLOTS_PER_PAGE as u64,
@@ -1109,21 +1076,18 @@ mod tests {
         state.on_rpc_res(
             &mut ctx,
             now,
-            RpcRes::FetchSnapshot(
-                Some(SnapshotData {
+            RpcRes::FetchSnapshot(Some(SnapshotData {
                     slots: vec![(1, Slot::new(10, Version(1)))],
                     skipped_newer: vec![],
                     next_key: Some(2),
-                }),
-                Version(3),
-            ),
+                }), Version(3), 1),
         );
 
         assert_eq!(
             ctx.outs.pop_front(),
             Some(Event::NetEvent(NetEvent::Unicast(
                 1,
-                RpcEvent { session_id: 1, data: RpcEventData::RpcReq(RpcReq::FetchSnapshot {
+                RpcEvent { session_id: 1, data: RpcEventData::RpcReq(RpcReq::FetchSnapshot { req_id: 2,
                     from: Some(2),
                     max_version: Some(Version(3)),
                     max_items: MAX_SNAPSHOT_SLOTS_PER_PAGE as u64,
@@ -1136,14 +1100,11 @@ mod tests {
         state.on_rpc_res(
             &mut ctx,
             now,
-            RpcRes::FetchSnapshot(
-                Some(SnapshotData {
+            RpcRes::FetchSnapshot(Some(SnapshotData {
                     slots: vec![(1, Slot::new(10, Version(1)))],
                     skipped_newer: vec![],
                     next_key: None,
-                }),
-                Version(1),
-            ),
+                }), Version(1), 1),
         );
 
         assert_eq!(
@@ -1175,7 +1136,7 @@ mod tests {
             ctx.outs.pop_front(),
             Some(Event::NetEvent(NetEvent::Unicast(
                 1,
-                RpcEvent { session_id: 1, data: RpcEventData::RpcReq(RpcReq::FetchSnapshot {
+                RpcEvent { session_id: 1, data: RpcEventData::RpcReq(RpcReq::FetchSnapshot { req_id: 1,
                     from: None,
                     max_version: None,
                     max_items: MAX_SNAPSHOT_SLOTS_PER_PAGE as u64,
@@ -1190,7 +1151,7 @@ mod tests {
             ctx.outs.pop_front(),
             Some(Event::NetEvent(NetEvent::Unicast(
                 1,
-                RpcEvent { session_id: 1, data: RpcEventData::RpcReq(RpcReq::FetchSnapshot {
+                RpcEvent { session_id: 1, data: RpcEventData::RpcReq(RpcReq::FetchSnapshot { req_id: 1,
                     from: None,
                     max_version: None,
                     max_items: MAX_SNAPSHOT_SLOTS_PER_PAGE as u64,
@@ -1218,7 +1179,7 @@ mod tests {
             ctx.outs.pop_front(),
             Some(Event::NetEvent(NetEvent::Unicast(
                 1,
-                RpcEvent { session_id: 1, data: RpcEventData::RpcReq(RpcReq::FetchSnapshot {
+                RpcEvent { session_id: 1, data: RpcEventData::RpcReq(RpcReq::FetchSnapshot { req_id: 1,
                     from: None,
                     max_version: None,
                     max_items: MAX_SNAPSHOT_SLOTS_PER_PAGE as u64
@@ -1231,21 +1192,18 @@ mod tests {
         state.on_rpc_res(
             &mut ctx,
             now,
-            RpcRes::FetchSnapshot(
-                Some(SnapshotData {
+            RpcRes::FetchSnapshot(Some(SnapshotData {
                     slots: vec![(1, Slot::new(1, Version(1)))],
                     skipped_newer: vec![],
                     next_key: Some(2),
-                }),
-                Version(2),
-            ),
+                }), Version(2), 1),
         );
 
         assert_eq!(
             ctx.outs.pop_front(),
             Some(Event::NetEvent(NetEvent::Unicast(
                 1,
-                RpcEvent { session_id: 1, data: RpcEventData::RpcReq(RpcReq::FetchSnapshot {
+                RpcEvent { session_id: 1, data: RpcEventData::RpcReq(RpcReq::FetchSnapshot { req_id: 2,
                     from: Some(2),
                     max_version: Some(Version(2)),
                     max_items: MAX_SNAPSHOT_SLOTS_PER_PAGE as u64
@@ -1259,14 +1217,11 @@ mod tests {
         state.on_rpc_res(
             &mut ctx,
             now,
-            RpcRes::FetchSnapshot(
-                Some(SnapshotData {
+            RpcRes::FetchSnapshot(Some(SnapshotData {
                     slots: vec![(2, Slot::new(2, Version(2)))],
                     skipped_newer: vec![],
                     next_key: None,
-                }),
-                Version(2),
-            ),
+                }), Version(2), 2),
         );
 
         assert_eq!(ctx.slots, BTreeMap::from([(1, Slot::new(1, Version(1))), (2, Slot::new(2, Version(2)))]));
@@ -1638,7 +1593,7 @@ mod tests {
             remote.pop_out(),
             Some(Event::NetEvent(NetEvent::Unicast(
                 1,
-                RpcEvent { session_id: 1, data: RpcEventData::RpcReq(RpcReq::FetchSnapshot {
+                RpcEvent { session_id: 1, data: RpcEventData::RpcReq(RpcReq::FetchSnapshot { req_id: 1,
                     from: None,
                     max_version: None,
                     max_items: _
@@ -1647,14 +1602,11 @@ mod tests {
         ));
         assert_eq!(remote.pop_out(), None);
 
-        remote.on_rpc_res(RpcRes::FetchSnapshot(
-            Some(SnapshotData {
+        remote.on_rpc_res(RpcRes::FetchSnapshot(Some(SnapshotData {
                 slots: vec![(2, Slot::new(20, Version(4)))],
                 skipped_newer: vec![],
                 next_key: Some(3),
-            }),
-            Version(5),
-        ));
+            }), Version(5), 1));
         assert_eq!(
             remote.ctx.slots,
             BTreeMap::from([(1, Slot::new(10, Version(1))), (2, Slot::new(20, Version(2)))]),
@@ -1664,7 +1616,7 @@ mod tests {
             remote.pop_out(),
             Some(Event::NetEvent(NetEvent::Unicast(
                 1,
-                RpcEvent { session_id: 1, data: RpcEventData::RpcReq(RpcReq::FetchSnapshot {
+                RpcEvent { session_id: 1, data: RpcEventData::RpcReq(RpcReq::FetchSnapshot { req_id: 2,
                     from: Some(3),
                     max_version: Some(Version(5)),
                     max_items: _
@@ -1673,14 +1625,11 @@ mod tests {
         ));
         assert_eq!(remote.pop_out(), None);
 
-        remote.on_rpc_res(RpcRes::FetchSnapshot(
-            Some(SnapshotData {
+        remote.on_rpc_res(RpcRes::FetchSnapshot(Some(SnapshotData {
                 slots: vec![(3, Slot::new(30, Version(5)))],
                 skipped_newer: vec![],
                 next_key: None,
-            }),
-            Version(5),
-        ));
+            }), Version(5), 2));
 
         assert_eq!(remote.ctx.slots, BTreeMap::from([(2, Slot::new(20, Version(4))), (3, Slot::new(30, Version(5)))]));
         assert_eq!(remote.state, RemoteStoreState::Working(WorkingState::new(Version(5))));
@@ -1713,7 +1662,7 @@ mod tests {
             remote.pop_out(),
             Some(Event::NetEvent(NetEvent::Unicast(
                 1,
-                RpcEvent { session_id: 1, data: RpcEventData::RpcReq(RpcReq::FetchSnapshot {
+                RpcEvent { session_id: 1, data: RpcEventData::RpcReq(RpcReq::FetchSnapshot { req_id: 1,
                     from: None,
                     max_version: None,
                     max_items: _
@@ -1721,19 +1670,16 @@ mod tests {
             )))
         ));
 
-        remote.on_rpc_res(RpcRes::FetchSnapshot(
-            Some(SnapshotData {
+        remote.on_rpc_res(RpcRes::FetchSnapshot(Some(SnapshotData {
                 slots: vec![(1, Slot::new(10, Version(1)))],
                 skipped_newer: vec![],
                 next_key: Some(2),
-            }),
-            Version(2),
-        ));
+            }), Version(2), 1));
         assert!(matches!(
             remote.pop_out(),
             Some(Event::NetEvent(NetEvent::Unicast(
                 1,
-                RpcEvent { session_id: 1, data: RpcEventData::RpcReq(RpcReq::FetchSnapshot {
+                RpcEvent { session_id: 1, data: RpcEventData::RpcReq(RpcReq::FetchSnapshot { req_id: 2,
                     from: Some(2),
                     max_version: Some(Version(2)),
                     max_items: _
@@ -1741,14 +1687,11 @@ mod tests {
             )))
         ));
 
-        remote.on_rpc_res(RpcRes::FetchSnapshot(
-            Some(SnapshotData {
+        remote.on_rpc_res(RpcRes::FetchSnapshot(Some(SnapshotData {
                 slots: vec![],
                 skipped_newer: vec![(2, Version(3))],
                 next_key: None,
-            }),
-            Version(2),
-        ));
+            }), Version(2), 2));
 
         assert_eq!(
             remote.pop_out(),
@@ -1765,7 +1708,7 @@ mod tests {
             remote.pop_out(),
             Some(Event::NetEvent(NetEvent::Unicast(
                 1,
-                RpcEvent { session_id: 1, data: RpcEventData::RpcReq(RpcReq::FetchSnapshot {
+                RpcEvent { session_id: 1, data: RpcEventData::RpcReq(RpcReq::FetchSnapshot { req_id: 1,
                     from: None,
                     max_version: None,
                     max_items: _
@@ -1773,19 +1716,16 @@ mod tests {
             )))
         ));
 
-        remote.on_rpc_res(RpcRes::FetchSnapshot(
-            Some(SnapshotData {
+        remote.on_rpc_res(RpcRes::FetchSnapshot(Some(SnapshotData {
                 slots: vec![(1, Slot::new(10, Version(1)))],
                 skipped_newer: vec![],
                 next_key: Some(2),
-            }),
-            Version(2),
-        ));
+            }), Version(2), 1));
         assert!(matches!(
             remote.pop_out(),
             Some(Event::NetEvent(NetEvent::Unicast(
                 1,
-                RpcEvent { session_id: 1, data: RpcEventData::RpcReq(RpcReq::FetchSnapshot {
+                RpcEvent { session_id: 1, data: RpcEventData::RpcReq(RpcReq::FetchSnapshot { req_id: 2,
                     from: Some(2),
                     max_version: Some(Version(2)),
                     max_items: _
@@ -1799,14 +1739,11 @@ mod tests {
             action: Action::Set(21),
         }) });
 
-        remote.on_rpc_res(RpcRes::FetchSnapshot(
-            Some(SnapshotData {
+        remote.on_rpc_res(RpcRes::FetchSnapshot(Some(SnapshotData {
                 slots: vec![],
                 skipped_newer: vec![],
                 next_key: None,
-            }),
-            Version(2),
-        ));
+            }), Version(2), 2));
         assert_eq!(remote.pop_out(), Some(Event::KvEvent(KvEvent::Set(Some(1), 1, 10))));
 
         assert_eq!(
@@ -1830,7 +1767,7 @@ mod tests {
             last_active: stale,
         };
 
-        remote.on_rpc_res(RpcRes::FetchSnapshot(None, Version(99)));
+        remote.on_rpc_res(RpcRes::FetchSnapshot(None, Version(99), 1));
 
         assert_eq!(
             remote.last_active(),
@@ -2245,19 +2182,16 @@ mod tests {
         state.on_rpc_res(
             &mut ctx,
             now,
-            RpcRes::FetchSnapshot(
-                Some(SnapshotData {
+            RpcRes::FetchSnapshot(Some(SnapshotData {
                     slots: vec![(1, Slot::new(10, Version(1)))],
                     skipped_newer: vec![],
                     next_key: Some(2),
-                }),
-                Version(2),
-            ),
+                }), Version(2), 1),
         );
         ctx.outs.clear();
 
         // Receive None for continuation snapshot request
-        state.on_rpc_res(&mut ctx, now, RpcRes::FetchSnapshot(None, Version(2)));
+        state.on_rpc_res(&mut ctx, now, RpcRes::FetchSnapshot(None, Version(2), 2));
 
         assert_eq!(
             ctx.outs.pop_front(),
@@ -2265,7 +2199,7 @@ mod tests {
                 1,
                 RpcEvent {
                     session_id: 1,
-                    data: RpcEventData::RpcReq(RpcReq::FetchSnapshot {
+                    data: RpcEventData::RpcReq(RpcReq::FetchSnapshot { req_id: 3,
                         from: None,
                         max_version: None,
                         max_items: MAX_SNAPSHOT_SLOTS_PER_PAGE as u64,
@@ -2285,7 +2219,7 @@ mod tests {
                 1,
                 RpcEvent {
                     session_id: 1,
-                    data: RpcEventData::RpcReq(RpcReq::FetchSnapshot {
+                    data: RpcEventData::RpcReq(RpcReq::FetchSnapshot { req_id: 3,
                         from: None,
                         max_version: None,
                         max_items: MAX_SNAPSHOT_SLOTS_PER_PAGE as u64,
@@ -2387,14 +2321,11 @@ mod tests {
         state.on_rpc_res(
             &mut ctx,
             now,
-            RpcRes::FetchSnapshot(
-                Some(SnapshotData {
+            RpcRes::FetchSnapshot(Some(SnapshotData {
                     slots: vec![(1, Slot::new(10, Version(1)))],
                     skipped_newer: vec![],
                     next_key: Some(2),
-                }),
-                Version(1),
-            ),
+                }), Version(1), 1),
         );
         ctx.outs.clear();
 
@@ -2403,14 +2334,11 @@ mod tests {
         state.on_rpc_res(
             &mut ctx,
             now,
-            RpcRes::FetchSnapshot(
-                Some(SnapshotData {
+            RpcRes::FetchSnapshot(Some(SnapshotData {
                     slots: vec![],
                     skipped_newer: vec![],
                     next_key: None,
-                }),
-                Version(2),
-            ),
+                }), Version(2), 1),
         );
         ctx.outs.clear();
 
@@ -2420,14 +2348,11 @@ mod tests {
         let accepted = state.on_rpc_res(
             &mut ctx,
             now,
-            RpcRes::FetchSnapshot(
-                Some(SnapshotData {
+            RpcRes::FetchSnapshot(Some(SnapshotData {
                     slots: vec![(2, Slot::new(20, Version(1)))],
                     skipped_newer: vec![],
                     next_key: None,
-                }),
-                Version(1),
-            ),
+                }), Version(1), 1),
         );
 
         assert!(!accepted, "stale snapshot response must be rejected/ignored");
@@ -2438,4 +2363,3 @@ mod tests {
         );
     }
 }
-
