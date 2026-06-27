@@ -64,6 +64,7 @@ pub(crate) struct StateCtx<N, K, V> {
     pub(crate) slots: BTreeMap<K, Slot<V>>,
     pub(crate) outs: VecDeque<Event<N, K, V>>,
     pub(crate) next_state: Option<RemoteStoreState<N, K, V>>,
+    pub(crate) req_id: u64,
 }
 
 trait State<N, K, V> {
@@ -87,7 +88,7 @@ where
     V: Debug + Eq + Clone,
 {
     pub fn new(remote: N, local_session_id: u64, remote_session_id: u64) -> Self {
-        let mut ctx = StateCtx {
+        let mut ctx = StateCtx { req_id: 0,
             remote,
             local_session_id,
             slots: BTreeMap::new(),
@@ -156,7 +157,6 @@ pub(crate) struct SyncFullState<N, K, V> {
     sending_req: Option<(Instant, NetEvent<N, K, V>)>,
     staged_slots: Option<BTreeMap<K, Slot<V>>>,
     skipped_newer: BTreeMap<K, Version>,
-    req_id: u64,
     _tmp: PhantomData<(N, K, V)>,
 }
 
@@ -168,7 +168,6 @@ impl<N, K, V> Default for SyncFullState<N, K, V> {
             sending_req: None,
             staged_slots: Some(BTreeMap::new()),
             skipped_newer: BTreeMap::new(),
-            req_id: 0,
             _tmp: PhantomData,
         }
     }
@@ -178,7 +177,6 @@ impl<N, K, V> SyncFullState<N, K, V> {
     fn preserve_existing_until_complete() -> Self {
         Self {
             staged_slots: Some(BTreeMap::new()),
-            req_id: 0,
             ..Default::default()
         }
     }
@@ -219,7 +217,7 @@ where
         self.version = None;
         self.staged_slots = Some(BTreeMap::new());
         self.skipped_newer.clear();
-        self.req_id += 1;
+        ctx.req_id += 1;
         let req = NetEvent::Unicast(
             ctx.remote.clone(),
             RpcEvent {
@@ -228,7 +226,7 @@ where
                     from: None,
                     max_version: None,
                     max_items: MAX_SNAPSHOT_SLOTS_PER_PAGE as u64,
-                    req_id: self.req_id,
+                    req_id: ctx.req_id,
                 }),
             },
         );
@@ -263,7 +261,7 @@ where
 {
     fn init(&mut self, ctx: &mut StateCtx<N, K, V>, now: Instant) {
         log::info!("[RemoteStore {:?}] switch to syncFull", ctx.remote);
-        self.req_id += 1;
+        ctx.req_id += 1;
         let req = NetEvent::Unicast(
             ctx.remote.clone(),
             RpcEvent {
@@ -272,7 +270,7 @@ where
                     from: None,
                     max_version: None,
                     max_items: MAX_SNAPSHOT_SLOTS_PER_PAGE as u64,
-                    req_id: self.req_id,
+                    req_id: ctx.req_id,
                 }),
             },
         );
@@ -309,11 +307,11 @@ where
                 } else {
                     return false;
                 };
-                if res_req_id != self.req_id {
+                if res_req_id != ctx.req_id {
                     log::warn!(
                         "[RemoteStore {:?}] ignore stale snapshot page req_id {res_req_id} (expected {})",
                         ctx.remote,
-                        self.req_id
+                        ctx.req_id
                     );
                     return false;
                 }
@@ -371,7 +369,7 @@ where
                     let max_version = self.version.expect("should have version");
 
                     log::info!("[RemoteStore {:?}] request more snapshot data with from {next_key:?}, max_version {max_version:?}", ctx.remote);
-                    self.req_id += 1;
+                    ctx.req_id += 1;
                     let req = NetEvent::Unicast(
                         ctx.remote.clone(),
                         RpcEvent {
@@ -380,7 +378,7 @@ where
                                 from: Some(next_key),
                                 max_version: Some(max_version),
                                 max_items: MAX_SNAPSHOT_SLOTS_PER_PAGE as u64,
-                                req_id: self.req_id,
+                                req_id: ctx.req_id,
                             }),
                         },
                     );
@@ -398,11 +396,11 @@ where
                 } else {
                     return false;
                 };
-                if res_req_id != self.req_id {
+                if res_req_id != ctx.req_id {
                     log::warn!(
                         "[RemoteStore {:?}] ignore stale snapshot None page req_id {res_req_id} (expected {})",
                         ctx.remote,
-                        self.req_id
+                        ctx.req_id
                     );
                     return false;
                 }
@@ -687,7 +685,7 @@ mod tests {
     /// restore with some data
     #[test]
     fn test_restore_full_single_pkt() {
-        let mut ctx: StateCtx<u16, u16, u16> = StateCtx {
+        let mut ctx: StateCtx<u16, u16, u16> = StateCtx { req_id: 0,
             remote: 1,
             local_session_id: 1,
             slots: BTreeMap::new(),
@@ -740,7 +738,7 @@ mod tests {
 
     #[test]
     fn initial_full_sync_must_not_emit_partial_snapshot_before_terminal_page() {
-        let mut ctx: StateCtx<u16, u16, u16> = StateCtx {
+        let mut ctx: StateCtx<u16, u16, u16> = StateCtx { req_id: 0,
             remote: 1,
             local_session_id: 1,
             slots: BTreeMap::new(),
@@ -772,7 +770,7 @@ mod tests {
 
     #[test]
     fn full_sync_continuation_request_must_use_next_key_and_pivot_version() {
-        let mut ctx: StateCtx<u16, u16, u16> = StateCtx {
+        let mut ctx: StateCtx<u16, u16, u16> = StateCtx { req_id: 0,
             remote: 1,
             local_session_id: 1,
             slots: BTreeMap::new(),
@@ -811,7 +809,7 @@ mod tests {
 
     #[test]
     fn full_sync_must_accept_empty_continuation_page_with_advancing_next_key() {
-        let mut ctx: StateCtx<u16, u16, u16> = StateCtx {
+        let mut ctx: StateCtx<u16, u16, u16> = StateCtx { req_id: 0,
             remote: 1,
             local_session_id: 1,
             slots: BTreeMap::new(),
@@ -862,7 +860,7 @@ mod tests {
 
     #[test]
     fn full_sync_must_reject_empty_no_progress_continuation_page() {
-        let mut ctx: StateCtx<u16, u16, u16> = StateCtx {
+        let mut ctx: StateCtx<u16, u16, u16> = StateCtx { req_id: 0,
             remote: 1,
             local_session_id: 1,
             slots: BTreeMap::new(),
@@ -902,7 +900,7 @@ mod tests {
 
     #[test]
     fn full_sync_must_accept_terminal_empty_snapshot_with_nonzero_version() {
-        let mut ctx: StateCtx<u16, u16, u16> = StateCtx {
+        let mut ctx: StateCtx<u16, u16, u16> = StateCtx { req_id: 0,
             remote: 1,
             local_session_id: 1,
             slots: BTreeMap::new(),
@@ -931,7 +929,7 @@ mod tests {
 
     #[test]
     fn full_sync_must_accept_snapshot_slot_without_upper_key_bound() {
-        let mut ctx: StateCtx<u16, u16, u16> = StateCtx {
+        let mut ctx: StateCtx<u16, u16, u16> = StateCtx { req_id: 0,
             remote: 1,
             local_session_id: 1,
             slots: BTreeMap::new(),
@@ -961,7 +959,7 @@ mod tests {
     #[test]
     fn full_sync_snapshot_pages_must_be_bounded() {
         const MAX_SNAPSHOT_SLOTS_PER_PAGE: u16 = 1024;
-        let mut ctx: StateCtx<u16, u16, u16> = StateCtx {
+        let mut ctx: StateCtx<u16, u16, u16> = StateCtx { req_id: 0,
             remote: 1,
             local_session_id: 1,
             slots: BTreeMap::new(),
@@ -999,7 +997,7 @@ mod tests {
 
     #[test]
     fn full_sync_mismatched_continuation_version_must_restart_sync() {
-        let mut ctx: StateCtx<u16, u16, u16> = StateCtx {
+        let mut ctx: StateCtx<u16, u16, u16> = StateCtx { req_id: 0,
             remote: 1,
             local_session_id: 1,
             slots: BTreeMap::new(),
@@ -1060,7 +1058,7 @@ mod tests {
 
     #[test]
     fn full_sync_must_reject_stale_terminal_snapshot_after_continuation_request() {
-        let mut ctx: StateCtx<u16, u16, u16> = StateCtx {
+        let mut ctx: StateCtx<u16, u16, u16> = StateCtx { req_id: 0,
             remote: 1,
             local_session_id: 1,
             slots: BTreeMap::new(),
@@ -1120,7 +1118,7 @@ mod tests {
 
     #[test]
     fn test_restore_full_resend() {
-        let mut ctx: StateCtx<u16, u16, u16> = StateCtx {
+        let mut ctx: StateCtx<u16, u16, u16> = StateCtx { req_id: 0,
             remote: 1,
             local_session_id: 1,
             slots: BTreeMap::new(),
@@ -1164,7 +1162,7 @@ mod tests {
     /// restore with some data
     #[test]
     fn test_restore_multi_single_pkt() {
-        let mut ctx: StateCtx<u16, u16, u16> = StateCtx {
+        let mut ctx: StateCtx<u16, u16, u16> = StateCtx { req_id: 0,
             remote: 1,
             local_session_id: 1,
             slots: BTreeMap::new(),
@@ -1234,7 +1232,7 @@ mod tests {
     /// start with zero
     #[test]
     fn test_working_state_zero() {
-        let mut ctx: StateCtx<u16, u16, u16> = StateCtx {
+        let mut ctx: StateCtx<u16, u16, u16> = StateCtx { req_id: 0,
             remote: 1,
             local_session_id: 1,
             slots: BTreeMap::new(),
@@ -1263,7 +1261,7 @@ mod tests {
 
     #[test]
     fn remote_delete_for_absent_key_must_not_emit_delete_event() {
-        let mut ctx: StateCtx<u16, u16, u16> = StateCtx {
+        let mut ctx: StateCtx<u16, u16, u16> = StateCtx { req_id: 0,
             remote: 1,
             local_session_id: 1,
             slots: BTreeMap::new(),
@@ -1292,7 +1290,7 @@ mod tests {
     /// start with zero but got out of sync
     #[test]
     fn test_working_state_zero_out_of_sync() {
-        let mut ctx: StateCtx<u16, u16, u16> = StateCtx {
+        let mut ctx: StateCtx<u16, u16, u16> = StateCtx { req_id: 0,
             remote: 1,
             local_session_id: 1,
             slots: BTreeMap::new(),
@@ -1317,7 +1315,7 @@ mod tests {
     /// After missing changed we got Changed event
     #[test]
     fn test_working_state_missing_changed() {
-        let mut ctx: StateCtx<u16, u16, u16> = StateCtx {
+        let mut ctx: StateCtx<u16, u16, u16> = StateCtx { req_id: 0,
             remote: 1,
             local_session_id: 1,
             slots: BTreeMap::new(),
@@ -1383,7 +1381,7 @@ mod tests {
 
     #[test]
     fn working_state_must_cancel_fetch_changed_when_broadcast_fills_gap() {
-        let mut ctx: StateCtx<u16, u16, u16> = StateCtx {
+        let mut ctx: StateCtx<u16, u16, u16> = StateCtx { req_id: 0,
             remote: 1,
             local_session_id: 1,
             slots: BTreeMap::new(),
@@ -1429,7 +1427,7 @@ mod tests {
     /// After missing changed we got FetchChanged response
     #[test]
     fn test_working_state_missing_changed2() {
-        let mut ctx: StateCtx<u16, u16, u16> = StateCtx {
+        let mut ctx: StateCtx<u16, u16, u16> = StateCtx { req_id: 0,
             remote: 1,
             local_session_id: 1,
             slots: BTreeMap::new(),
@@ -1479,7 +1477,7 @@ mod tests {
 
     #[test]
     fn working_state_must_reject_unsolicited_fetch_changed_success() {
-        let mut ctx: StateCtx<u16, u16, u16> = StateCtx {
+        let mut ctx: StateCtx<u16, u16, u16> = StateCtx { req_id: 0,
             remote: 1,
             local_session_id: 1,
             slots: BTreeMap::new(),
@@ -1508,7 +1506,7 @@ mod tests {
     #[test]
     fn working_state_must_reject_unsolicited_fetch_changed_error() {
         let now = Instant::now();
-        let mut remote: RemoteStore<u16, u16, u16> = RemoteStore { session_id: 2, ctx: StateCtx {
+        let mut remote: RemoteStore<u16, u16, u16> = RemoteStore { session_id: 2, ctx: StateCtx { req_id: 0,
                 remote: 1,
             local_session_id: 1,
                 slots: BTreeMap::from([(7, Slot::new(70, Version(1)))]),
@@ -1537,7 +1535,7 @@ mod tests {
     #[test]
     fn solicited_full_resync_must_not_delete_existing_slots_before_snapshot_completes() {
         let now = Instant::now();
-        let mut remote: RemoteStore<u16, u16, u16> = RemoteStore { session_id: 2, ctx: StateCtx {
+        let mut remote: RemoteStore<u16, u16, u16> = RemoteStore { session_id: 2, ctx: StateCtx { req_id: 0,
                 remote: 1,
             local_session_id: 1,
                 slots: BTreeMap::from([(1, Slot::new(10, Version(1))), (2, Slot::new(20, Version(2)))]),
@@ -1572,7 +1570,7 @@ mod tests {
     #[test]
     fn solicited_full_resync_commits_replacement_snapshot_on_completion() {
         let now = Instant::now();
-        let mut remote: RemoteStore<u16, u16, u16> = RemoteStore { session_id: 2, ctx: StateCtx {
+        let mut remote: RemoteStore<u16, u16, u16> = RemoteStore { session_id: 2, ctx: StateCtx { req_id: 0,
                 remote: 1,
             local_session_id: 1,
                 slots: BTreeMap::from([(1, Slot::new(10, Version(1))), (2, Slot::new(20, Version(2)))]),
@@ -1641,7 +1639,7 @@ mod tests {
     #[test]
     fn full_resync_must_not_delete_skipped_pivot_key_before_catchup() {
         let now = Instant::now();
-        let mut remote: RemoteStore<u16, u16, u16> = RemoteStore { session_id: 2, ctx: StateCtx {
+        let mut remote: RemoteStore<u16, u16, u16> = RemoteStore { session_id: 2, ctx: StateCtx { req_id: 0,
                 remote: 1,
             local_session_id: 1,
                 slots: BTreeMap::from([(1, Slot::new(10, Version(1))), (2, Slot::new(20, Version(2)))]),
@@ -1756,7 +1754,7 @@ mod tests {
     #[test]
     fn ignored_rpc_response_must_not_refresh_remote_activity() {
         let stale = Instant::now() - Duration::from_secs(11);
-        let mut remote: RemoteStore<u16, u16, u16> = RemoteStore { session_id: 2, ctx: StateCtx {
+        let mut remote: RemoteStore<u16, u16, u16> = RemoteStore { session_id: 2, ctx: StateCtx { req_id: 0,
                 remote: 1,
             local_session_id: 1,
                 slots: BTreeMap::from([(7, Slot::new(70, Version(1)))]),
@@ -1780,7 +1778,7 @@ mod tests {
     #[test]
     fn old_version_broadcast_must_not_refresh_remote_activity() {
         let stale = Instant::now() - Duration::from_secs(11);
-        let mut remote: RemoteStore<u16, u16, u16> = RemoteStore { session_id: 2, ctx: StateCtx {
+        let mut remote: RemoteStore<u16, u16, u16> = RemoteStore { session_id: 2, ctx: StateCtx { req_id: 0,
                 remote: 1,
             local_session_id: 1,
                 slots: BTreeMap::from([(7, Slot::new(70, Version(5)))]),
@@ -1800,7 +1798,7 @@ mod tests {
     #[test]
     fn same_version_heartbeat_must_refresh_remote_activity() {
         let stale = Instant::now() - Duration::from_secs(11);
-        let mut remote: RemoteStore<u16, u16, u16> = RemoteStore { session_id: 2, ctx: StateCtx {
+        let mut remote: RemoteStore<u16, u16, u16> = RemoteStore { session_id: 2, ctx: StateCtx { req_id: 0,
                 remote: 1,
             local_session_id: 1,
                 slots: BTreeMap::from([(7, Slot::new(70, Version(5)))]),
@@ -1824,7 +1822,7 @@ mod tests {
 
     #[test]
     fn working_state_must_not_cancel_repair_after_empty_fetch_changed_success() {
-        let mut ctx: StateCtx<u16, u16, u16> = StateCtx {
+        let mut ctx: StateCtx<u16, u16, u16> = StateCtx { req_id: 0,
             remote: 1,
             local_session_id: 1,
             slots: BTreeMap::new(),
@@ -1853,7 +1851,7 @@ mod tests {
 
     #[test]
     fn working_state_must_continue_repair_after_partial_fetch_changed_success() {
-        let mut ctx: StateCtx<u16, u16, u16> = StateCtx {
+        let mut ctx: StateCtx<u16, u16, u16> = StateCtx { req_id: 0,
             remote: 1,
             local_session_id: 1,
             slots: BTreeMap::new(),
@@ -1899,7 +1897,7 @@ mod tests {
 
     #[test]
     fn working_state_must_not_let_stale_fetch_changed_response_cancel_newer_repair() {
-        let mut ctx: StateCtx<u16, u16, u16> = StateCtx {
+        let mut ctx: StateCtx<u16, u16, u16> = StateCtx { req_id: 0,
             remote: 1,
             local_session_id: 1,
             slots: BTreeMap::new(),
@@ -1946,7 +1944,7 @@ mod tests {
 
     #[test]
     fn test_working_state_resend_timeout_fetch_changed() {
-        let mut ctx: StateCtx<u16, u16, u16> = StateCtx {
+        let mut ctx: StateCtx<u16, u16, u16> = StateCtx { req_id: 0,
             remote: 1,
             local_session_id: 1,
             slots: BTreeMap::new(),
@@ -1987,7 +1985,7 @@ mod tests {
 
     #[test]
     fn working_state_must_not_duplicate_inflight_fetch_changed_for_same_gap() {
-        let mut ctx: StateCtx<u16, u16, u16> = StateCtx {
+        let mut ctx: StateCtx<u16, u16, u16> = StateCtx { req_id: 0,
             remote: 1,
             local_session_id: 1,
             slots: BTreeMap::new(),
@@ -2034,7 +2032,7 @@ mod tests {
 
     #[test]
     fn working_state_must_cap_pending_future_changes() {
-        let mut ctx: StateCtx<u16, u16, u16> = StateCtx {
+        let mut ctx: StateCtx<u16, u16, u16> = StateCtx { req_id: 0,
             remote: 1,
             local_session_id: 1,
             slots: BTreeMap::new(),
@@ -2065,7 +2063,7 @@ mod tests {
 
     #[test]
     fn working_state_must_reject_duplicate_pending_changed_broadcast_versions() {
-        let mut ctx: StateCtx<u16, u16, u16> = StateCtx {
+        let mut ctx: StateCtx<u16, u16, u16> = StateCtx { req_id: 0,
             remote: 1,
             local_session_id: 1,
             slots: BTreeMap::new(),
@@ -2113,7 +2111,7 @@ mod tests {
 
     #[test]
     fn working_state_must_cap_pending_fetch_changed_response() {
-        let mut ctx: StateCtx<u16, u16, u16> = StateCtx {
+        let mut ctx: StateCtx<u16, u16, u16> = StateCtx { req_id: 0,
             remote: 1,
             local_session_id: 1,
             slots: BTreeMap::new(),
@@ -2145,7 +2143,7 @@ mod tests {
 
     #[test]
     fn destroy_remote_should_clear_slots() {
-        let mut ctx: StateCtx<u16, u16, u16> = StateCtx {
+        let mut ctx: StateCtx<u16, u16, u16> = StateCtx { req_id: 0,
             remote: 1,
             local_session_id: 1,
             slots: BTreeMap::from([(1, Slot::new(1, Version(1)))]),
@@ -2165,7 +2163,7 @@ mod tests {
 
     #[test]
     fn test_continuation_none_response_must_not_livelock() {
-        let mut ctx: StateCtx<u16, u16, u16> = StateCtx {
+        let mut ctx: StateCtx<u16, u16, u16> = StateCtx { req_id: 0,
             remote: 1,
             local_session_id: 1,
             slots: BTreeMap::new(),
@@ -2233,7 +2231,7 @@ mod tests {
 
     #[test]
     fn working_state_must_catch_up_new_version_broadcast_received_during_pending_gap() {
-        let mut ctx: StateCtx<u16, u16, u16> = StateCtx {
+        let mut ctx: StateCtx<u16, u16, u16> = StateCtx { req_id: 0,
             remote: 1,
             local_session_id: 1,
             slots: BTreeMap::new(),
@@ -2304,7 +2302,7 @@ mod tests {
 
     #[test]
     fn test_delayed_snapshot_response_after_restart_causes_corruption() {
-        let mut ctx: StateCtx<u16, u16, u16> = StateCtx {
+        let mut ctx: StateCtx<u16, u16, u16> = StateCtx { req_id: 0,
             remote: 1,
             local_session_id: 1,
             slots: BTreeMap::new(),
@@ -2362,4 +2360,82 @@ mod tests {
             "stale/delayed snapshot response after restart must not force transition to WorkingState"
         );
     }
+
+    #[test]
+    fn test_stale_snapshot_from_previous_sync_cycle_accepted_after_working_transition() {
+        let mut ctx: StateCtx<u16, u16, u16> = StateCtx { req_id: 0,
+            remote: 1,
+            local_session_id: 1,
+            slots: BTreeMap::new(),
+            outs: VecDeque::new(),
+            next_state: None,
+        };
+
+        let now = Instant::now();
+        let mut state = RemoteStoreState::SyncFull(SyncFullState::default());
+        state.init(&mut ctx, now);
+        ctx.outs.clear();
+
+        // 1. Complete the first SyncFullState by sending a terminal snapshot response
+        let accepted = state.on_rpc_res(
+            &mut ctx,
+            now,
+            RpcRes::FetchSnapshot(Some(SnapshotData {
+                slots: vec![(1, Slot::new(10, Version(1)))],
+                skipped_newer: vec![],
+                next_key: None,
+            }), Version(1), 1),
+        );
+        assert!(accepted);
+
+        // We should have transitioned to WorkingState
+        let mut next_state = ctx.next_state.take().expect("must transition state");
+        next_state.init(&mut ctx, now);
+        state = next_state;
+        assert!(matches!(state, RemoteStoreState::Working(_)));
+        ctx.outs.clear();
+
+        // Trigger a fetch changed request by sending a newer Version broadcast
+        state.on_broadcast(&mut ctx, now, BroadcastEvent {
+            session_id: 2,
+            data: BroadcastEventData::Version(Version(5)),
+        });
+        ctx.outs.clear();
+
+        // 2. Trigger a transition from WorkingState back to SyncFullState
+        let accepted = state.on_rpc_res(
+            &mut ctx,
+            now,
+            RpcRes::FetchChanged(Err(FetchChangedError::MissingData)),
+        );
+        assert!(accepted);
+
+        // We should have transitioned back to SyncFullState
+        let mut next_state = ctx.next_state.take().expect("must transition state");
+        next_state.init(&mut ctx, now);
+        state = next_state;
+        assert!(matches!(state, RemoteStoreState::SyncFull(_)));
+        ctx.outs.clear();
+
+        // 3. Receive a stale snapshot response from the FIRST sync cycle (req_id = 1)
+        // Since we transitioned back to SyncFullState and reset req_id to 0, the new SyncFullState has req_id = 1.
+        // It will accept this stale response!
+        let accepted = state.on_rpc_res(
+            &mut ctx,
+            now,
+            RpcRes::FetchSnapshot(Some(SnapshotData {
+                slots: vec![(2, Slot::new(20, Version(1)))],
+                skipped_newer: vec![],
+                next_key: None,
+            }), Version(1), 1),
+        );
+
+        assert!(!accepted, "stale snapshot response from previous sync cycle must be rejected");
+        assert_ne!(
+            ctx.next_state,
+            Some(RemoteStoreState::Working(WorkingState::new(Version(1)))),
+            "should not transition to WorkingState using stale snapshot response"
+        );
+    }
 }
+
