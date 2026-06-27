@@ -572,6 +572,8 @@ where
                     log::warn!("[RemoteStore {:?}] received discontinuity version => request fetch changed from {from:?} count {count}", ctx.remote);
                     self.request_fetch_changed(ctx, now, from, count);
                     true
+                } else if version == self.version {
+                    true
                 } else {
                     false
                 }
@@ -1840,7 +1842,27 @@ mod tests {
     }
 
     #[test]
-    fn ignored_broadcast_must_not_refresh_remote_activity() {
+    fn old_version_broadcast_must_not_refresh_remote_activity() {
+        let stale = Instant::now() - Duration::from_secs(11);
+        let mut remote: RemoteStore<u16, u16, u16> = RemoteStore {
+            ctx: StateCtx {
+                remote: 1,
+                slots: BTreeMap::from([(7, Slot::new(70, Version(5)))]),
+                outs: VecDeque::new(),
+                next_state: None,
+            },
+            state: RemoteStoreState::Working(WorkingState::new(Version(5))),
+            last_active: stale,
+        };
+
+        remote.on_broadcast(BroadcastEvent::Version(Version(4)));
+
+        assert_eq!(remote.last_active(), stale, "old-version broadcasts must not refresh remote activity and prevent timeout cleanup");
+        assert_eq!(remote.pop_out(), None, "old-version broadcasts must not emit local events");
+    }
+
+    #[test]
+    fn same_version_heartbeat_must_refresh_remote_activity() {
         let stale = Instant::now() - Duration::from_secs(11);
         let mut remote: RemoteStore<u16, u16, u16> = RemoteStore {
             ctx: StateCtx {
@@ -1855,8 +1877,11 @@ mod tests {
 
         remote.on_broadcast(BroadcastEvent::Version(Version(5)));
 
-        assert_eq!(remote.last_active(), stale, "ignored stale broadcasts must not refresh remote activity and prevent timeout cleanup");
-        assert_eq!(remote.pop_out(), None, "ignored stale broadcasts must not emit local events");
+        assert!(
+            remote.last_active() > stale,
+            "same-version heartbeats must refresh remote activity so idle but connected owners do not time out"
+        );
+        assert_eq!(remote.pop_out(), None, "same-version heartbeats must not emit local events");
     }
 
     #[test]
