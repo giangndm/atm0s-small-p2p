@@ -297,9 +297,23 @@ where
                 false
             }
             RpcRes::FetchSnapshot(Some(snapshot), version) => {
-                let Some((_, NetEvent::Unicast(_, RpcEvent { data: RpcEventData::RpcReq(RpcReq::FetchSnapshot { from: _, max_version, max_items }), .. }))) = self.sending_req.as_ref() else {
+                let (_from, max_version, max_items) = if let Some((_, NetEvent::Unicast(_, RpcEvent { data: RpcEventData::RpcReq(RpcReq::FetchSnapshot { from, max_version, max_items }), .. }))) = self.sending_req.as_ref() {
+                    (from.clone(), *max_version, *max_items)
+                } else {
                     return false;
                 };
+                if self.version.is_none() {
+                    if let Some(catchup_to) = self.catchup_to {
+                        if version < catchup_to {
+                            log::warn!(
+                                "[RemoteStore {:?}] ignore stale snapshot page version {version:?} older than catchup_to {catchup_to:?}",
+                                ctx.remote
+                            );
+                            return false;
+                        }
+                    }
+                }
+                self.remember_catchup_to(version);
                 log::info!(
                     "[RemoteStore {:?}] got snapshot {} slots, current version {version:?}, next {:?}",
                     ctx.remote,
@@ -314,7 +328,7 @@ where
                     );
                     return false;
                 }
-                if page_items as u64 > *max_items {
+                if page_items as u64 > max_items {
                     log::warn!(
                         "[RemoteStore {:?}] reject snapshot page with {page_items} scanned items over requested max_items {max_items}",
                         ctx.remote,
@@ -325,7 +339,7 @@ where
                     log::warn!("[RemoteStore {:?}] reject empty non-terminal snapshot page with no scanned progress", ctx.remote,);
                     return false;
                 }
-                if max_version.is_some() && max_version != &Some(version) {
+                if max_version.is_some() && max_version != Some(version) {
                     log::warn!(
                         "[RemoteStore {:?}] reject snapshot page version {version:?} not matching pending max_version {max_version:?}",
                         ctx.remote
@@ -373,9 +387,23 @@ where
                 true
             }
             RpcRes::FetchSnapshot(None, version) => {
-                let Some((_, NetEvent::Unicast(_, RpcEvent { data: RpcEventData::RpcReq(RpcReq::FetchSnapshot { from, max_version, .. }), .. }))) = self.sending_req.as_ref() else {
+                let (from, max_version) = if let Some((_, NetEvent::Unicast(_, RpcEvent { data: RpcEventData::RpcReq(RpcReq::FetchSnapshot { from, max_version, .. }), .. }))) = self.sending_req.as_ref() {
+                    (from.clone(), *max_version)
+                } else {
                     return false;
                 };
+                if self.version.is_none() {
+                    if let Some(catchup_to) = self.catchup_to {
+                        if version < catchup_to {
+                            log::warn!(
+                                "[RemoteStore {:?}] ignore stale snapshot None page version {version:?} older than catchup_to {catchup_to:?}",
+                                ctx.remote
+                            );
+                            return false;
+                        }
+                    }
+                }
+                self.remember_catchup_to(version);
                 if from.is_some() || max_version.is_some() {
                     self.restart_full_sync(ctx, now);
                     return true;
@@ -2340,5 +2368,74 @@ mod tests {
         );
     }
 
+    #[test]
+    fn test_delayed_snapshot_response_after_restart_causes_corruption() {
+        let mut ctx: StateCtx<u16, u16, u16> = StateCtx {
+            remote: 1,
+            local_session_id: 1,
+            slots: BTreeMap::new(),
+            outs: VecDeque::new(),
+            next_state: None,
+        };
 
+        let now = Instant::now();
+        let mut state = SyncFullState::default();
+        state.init(&mut ctx, now);
+        ctx.outs.clear();
+
+        // 1. Receive first page of snapshot with next_key = Some(2)
+        state.on_rpc_res(
+            &mut ctx,
+            now,
+            RpcRes::FetchSnapshot(
+                Some(SnapshotData {
+                    slots: vec![(1, Slot::new(10, Version(1)))],
+                    skipped_newer: vec![],
+                    next_key: Some(2),
+                }),
+                Version(1),
+            ),
+        );
+        ctx.outs.clear();
+
+        // 2. Receive a mismatched snapshot response (version 2) for the continuation request.
+        // This will trigger restart_full_sync.
+        state.on_rpc_res(
+            &mut ctx,
+            now,
+            RpcRes::FetchSnapshot(
+                Some(SnapshotData {
+                    slots: vec![],
+                    skipped_newer: vec![],
+                    next_key: None,
+                }),
+                Version(2),
+            ),
+        );
+        ctx.outs.clear();
+
+        // 3. Receive the delayed response to the continuation request (version 1, next_key None).
+        // Since we restarted, this is a stale response. We expect it to be ignored or rejected,
+        // and we must NOT transition to WorkingState or lose the previously synced keys.
+        let accepted = state.on_rpc_res(
+            &mut ctx,
+            now,
+            RpcRes::FetchSnapshot(
+                Some(SnapshotData {
+                    slots: vec![(2, Slot::new(20, Version(1)))],
+                    skipped_newer: vec![],
+                    next_key: None,
+                }),
+                Version(1),
+            ),
+        );
+
+        assert!(!accepted, "stale snapshot response must be rejected/ignored");
+        assert_ne!(
+            ctx.next_state,
+            Some(RemoteStoreState::Working(WorkingState::new(Version(1)))),
+            "stale/delayed snapshot response after restart must not force transition to WorkingState"
+        );
+    }
 }
+
