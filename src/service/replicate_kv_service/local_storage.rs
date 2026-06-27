@@ -3,9 +3,10 @@ use std::{
     hash::Hash,
 };
 
-use super::messages::{Action, BroadcastEvent, Changed, Event, FetchChangedError, KvEvent, NetEvent, RpcEvent, RpcReq, RpcRes, Slot, SnapshotData, Version};
+use super::messages::{Action, BroadcastEvent, BroadcastEventData, Changed, Event, FetchChangedError, KvEvent, NetEvent, RpcEvent, RpcEventData, RpcReq, RpcRes, Slot, SnapshotData, Version};
 
 pub struct LocalStore<N, K, V> {
+    pub(crate) session_id: u64,
     pub(crate) slots: BTreeMap<K, Slot<V>>,
     changeds: BTreeMap<Version, Changed<K, V>>,
     max_changeds: usize,
@@ -19,9 +20,10 @@ where
     K: Hash + Ord + Eq + Clone,
     V: Eq + Clone,
 {
-    pub fn new(max_changeds: usize, compose_max_pkts: usize) -> Self {
+    pub fn new(session_id: u64, max_changeds: usize, compose_max_pkts: usize) -> Self {
         let compose_max_pkts = compose_max_pkts.max(1);
         LocalStore {
+            session_id,
             slots: BTreeMap::new(),
             changeds: BTreeMap::new(),
             max_changeds,
@@ -32,7 +34,10 @@ where
     }
 
     pub fn on_tick(&mut self) {
-        self.outs.push_back(Event::NetEvent(NetEvent::Broadcast(BroadcastEvent::Version(self.version))));
+        self.outs.push_back(Event::NetEvent(NetEvent::Broadcast(BroadcastEvent {
+            session_id: self.session_id,
+            data: BroadcastEventData::Version(self.version),
+        })));
     }
 
     pub fn set(&mut self, key: K, value: V) {
@@ -46,7 +51,10 @@ where
             action: Action::Set(value.clone()),
         };
         self.changeds.insert(version, changed.clone());
-        self.outs.push_back(Event::NetEvent(NetEvent::Broadcast(BroadcastEvent::Changed(changed))));
+        self.outs.push_back(Event::NetEvent(NetEvent::Broadcast(BroadcastEvent {
+            session_id: self.session_id,
+            data: BroadcastEventData::Changed(changed),
+        })));
         self.outs.push_back(Event::KvEvent(KvEvent::Set(None, key.clone(), value.clone())));
         while self.changeds.len() > self.max_changeds {
             self.changeds.pop_first();
@@ -69,7 +77,10 @@ where
             action: Action::Del,
         };
         self.changeds.insert(self.version, changed.clone());
-        self.outs.push_back(Event::NetEvent(NetEvent::Broadcast(BroadcastEvent::Changed(changed))));
+        self.outs.push_back(Event::NetEvent(NetEvent::Broadcast(BroadcastEvent {
+            session_id: self.session_id,
+            data: BroadcastEventData::Changed(changed),
+        })));
         self.outs.push_back(Event::KvEvent(KvEvent::Del(None, key.clone())));
         while self.changeds.len() > self.max_changeds {
             self.changeds.pop_first();
@@ -80,12 +91,24 @@ where
         match req {
             RpcReq::FetchChanged { from, count } => {
                 let res = RpcRes::FetchChanged(self.changeds_from_to(from, count));
-                self.outs.push_back(Event::NetEvent(NetEvent::Unicast(from_node, RpcEvent::RpcRes(res))));
+                self.outs.push_back(Event::NetEvent(NetEvent::Unicast(
+                    from_node,
+                    RpcEvent {
+                        session_id: self.session_id,
+                        data: RpcEventData::RpcRes(res),
+                    },
+                )));
             }
             RpcReq::FetchSnapshot { from, max_version, max_items } => {
                 let snapshot_version = max_version.unwrap_or(self.version).min(self.version);
                 let res = RpcRes::FetchSnapshot(self.snapshot(from, Some(snapshot_version), max_items), snapshot_version);
-                self.outs.push_back(Event::NetEvent(NetEvent::Unicast(from_node, RpcEvent::RpcRes(res))));
+                self.outs.push_back(Event::NetEvent(NetEvent::Unicast(
+                    from_node,
+                    RpcEvent {
+                        session_id: self.session_id,
+                        data: RpcEventData::RpcRes(res),
+                    },
+                )));
             }
         }
     }
@@ -154,7 +177,7 @@ mod tests {
 
     #[test]
     fn simple_works() {
-        let mut store: LocalStore<u16, u16, u16> = LocalStore::new(10, 3);
+        let mut store: LocalStore<u16, u16, u16> = LocalStore::new(1, 10, 3);
 
         assert_eq!(store.snapshot(None, None, 3), None);
 
@@ -162,11 +185,14 @@ mod tests {
 
         assert_eq!(
             store.pop_out(),
-            Some(Event::NetEvent(NetEvent::Broadcast(BroadcastEvent::Changed(Changed {
-                key: 1,
-                version: Version(1),
-                action: Action::Set(101)
-            }))))
+            Some(Event::NetEvent(NetEvent::Broadcast(BroadcastEvent {
+                session_id: 1,
+                data: BroadcastEventData::Changed(Changed {
+                    key: 1,
+                    version: Version(1),
+                    action: Action::Set(101)
+                })
+            })))
         );
         assert_eq!(store.pop_out(), Some(Event::KvEvent(KvEvent::Set(None, 1, 101))));
         assert_eq!(store.pop_out(), None);
@@ -184,11 +210,14 @@ mod tests {
 
         assert_eq!(
             store.pop_out(),
-            Some(Event::NetEvent(NetEvent::Broadcast(BroadcastEvent::Changed(Changed {
-                key: 1,
-                version: Version(2),
-                action: Action::Del
-            }))))
+            Some(Event::NetEvent(NetEvent::Broadcast(BroadcastEvent {
+                session_id: 1,
+                data: BroadcastEventData::Changed(Changed {
+                    key: 1,
+                    version: Version(2),
+                    action: Action::Del
+                })
+            })))
         );
         assert_eq!(store.pop_out(), Some(Event::KvEvent(KvEvent::Del(None, 1))));
         assert_eq!(store.pop_out(), None);
@@ -214,7 +243,7 @@ mod tests {
 
     #[test]
     fn snapshot_multiple_pkts() {
-        let mut store: LocalStore<u16, u16, u16> = LocalStore::new(2, 2);
+        let mut store: LocalStore<u16, u16, u16> = LocalStore::new(1, 2, 2);
         for i in 1..=10 {
             store.set(i, i);
         }
@@ -250,7 +279,7 @@ mod tests {
 
     #[test]
     fn auto_clear_changeds() {
-        let mut store: LocalStore<u16, u16, u16> = LocalStore::new(2, 2);
+        let mut store: LocalStore<u16, u16, u16> = LocalStore::new(1, 2, 2);
         for i in 0..3 {
             store.set(i, i);
         }
@@ -275,14 +304,20 @@ mod tests {
 
     #[test]
     fn tick_broadcasts_version() {
-        let mut store: LocalStore<u16, u16, u16> = LocalStore::new(10, 2);
+        let mut store: LocalStore<u16, u16, u16> = LocalStore::new(1, 10, 2);
         store.on_tick();
-        assert_eq!(store.pop_out(), Some(Event::NetEvent(NetEvent::Broadcast(BroadcastEvent::Version(Version(0))))));
+        assert_eq!(
+            store.pop_out(),
+            Some(Event::NetEvent(NetEvent::Broadcast(BroadcastEvent {
+                session_id: 1,
+                data: BroadcastEventData::Version(Version(0))
+            })))
+        );
     }
 
     #[test]
     fn fetch_changed_with_overflowing_from_version_must_not_panic() {
-        let mut store: LocalStore<u16, u16, u16> = LocalStore::new(10, 2);
+        let mut store: LocalStore<u16, u16, u16> = LocalStore::new(1, 10, 2);
         store.set(1, 1);
         while store.pop_out().is_some() {}
 
@@ -293,13 +328,19 @@ mod tests {
         assert!(result.is_ok(), "untrusted FetchChanged version arithmetic must not panic or wrap");
         assert_eq!(
             store.pop_out(),
-            Some(Event::NetEvent(NetEvent::Unicast(2, RpcEvent::RpcRes(RpcRes::FetchChanged(Err(FetchChangedError::MissingData))))))
+            Some(Event::NetEvent(NetEvent::Unicast(
+                2,
+                RpcEvent {
+                    session_id: 1,
+                    data: RpcEventData::RpcRes(RpcRes::FetchChanged(Err(FetchChangedError::MissingData)))
+                }
+            )))
         );
     }
 
     #[test]
     fn zero_changed_batch_size_must_not_return_empty_success() {
-        let mut store: LocalStore<u16, u16, u16> = LocalStore::new(10, 0);
+        let mut store: LocalStore<u16, u16, u16> = LocalStore::new(1, 10, 0);
         store.set(1, 1);
         while store.pop_out().is_some() {}
 
@@ -309,11 +350,14 @@ mod tests {
             store.pop_out(),
             Some(Event::NetEvent(NetEvent::Unicast(
                 2,
-                RpcEvent::RpcRes(RpcRes::FetchChanged(Ok(vec![Changed {
-                    key: 1,
-                    version: Version(1),
-                    action: Action::Set(1)
-                }])))
+                RpcEvent {
+                    session_id: 1,
+                    data: RpcEventData::RpcRes(RpcRes::FetchChanged(Ok(vec![Changed {
+                        key: 1,
+                        version: Version(1),
+                        action: Action::Set(1)
+                    }])))
+                }
             ))),
             "zero compose budget is normalized to a one-change page so FetchChanged can make progress"
         );
@@ -321,7 +365,7 @@ mod tests {
 
     #[test]
     fn fetch_changed_with_zero_count_must_not_return_empty_success() {
-        let mut store: LocalStore<u16, u16, u16> = LocalStore::new(10, 2);
+        let mut store: LocalStore<u16, u16, u16> = LocalStore::new(1, 10, 2);
         store.set(1, 1);
         while store.pop_out().is_some() {}
 
@@ -329,14 +373,20 @@ mod tests {
 
         assert_ne!(
             store.pop_out(),
-            Some(Event::NetEvent(NetEvent::Unicast(2, RpcEvent::RpcRes(RpcRes::FetchChanged(Ok(vec![])))))),
+            Some(Event::NetEvent(NetEvent::Unicast(
+                2,
+                RpcEvent {
+                    session_id: 1,
+                    data: RpcEventData::RpcRes(RpcRes::FetchChanged(Ok(vec![])))
+                }
+            ))),
             "FetchChanged with zero count must be rejected instead of returning an empty success"
         );
     }
 
     #[test]
     fn fetch_snapshot_with_lower_cursor_past_end_must_not_panic() {
-        let mut store: LocalStore<u16, u16, u16> = LocalStore::new(10, 2);
+        let mut store: LocalStore<u16, u16, u16> = LocalStore::new(1, 10, 2);
         store.set(1, 1);
         store.set(2, 2);
 
@@ -356,7 +406,7 @@ mod tests {
 
     #[test]
     fn local_set_at_max_version_must_not_overflow() {
-        let mut store: LocalStore<u16, u16, u16> = LocalStore::new(10, 2);
+        let mut store: LocalStore<u16, u16, u16> = LocalStore::new(1, 10, 2);
         store.version = Version(u64::MAX);
 
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
@@ -371,7 +421,7 @@ mod tests {
 
     #[test]
     fn local_del_at_max_version_must_not_overflow_or_remove_slot() {
-        let mut store: LocalStore<u16, u16, u16> = LocalStore::new(10, 2);
+        let mut store: LocalStore<u16, u16, u16> = LocalStore::new(1, 10, 2);
         store.version = Version(u64::MAX);
         store.slots.insert(1, Slot::new(1, Version(u64::MAX)));
 
@@ -391,7 +441,7 @@ mod tests {
 
     #[test]
     fn deleting_absent_key_must_not_emit_delete_event() {
-        let mut store: LocalStore<u16, u16, u16> = LocalStore::new(10, 2);
+        let mut store: LocalStore<u16, u16, u16> = LocalStore::new(1, 10, 2);
 
         store.del(99);
 
@@ -401,7 +451,7 @@ mod tests {
 
     #[test]
     fn snapshot_with_zero_compose_budget_must_make_progress() {
-        let mut store: LocalStore<u16, u16, u16> = LocalStore::new(10, 0);
+        let mut store: LocalStore<u16, u16, u16> = LocalStore::new(1, 10, 0);
         store.set(1, 1);
 
         let snapshot = store.snapshot(None, None, 1).expect("snapshot should exist");
@@ -419,7 +469,7 @@ mod tests {
 
     #[test]
     fn multi_slot_snapshot_with_zero_compose_budget_must_advance_by_one_slot() {
-        let mut store: LocalStore<u16, u16, u16> = LocalStore::new(10, 0);
+        let mut store: LocalStore<u16, u16, u16> = LocalStore::new(1, 10, 0);
         store.set(1, 1);
         store.set(2, 2);
         store.set(3, 3);
@@ -447,7 +497,7 @@ mod tests {
 
     #[test]
     fn snapshot_with_skipped_newer_key_must_continue_to_eligible_slots() {
-        let mut store: LocalStore<u16, u16, u16> = LocalStore::new(10, 3);
+        let mut store: LocalStore<u16, u16, u16> = LocalStore::new(1, 10, 3);
         store.set(1, 10);
         store.set(2, 20);
         store.set(3, 30);
@@ -468,7 +518,7 @@ mod tests {
 
     #[test]
     fn snapshot_empty_page_from_skipped_newer_keys_must_advance_or_complete() {
-        let mut store: LocalStore<u16, u16, u16> = LocalStore::new(10, 1);
+        let mut store: LocalStore<u16, u16, u16> = LocalStore::new(1, 10, 1);
         store.set(1, 10);
         store.set(2, 20);
         store.set(1, 11);
@@ -496,7 +546,7 @@ mod tests {
 
     #[test]
     fn continuation_snapshot_response_must_preserve_requested_max_version() {
-        let mut store: LocalStore<u16, u16, u16> = LocalStore::new(10, 1);
+        let mut store: LocalStore<u16, u16, u16> = LocalStore::new(1, 10, 1);
         store.set(1, 10);
         store.set(2, 20);
         while store.pop_out().is_some() {}
@@ -517,14 +567,17 @@ mod tests {
             store.pop_out(),
             Some(Event::NetEvent(NetEvent::Unicast(
                 2,
-                RpcEvent::RpcRes(RpcRes::FetchSnapshot(
-                    Some(SnapshotData {
-                        slots: vec![(2, Slot::new(20, Version(2)))],
-                        skipped_newer: vec![],
-                        next_key: Some(3),
-                    }),
-                    Version(2),
-                ))
+                RpcEvent {
+                    session_id: 1,
+                    data: RpcEventData::RpcRes(RpcRes::FetchSnapshot(
+                        Some(SnapshotData {
+                            slots: vec![(2, Slot::new(20, Version(2)))],
+                            skipped_newer: vec![],
+                            next_key: Some(3),
+                        }),
+                        Version(2),
+                    ))
+                }
             ))),
             "FetchSnapshot responses constrained by max_version must declare that same snapshot version, not the producer's newer live version"
         );
@@ -532,7 +585,7 @@ mod tests {
 
     #[test]
     fn fetch_snapshot_with_zero_max_items_must_not_return_items() {
-        let mut store: LocalStore<u16, u16, u16> = LocalStore::new(10, 2);
+        let mut store: LocalStore<u16, u16, u16> = LocalStore::new(1, 10, 2);
         store.set(1, 10);
         while store.pop_out().is_some() {}
 
@@ -545,7 +598,7 @@ mod tests {
             },
         );
 
-        let Some(Event::NetEvent(NetEvent::Unicast(_, RpcEvent::RpcRes(RpcRes::FetchSnapshot(Some(snapshot), _))))) = store.pop_out() else {
+        let Some(Event::NetEvent(NetEvent::Unicast(_, RpcEvent { data: RpcEventData::RpcRes(RpcRes::FetchSnapshot(Some(snapshot), _)), .. }))) = store.pop_out() else {
             panic!("local store must answer FetchSnapshot");
         };
 

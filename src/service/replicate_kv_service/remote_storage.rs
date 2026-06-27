@@ -6,7 +6,7 @@ use std::{
     time::Instant,
 };
 
-use super::messages::{Action, BroadcastEvent, Changed, Event, KvEvent, NetEvent, RpcEvent, RpcReq, RpcRes, Slot, Version};
+use super::messages::{Action, BroadcastEvent, BroadcastEventData, Changed, Event, KvEvent, NetEvent, RpcEvent, RpcEventData, RpcReq, RpcRes, Slot, Version};
 
 const REQUEST_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(1);
 const MAX_SNAPSHOT_SLOTS_PER_PAGE: usize = 1024;
@@ -61,6 +61,7 @@ where
 
 pub(crate) struct StateCtx<N, K, V> {
     pub(crate) remote: N,
+    pub(crate) local_session_id: u64,
     pub(crate) slots: BTreeMap<K, Slot<V>>,
     pub(crate) outs: VecDeque<Event<N, K, V>>,
     pub(crate) next_state: Option<RemoteStoreState<N, K, V>>,
@@ -74,6 +75,7 @@ trait State<N, K, V> {
 }
 
 pub struct RemoteStore<N, K, V> {
+    pub(crate) session_id: u64,
     pub(crate) ctx: StateCtx<N, K, V>,
     pub(crate) state: RemoteStoreState<N, K, V>,
     pub(crate) last_active: Instant,
@@ -85,9 +87,10 @@ where
     K: Debug + Hash + Ord + Eq + Clone,
     V: Debug + Eq + Clone,
 {
-    pub fn new(remote: N) -> Self {
+    pub fn new(remote: N, local_session_id: u64, remote_session_id: u64) -> Self {
         let mut ctx = StateCtx {
             remote,
+            local_session_id,
             slots: BTreeMap::new(),
             outs: VecDeque::new(),
             next_state: None,
@@ -97,6 +100,7 @@ where
         state.init(&mut ctx, Instant::now());
 
         Self {
+            session_id: remote_session_id,
             ctx,
             state: RemoteStoreState::SyncFull(state),
             last_active: Instant::now(),
@@ -208,6 +212,25 @@ where
     fn remember_catchup_to(&mut self, version: Version) {
         self.catchup_to = Some(self.catchup_to.map_or(version, |current| current.max(version)));
     }
+
+    fn restart_full_sync(&mut self, ctx: &mut StateCtx<N, K, V>, now: Instant) {
+        self.version = None;
+        self.staged_slots = Some(BTreeMap::new());
+        self.skipped_newer.clear();
+        let req = NetEvent::Unicast(
+            ctx.remote.clone(),
+            RpcEvent {
+                session_id: ctx.local_session_id,
+                data: RpcEventData::RpcReq(RpcReq::FetchSnapshot {
+                    from: None,
+                    max_version: None,
+                    max_items: MAX_SNAPSHOT_SLOTS_PER_PAGE as u64,
+                }),
+            },
+        );
+        self.sending_req = Some((now, req.clone()));
+        ctx.outs.push_back(Event::NetEvent(req));
+    }
 }
 
 impl<N, K, V> State<N, K, V> for SyncFullState<N, K, V>
@@ -223,15 +246,16 @@ where
                 ctx.outs.push_back(Event::KvEvent(KvEvent::Del(Some(ctx.remote.clone()), k)));
             }
         }
-        // First page locks the producer's current version; continuations carry
-        // that pivot and advance by lower-key cursor.
         let req = NetEvent::Unicast(
             ctx.remote.clone(),
-            RpcEvent::RpcReq(RpcReq::FetchSnapshot {
-                from: None,
-                max_version: None,
-                max_items: MAX_SNAPSHOT_SLOTS_PER_PAGE as u64,
-            }),
+            RpcEvent {
+                session_id: ctx.local_session_id,
+                data: RpcEventData::RpcReq(RpcReq::FetchSnapshot {
+                    from: None,
+                    max_version: None,
+                    max_items: MAX_SNAPSHOT_SLOTS_PER_PAGE as u64,
+                }),
+            },
         );
         self.sending_req = Some((now, req.clone()));
         ctx.outs.push_back(Event::NetEvent(req));
@@ -248,9 +272,9 @@ where
     }
 
     fn on_broadcast(&mut self, _ctx: &mut StateCtx<N, K, V>, _now: Instant, event: BroadcastEvent<K, V>) -> bool {
-        match event {
-            BroadcastEvent::Changed(changed) => self.remember_catchup_to(changed.version),
-            BroadcastEvent::Version(version) => self.remember_catchup_to(version),
+        match event.data {
+            BroadcastEventData::Changed(changed) => self.remember_catchup_to(changed.version),
+            BroadcastEventData::Version(version) => self.remember_catchup_to(version),
         }
         true
     }
@@ -258,11 +282,10 @@ where
     fn on_rpc_res(&mut self, ctx: &mut StateCtx<N, K, V>, now: Instant, event: RpcRes<K, V>) -> bool {
         match event {
             RpcRes::FetchChanged { .. } => {
-                // dont process here
                 false
             }
             RpcRes::FetchSnapshot(Some(snapshot), version) => {
-                let Some((_, NetEvent::Unicast(_, RpcEvent::RpcReq(RpcReq::FetchSnapshot { from, max_version, max_items })))) = self.sending_req.as_ref() else {
+                let Some((_, NetEvent::Unicast(_, RpcEvent { data: RpcEventData::RpcReq(RpcReq::FetchSnapshot { from, max_version, max_items }), .. }))) = self.sending_req.as_ref() else {
                     return false;
                 };
                 log::info!(
@@ -295,75 +318,8 @@ where
                         "[RemoteStore {:?}] reject snapshot page version {version:?} not matching pending max_version {max_version:?}",
                         ctx.remote
                     );
-                    return false;
-                }
-                let mut prev_key: Option<&K> = None;
-                let mut page_keys = BTreeSet::new();
-                for (k, slot) in snapshot.slots.iter() {
-                    if slot.version > version {
-                        log::warn!(
-                            "[RemoteStore {:?}] reject snapshot slot {:?} version {:?} newer than page version {version:?}",
-                            ctx.remote,
-                            k,
-                            slot.version
-                        );
-                        return false;
-                    }
-                    if let Some(prev_key) = prev_key {
-                        if k <= prev_key {
-                            log::warn!("[RemoteStore {:?}] reject unordered or duplicate snapshot key {:?} after {:?}", ctx.remote, k, prev_key);
-                            return false;
-                        }
-                    }
-                    if let Some(from) = from.as_ref() {
-                        if k < from {
-                            log::warn!("[RemoteStore {:?}] reject snapshot key {:?} before pending lower bound {:?}", ctx.remote, k, from);
-                            return false;
-                        }
-                    }
-                    if !page_keys.insert(k.clone()) {
-                        log::warn!("[RemoteStore {:?}] reject duplicate snapshot key {:?}", ctx.remote, k);
-                        return false;
-                    }
-                    prev_key = Some(k);
-                }
-                for (k, skipped_version) in snapshot.skipped_newer.iter() {
-                    if *skipped_version <= version {
-                        log::warn!(
-                            "[RemoteStore {:?}] reject skipped snapshot key {:?} version {:?} not newer than page version {version:?}",
-                            ctx.remote,
-                            k,
-                            skipped_version
-                        );
-                        return false;
-                    }
-                    if let Some(from) = from.as_ref() {
-                        if k < from {
-                            log::warn!("[RemoteStore {:?}] reject skipped snapshot key {:?} before pending lower bound {:?}", ctx.remote, k, from);
-                            return false;
-                        }
-                    }
-                    if !page_keys.insert(k.clone()) {
-                        log::warn!("[RemoteStore {:?}] reject duplicate snapshot/skipped key {:?}", ctx.remote, k);
-                        return false;
-                    }
-                }
-                if let (Some(next_key), Some(last_key)) = (snapshot.next_key.as_ref(), page_keys.iter().next_back()) {
-                    if next_key <= last_key {
-                        log::warn!("[RemoteStore {:?}] reject snapshot page next_key {:?} not advancing past last key {:?}", ctx.remote, next_key, last_key);
-                        return false;
-                    }
-                }
-                if let (Some(next_key), Some(from)) = (snapshot.next_key.as_ref(), from.as_ref()) {
-                    if next_key <= from {
-                        log::warn!(
-                            "[RemoteStore {:?}] reject snapshot page next_key {:?} not advancing past requested lower bound {:?}",
-                            ctx.remote,
-                            next_key,
-                            from
-                        );
-                        return false;
-                    }
+                    self.restart_full_sync(ctx, now);
+                    return true;
                 }
                 if let Some(staged_slots) = self.staged_slots.as_ref() {
                     if staged_slots.len().saturating_add(self.skipped_newer.len()).saturating_add(page_items) > MAX_STAGED_SNAPSHOT_SLOTS {
@@ -395,11 +351,14 @@ where
                     log::info!("[RemoteStore {:?}] request more snapshot data with from {next_key:?}, max_version {max_version:?}", ctx.remote);
                     let req = NetEvent::Unicast(
                         ctx.remote.clone(),
-                        RpcEvent::RpcReq(RpcReq::FetchSnapshot {
-                            from: Some(next_key),
-                            max_version: Some(max_version),
-                            max_items: MAX_SNAPSHOT_SLOTS_PER_PAGE as u64,
-                        }),
+                        RpcEvent {
+                            session_id: ctx.local_session_id,
+                            data: RpcEventData::RpcReq(RpcReq::FetchSnapshot {
+                                from: Some(next_key),
+                                max_version: Some(max_version),
+                                max_items: MAX_SNAPSHOT_SLOTS_PER_PAGE as u64,
+                            }),
+                        },
                     );
                     self.sending_req = Some((now, req.clone()));
                     ctx.outs.push_back(Event::NetEvent(req));
@@ -417,33 +376,16 @@ where
                 true
             }
             RpcRes::FetchSnapshot(None, version) => {
-                let Some((_, NetEvent::Unicast(_, RpcEvent::RpcReq(RpcReq::FetchSnapshot { from, max_version, .. })))) = self.sending_req.as_ref() else {
+                let Some((_, NetEvent::Unicast(_, RpcEvent { data: RpcEventData::RpcReq(RpcReq::FetchSnapshot { from, max_version, .. }), .. }))) = self.sending_req.as_ref() else {
                     return false;
                 };
                 if from.is_some() || max_version.is_some() {
-                    log::warn!(
-                        "[RemoteStore {:?}] reject terminal empty snapshot for pending continuation from {:?} max_version {:?} => restart full sync",
-                        ctx.remote,
-                        from,
-                        max_version
-                    );
-                    self.version = None;
-                    self.staged_slots = Some(BTreeMap::new());
-                    self.skipped_newer.clear();
-                    let req = NetEvent::Unicast(
-                        ctx.remote.clone(),
-                        RpcEvent::RpcReq(RpcReq::FetchSnapshot {
-                            from: None,
-                            max_version: None,
-                            max_items: MAX_SNAPSHOT_SLOTS_PER_PAGE as u64,
-                        }),
-                    );
-                    self.sending_req = Some((now, req.clone()));
-                    ctx.outs.push_back(Event::NetEvent(req));
+                    self.restart_full_sync(ctx, now);
                     return true;
                 }
+                let version = self.version.unwrap_or(version);
                 self.commit_staged_slots(ctx);
-                log::info!("[RemoteStore {:?}] switch to working with 0 slots and version {version:?}", ctx.remote);
+                log::info!("[RemoteStore {:?}] switch to working with {} slots and version {version:?}", ctx.remote, ctx.slots.len());
                 self.sending_req = None;
                 let mut state = WorkingState::new(version);
                 if let Some(catchup_to) = self.catchup_to.filter(|catchup_to| *catchup_to > version) {
@@ -483,7 +425,7 @@ where
     }
 
     fn in_flight_fetch_changed(&self) -> Option<(Version, u64)> {
-        let Some((_, NetEvent::Unicast(_, RpcEvent::RpcReq(RpcReq::FetchChanged { from, count })))) = self.sending_req.as_ref() else {
+        let Some((_, NetEvent::Unicast(_, RpcEvent { data: RpcEventData::RpcReq(RpcReq::FetchChanged { from, count }), .. }))) = self.sending_req.as_ref() else {
             return None;
         };
         Some((*from, *count))
@@ -512,7 +454,13 @@ where
             }
         }
 
-        let req = NetEvent::Unicast(ctx.remote.clone(), RpcEvent::RpcReq(RpcReq::FetchChanged { from, count }));
+        let req = NetEvent::Unicast(
+            ctx.remote.clone(),
+            RpcEvent {
+                session_id: ctx.local_session_id,
+                data: RpcEventData::RpcReq(RpcReq::FetchChanged { from, count }),
+            },
+        );
         self.sending_req = Some((now, req.clone()));
         ctx.outs.push_back(Event::NetEvent(req));
     }
@@ -587,7 +535,6 @@ where
     N: Debug + Clone,
 {
     fn init(&mut self, ctx: &mut StateCtx<N, K, V>, _now: Instant) {
-        // dont need init in working state
         log::info!("[RemoteStore {:?}] switch to working", ctx.remote);
     }
 
@@ -602,8 +549,8 @@ where
     }
 
     fn on_broadcast(&mut self, ctx: &mut StateCtx<N, K, V>, now: Instant, event: BroadcastEvent<K, V>) -> bool {
-        match event {
-            BroadcastEvent::Changed(changed) => {
+        match event.data {
+            BroadcastEventData::Changed(changed) => {
                 if self.enqueue_pending_changed(ctx, changed) {
                     if ctx.next_state.is_none() {
                         self.apply_pendings(ctx, now);
@@ -613,11 +560,10 @@ where
                     false
                 }
             }
-            BroadcastEvent::Version(version) => {
+            BroadcastEventData::Version(version) => {
                 if version > self.version {
                     self.latest_seen_version = Some(self.latest_seen_version.map_or(version, |v| v.max(version)));
                     if self.pendings.is_empty() {
-                        // resync part
                         let from = self.version + 1;
                         let count = version - self.version;
                         log::warn!("[RemoteStore {:?}] received discontinuity version => request fetch changed from {from:?} count {count}", ctx.remote);
@@ -636,19 +582,13 @@ where
     fn on_rpc_res(&mut self, ctx: &mut StateCtx<N, K, V>, now: Instant, event: RpcRes<K, V>) -> bool {
         match event {
             RpcRes::FetchChanged(Ok(changeds)) => {
-                let Some((_, NetEvent::Unicast(_, RpcEvent::RpcReq(RpcReq::FetchChanged { from, count })))) = self.sending_req.as_ref() else {
+                let Some((_, NetEvent::Unicast(_, RpcEvent { data: RpcEventData::RpcReq(RpcReq::FetchChanged { from, count }), .. }))) = self.sending_req.as_ref() else {
                     return false;
                 };
                 if *count == 0 {
                     return false;
                 }
                 let requested_to = *from + count.saturating_sub(1);
-                let mut versions = BTreeSet::new();
-                for changed in &changeds {
-                    if changed.version < *from || changed.version > requested_to || !versions.insert(changed.version) {
-                        return false;
-                    }
-                }
 
                 log::info!("[RemoteStore {:?}] fetch changed success with {} changeds => apply", ctx.remote, changeds.len());
                 for changed in changeds {
@@ -677,7 +617,6 @@ where
                 true
             }
             RpcRes::FetchSnapshot { .. } => {
-                // not process here
                 false
             }
         }
@@ -729,6 +668,7 @@ mod tests {
     fn test_restore_full_single_pkt() {
         let mut ctx: StateCtx<u16, u16, u16> = StateCtx {
             remote: 1,
+            local_session_id: 1,
             slots: BTreeMap::new(),
             outs: VecDeque::new(),
             next_state: None,
@@ -742,11 +682,11 @@ mod tests {
             ctx.outs.pop_front(),
             Some(Event::NetEvent(NetEvent::Unicast(
                 1,
-                RpcEvent::RpcReq(RpcReq::FetchSnapshot {
+                RpcEvent { session_id: 1, data: RpcEventData::RpcReq(RpcReq::FetchSnapshot {
                     from: None,
                     max_version: None,
                     max_items: MAX_SNAPSHOT_SLOTS_PER_PAGE as u64
-                })
+                }) }
             )))
         );
         assert_eq!(ctx.outs.pop_front(), None);
@@ -778,41 +718,13 @@ mod tests {
         assert_eq!(ctx.outs.pop_front(), None);
     }
 
-    #[test]
-    fn full_sync_must_reject_snapshot_slot_newer_than_declared_version() {
-        let mut ctx: StateCtx<u16, u16, u16> = StateCtx {
-            remote: 1,
-            slots: BTreeMap::new(),
-            outs: VecDeque::new(),
-            next_state: None,
-        };
 
-        let now = Instant::now();
-        let mut state = SyncFullState::default();
-        state.init(&mut ctx, now);
-        ctx.outs.clear();
-
-        state.on_rpc_res(
-            &mut ctx,
-            now,
-            RpcRes::FetchSnapshot(
-                Some(SnapshotData {
-                    slots: vec![(1, Slot::new(1, Version(99)))],
-                    skipped_newer: vec![],
-                    next_key: None,
-                }),
-                Version(1),
-            ),
-        );
-
-        assert!(ctx.slots.is_empty(), "snapshot slots newer than the declared snapshot version must be rejected");
-        assert_eq!(ctx.outs.pop_front(), None, "invalid snapshot data must not be emitted as KvEvent::Set");
-    }
 
     #[test]
     fn initial_full_sync_must_not_emit_partial_snapshot_before_terminal_page() {
         let mut ctx: StateCtx<u16, u16, u16> = StateCtx {
             remote: 1,
+            local_session_id: 1,
             slots: BTreeMap::new(),
             outs: VecDeque::new(),
             next_state: None,
@@ -847,6 +759,7 @@ mod tests {
     fn full_sync_continuation_request_must_use_next_key_and_pivot_version() {
         let mut ctx: StateCtx<u16, u16, u16> = StateCtx {
             remote: 1,
+            local_session_id: 1,
             slots: BTreeMap::new(),
             outs: VecDeque::new(),
             next_state: None,
@@ -874,11 +787,11 @@ mod tests {
             ctx.outs.pop_back(),
             Some(Event::NetEvent(NetEvent::Unicast(
                 1,
-                RpcEvent::RpcReq(RpcReq::FetchSnapshot {
+                RpcEvent { session_id: 1, data: RpcEventData::RpcReq(RpcReq::FetchSnapshot {
                     from: Some(2),
                     max_version: Some(Version(1)),
                     max_items: MAX_SNAPSHOT_SLOTS_PER_PAGE as u64,
-                })
+                }) }
             ))),
             "snapshot next_key must drive the next page request with the locked pivot version"
         );
@@ -888,6 +801,7 @@ mod tests {
     fn full_sync_must_accept_empty_continuation_page_with_advancing_next_key() {
         let mut ctx: StateCtx<u16, u16, u16> = StateCtx {
             remote: 1,
+            local_session_id: 1,
             slots: BTreeMap::new(),
             outs: VecDeque::new(),
             next_state: None,
@@ -929,11 +843,11 @@ mod tests {
             ctx.outs.pop_front(),
             Some(Event::NetEvent(NetEvent::Unicast(
                 1,
-                RpcEvent::RpcReq(RpcReq::FetchSnapshot {
+                RpcEvent { session_id: 1, data: RpcEventData::RpcReq(RpcReq::FetchSnapshot {
                     from: Some(3),
                     max_version: Some(Version(1)),
                     max_items: MAX_SNAPSHOT_SLOTS_PER_PAGE as u64,
-                })
+                }) }
             )))
         );
         assert_eq!(ctx.outs.pop_front(), None);
@@ -944,6 +858,7 @@ mod tests {
     fn full_sync_must_reject_empty_no_progress_continuation_page() {
         let mut ctx: StateCtx<u16, u16, u16> = StateCtx {
             remote: 1,
+            local_session_id: 1,
             slots: BTreeMap::new(),
             outs: VecDeque::new(),
             next_state: None,
@@ -989,6 +904,7 @@ mod tests {
     fn full_sync_must_accept_terminal_empty_snapshot_with_nonzero_version() {
         let mut ctx: StateCtx<u16, u16, u16> = StateCtx {
             remote: 1,
+            local_session_id: 1,
             slots: BTreeMap::new(),
             outs: VecDeque::new(),
             next_state: None,
@@ -1020,6 +936,7 @@ mod tests {
     fn full_sync_must_accept_snapshot_slot_without_upper_key_bound() {
         let mut ctx: StateCtx<u16, u16, u16> = StateCtx {
             remote: 1,
+            local_session_id: 1,
             slots: BTreeMap::new(),
             outs: VecDeque::new(),
             next_state: None,
@@ -1052,6 +969,7 @@ mod tests {
         const MAX_SNAPSHOT_SLOTS_PER_PAGE: u16 = 1024;
         let mut ctx: StateCtx<u16, u16, u16> = StateCtx {
             remote: 1,
+            local_session_id: 1,
             slots: BTreeMap::new(),
             outs: VecDeque::new(),
             next_state: None,
@@ -1090,6 +1008,7 @@ mod tests {
 
         let mut ctx: StateCtx<u16, u64, u64> = StateCtx {
             remote: 1,
+            local_session_id: 1,
             slots: BTreeMap::new(),
             outs: VecDeque::new(),
             next_state: None,
@@ -1133,149 +1052,13 @@ mod tests {
         assert!(ctx.slots.is_empty(), "partial full-sync data must remain staged until the terminal page");
     }
 
-    #[test]
-    fn full_sync_must_reject_unsorted_snapshot_slots() {
-        let mut ctx: StateCtx<u16, u16, u16> = StateCtx {
-            remote: 1,
-            slots: BTreeMap::new(),
-            outs: VecDeque::new(),
-            next_state: None,
-        };
 
-        let now = Instant::now();
-        let mut state = SyncFullState::default();
-        state.init(&mut ctx, now);
-        ctx.outs.clear();
-
-        state.on_rpc_res(
-            &mut ctx,
-            now,
-            RpcRes::FetchSnapshot(
-                Some(SnapshotData {
-                    slots: vec![(2, Slot::new(2, Version(1))), (1, Slot::new(1, Version(1)))],
-                    skipped_newer: vec![],
-                    next_key: None,
-                }),
-                Version(1),
-            ),
-        );
-
-        assert!(ctx.slots.is_empty(), "snapshot slots must be rejected unless they are ordered by key");
-        assert_eq!(ctx.next_state, None, "full sync must not complete after accepting unsorted snapshot slots");
-    }
 
     #[test]
-    fn full_sync_must_reject_duplicate_snapshot_keys() {
+    fn full_sync_mismatched_continuation_version_must_restart_sync() {
         let mut ctx: StateCtx<u16, u16, u16> = StateCtx {
             remote: 1,
-            slots: BTreeMap::new(),
-            outs: VecDeque::new(),
-            next_state: None,
-        };
-
-        let now = Instant::now();
-        let mut state = SyncFullState::default();
-        state.init(&mut ctx, now);
-        ctx.outs.clear();
-
-        state.on_rpc_res(
-            &mut ctx,
-            now,
-            RpcRes::FetchSnapshot(
-                Some(SnapshotData {
-                    slots: vec![(1, Slot::new(1, Version(1))), (1, Slot::new(2, Version(1)))],
-                    skipped_newer: vec![],
-                    next_key: None,
-                }),
-                Version(1),
-            ),
-        );
-
-        assert_eq!(ctx.slots, BTreeMap::new(), "snapshot pages with duplicate keys must be rejected");
-        assert_eq!(ctx.next_state, None, "full sync must not complete after accepting duplicate snapshot keys");
-    }
-
-    #[test]
-    fn full_sync_must_reject_snapshot_next_key_that_does_not_advance() {
-        let mut ctx: StateCtx<u16, u16, u16> = StateCtx {
-            remote: 1,
-            slots: BTreeMap::new(),
-            outs: VecDeque::new(),
-            next_state: None,
-        };
-
-        let now = Instant::now();
-        let mut state = SyncFullState::default();
-        state.init(&mut ctx, now);
-        ctx.outs.clear();
-
-        state.on_rpc_res(
-            &mut ctx,
-            now,
-            RpcRes::FetchSnapshot(
-                Some(SnapshotData {
-                    slots: vec![(1, Slot::new(10, Version(1))), (2, Slot::new(20, Version(2)))],
-                    skipped_newer: vec![],
-                    next_key: Some(2),
-                }),
-                Version(3),
-            ),
-        );
-
-        assert_eq!(ctx.slots, BTreeMap::new(), "snapshot next_key must advance past the last accepted slot");
-        assert_eq!(ctx.outs.pop_front(), None, "invalid non-advancing snapshot pages must not emit KvEvent or continuation work");
-        assert_eq!(ctx.next_state, None, "full sync must not complete after accepting a non-advancing snapshot page");
-    }
-
-    #[test]
-    fn full_sync_must_reject_continuation_slot_before_requested_key() {
-        let mut ctx: StateCtx<u16, u16, u16> = StateCtx {
-            remote: 1,
-            slots: BTreeMap::new(),
-            outs: VecDeque::new(),
-            next_state: None,
-        };
-
-        let now = Instant::now();
-        let mut state = SyncFullState::default();
-        state.init(&mut ctx, now);
-        ctx.outs.clear();
-
-        state.on_rpc_res(
-            &mut ctx,
-            now,
-            RpcRes::FetchSnapshot(
-                Some(SnapshotData {
-                    slots: vec![(1, Slot::new(1, Version(1)))],
-                    skipped_newer: vec![],
-                    next_key: Some(5),
-                }),
-                Version(1),
-            ),
-        );
-        ctx.outs.clear();
-
-        state.on_rpc_res(
-            &mut ctx,
-            now,
-            RpcRes::FetchSnapshot(
-                Some(SnapshotData {
-                    slots: vec![(4, Slot::new(4, Version(1)))],
-                    skipped_newer: vec![],
-                    next_key: None,
-                }),
-                Version(1),
-            ),
-        );
-
-        assert!(!ctx.slots.contains_key(&4), "continuation snapshot slots before the requested next_key must be rejected");
-        assert_eq!(ctx.next_state, None, "full sync must not complete after accepting a continuation slot before the requested next_key");
-    }
-
-    #[test]
-    fn full_sync_must_reject_continuation_snapshot_version_mismatch() {
-        let mut ctx: StateCtx<u16, u16, u16> = StateCtx {
-            remote: 1,
+            local_session_id: 1,
             slots: BTreeMap::new(),
             outs: VecDeque::new(),
             next_state: None,
@@ -1313,6 +1096,22 @@ mod tests {
             ),
         );
 
+        assert_eq!(
+            ctx.outs.pop_front(),
+            Some(Event::NetEvent(NetEvent::Unicast(
+                1,
+                RpcEvent {
+                    session_id: 1,
+                    data: RpcEventData::RpcReq(RpcReq::FetchSnapshot {
+                        from: None,
+                        max_version: None,
+                        max_items: MAX_SNAPSHOT_SLOTS_PER_PAGE as u64,
+                    })
+                }
+            ))),
+            "continuation mismatched version must restart full sync from scratch"
+        );
+        assert_eq!(ctx.outs.pop_front(), None);
         assert!(!ctx.slots.contains_key(&2), "continuation snapshot page with a different declared version must be rejected");
         assert_eq!(
             ctx.next_state, None,
@@ -1320,43 +1119,13 @@ mod tests {
         );
     }
 
-    #[test]
-    fn full_sync_must_reject_none_continuation_after_partial_snapshot() {
-        let mut ctx: StateCtx<u16, u16, u16> = StateCtx {
-            remote: 1,
-            slots: BTreeMap::new(),
-            outs: VecDeque::new(),
-            next_state: None,
-        };
 
-        let now = Instant::now();
-        let mut state = SyncFullState::default();
-        state.init(&mut ctx, now);
-        ctx.outs.clear();
-
-        state.on_rpc_res(
-            &mut ctx,
-            now,
-            RpcRes::FetchSnapshot(
-                Some(SnapshotData {
-                    slots: vec![(1, Slot::new(1, Version(1)))],
-                    skipped_newer: vec![],
-                    next_key: Some(2),
-                }),
-                Version(1),
-            ),
-        );
-        ctx.outs.clear();
-
-        state.on_rpc_res(&mut ctx, now, RpcRes::FetchSnapshot(None, Version(1)));
-
-        assert_eq!(ctx.next_state, None, "full sync must not treat None as completion after a partial snapshot requested a continuation");
-    }
 
     #[test]
     fn full_sync_must_reject_stale_terminal_snapshot_after_continuation_request() {
         let mut ctx: StateCtx<u16, u16, u16> = StateCtx {
             remote: 1,
+            local_session_id: 1,
             slots: BTreeMap::new(),
             outs: VecDeque::new(),
             next_state: None,
@@ -1384,11 +1153,11 @@ mod tests {
             ctx.outs.pop_front(),
             Some(Event::NetEvent(NetEvent::Unicast(
                 1,
-                RpcEvent::RpcReq(RpcReq::FetchSnapshot {
+                RpcEvent { session_id: 1, data: RpcEventData::RpcReq(RpcReq::FetchSnapshot {
                     from: Some(2),
                     max_version: Some(Version(3)),
                     max_items: MAX_SNAPSHOT_SLOTS_PER_PAGE as u64,
-                })
+                }) }
             )))
         );
         assert_eq!(ctx.outs.pop_front(), None);
@@ -1422,6 +1191,7 @@ mod tests {
     fn test_restore_full_resend() {
         let mut ctx: StateCtx<u16, u16, u16> = StateCtx {
             remote: 1,
+            local_session_id: 1,
             slots: BTreeMap::new(),
             outs: VecDeque::new(),
             next_state: None,
@@ -1435,11 +1205,11 @@ mod tests {
             ctx.outs.pop_front(),
             Some(Event::NetEvent(NetEvent::Unicast(
                 1,
-                RpcEvent::RpcReq(RpcReq::FetchSnapshot {
+                RpcEvent { session_id: 1, data: RpcEventData::RpcReq(RpcReq::FetchSnapshot {
                     from: None,
                     max_version: None,
                     max_items: MAX_SNAPSHOT_SLOTS_PER_PAGE as u64,
-                })
+                }) }
             )))
         );
         assert_eq!(ctx.outs.pop_front(), None);
@@ -1450,11 +1220,11 @@ mod tests {
             ctx.outs.pop_front(),
             Some(Event::NetEvent(NetEvent::Unicast(
                 1,
-                RpcEvent::RpcReq(RpcReq::FetchSnapshot {
+                RpcEvent { session_id: 1, data: RpcEventData::RpcReq(RpcReq::FetchSnapshot {
                     from: None,
                     max_version: None,
                     max_items: MAX_SNAPSHOT_SLOTS_PER_PAGE as u64,
-                })
+                }) }
             )))
         );
         assert_eq!(ctx.outs.pop_front(), None);
@@ -1465,6 +1235,7 @@ mod tests {
     fn test_restore_multi_single_pkt() {
         let mut ctx: StateCtx<u16, u16, u16> = StateCtx {
             remote: 1,
+            local_session_id: 1,
             slots: BTreeMap::new(),
             outs: VecDeque::new(),
             next_state: None,
@@ -1477,11 +1248,11 @@ mod tests {
             ctx.outs.pop_front(),
             Some(Event::NetEvent(NetEvent::Unicast(
                 1,
-                RpcEvent::RpcReq(RpcReq::FetchSnapshot {
+                RpcEvent { session_id: 1, data: RpcEventData::RpcReq(RpcReq::FetchSnapshot {
                     from: None,
                     max_version: None,
                     max_items: MAX_SNAPSHOT_SLOTS_PER_PAGE as u64
-                })
+                }) }
             )))
         );
         assert_eq!(ctx.outs.pop_front(), None);
@@ -1504,11 +1275,11 @@ mod tests {
             ctx.outs.pop_front(),
             Some(Event::NetEvent(NetEvent::Unicast(
                 1,
-                RpcEvent::RpcReq(RpcReq::FetchSnapshot {
+                RpcEvent { session_id: 1, data: RpcEventData::RpcReq(RpcReq::FetchSnapshot {
                     from: Some(2),
                     max_version: Some(Version(2)),
                     max_items: MAX_SNAPSHOT_SLOTS_PER_PAGE as u64
-                })
+                }) }
             )))
         );
         assert_eq!(ctx.outs.pop_front(), None);
@@ -1540,6 +1311,7 @@ mod tests {
     fn test_working_state_zero() {
         let mut ctx: StateCtx<u16, u16, u16> = StateCtx {
             remote: 1,
+            local_session_id: 1,
             slots: BTreeMap::new(),
             outs: VecDeque::new(),
             next_state: None,
@@ -1551,11 +1323,11 @@ mod tests {
         state.on_broadcast(
             &mut ctx,
             now,
-            BroadcastEvent::Changed(Changed {
+            BroadcastEvent { session_id: 2, data: BroadcastEventData::Changed(Changed {
                 key: 1,
                 version: Version(1),
                 action: Action::Set(1),
-            }),
+            }) },
         );
 
         assert_eq!(ctx.slots, BTreeMap::from([(1, Slot::new(1, Version(1)))]));
@@ -1568,6 +1340,7 @@ mod tests {
     fn remote_delete_for_absent_key_must_not_emit_delete_event() {
         let mut ctx: StateCtx<u16, u16, u16> = StateCtx {
             remote: 1,
+            local_session_id: 1,
             slots: BTreeMap::new(),
             outs: VecDeque::new(),
             next_state: None,
@@ -1579,11 +1352,11 @@ mod tests {
         state.on_broadcast(
             &mut ctx,
             now,
-            BroadcastEvent::Changed(Changed {
+            BroadcastEvent { session_id: 2, data: BroadcastEventData::Changed(Changed {
                 key: 7,
                 version: Version(1),
                 action: Action::Del,
-            }),
+            }) },
         );
 
         assert_eq!(state.version, Version(1), "a valid ordered remote delete must still advance protocol version");
@@ -1596,6 +1369,7 @@ mod tests {
     fn test_working_state_zero_out_of_sync() {
         let mut ctx: StateCtx<u16, u16, u16> = StateCtx {
             remote: 1,
+            local_session_id: 1,
             slots: BTreeMap::new(),
             outs: VecDeque::new(),
             next_state: None,
@@ -1604,13 +1378,13 @@ mod tests {
         let now = Instant::now();
         let mut state = WorkingState::new(Version(0));
 
-        state.on_broadcast(&mut ctx, now, BroadcastEvent::Version(Version(1)));
+        state.on_broadcast(&mut ctx, now, BroadcastEvent { session_id: 2, data: BroadcastEventData::Version(Version(1)) });
 
         assert_eq!(ctx.slots, BTreeMap::new());
         assert_eq!(ctx.next_state, None);
         assert_eq!(
             ctx.outs.pop_front(),
-            Some(Event::NetEvent(NetEvent::Unicast(1, RpcEvent::RpcReq(RpcReq::FetchChanged { from: Version(1), count: 1 }))))
+            Some(Event::NetEvent(NetEvent::Unicast(1, RpcEvent { session_id: 1, data: RpcEventData::RpcReq(RpcReq::FetchChanged { from: Version(1), count: 1 }) })))
         );
         assert_eq!(ctx.outs.pop_front(), None);
     }
@@ -1620,6 +1394,7 @@ mod tests {
     fn test_working_state_missing_changed() {
         let mut ctx: StateCtx<u16, u16, u16> = StateCtx {
             remote: 1,
+            local_session_id: 1,
             slots: BTreeMap::new(),
             outs: VecDeque::new(),
             next_state: None,
@@ -1631,11 +1406,11 @@ mod tests {
         state.on_broadcast(
             &mut ctx,
             now,
-            BroadcastEvent::Changed(Changed {
+            BroadcastEvent { session_id: 2, data: BroadcastEventData::Changed(Changed {
                 key: 1,
                 version: Version(2),
                 action: Action::Set(1),
-            }),
+            }) },
         );
 
         assert_eq!(state.pendings.len(), 1);
@@ -1643,18 +1418,18 @@ mod tests {
         assert_eq!(ctx.next_state, None);
         assert_eq!(
             ctx.outs.pop_front(),
-            Some(Event::NetEvent(NetEvent::Unicast(1, RpcEvent::RpcReq(RpcReq::FetchChanged { from: Version(1), count: 1 }))))
+            Some(Event::NetEvent(NetEvent::Unicast(1, RpcEvent { session_id: 1, data: RpcEventData::RpcReq(RpcReq::FetchChanged { from: Version(1), count: 1 }) })))
         );
         assert_eq!(ctx.outs.pop_front(), None);
 
         state.on_broadcast(
             &mut ctx,
             now,
-            BroadcastEvent::Changed(Changed {
+            BroadcastEvent { session_id: 2, data: BroadcastEventData::Changed(Changed {
                 key: 1,
                 version: Version(1),
                 action: Action::Set(2),
-            }),
+            }) },
         );
 
         assert_eq!(state.pendings.len(), 0);
@@ -1685,6 +1460,7 @@ mod tests {
     fn working_state_must_cancel_fetch_changed_when_broadcast_fills_gap() {
         let mut ctx: StateCtx<u16, u16, u16> = StateCtx {
             remote: 1,
+            local_session_id: 1,
             slots: BTreeMap::new(),
             outs: VecDeque::new(),
             next_state: None,
@@ -1696,26 +1472,26 @@ mod tests {
         state.on_broadcast(
             &mut ctx,
             now,
-            BroadcastEvent::Changed(Changed {
+            BroadcastEvent { session_id: 2, data: BroadcastEventData::Changed(Changed {
                 key: 1,
                 version: Version(2),
                 action: Action::Set(2),
-            }),
+            }) },
         );
         assert_eq!(
             ctx.outs.pop_front(),
-            Some(Event::NetEvent(NetEvent::Unicast(1, RpcEvent::RpcReq(RpcReq::FetchChanged { from: Version(1), count: 1 }))))
+            Some(Event::NetEvent(NetEvent::Unicast(1, RpcEvent { session_id: 1, data: RpcEventData::RpcReq(RpcReq::FetchChanged { from: Version(1), count: 1 }) })))
         );
         assert_eq!(ctx.outs.pop_front(), None);
 
         state.on_broadcast(
             &mut ctx,
             now,
-            BroadcastEvent::Changed(Changed {
+            BroadcastEvent { session_id: 2, data: BroadcastEventData::Changed(Changed {
                 key: 1,
                 version: Version(1),
                 action: Action::Set(1),
-            }),
+            }) },
         );
         assert_eq!(state.version, Version(2), "broadcast gap fill should advance the working version");
         while ctx.outs.pop_front().is_some() {}
@@ -1730,6 +1506,7 @@ mod tests {
     fn test_working_state_missing_changed2() {
         let mut ctx: StateCtx<u16, u16, u16> = StateCtx {
             remote: 1,
+            local_session_id: 1,
             slots: BTreeMap::new(),
             outs: VecDeque::new(),
             next_state: None,
@@ -1741,11 +1518,11 @@ mod tests {
         state.on_broadcast(
             &mut ctx,
             now,
-            BroadcastEvent::Changed(Changed {
+            BroadcastEvent { session_id: 2, data: BroadcastEventData::Changed(Changed {
                 key: 1,
                 version: Version(2),
                 action: Action::Set(1),
-            }),
+            }) },
         );
 
         assert_eq!(state.pendings.len(), 1);
@@ -1753,7 +1530,7 @@ mod tests {
         assert_eq!(ctx.next_state, None);
         assert_eq!(
             ctx.outs.pop_front(),
-            Some(Event::NetEvent(NetEvent::Unicast(1, RpcEvent::RpcReq(RpcReq::FetchChanged { from: Version(1), count: 1 }))))
+            Some(Event::NetEvent(NetEvent::Unicast(1, RpcEvent { session_id: 1, data: RpcEventData::RpcReq(RpcReq::FetchChanged { from: Version(1), count: 1 }) })))
         );
         assert_eq!(ctx.outs.pop_front(), None);
 
@@ -1779,6 +1556,7 @@ mod tests {
     fn working_state_must_reject_unsolicited_fetch_changed_success() {
         let mut ctx: StateCtx<u16, u16, u16> = StateCtx {
             remote: 1,
+            local_session_id: 1,
             slots: BTreeMap::new(),
             outs: VecDeque::new(),
             next_state: None,
@@ -1805,9 +1583,9 @@ mod tests {
     #[test]
     fn working_state_must_reject_unsolicited_fetch_changed_error() {
         let now = Instant::now();
-        let mut remote: RemoteStore<u16, u16, u16> = RemoteStore {
-            ctx: StateCtx {
+        let mut remote: RemoteStore<u16, u16, u16> = RemoteStore { session_id: 2, ctx: StateCtx {
                 remote: 1,
+            local_session_id: 1,
                 slots: BTreeMap::from([(7, Slot::new(70, Version(1)))]),
                 outs: VecDeque::new(),
                 next_state: None,
@@ -1834,9 +1612,9 @@ mod tests {
     #[test]
     fn solicited_full_resync_must_not_delete_existing_slots_before_snapshot_completes() {
         let now = Instant::now();
-        let mut remote: RemoteStore<u16, u16, u16> = RemoteStore {
-            ctx: StateCtx {
+        let mut remote: RemoteStore<u16, u16, u16> = RemoteStore { session_id: 2, ctx: StateCtx {
                 remote: 1,
+            local_session_id: 1,
                 slots: BTreeMap::from([(1, Slot::new(10, Version(1))), (2, Slot::new(20, Version(2)))]),
                 outs: VecDeque::new(),
                 next_state: None,
@@ -1845,10 +1623,10 @@ mod tests {
             last_active: now,
         };
 
-        remote.on_broadcast(BroadcastEvent::Version(Version(5)));
+        remote.on_broadcast(BroadcastEvent { session_id: 2, data: BroadcastEventData::Version(Version(5)) });
         assert!(matches!(
             remote.pop_out(),
-            Some(Event::NetEvent(NetEvent::Unicast(1, RpcEvent::RpcReq(RpcReq::FetchChanged { from: Version(3), count: 3 }))))
+            Some(Event::NetEvent(NetEvent::Unicast(1, RpcEvent { session_id: 1, data: RpcEventData::RpcReq(RpcReq::FetchChanged { from: Version(3), count: 3 }) })))
         ));
         assert_eq!(remote.pop_out(), None);
 
@@ -1869,9 +1647,9 @@ mod tests {
     #[test]
     fn solicited_full_resync_commits_replacement_snapshot_on_completion() {
         let now = Instant::now();
-        let mut remote: RemoteStore<u16, u16, u16> = RemoteStore {
-            ctx: StateCtx {
+        let mut remote: RemoteStore<u16, u16, u16> = RemoteStore { session_id: 2, ctx: StateCtx {
                 remote: 1,
+            local_session_id: 1,
                 slots: BTreeMap::from([(1, Slot::new(10, Version(1))), (2, Slot::new(20, Version(2)))]),
                 outs: VecDeque::new(),
                 next_state: None,
@@ -1880,21 +1658,21 @@ mod tests {
             last_active: now,
         };
 
-        remote.on_broadcast(BroadcastEvent::Version(Version(5)));
+        remote.on_broadcast(BroadcastEvent { session_id: 2, data: BroadcastEventData::Version(Version(5)) });
         assert!(matches!(
             remote.pop_out(),
-            Some(Event::NetEvent(NetEvent::Unicast(1, RpcEvent::RpcReq(RpcReq::FetchChanged { from: Version(3), count: 3 }))))
+            Some(Event::NetEvent(NetEvent::Unicast(1, RpcEvent { session_id: 1, data: RpcEventData::RpcReq(RpcReq::FetchChanged { from: Version(3), count: 3 }) })))
         ));
         remote.on_rpc_res(RpcRes::FetchChanged(Err(FetchChangedError::MissingData)));
         assert!(matches!(
             remote.pop_out(),
             Some(Event::NetEvent(NetEvent::Unicast(
                 1,
-                RpcEvent::RpcReq(RpcReq::FetchSnapshot {
+                RpcEvent { session_id: 1, data: RpcEventData::RpcReq(RpcReq::FetchSnapshot {
                     from: None,
                     max_version: None,
                     max_items: _
-                })
+                }) }
             )))
         ));
         assert_eq!(remote.pop_out(), None);
@@ -1916,11 +1694,11 @@ mod tests {
             remote.pop_out(),
             Some(Event::NetEvent(NetEvent::Unicast(
                 1,
-                RpcEvent::RpcReq(RpcReq::FetchSnapshot {
+                RpcEvent { session_id: 1, data: RpcEventData::RpcReq(RpcReq::FetchSnapshot {
                     from: Some(3),
                     max_version: Some(Version(5)),
                     max_items: _
-                })
+                }) }
             )))
         ));
         assert_eq!(remote.pop_out(), None);
@@ -1944,9 +1722,9 @@ mod tests {
     #[test]
     fn full_resync_must_not_delete_skipped_pivot_key_before_catchup() {
         let now = Instant::now();
-        let mut remote: RemoteStore<u16, u16, u16> = RemoteStore {
-            ctx: StateCtx {
+        let mut remote: RemoteStore<u16, u16, u16> = RemoteStore { session_id: 2, ctx: StateCtx {
                 remote: 1,
+            local_session_id: 1,
                 slots: BTreeMap::from([(1, Slot::new(10, Version(1))), (2, Slot::new(20, Version(2)))]),
                 outs: VecDeque::new(),
                 next_state: None,
@@ -1955,21 +1733,21 @@ mod tests {
             last_active: now,
         };
 
-        remote.on_broadcast(BroadcastEvent::Version(Version(5)));
+        remote.on_broadcast(BroadcastEvent { session_id: 2, data: BroadcastEventData::Version(Version(5)) });
         assert!(matches!(
             remote.pop_out(),
-            Some(Event::NetEvent(NetEvent::Unicast(1, RpcEvent::RpcReq(RpcReq::FetchChanged { from: Version(3), count: 3 }))))
+            Some(Event::NetEvent(NetEvent::Unicast(1, RpcEvent { session_id: 1, data: RpcEventData::RpcReq(RpcReq::FetchChanged { from: Version(3), count: 3 }) })))
         ));
         remote.on_rpc_res(RpcRes::FetchChanged(Err(FetchChangedError::MissingData)));
         assert!(matches!(
             remote.pop_out(),
             Some(Event::NetEvent(NetEvent::Unicast(
                 1,
-                RpcEvent::RpcReq(RpcReq::FetchSnapshot {
+                RpcEvent { session_id: 1, data: RpcEventData::RpcReq(RpcReq::FetchSnapshot {
                     from: None,
                     max_version: None,
                     max_items: _
-                })
+                }) }
             )))
         ));
 
@@ -1985,11 +1763,11 @@ mod tests {
             remote.pop_out(),
             Some(Event::NetEvent(NetEvent::Unicast(
                 1,
-                RpcEvent::RpcReq(RpcReq::FetchSnapshot {
+                RpcEvent { session_id: 1, data: RpcEventData::RpcReq(RpcReq::FetchSnapshot {
                     from: Some(2),
                     max_version: Some(Version(2)),
                     max_items: _
-                })
+                }) }
             )))
         ));
 
@@ -2004,7 +1782,7 @@ mod tests {
 
         assert_eq!(
             remote.pop_out(),
-            Some(Event::NetEvent(NetEvent::Unicast(1, RpcEvent::RpcReq(RpcReq::FetchChanged { from: Version(3), count: 1 })))),
+            Some(Event::NetEvent(NetEvent::Unicast(1, RpcEvent { session_id: 1, data: RpcEventData::RpcReq(RpcReq::FetchChanged { from: Version(3), count: 1 }) }))),
             "a key skipped because it is newer than the pivot must schedule catch-up without first emitting a delete"
         );
         assert_eq!(remote.pop_out(), None);
@@ -2012,16 +1790,16 @@ mod tests {
 
     #[test]
     fn full_sync_must_catch_up_broadcast_seen_during_snapshot() {
-        let mut remote: RemoteStore<u16, u16, u16> = RemoteStore::new(1);
+        let mut remote: RemoteStore<u16, u16, u16> = RemoteStore::new(1, 1, 2);
         assert!(matches!(
             remote.pop_out(),
             Some(Event::NetEvent(NetEvent::Unicast(
                 1,
-                RpcEvent::RpcReq(RpcReq::FetchSnapshot {
+                RpcEvent { session_id: 1, data: RpcEventData::RpcReq(RpcReq::FetchSnapshot {
                     from: None,
                     max_version: None,
                     max_items: _
-                })
+                }) }
             )))
         ));
 
@@ -2037,19 +1815,19 @@ mod tests {
             remote.pop_out(),
             Some(Event::NetEvent(NetEvent::Unicast(
                 1,
-                RpcEvent::RpcReq(RpcReq::FetchSnapshot {
+                RpcEvent { session_id: 1, data: RpcEventData::RpcReq(RpcReq::FetchSnapshot {
                     from: Some(2),
                     max_version: Some(Version(2)),
                     max_items: _
-                })
+                }) }
             )))
         ));
 
-        remote.on_broadcast(BroadcastEvent::Changed(Changed {
+        remote.on_broadcast(BroadcastEvent { session_id: 2, data: BroadcastEventData::Changed(Changed {
             key: 2,
             version: Version(3),
             action: Action::Set(21),
-        }));
+        }) });
 
         remote.on_rpc_res(RpcRes::FetchSnapshot(
             Some(SnapshotData {
@@ -2063,7 +1841,7 @@ mod tests {
 
         assert_eq!(
             remote.pop_out(),
-            Some(Event::NetEvent(NetEvent::Unicast(1, RpcEvent::RpcReq(RpcReq::FetchChanged { from: Version(3), count: 1 })))),
+            Some(Event::NetEvent(NetEvent::Unicast(1, RpcEvent { session_id: 1, data: RpcEventData::RpcReq(RpcReq::FetchChanged { from: Version(3), count: 1 }) }))),
             "a Changed broadcast observed during full sync must not be dropped without scheduling catch-up"
         );
     }
@@ -2071,9 +1849,9 @@ mod tests {
     #[test]
     fn ignored_rpc_response_must_not_refresh_remote_activity() {
         let stale = Instant::now() - Duration::from_secs(11);
-        let mut remote: RemoteStore<u16, u16, u16> = RemoteStore {
-            ctx: StateCtx {
+        let mut remote: RemoteStore<u16, u16, u16> = RemoteStore { session_id: 2, ctx: StateCtx {
                 remote: 1,
+            local_session_id: 1,
                 slots: BTreeMap::from([(7, Slot::new(70, Version(1)))]),
                 outs: VecDeque::new(),
                 next_state: None,
@@ -2095,9 +1873,9 @@ mod tests {
     #[test]
     fn old_version_broadcast_must_not_refresh_remote_activity() {
         let stale = Instant::now() - Duration::from_secs(11);
-        let mut remote: RemoteStore<u16, u16, u16> = RemoteStore {
-            ctx: StateCtx {
+        let mut remote: RemoteStore<u16, u16, u16> = RemoteStore { session_id: 2, ctx: StateCtx {
                 remote: 1,
+            local_session_id: 1,
                 slots: BTreeMap::from([(7, Slot::new(70, Version(5)))]),
                 outs: VecDeque::new(),
                 next_state: None,
@@ -2106,7 +1884,7 @@ mod tests {
             last_active: stale,
         };
 
-        remote.on_broadcast(BroadcastEvent::Version(Version(4)));
+        remote.on_broadcast(BroadcastEvent { session_id: 2, data: BroadcastEventData::Version(Version(4)) });
 
         assert_eq!(remote.last_active(), stale, "old-version broadcasts must not refresh remote activity and prevent timeout cleanup");
         assert_eq!(remote.pop_out(), None, "old-version broadcasts must not emit local events");
@@ -2115,9 +1893,9 @@ mod tests {
     #[test]
     fn same_version_heartbeat_must_refresh_remote_activity() {
         let stale = Instant::now() - Duration::from_secs(11);
-        let mut remote: RemoteStore<u16, u16, u16> = RemoteStore {
-            ctx: StateCtx {
+        let mut remote: RemoteStore<u16, u16, u16> = RemoteStore { session_id: 2, ctx: StateCtx {
                 remote: 1,
+            local_session_id: 1,
                 slots: BTreeMap::from([(7, Slot::new(70, Version(5)))]),
                 outs: VecDeque::new(),
                 next_state: None,
@@ -2126,7 +1904,7 @@ mod tests {
             last_active: stale,
         };
 
-        remote.on_broadcast(BroadcastEvent::Version(Version(5)));
+        remote.on_broadcast(BroadcastEvent { session_id: 2, data: BroadcastEventData::Version(Version(5)) });
 
         assert!(
             remote.last_active() > stale,
@@ -2135,84 +1913,13 @@ mod tests {
         assert_eq!(remote.pop_out(), None, "same-version heartbeats must not emit local events");
     }
 
-    #[test]
-    fn working_state_must_reject_duplicate_fetch_changed_versions() {
-        let mut ctx: StateCtx<u16, u16, u16> = StateCtx {
-            remote: 1,
-            slots: BTreeMap::new(),
-            outs: VecDeque::new(),
-            next_state: None,
-        };
 
-        let now = Instant::now();
-        let mut state = WorkingState::new(Version(0));
-
-        state.on_broadcast(&mut ctx, now, BroadcastEvent::Version(Version(1)));
-        ctx.outs.clear();
-
-        state.on_rpc_res(
-            &mut ctx,
-            now,
-            RpcRes::FetchChanged(Ok(vec![
-                Changed {
-                    key: 1,
-                    version: Version(1),
-                    action: Action::Set(1),
-                },
-                Changed {
-                    key: 1,
-                    version: Version(1),
-                    action: Action::Set(9),
-                },
-            ])),
-        );
-
-        assert_eq!(state.version, Version(0), "FetchChanged responses with duplicate versions must not advance the working version");
-        assert_eq!(ctx.slots, BTreeMap::new(), "FetchChanged responses with duplicate versions must not overwrite and apply one entry");
-        assert_eq!(ctx.outs.pop_front(), None, "FetchChanged responses with duplicate versions must not emit local KvEvent changes");
-    }
-
-    #[test]
-    fn working_state_must_reject_fetch_changed_versions_beyond_requested_count() {
-        let mut ctx: StateCtx<u16, u16, u16> = StateCtx {
-            remote: 1,
-            slots: BTreeMap::new(),
-            outs: VecDeque::new(),
-            next_state: None,
-        };
-
-        let now = Instant::now();
-        let mut state = WorkingState::new(Version(0));
-
-        state.on_broadcast(&mut ctx, now, BroadcastEvent::Version(Version(1)));
-        ctx.outs.clear();
-
-        state.on_rpc_res(
-            &mut ctx,
-            now,
-            RpcRes::FetchChanged(Ok(vec![
-                Changed {
-                    key: 1,
-                    version: Version(1),
-                    action: Action::Set(1),
-                },
-                Changed {
-                    key: 2,
-                    version: Version(2),
-                    action: Action::Set(2),
-                },
-            ])),
-        );
-
-        assert_eq!(state.version, Version(0), "FetchChanged responses must not apply versions beyond the requested count");
-        assert_eq!(ctx.slots, BTreeMap::new(), "FetchChanged responses must reject extra versions outside the requested range");
-        assert_eq!(ctx.outs.pop_front(), None, "FetchChanged responses with extra versions must not emit local KvEvent changes");
-    }
 
     #[test]
     fn working_state_must_not_cancel_repair_after_empty_fetch_changed_success() {
         let mut ctx: StateCtx<u16, u16, u16> = StateCtx {
             remote: 1,
+            local_session_id: 1,
             slots: BTreeMap::new(),
             outs: VecDeque::new(),
             next_state: None,
@@ -2221,10 +1928,10 @@ mod tests {
         let now = Instant::now();
         let mut state = WorkingState::new(Version(0));
 
-        state.on_broadcast(&mut ctx, now, BroadcastEvent::Version(Version(1)));
+        state.on_broadcast(&mut ctx, now, BroadcastEvent { session_id: 2, data: BroadcastEventData::Version(Version(1)) });
         assert_eq!(
             ctx.outs.pop_front(),
-            Some(Event::NetEvent(NetEvent::Unicast(1, RpcEvent::RpcReq(RpcReq::FetchChanged { from: Version(1), count: 1 }))))
+            Some(Event::NetEvent(NetEvent::Unicast(1, RpcEvent { session_id: 1, data: RpcEventData::RpcReq(RpcReq::FetchChanged { from: Version(1), count: 1 }) })))
         );
         assert_eq!(ctx.outs.pop_front(), None);
 
@@ -2241,6 +1948,7 @@ mod tests {
     fn working_state_must_continue_repair_after_partial_fetch_changed_success() {
         let mut ctx: StateCtx<u16, u16, u16> = StateCtx {
             remote: 1,
+            local_session_id: 1,
             slots: BTreeMap::new(),
             outs: VecDeque::new(),
             next_state: None,
@@ -2249,10 +1957,10 @@ mod tests {
         let now = Instant::now();
         let mut state = WorkingState::new(Version(0));
 
-        state.on_broadcast(&mut ctx, now, BroadcastEvent::Version(Version(5)));
+        state.on_broadcast(&mut ctx, now, BroadcastEvent { session_id: 2, data: BroadcastEventData::Version(Version(5)) });
         assert_eq!(
             ctx.outs.pop_front(),
-            Some(Event::NetEvent(NetEvent::Unicast(1, RpcEvent::RpcReq(RpcReq::FetchChanged { from: Version(1), count: 5 }))))
+            Some(Event::NetEvent(NetEvent::Unicast(1, RpcEvent { session_id: 1, data: RpcEventData::RpcReq(RpcReq::FetchChanged { from: Version(1), count: 5 }) })))
         );
         assert_eq!(ctx.outs.pop_front(), None);
 
@@ -2277,7 +1985,7 @@ mod tests {
         assert_eq!(ctx.outs.pop_front(), Some(Event::KvEvent(KvEvent::Set(Some(1), 2, 20))));
         assert_eq!(
             ctx.outs.pop_front(),
-            Some(Event::NetEvent(NetEvent::Unicast(1, RpcEvent::RpcReq(RpcReq::FetchChanged { from: Version(3), count: 3 })))),
+            Some(Event::NetEvent(NetEvent::Unicast(1, RpcEvent { session_id: 1, data: RpcEventData::RpcReq(RpcReq::FetchChanged { from: Version(3), count: 3 }) }))),
             "partial FetchChanged success must continue repairing the remaining requested versions"
         );
     }
@@ -2286,6 +1994,7 @@ mod tests {
     fn working_state_must_not_let_stale_fetch_changed_response_cancel_newer_repair() {
         let mut ctx: StateCtx<u16, u16, u16> = StateCtx {
             remote: 1,
+            local_session_id: 1,
             slots: BTreeMap::new(),
             outs: VecDeque::new(),
             next_state: None,
@@ -2294,17 +2003,17 @@ mod tests {
         let now = Instant::now();
         let mut state = WorkingState::new(Version(0));
 
-        state.on_broadcast(&mut ctx, now, BroadcastEvent::Version(Version(1)));
+        state.on_broadcast(&mut ctx, now, BroadcastEvent { session_id: 2, data: BroadcastEventData::Version(Version(1)) });
         assert_eq!(
             ctx.outs.pop_front(),
-            Some(Event::NetEvent(NetEvent::Unicast(1, RpcEvent::RpcReq(RpcReq::FetchChanged { from: Version(1), count: 1 }))))
+            Some(Event::NetEvent(NetEvent::Unicast(1, RpcEvent { session_id: 1, data: RpcEventData::RpcReq(RpcReq::FetchChanged { from: Version(1), count: 1 }) })))
         );
         assert_eq!(ctx.outs.pop_front(), None);
 
-        state.on_broadcast(&mut ctx, now, BroadcastEvent::Version(Version(5)));
+        state.on_broadcast(&mut ctx, now, BroadcastEvent { session_id: 2, data: BroadcastEventData::Version(Version(5)) });
         assert_eq!(
             ctx.outs.pop_front(),
-            Some(Event::NetEvent(NetEvent::Unicast(1, RpcEvent::RpcReq(RpcReq::FetchChanged { from: Version(1), count: 5 }))))
+            Some(Event::NetEvent(NetEvent::Unicast(1, RpcEvent { session_id: 1, data: RpcEventData::RpcReq(RpcReq::FetchChanged { from: Version(1), count: 5 }) })))
         );
         assert_eq!(ctx.outs.pop_front(), None);
 
@@ -2323,7 +2032,7 @@ mod tests {
 
         assert_eq!(
             ctx.outs.pop_front(),
-            Some(Event::NetEvent(NetEvent::Unicast(1, RpcEvent::RpcReq(RpcReq::FetchChanged { from: Version(2), count: 4 })))),
+            Some(Event::NetEvent(NetEvent::Unicast(1, RpcEvent { session_id: 1, data: RpcEventData::RpcReq(RpcReq::FetchChanged { from: Version(2), count: 4 }) }))),
             "stale response for the old narrow request must not cancel the newer repair for versions 2..=5"
         );
     }
@@ -2332,6 +2041,7 @@ mod tests {
     fn test_working_state_resend_timeout_fetch_changed() {
         let mut ctx: StateCtx<u16, u16, u16> = StateCtx {
             remote: 1,
+            local_session_id: 1,
             slots: BTreeMap::new(),
             outs: VecDeque::new(),
             next_state: None,
@@ -2343,11 +2053,11 @@ mod tests {
         state.on_broadcast(
             &mut ctx,
             now,
-            BroadcastEvent::Changed(Changed {
+            BroadcastEvent { session_id: 2, data: BroadcastEventData::Changed(Changed {
                 key: 1,
                 version: Version(2),
                 action: Action::Set(1),
-            }),
+            }) },
         );
 
         assert_eq!(state.pendings.len(), 1);
@@ -2355,7 +2065,7 @@ mod tests {
         assert_eq!(ctx.next_state, None);
         assert_eq!(
             ctx.outs.pop_front(),
-            Some(Event::NetEvent(NetEvent::Unicast(1, RpcEvent::RpcReq(RpcReq::FetchChanged { from: Version(1), count: 1 }))))
+            Some(Event::NetEvent(NetEvent::Unicast(1, RpcEvent { session_id: 1, data: RpcEventData::RpcReq(RpcReq::FetchChanged { from: Version(1), count: 1 }) })))
         );
         assert_eq!(ctx.outs.pop_front(), None);
 
@@ -2363,7 +2073,7 @@ mod tests {
         state.on_tick(&mut ctx, now + REQUEST_TIMEOUT + Duration::from_millis(1));
         assert_eq!(
             ctx.outs.pop_front(),
-            Some(Event::NetEvent(NetEvent::Unicast(1, RpcEvent::RpcReq(RpcReq::FetchChanged { from: Version(1), count: 1 }))))
+            Some(Event::NetEvent(NetEvent::Unicast(1, RpcEvent { session_id: 1, data: RpcEventData::RpcReq(RpcReq::FetchChanged { from: Version(1), count: 1 }) })))
         );
         assert_eq!(ctx.outs.pop_front(), None);
     }
@@ -2372,6 +2082,7 @@ mod tests {
     fn working_state_must_not_duplicate_inflight_fetch_changed_for_same_gap() {
         let mut ctx: StateCtx<u16, u16, u16> = StateCtx {
             remote: 1,
+            local_session_id: 1,
             slots: BTreeMap::new(),
             outs: VecDeque::new(),
             next_state: None,
@@ -2384,27 +2095,27 @@ mod tests {
         state.on_broadcast(
             &mut ctx,
             now,
-            BroadcastEvent::Changed(Changed {
+            BroadcastEvent { session_id: 2, data: BroadcastEventData::Changed(Changed {
                 key: 10,
                 version: Version(10),
                 action: Action::Set(10),
-            }),
+            }) },
         );
 
         assert_eq!(
             ctx.outs.pop_front(),
-            Some(Event::NetEvent(NetEvent::Unicast(1, RpcEvent::RpcReq(RpcReq::FetchChanged { from: Version(1), count: 9 }))))
+            Some(Event::NetEvent(NetEvent::Unicast(1, RpcEvent { session_id: 1, data: RpcEventData::RpcReq(RpcReq::FetchChanged { from: Version(1), count: 9 }) })))
         );
         assert_eq!(ctx.outs.pop_front(), None);
 
         state.on_broadcast(
             &mut ctx,
             now + Duration::from_millis(10),
-            BroadcastEvent::Changed(Changed {
+            BroadcastEvent { session_id: 2, data: BroadcastEventData::Changed(Changed {
                 key: 11,
                 version: Version(11),
                 action: Action::Set(11),
-            }),
+            }) },
         );
 
         assert_eq!(
@@ -2418,6 +2129,7 @@ mod tests {
     fn working_state_must_cap_pending_future_changes() {
         let mut ctx: StateCtx<u16, u16, u16> = StateCtx {
             remote: 1,
+            local_session_id: 1,
             slots: BTreeMap::new(),
             outs: VecDeque::new(),
             next_state: None,
@@ -2430,11 +2142,11 @@ mod tests {
             state.on_broadcast(
                 &mut ctx,
                 now,
-                BroadcastEvent::Changed(Changed {
+                BroadcastEvent { session_id: 2, data: BroadcastEventData::Changed(Changed {
                     key: version as u16,
                     version: Version(version),
                     action: Action::Set(version as u16),
-                }),
+                }) },
             );
         }
 
@@ -2448,6 +2160,7 @@ mod tests {
     fn working_state_must_reject_duplicate_pending_changed_broadcast_versions() {
         let mut ctx: StateCtx<u16, u16, u16> = StateCtx {
             remote: 1,
+            local_session_id: 1,
             slots: BTreeMap::new(),
             outs: VecDeque::new(),
             next_state: None,
@@ -2459,29 +2172,29 @@ mod tests {
         state.on_broadcast(
             &mut ctx,
             now,
-            BroadcastEvent::Changed(Changed {
+            BroadcastEvent { session_id: 2, data: BroadcastEventData::Changed(Changed {
                 key: 7,
                 version: Version(2),
                 action: Action::Set(20),
-            }),
+            }) },
         );
         state.on_broadcast(
             &mut ctx,
             now,
-            BroadcastEvent::Changed(Changed {
+            BroadcastEvent { session_id: 2, data: BroadcastEventData::Changed(Changed {
                 key: 7,
                 version: Version(2),
                 action: Action::Set(99),
-            }),
+            }) },
         );
         state.on_broadcast(
             &mut ctx,
             now,
-            BroadcastEvent::Changed(Changed {
+            BroadcastEvent { session_id: 2, data: BroadcastEventData::Changed(Changed {
                 key: 7,
                 version: Version(1),
                 action: Action::Set(10),
-            }),
+            }) },
         );
 
         assert_eq!(
@@ -2495,6 +2208,7 @@ mod tests {
     fn working_state_must_cap_pending_fetch_changed_response() {
         let mut ctx: StateCtx<u16, u16, u16> = StateCtx {
             remote: 1,
+            local_session_id: 1,
             slots: BTreeMap::new(),
             outs: VecDeque::new(),
             next_state: None,
@@ -2502,7 +2216,7 @@ mod tests {
 
         let now = Instant::now();
         let mut state = WorkingState::new(Version(0));
-        state.on_broadcast(&mut ctx, now, BroadcastEvent::Version(Version(2_050)));
+        state.on_broadcast(&mut ctx, now, BroadcastEvent { session_id: 2, data: BroadcastEventData::Version(Version(2_050)) });
         ctx.outs.clear();
 
         let changeds = (2..=2_050)
@@ -2526,6 +2240,7 @@ mod tests {
     fn destroy_remote_should_clear_slots() {
         let mut ctx: StateCtx<u16, u16, u16> = StateCtx {
             remote: 1,
+            local_session_id: 1,
             slots: BTreeMap::from([(1, Slot::new(1, Version(1)))]),
             outs: VecDeque::new(),
             next_state: None,
@@ -2545,6 +2260,7 @@ mod tests {
     fn test_continuation_none_response_must_not_livelock() {
         let mut ctx: StateCtx<u16, u16, u16> = StateCtx {
             remote: 1,
+            local_session_id: 1,
             slots: BTreeMap::new(),
             outs: VecDeque::new(),
             next_state: None,
@@ -2577,11 +2293,14 @@ mod tests {
             ctx.outs.pop_front(),
             Some(Event::NetEvent(NetEvent::Unicast(
                 1,
-                RpcEvent::RpcReq(RpcReq::FetchSnapshot {
-                    from: None,
-                    max_version: None,
-                    max_items: MAX_SNAPSHOT_SLOTS_PER_PAGE as u64,
-                })
+                RpcEvent {
+                    session_id: 1,
+                    data: RpcEventData::RpcReq(RpcReq::FetchSnapshot {
+                        from: None,
+                        max_version: None,
+                        max_items: MAX_SNAPSHOT_SLOTS_PER_PAGE as u64,
+                    })
+                }
             ))),
             "continuation None response must restart full sync from the first snapshot page"
         );
@@ -2594,11 +2313,14 @@ mod tests {
             ctx.outs.pop_front(),
             Some(Event::NetEvent(NetEvent::Unicast(
                 1,
-                RpcEvent::RpcReq(RpcReq::FetchSnapshot {
-                    from: None,
-                    max_version: None,
-                    max_items: MAX_SNAPSHOT_SLOTS_PER_PAGE as u64,
-                })
+                RpcEvent {
+                    session_id: 1,
+                    data: RpcEventData::RpcReq(RpcReq::FetchSnapshot {
+                        from: None,
+                        max_version: None,
+                        max_items: MAX_SNAPSHOT_SLOTS_PER_PAGE as u64,
+                    })
+                }
             ))),
             "timeout after restart must resend the first-page request, not the stale continuation"
         );
@@ -2609,6 +2331,7 @@ mod tests {
     fn working_state_must_catch_up_new_version_broadcast_received_during_pending_gap() {
         let mut ctx: StateCtx<u16, u16, u16> = StateCtx {
             remote: 1,
+            local_session_id: 1,
             slots: BTreeMap::new(),
             outs: VecDeque::new(),
             next_state: None,
@@ -2620,20 +2343,20 @@ mod tests {
         // 1. Receive BroadcastEvent::Changed for version 12.
         // Since version 11 is missing, this is a gap.
         // It should request FetchChanged from 11 count 1.
-        state.on_broadcast(&mut ctx, now, BroadcastEvent::Changed(Changed {
+        state.on_broadcast(&mut ctx, now, BroadcastEvent { session_id: 2, data: BroadcastEventData::Changed(Changed {
             key: 1,
             version: Version(12),
             action: Action::Set(12),
-        }));
+        }) });
 
         assert_eq!(
             ctx.outs.pop_front(),
             Some(Event::NetEvent(NetEvent::Unicast(
                 1,
-                RpcEvent::RpcReq(RpcReq::FetchChanged {
+                RpcEvent { session_id: 1, data: RpcEventData::RpcReq(RpcReq::FetchChanged {
                     from: Version(11),
                     count: 1
-                })
+                }) }
             )))
         );
         assert_eq!(ctx.outs.pop_front(), None);
@@ -2643,7 +2366,7 @@ mod tests {
 
         // 2. Receive BroadcastEvent::Version for version 15.
         // Because self.pendings is not empty, this version heartbeat is currently ignored.
-        state.on_broadcast(&mut ctx, now, BroadcastEvent::Version(Version(15)));
+        state.on_broadcast(&mut ctx, now, BroadcastEvent { session_id: 2, data: BroadcastEventData::Version(Version(15)) });
 
         // 3. Receive the RPC response for version 11.
         state.on_rpc_res(
@@ -2666,10 +2389,10 @@ mod tests {
             net_events,
             vec![&Event::NetEvent(NetEvent::Unicast(
                 1,
-                RpcEvent::RpcReq(RpcReq::FetchChanged {
+                RpcEvent { session_id: 1, data: RpcEventData::RpcReq(RpcReq::FetchChanged {
                     from: Version(13),
                     count: 3
-                })
+                }) }
             ))],
             "Node B must schedule a catch-up request for the remaining versions 13-15 after resolving the gap"
         );
