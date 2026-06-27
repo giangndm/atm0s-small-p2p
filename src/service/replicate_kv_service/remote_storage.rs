@@ -2437,5 +2437,64 @@ mod tests {
             "should not transition to WorkingState using stale snapshot response"
         );
     }
+
+    #[test]
+    fn test_concurrent_deletion_during_snapshot_causes_premature_delete_event() {
+        let mut ctx: StateCtx<u16, u16, u16> = StateCtx {
+            req_id: 0,
+            remote: 1,
+            local_session_id: 1,
+            slots: BTreeMap::from([(1, Slot::new(10, Version(4)))]),
+            outs: VecDeque::new(),
+            next_state: None,
+        };
+
+        let now = Instant::now();
+        let mut state = RemoteStoreState::SyncFull(SyncFullState::default());
+        state.init(&mut ctx, now);
+        ctx.outs.clear();
+
+        // 1. A receives page 1 of the snapshot, locked at version 5.
+        // It has next_key: Some(2)
+        let accepted = state.on_rpc_res(
+            &mut ctx,
+            now,
+            RpcRes::FetchSnapshot(Some(SnapshotData {
+                slots: vec![(3, Slot::new(30, Version(5)))],
+                skipped_newer: vec![],
+                next_key: Some(2),
+            }), Version(5), 1),
+        );
+        assert!(accepted);
+        ctx.outs.clear();
+
+        // 2. The remote node deletes key 1 at version 6.
+        // A receives page 2 of the snapshot.
+        // Since key 1 is deleted on the remote node, B includes it in skipped_newer (at version 6) for version 5 snapshot.
+        // This is a terminal page (next_key: None).
+        let accepted = state.on_rpc_res(
+            &mut ctx,
+            now,
+            RpcRes::FetchSnapshot(Some(SnapshotData {
+                slots: vec![],
+                skipped_newer: vec![(1, Version(6))],
+                next_key: None,
+            }), Version(5), 2),
+        );
+        assert!(accepted);
+
+        // We should have transitioned to WorkingState
+        let mut next_state = ctx.next_state.take().expect("must transition state");
+        next_state.init(&mut ctx, now);
+        state = next_state;
+        assert!(matches!(state, RemoteStoreState::Working(_)));
+
+        // 3. Since A completed snapshot at version 5, and key 1 was deleted on the remote at version 6,
+        // key 1 should still be present in A's slots at version 5.
+        // A should NOT emit a Delete event for key 1 until it catch-up syncs version 6.
+        // Let's check A's outputs.
+        let has_delete = ctx.outs.iter().any(|event| matches!(event, Event::KvEvent(KvEvent::Del(_, 1))));
+        assert!(!has_delete, "A must not emit a KvEvent::Del for key 1 during snapshot commit since it was present at snapshot version 5");
+    }
 }
 

@@ -149,7 +149,7 @@ where
         let mut next_key = None;
         let mut scanned = 0;
 
-        for (key, slot) in self.slots.range(from..) {
+        for (key, slot) in self.slots.range(from.clone()..) {
             if scanned >= scan_limit {
                 next_key = Some(key.clone());
                 break;
@@ -160,6 +160,19 @@ where
                 slots.push((key.clone(), slot.clone()));
             } else {
                 skipped_newer.push((key.clone(), slot.version));
+            }
+        }
+
+        if next_key.is_none() && max_version < self.version {
+            for (v, changed) in self.changeds.range(Version(max_version.0 + 1)..) {
+                if &changed.key < &from {
+                    continue;
+                }
+                if !slots.iter().any(|(k, _)| k == &changed.key)
+                    && !skipped_newer.iter().any(|(k, _)| k == &changed.key)
+                {
+                    skipped_newer.push((changed.key.clone(), *v));
+                }
             }
         }
 
