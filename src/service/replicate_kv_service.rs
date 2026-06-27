@@ -128,12 +128,7 @@ where
                     remote.session_id,
                     msg_session_id
                 );
-                if let Some(mut old_remote) = self.remotes.remove(&from) {
-                    old_remote.destroy();
-                    while let Some(e) = old_remote.pop_out() {
-                        Self::push_out(&mut self.outs, e);
-                    }
-                }
+                self.destroy_remote(&from);
             }
         }
 
@@ -182,14 +177,18 @@ where
         }
     }
 
-    pub fn on_peer_disconnected(&mut self, peer: N) {
-        if let Some(mut remote) = self.remotes.remove(&peer) {
-            log::info!("[ReplicatedKvService] remove remote {peer:?} after peer disconnected");
+    fn destroy_remote(&mut self, node: &N) {
+        if let Some(mut remote) = self.remotes.remove(node) {
             remote.destroy();
             while let Some(event) = remote.pop_out() {
                 Self::push_out(&mut self.outs, event);
             }
         }
+    }
+
+    pub fn on_peer_disconnected(&mut self, peer: N) {
+        log::info!("[ReplicatedKvService] remove remote {peer:?} after peer disconnected");
+        self.destroy_remote(&peer);
     }
 
     fn push_out(outs: &mut VecDeque<Event<N, K, V>>, event: Event<N, K, V>) {
