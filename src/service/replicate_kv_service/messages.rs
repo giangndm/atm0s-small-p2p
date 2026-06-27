@@ -105,7 +105,7 @@ pub struct SnapshotData<K, V> {
 
 #[derive(Debug, PartialEq, Eq, Serialize, Deserialize, Clone)]
 pub enum RpcRes<K, V> {
-    FetchChanged(Result<Vec<Changed<K, V>>, FetchChangedError>),
+    FetchChanged(Result<Vec<Changed<K, V>>, FetchChangedError>, Version),
     FetchSnapshot(Option<SnapshotData<K, V>>, Version, u64),
 }
 

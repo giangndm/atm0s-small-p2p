@@ -360,7 +360,7 @@ mod tests {
                 unknown_peer,
                 RpcEvent {
                     session_id: 2,
-                    data: RpcEventData::RpcRes(messages::RpcRes::FetchChanged(Err(messages::FetchChangedError::MissingData))),
+                    data: RpcEventData::RpcRes(messages::RpcRes::FetchChanged(Err(messages::FetchChangedError::MissingData), messages::Version(0))),
                 },
             ),
         );

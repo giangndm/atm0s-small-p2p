@@ -298,7 +298,7 @@ where
 
     fn on_rpc_res(&mut self, ctx: &mut StateCtx<N, K, V>, now: Instant, event: RpcRes<K, V>) -> bool {
         match event {
-            RpcRes::FetchChanged(_) => {
+            RpcRes::FetchChanged(_, _) => {
                 false
             }
             RpcRes::FetchSnapshot(Some(snapshot), version, res_req_id) => {
@@ -600,10 +600,14 @@ where
 
     fn on_rpc_res(&mut self, ctx: &mut StateCtx<N, K, V>, now: Instant, event: RpcRes<K, V>) -> bool {
         match event {
-            RpcRes::FetchChanged(Ok(changeds)) => {
+            RpcRes::FetchChanged(Ok(changeds), res_from) => {
                 let Some((_, NetEvent::Unicast(_, RpcEvent { data: RpcEventData::RpcReq(RpcReq::FetchChanged { from, count }), .. }))) = self.sending_req.as_ref() else {
                     return false;
                 };
+                if res_from != *from {
+                    log::warn!("[RemoteStore {:?}] ignore stale FetchChanged success from {res_from:?} (expected {from:?})", ctx.remote);
+                    return false;
+                }
                 if *count == 0 {
                     return false;
                 }
@@ -626,8 +630,12 @@ where
                 }
                 true
             }
-            RpcRes::FetchChanged(Err(err)) => {
-                if self.sending_req.is_none() {
+            RpcRes::FetchChanged(Err(err), res_from) => {
+                let Some((_, NetEvent::Unicast(_, RpcEvent { data: RpcEventData::RpcReq(RpcReq::FetchChanged { from, .. }), .. }))) = self.sending_req.as_ref() else {
+                    return false;
+                };
+                if res_from != *from {
+                    log::warn!("[RemoteStore {:?}] ignore stale FetchChanged error from {res_from:?} (expected {from:?})", ctx.remote);
                     return false;
                 }
                 log::info!("[RemoteStore] fetch changed error: {err:?} => switch to resyncFull");
@@ -1370,7 +1378,7 @@ mod tests {
                 key: 1,
                 version: Version(1),
                 action: Action::Set(2),
-            }])),
+            }]), Version(1)),
         );
         assert_eq!(ctx.outs.pop_front(), None);
 
@@ -1464,7 +1472,7 @@ mod tests {
                 key: 1,
                 version: Version(1),
                 action: Action::Set(2),
-            }])),
+            }]), Version(1)),
         );
 
         assert_eq!(state.pendings.len(), 0);
@@ -1495,7 +1503,7 @@ mod tests {
                 key: 1,
                 version: Version(1),
                 action: Action::Set(9),
-            }])),
+            }]), Version(1)),
         );
 
         assert_eq!(state.version, Version(0), "unsolicited FetchChanged success must not advance the working version");
@@ -1517,7 +1525,7 @@ mod tests {
             last_active: now,
         };
 
-        remote.on_rpc_res(RpcRes::FetchChanged(Err(FetchChangedError::MissingData)));
+        remote.on_rpc_res(RpcRes::FetchChanged(Err(FetchChangedError::MissingData), Version(1)));
 
         assert_eq!(
             remote.ctx.slots,
@@ -1553,7 +1561,7 @@ mod tests {
         ));
         assert_eq!(remote.pop_out(), None);
 
-        remote.on_rpc_res(RpcRes::FetchChanged(Err(FetchChangedError::MissingData)));
+        remote.on_rpc_res(RpcRes::FetchChanged(Err(FetchChangedError::MissingData), Version(3)));
 
         assert_eq!(
             remote.ctx.slots,
@@ -1586,7 +1594,7 @@ mod tests {
             remote.pop_out(),
             Some(Event::NetEvent(NetEvent::Unicast(1, RpcEvent { session_id: 1, data: RpcEventData::RpcReq(RpcReq::FetchChanged { from: Version(3), count: 3 }) })))
         ));
-        remote.on_rpc_res(RpcRes::FetchChanged(Err(FetchChangedError::MissingData)));
+        remote.on_rpc_res(RpcRes::FetchChanged(Err(FetchChangedError::MissingData), Version(3)));
         assert!(matches!(
             remote.pop_out(),
             Some(Event::NetEvent(NetEvent::Unicast(
@@ -1655,7 +1663,7 @@ mod tests {
             remote.pop_out(),
             Some(Event::NetEvent(NetEvent::Unicast(1, RpcEvent { session_id: 1, data: RpcEventData::RpcReq(RpcReq::FetchChanged { from: Version(3), count: 3 }) })))
         ));
-        remote.on_rpc_res(RpcRes::FetchChanged(Err(FetchChangedError::MissingData)));
+        remote.on_rpc_res(RpcRes::FetchChanged(Err(FetchChangedError::MissingData), Version(3)));
         assert!(matches!(
             remote.pop_out(),
             Some(Event::NetEvent(NetEvent::Unicast(
@@ -1840,7 +1848,7 @@ mod tests {
         );
         assert_eq!(ctx.outs.pop_front(), None);
 
-        state.on_rpc_res(&mut ctx, now, RpcRes::FetchChanged(Ok(vec![])));
+        state.on_rpc_res(&mut ctx, now, RpcRes::FetchChanged(Ok(vec![]), Version(1)));
         state.on_tick(&mut ctx, now + REQUEST_TIMEOUT + Duration::from_millis(1));
 
         assert!(
@@ -1883,7 +1891,7 @@ mod tests {
                     version: Version(2),
                     action: Action::Set(20),
                 },
-            ])),
+            ]), Version(1)),
         );
 
         assert_eq!(ctx.outs.pop_front(), Some(Event::KvEvent(KvEvent::Set(Some(1), 1, 10))));
@@ -1929,7 +1937,7 @@ mod tests {
                 key: 1,
                 version: Version(1),
                 action: Action::Set(10),
-            }])),
+            }]), Version(1)),
         );
 
         while matches!(ctx.outs.pop_front(), Some(Event::KvEvent(_))) {}
@@ -2132,7 +2140,7 @@ mod tests {
             })
             .collect();
 
-        state.on_rpc_res(&mut ctx, now, RpcRes::FetchChanged(Ok(changeds)));
+        state.on_rpc_res(&mut ctx, now, RpcRes::FetchChanged(Ok(changeds), Version(1)));
 
         assert!(
             state.pendings.len() <= 1024,
@@ -2278,7 +2286,7 @@ mod tests {
                 key: 1,
                 version: Version(11),
                 action: Action::Set(11),
-            }])),
+            }]), Version(11)),
         );
 
         // After applying version 11 and 12, state.version must be 12.
@@ -2406,7 +2414,7 @@ mod tests {
         let accepted = state.on_rpc_res(
             &mut ctx,
             now,
-            RpcRes::FetchChanged(Err(FetchChangedError::MissingData)),
+            RpcRes::FetchChanged(Err(FetchChangedError::MissingData), Version(2)),
         );
         assert!(accepted);
 
@@ -2590,6 +2598,66 @@ mod tests {
         // We assert that NO delete event is emitted for key 2 during the commit of snapshot at version 3.
         let has_delete = receiver_ctx.outs.iter().any(|event| matches!(event, Event::KvEvent(KvEvent::Del(_, 2))));
         assert!(!has_delete, "Receiver must not emit a premature KvEvent::Del for key 2 during snapshot commit");
+    }
+
+    #[test]
+    fn test_stale_fetch_changed_error_from_previous_cycle_triggers_resync() {
+        let mut ctx: StateCtx<u16, u16, u16> = StateCtx {
+            req_id: 0,
+            remote: 1,
+            local_session_id: 1,
+            slots: BTreeMap::new(),
+            outs: VecDeque::new(),
+            next_state: None,
+        };
+
+        let now = Instant::now();
+        let mut state = RemoteStoreState::Working(WorkingState::new(Version(10)));
+        state.init(&mut ctx, now);
+        ctx.outs.clear();
+
+        // 1. Send first FetchChanged request (from: 11, count: 1)
+        state.on_broadcast(&mut ctx, now, BroadcastEvent {
+            session_id: 2,
+            data: BroadcastEventData::Version(Version(11)),
+        });
+        assert!(matches!(ctx.outs.back(), Some(Event::NetEvent(NetEvent::Unicast(_, RpcEvent { data: RpcEventData::RpcReq(RpcReq::FetchChanged { from: Version(11), .. }), .. })))));
+        ctx.outs.clear();
+
+        // 2. Transition back to SyncFullState due to some error, then complete it and transition back to WorkingState(20)
+        let mut sync_state = SyncFullState::preserve_existing_until_complete();
+        sync_state.init(&mut ctx, now);
+        state = RemoteStoreState::SyncFull(sync_state);
+        ctx.outs.clear();
+
+        // Complete snapshot at version 20
+        let req_id = ctx.req_id;
+        state.on_rpc_res(&mut ctx, now, RpcRes::FetchSnapshot(Some(SnapshotData {
+            slots: vec![(1, Slot::new(10, Version(20)))],
+            skipped_newer: vec![],
+            next_key: None,
+        }), Version(20), req_id));
+
+        let mut next_state = ctx.next_state.take().expect("must transition to working");
+        next_state.init(&mut ctx, now);
+        state = next_state;
+        assert!(matches!(state, RemoteStoreState::Working(_)));
+        ctx.outs.clear();
+
+        // 3. Send a new FetchChanged request (from: 21, count: 1)
+        state.on_broadcast(&mut ctx, now, BroadcastEvent {
+            session_id: 2,
+            data: BroadcastEventData::Version(Version(21)),
+        });
+        assert!(matches!(ctx.outs.back(), Some(Event::NetEvent(NetEvent::Unicast(_, RpcEvent { data: RpcEventData::RpcReq(RpcReq::FetchChanged { from: Version(21), .. }), .. })))));
+        ctx.outs.clear();
+
+        // 4. Receive the stale FetchChanged error response from the previous cycle (which was for version 11)
+        let accepted = state.on_rpc_res(&mut ctx, now, RpcRes::FetchChanged(Err(FetchChangedError::MissingData), Version(11)));
+
+        // We assert that the stale error response must be rejected, and we must NOT transition to SyncFullState.
+        assert!(!accepted, "stale FetchChanged error from previous cycle must be rejected/ignored");
+        assert_eq!(ctx.next_state, None, "stale FetchChanged error must not trigger transition to SyncFullState");
     }
 }
 

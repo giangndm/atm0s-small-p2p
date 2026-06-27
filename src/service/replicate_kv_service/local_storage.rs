@@ -90,7 +90,7 @@ where
     pub fn on_rpc_req(&mut self, from_node: N, req: RpcReq<K>) {
         match req {
             RpcReq::FetchChanged { from, count } => {
-                let res = RpcRes::FetchChanged(self.changeds_from_to(from, count));
+                let res = RpcRes::FetchChanged(self.changeds_from_to(from, count), from);
                 self.outs.push_back(Event::NetEvent(NetEvent::Unicast(
                     from_node,
                     RpcEvent {
@@ -345,7 +345,7 @@ mod tests {
                 2,
                 RpcEvent {
                     session_id: 1,
-                    data: RpcEventData::RpcRes(RpcRes::FetchChanged(Err(FetchChangedError::MissingData)))
+                    data: RpcEventData::RpcRes(RpcRes::FetchChanged(Err(FetchChangedError::MissingData), Version(u64::MAX)))
                 }
             )))
         );
@@ -369,7 +369,7 @@ mod tests {
                         key: 1,
                         version: Version(1),
                         action: Action::Set(1)
-                    }])))
+                    }]), Version(1)))
                 }
             ))),
             "zero compose budget is normalized to a one-change page so FetchChanged can make progress"
@@ -390,7 +390,7 @@ mod tests {
                 2,
                 RpcEvent {
                     session_id: 1,
-                    data: RpcEventData::RpcRes(RpcRes::FetchChanged(Ok(vec![])))
+                    data: RpcEventData::RpcRes(RpcRes::FetchChanged(Ok(vec![]), Version(1)))
                 }
             ))),
             "FetchChanged with zero count must be rejected instead of returning an empty success"
