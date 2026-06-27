@@ -129,6 +129,9 @@ where
                     msg_session_id
                 );
                 self.destroy_remote(&from);
+                if matches!(event, NetEvent::Unicast(_, RpcEvent { data: RpcEventData::RpcRes(_), .. })) {
+                    return;
+                }
             }
         }
 
