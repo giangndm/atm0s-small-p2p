@@ -322,21 +322,22 @@ where
                     snapshot.slots.len(),
                     snapshot.next_key,
                 );
-                let page_items = snapshot.slots.len().saturating_add(snapshot.skipped_newer.len());
-                if page_items > MAX_SNAPSHOT_SLOTS_PER_PAGE {
+                let page_slots = snapshot.slots.len();
+                if page_slots > MAX_SNAPSHOT_SLOTS_PER_PAGE {
                     log::warn!(
-                        "[RemoteStore {:?}] reject snapshot page with {page_items} scanned items over limit {MAX_SNAPSHOT_SLOTS_PER_PAGE}",
+                        "[RemoteStore {:?}] reject snapshot page with {page_slots} slots over limit {MAX_SNAPSHOT_SLOTS_PER_PAGE}",
                         ctx.remote,
                     );
                     return false;
                 }
-                if page_items as u64 > max_items {
+                if page_slots as u64 > max_items {
                     log::warn!(
-                        "[RemoteStore {:?}] reject snapshot page with {page_items} scanned items over requested max_items {max_items}",
+                        "[RemoteStore {:?}] reject snapshot page with {page_slots} slots over requested max_items {max_items}",
                         ctx.remote,
                     );
                     return false;
                 }
+                let page_items = page_slots.saturating_add(snapshot.skipped_newer.len());
                 if page_items == 0 && snapshot.next_key.is_some() {
                     log::warn!("[RemoteStore {:?}] reject empty non-terminal snapshot page with no scanned progress", ctx.remote,);
                     return false;
@@ -2987,6 +2988,132 @@ mod tests {
         // We assert that NO delete event is emitted for key 2 during the commit of snapshot at version 4.
         let has_delete = receiver_ctx.outs.iter().any(|event| matches!(event, Event::KvEvent(KvEvent::Del(_, 2))));
         assert!(!has_delete, "Receiver must not emit a premature KvEvent::Del for key 2 during snapshot commit");
+    }
+
+    #[test]
+    fn test_snapshot_skipped_newer_overflow_livelock() {
+        use super::super::local_storage::LocalStore;
+
+        // Node 1 (Local/Receiver) and Node 2 (Remote/Sender)
+        let mut receiver_ctx: StateCtx<u16, u16, u16> = StateCtx {
+            req_id: 0,
+            remote: 2,
+            local_session_id: 1,
+            slots: BTreeMap::new(),
+            outs: VecDeque::new(),
+            next_state: None,
+        };
+
+        // Initialize remote (Node 2) local store with compose_max_pkts = 1
+        // and max_changeds = 3000 to hold all changes.
+        let mut remote_store: LocalStore<u16, u16, u16> = LocalStore::new(2, 3000, 1);
+
+        // B has keys 1 and 2 (so snapshot has multiple pages)
+        remote_store.set(1, 10);
+        remote_store.set(2, 20);
+        while remote_store.pop_out().is_some() {}
+
+        // Receiver A starts full sync.
+        let mut state = RemoteStoreState::SyncFull(SyncFullState::default());
+        let now = Instant::now();
+        state.init(&mut receiver_ctx, now);
+
+        // Deliver Page 1 request from A to B.
+        let req_event = receiver_ctx.outs.pop_front().expect("must have request");
+        let Event::NetEvent(NetEvent::Unicast(2, rpc_event)) = req_event else {
+            panic!("expected unicast request");
+        };
+        let RpcEventData::RpcReq(req) = rpc_event.data else {
+            panic!("expected RpcReq");
+        };
+        remote_store.on_rpc_req(1, req);
+
+        // Deliver Page 1 response from B to A.
+        // B returns slots = [(1, Slot(10, Version(1)))], next_key = Some(2), version = 2.
+        let res_event = remote_store.pop_out().expect("must have response");
+        let Event::NetEvent(NetEvent::Unicast(1, rpc_event)) = res_event else {
+            panic!("expected unicast response");
+        };
+        let RpcEventData::RpcRes(res) = rpc_event.data else {
+            panic!("expected RpcRes");
+        };
+        let accepted = state.on_rpc_res(&mut receiver_ctx, now, res);
+        assert!(accepted);
+        if let Some(mut next_state) = receiver_ctx.next_state.take() {
+            next_state.init(&mut receiver_ctx, now);
+            state = next_state;
+        }
+
+        // A must still be in SyncFullState, and must have sent Page 2 request.
+        assert!(matches!(state, RemoteStoreState::SyncFull(_)));
+
+        // Now, mutate B 2000 times! (e.g. setting keys 3..2002)
+        // This generates 2000 changes in B's changeds newer than version 2.
+        for i in 3..=2002 {
+            remote_store.set(i, i * 10);
+        }
+        while remote_store.pop_out().is_some() {}
+
+        // Deliver Page 2 request from A to B.
+        let req_event2 = receiver_ctx.outs.pop_front().expect("must have request");
+        let Event::NetEvent(NetEvent::Unicast(2, rpc_event2)) = req_event2 else {
+            panic!("expected unicast request");
+        };
+        let RpcEventData::RpcReq(req2) = rpc_event2.data else {
+            panic!("expected RpcReq");
+        };
+        remote_store.on_rpc_req(1, req2);
+
+        // Deliver Page 2 response from B to A.
+        // B returns slots = [(2, Slot(20, Version(2)))], next_key = None.
+        // But B's skipped_newer will contain the 2000 newly set keys!
+        let res_event2 = remote_store.pop_out().expect("must have response");
+        let Event::NetEvent(NetEvent::Unicast(1, rpc_event2)) = res_event2 else {
+            panic!("expected unicast response");
+        };
+        let RpcEventData::RpcRes(res2) = rpc_event2.data else {
+            panic!("expected RpcRes");
+        };
+        
+        let accepted2 = state.on_rpc_res(&mut receiver_ctx, now, res2);
+        assert!(accepted2);
+        if let Some(mut next_state) = receiver_ctx.next_state.take() {
+            next_state.init(&mut receiver_ctx, now);
+            state = next_state;
+        }
+
+        // Deliver all intermediate pages up to the terminal page 2002.
+        for expected_req_id in 3..=2002 {
+            let req_event = receiver_ctx.outs.pop_front().expect("must have request");
+            let Event::NetEvent(NetEvent::Unicast(2, rpc_event)) = req_event else {
+                panic!("expected unicast request");
+            };
+            let RpcEventData::RpcReq(req) = rpc_event.data else {
+                panic!("expected RpcReq");
+            };
+            remote_store.on_rpc_req(1, req);
+
+            let res_event = remote_store.pop_out().expect("must have response");
+            let Event::NetEvent(NetEvent::Unicast(1, rpc_event)) = res_event else {
+                panic!("expected unicast response");
+            };
+            let RpcEventData::RpcRes(res) = rpc_event.data else {
+                panic!("expected RpcRes");
+            };
+            
+            let accepted = state.on_rpc_res(&mut receiver_ctx, now, res);
+            if expected_req_id == 2002 {
+                // The last page has 2000 items in skipped_newer, so A must reject it!
+                // To make the test fail, we assert that A accepts it successfully.
+                assert!(accepted, "A must accept the snapshot page successfully to complete synchronization");
+            } else {
+                assert!(accepted);
+                if let Some(mut next_state) = receiver_ctx.next_state.take() {
+                    next_state.init(&mut receiver_ctx, now);
+                    state = next_state;
+                }
+            }
+        }
     }
 }
 
