@@ -113,6 +113,7 @@ where
             return;
         }
 
+        let mut skip_processing = false;
         if let Some(remote) = self.remotes.get(&from) {
             if remote.session_id != msg_session_id {
                 if msg_session_id < remote.session_id {
@@ -130,7 +131,7 @@ where
                 );
                 self.destroy_remote(&from);
                 if matches!(event, NetEvent::Unicast(_, RpcEvent { data: RpcEventData::RpcRes(_), .. })) {
-                    return;
+                    skip_processing = true;
                 }
             }
         }
@@ -152,31 +153,33 @@ where
             self.remotes.insert(from.clone(), remote);
         }
 
-        match event {
-            NetEvent::Broadcast(event) => {
-                if let Some(remote) = self.remotes.get_mut(&from) {
-                    remote.on_broadcast(event);
-                    while let Some(event) = remote.pop_out() {
-                        Self::push_out(&mut self.outs, event);
-                    }
-                }
-            }
-            NetEvent::Unicast(_from, event) => match event.data {
-                RpcEventData::RpcReq(rpc_req) => {
-                    self.local.on_rpc_req(from, rpc_req);
-                    while let Some(event) = self.local.pop_out() {
-                        Self::push_out(&mut self.outs, event);
-                    }
-                }
-                RpcEventData::RpcRes(rpc_res) => {
+        if !skip_processing {
+            match event {
+                NetEvent::Broadcast(event) => {
                     if let Some(remote) = self.remotes.get_mut(&from) {
-                        remote.on_rpc_res(rpc_res);
+                        remote.on_broadcast(event);
                         while let Some(event) = remote.pop_out() {
                             Self::push_out(&mut self.outs, event);
                         }
                     }
                 }
-            },
+                NetEvent::Unicast(_from, event) => match event.data {
+                    RpcEventData::RpcReq(rpc_req) => {
+                        self.local.on_rpc_req(from, rpc_req);
+                        while let Some(event) = self.local.pop_out() {
+                            Self::push_out(&mut self.outs, event);
+                        }
+                    }
+                    RpcEventData::RpcRes(rpc_res) => {
+                        if let Some(remote) = self.remotes.get_mut(&from) {
+                            remote.on_rpc_res(rpc_res);
+                            while let Some(event) = remote.pop_out() {
+                                Self::push_out(&mut self.outs, event);
+                            }
+                        }
+                    }
+                },
+            }
         }
     }
 
