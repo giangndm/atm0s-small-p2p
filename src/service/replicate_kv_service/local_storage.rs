@@ -165,9 +165,7 @@ where
 
         if next_key.is_none() && max_version < self.version {
             for (v, changed) in self.changeds.range(Version(max_version.0 + 1)..) {
-                if !self.slots.contains_key(&changed.key)
-                    && !skipped_newer.iter().any(|(k, _)| k == &changed.key)
-                {
+                if !skipped_newer.iter().any(|(k, _)| k == &changed.key) {
                     skipped_newer.push((changed.key.clone(), *v));
                 }
             }
@@ -548,7 +546,7 @@ mod tests {
             store.snapshot(Some(2), Some(Version(2)), 1),
             Some(SnapshotData {
                 slots: vec![],
-                skipped_newer: vec![(2, Version(4))],
+                skipped_newer: vec![(2, Version(4)), (1, Version(3))],
                 next_key: None,
             }),
             "an empty page caused by skipped newer keys may complete when the scan is exhausted"

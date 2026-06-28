@@ -2841,12 +2841,152 @@ mod tests {
         // Deliver the stale response to A.
         store.on_remote_event(2, stale_response);
 
-        // Since the stale response had a new session ID, A must have destroyed B's old remote store,
-        // and must NOT have recreated B's remote store from the unsolicited response.
-        assert!(
-            store.remotes.get(&2).is_none(),
-            "RemoteStore must be destroyed and not recreated on unsolicited stale response"
+        // A must have destroyed B's old remote store, and recreated a new one with session ID 11.
+        let remote = store.remotes.get(&2).expect("RemoteStore must exist and be recreated with new session ID");
+        assert_eq!(remote.session_id, 11);
+        
+        // But the stale snapshot payload must have been ignored (so key 999 is not present, and it's not in WorkingState).
+        assert_eq!(
+            remote.ctx.slots.contains_key(&999),
+            false,
+            "RemoteStore must not accept stale snapshot data from a different session"
         );
+        assert!(
+            !matches!(remote.state, RemoteStoreState::Working(_)),
+            "RemoteStore must not transition to WorkingState using stale snapshot data"
+        );
+    }
+
+    #[test]
+    fn test_future_updated_key_less_than_from_causes_premature_delete() {
+        use super::super::local_storage::LocalStore;
+
+        // Node 1 (Local/Receiver) and Node 2 (Remote/Sender)
+        // Receiver initially has key 2 at version 2
+        let mut receiver_ctx: StateCtx<u16, u16, u16> = StateCtx {
+            req_id: 0,
+            remote: 2,
+            local_session_id: 1,
+            slots: BTreeMap::from([(2, Slot::new(20, Version(2)))]),
+            outs: VecDeque::new(),
+            next_state: None,
+        };
+
+        // Initialize remote (Node 2) local store with compose_max_pkts = 1
+        let mut remote_store: LocalStore<u16, u16, u16> = LocalStore::new(2, 10, 1);
+
+        // Put keys 1, 3, 4 in the remote store (versions 1, 3, 4)
+        remote_store.set(1, 10);
+        remote_store.set(3, 30);
+        remote_store.set(4, 40);
+        while remote_store.pop_out().is_some() {}
+
+        // Receiver starts full sync.
+        let mut state = RemoteStoreState::SyncFull(SyncFullState::default());
+        let now = Instant::now();
+        state.init(&mut receiver_ctx, now);
+
+        // Deliver Page 1 request from A to B.
+        // B's current version is 4.
+        let req_event = receiver_ctx.outs.pop_front().expect("must have request");
+        let Event::NetEvent(NetEvent::Unicast(2, rpc_event)) = req_event else {
+            panic!("expected unicast request");
+        };
+        let RpcEventData::RpcReq(req) = rpc_event.data else {
+            panic!("expected RpcReq");
+        };
+        remote_store.on_rpc_req(1, req);
+
+        // Deliver Page 1 response from B to A.
+        // B returns slots = [(1, Slot::new(10, Version(1)))], next_key = Some(3), version = 4.
+        let res_event = remote_store.pop_out().expect("must have response");
+        let Event::NetEvent(NetEvent::Unicast(1, rpc_event)) = res_event else {
+            panic!("expected unicast response");
+        };
+        let RpcEventData::RpcRes(res) = rpc_event.data else {
+            panic!("expected RpcRes");
+        };
+        let accepted = state.on_rpc_res(&mut receiver_ctx, now, res);
+        assert!(accepted);
+        if let Some(mut next_state) = receiver_ctx.next_state.take() {
+            next_state.init(&mut receiver_ctx, now);
+            state = next_state;
+        }
+
+        // A locks snapshot version to 4.
+        assert!(matches!(state, RemoteStoreState::SyncFull(_)));
+
+        // Now B sets key 2 (version 5).
+        remote_store.set(2, 25);
+        while remote_store.pop_out().is_some() {}
+
+        // Deliver Page 2 request from A to B.
+        // from = Some(3), max_version = Some(Version(4))
+        let req_event2 = receiver_ctx.outs.pop_front().expect("must have request");
+        let Event::NetEvent(NetEvent::Unicast(2, rpc_event2)) = req_event2 else {
+            panic!("expected unicast request");
+        };
+        let RpcEventData::RpcReq(req2) = rpc_event2.data else {
+            panic!("expected RpcReq");
+        };
+        remote_store.on_rpc_req(1, req2);
+
+        // Deliver Page 2 response from B to A.
+        // B scans from 3, finds 3.
+        // returns slots = [(3, Slot::new(30, Version(3)))], next_key = Some(4).
+        let res_event2 = remote_store.pop_out().expect("must have response");
+        let Event::NetEvent(NetEvent::Unicast(1, rpc_event2)) = res_event2 else {
+            panic!("expected unicast response");
+        };
+        let RpcEventData::RpcRes(res2) = rpc_event2.data else {
+            panic!("expected RpcRes");
+        };
+        let accepted2 = state.on_rpc_res(&mut receiver_ctx, now, res2);
+        assert!(accepted2);
+        if let Some(mut next_state) = receiver_ctx.next_state.take() {
+            next_state.init(&mut receiver_ctx, now);
+            state = next_state;
+        }
+
+        assert!(matches!(state, RemoteStoreState::SyncFull(_)));
+
+        // Deliver Page 3 request from A to B.
+        // from = Some(4), max_version = Some(Version(4))
+        let req_event3 = receiver_ctx.outs.pop_front().expect("must have request");
+        let Event::NetEvent(NetEvent::Unicast(2, rpc_event3)) = req_event3 else {
+            panic!("expected unicast request");
+        };
+        let RpcEventData::RpcReq(req3) = rpc_event3.data else {
+            panic!("expected RpcReq");
+        };
+        remote_store.on_rpc_req(1, req3);
+
+        // Deliver Page 3 response from B to A.
+        // B returns slots = [(4, Slot::new(40, Version(4)))], next_key = None.
+        // B checks changeds from version 5. Contains (5, Set(2)).
+        // Since key 2 exists in B's slots (at version 5), B's `!self.slots.contains_key(&2)` check is false.
+        // So B does NOT include key 2 in skipped_newer!
+        let res_event3 = remote_store.pop_out().expect("must have response");
+        let Event::NetEvent(NetEvent::Unicast(1, rpc_event3)) = res_event3 else {
+            panic!("expected unicast response");
+        };
+        let RpcEventData::RpcRes(res3) = rpc_event3.data else {
+            panic!("expected RpcRes");
+        };
+        let accepted3 = state.on_rpc_res(&mut receiver_ctx, now, res3);
+        assert!(accepted3);
+        if let Some(mut next_state) = receiver_ctx.next_state.take() {
+            next_state.init(&mut receiver_ctx, now);
+            state = next_state;
+        }
+
+        // A must transition to WorkingState now.
+        assert!(matches!(state, RemoteStoreState::Working(_)));
+
+        // The bug causes A to emit a Del(2) event prematurely because key 2 is omitted from skipped_newer.
+        // We assert that NO delete event is emitted for key 2 during the commit of snapshot at version 4.
+        let has_delete = receiver_ctx.outs.iter().any(|event| matches!(event, Event::KvEvent(KvEvent::Del(_, 2))));
+        assert!(!has_delete, "Receiver must not emit a premature KvEvent::Del for key 2 during snapshot commit");
     }
 }
 
