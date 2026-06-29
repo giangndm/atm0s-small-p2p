@@ -46,7 +46,7 @@ where
     K: Debug + Hash + Ord + Eq + Clone,
     V: Debug + Eq + Clone,
 {
-    pub fn new(max_changeds: usize, max_compose_pkts: usize) -> Self {
+    pub fn new(node_id: N, max_changeds: usize, max_compose_pkts: usize) -> Self {
         let session_id = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .map(|d| d.as_millis() as u64)
@@ -54,7 +54,7 @@ where
         ReplicatedKvStore {
             session_id,
             remotes: HashMap::new(),
-            local: LocalStore::new(session_id, max_changeds, max_compose_pkts),
+            local: LocalStore::new(node_id, session_id, max_changeds, max_compose_pkts),
             outs: VecDeque::new(),
         }
     }
@@ -103,60 +103,60 @@ where
     }
 
     pub fn on_remote_event(&mut self, from: N, event: NetEvent<N, K, V>) {
-        let msg_session_id = match &event {
-            NetEvent::Broadcast(broadcast_event) => broadcast_event.session_id,
-            NetEvent::Unicast(_, rpc_event) => rpc_event.session_id,
+        let (original_source, msg_session_id) = match &event {
+            NetEvent::Broadcast(broadcast_event) => (broadcast_event.source.clone(), broadcast_event.session_id),
+            NetEvent::Unicast(_, rpc_event) => (from.clone(), rpc_event.session_id),
         };
 
-        if !self.remotes.contains_key(&from) && matches!(event, NetEvent::Unicast(_, RpcEvent { data: RpcEventData::RpcRes(_), .. })) {
-            log::warn!("[ReplicatedKvService] reject unsolicited RPC response from unknown remote {from:?}");
+        if !self.remotes.contains_key(&original_source) && matches!(event, NetEvent::Unicast(_, RpcEvent { data: RpcEventData::RpcRes(_), .. })) {
+            log::warn!("[ReplicatedKvService] reject unsolicited RPC response from unknown remote {original_source:?}");
             return;
         }
 
         let mut skip_processing = false;
-        if let Some(remote) = self.remotes.get(&from) {
+        if let Some(remote) = self.remotes.get(&original_source) {
             if remote.session_id != msg_session_id {
                 if msg_session_id < remote.session_id {
                     log::warn!(
-                        "[ReplicatedKvService] ignore stale packet from {from:?} with old session ID: {} (current: {})",
+                        "[ReplicatedKvService] ignore stale packet from {original_source:?} with old session ID: {} (current: {})",
                         msg_session_id,
                         remote.session_id
                     );
                     return;
                 }
                 log::info!(
-                    "[ReplicatedKvService] session ID changed for {from:?}: {} -> {}, restarting sync",
+                    "[ReplicatedKvService] session ID changed for {original_source:?}: {} -> {}, restarting sync",
                     remote.session_id,
                     msg_session_id
                 );
-                self.destroy_remote(&from);
+                self.destroy_remote(&original_source);
                 if matches!(event, NetEvent::Unicast(_, RpcEvent { data: RpcEventData::RpcRes(_), .. })) {
                     skip_processing = true;
                 }
             }
         }
 
-        if !self.remotes.contains_key(&from) {
+        if !self.remotes.contains_key(&original_source) {
             if self.remotes.len() >= MAX_REMOTE_STORES {
                 self.cleanup_timed_out_remotes();
                 if self.remotes.len() >= MAX_REMOTE_STORES {
-                    log::warn!("[ReplicatedKvService] reject new remote {from:?}: remote store cap {MAX_REMOTE_STORES} reached");
+                    log::warn!("[ReplicatedKvService] reject new remote {original_source:?}: remote store cap {MAX_REMOTE_STORES} reached");
                     return;
                 }
             }
 
-            log::info!("[ReplicatedKvService] add remote {from:?} with session {msg_session_id}");
-            let mut remote = RemoteStore::new(from.clone(), self.session_id, msg_session_id);
+            log::info!("[ReplicatedKvService] add remote {original_source:?} with session {msg_session_id}");
+            let mut remote = RemoteStore::new(original_source.clone(), self.session_id, msg_session_id);
             while let Some(event) = remote.pop_out() {
                 Self::push_out(&mut self.outs, event);
             }
-            self.remotes.insert(from.clone(), remote);
+            self.remotes.insert(original_source.clone(), remote);
         }
 
         if !skip_processing {
             match event {
                 NetEvent::Broadcast(event) => {
-                    if let Some(remote) = self.remotes.get_mut(&from) {
+                    if let Some(remote) = self.remotes.get_mut(&original_source) {
                         remote.on_broadcast(event);
                         while let Some(event) = remote.pop_out() {
                             Self::push_out(&mut self.outs, event);
@@ -171,14 +171,14 @@ where
                         }
                     }
                     RpcEventData::RpcRes(rpc_res) => {
-                        if let Some(remote) = self.remotes.get_mut(&from) {
+                        if let Some(remote) = self.remotes.get_mut(&original_source) {
                             remote.on_rpc_res(rpc_res);
                             while let Some(event) = remote.pop_out() {
                                 Self::push_out(&mut self.outs, event);
                             }
                         }
                     }
-                },
+                }
             }
         }
     }
@@ -221,10 +221,11 @@ where
     V: Debug + Eq + Clone + DeserializeOwned + Serialize,
 {
     pub fn new(service: P2pService, max_changeds: usize, max_compose_pkts: usize) -> Self {
+        let local_peer_id = service.local_peer_id();
         Self {
             service,
             tick: tokio::time::interval(std::time::Duration::from_millis(1000)),
-            store: ReplicatedKvStore::new(max_changeds, max_compose_pkts),
+            store: ReplicatedKvStore::new(local_peer_id, max_changeds, max_compose_pkts),
         }
     }
 
@@ -283,7 +284,7 @@ where
                     continue;
                 }
                 Poll::Ready(Some(P2pServiceEvent::Broadcast(peer_id, vec))) => {
-                    match bincode::deserialize::<BroadcastEvent<K, V>>(&vec) {
+                    match bincode::deserialize::<BroadcastEvent<PeerId, K, V>>(&vec) {
                         Ok(event) => self.store.on_remote_event(peer_id, NetEvent::Broadcast(event)),
                         Err(err) => log::error!("[ReplicatedKvService] deserialize error {err}"),
                     }
@@ -336,12 +337,13 @@ mod tests {
 
     #[test]
     fn remote_store_creation_must_be_bounded() {
-        let mut store: ReplicatedKvStore<u64, u64, u64> = ReplicatedKvStore::new(10, 10);
+        let mut store: ReplicatedKvStore<u64, u64, u64> = ReplicatedKvStore::new(1, 10, 10);
 
         for from in 0..=MAX_REMOTE_STORES as u64 {
             store.on_remote_event(
                 from,
                 NetEvent::Broadcast(BroadcastEvent {
+                    source: from,
                     session_id: 1,
                     data: BroadcastEventData::Version(Version(0)),
                 }),
@@ -357,7 +359,7 @@ mod tests {
 
     #[test]
     fn unsolicited_rpc_response_from_unknown_peer_must_not_create_remote_store() {
-        let mut store: ReplicatedKvStore<u64, u64, u64> = ReplicatedKvStore::new(10, 10);
+        let mut store: ReplicatedKvStore<u64, u64, u64> = ReplicatedKvStore::new(1, 10, 10);
         let unknown_peer = 42;
 
         store.on_remote_event(
@@ -366,7 +368,7 @@ mod tests {
                 unknown_peer,
                 RpcEvent {
                     session_id: 2,
-                    data: RpcEventData::RpcRes(messages::RpcRes::FetchChanged(Err(messages::FetchChangedError::MissingData), messages::Version(0))),
+                    data: RpcEventData::RpcRes(messages::RpcRes::FetchChanged(Err(messages::FetchChangedError::MissingData), messages::Version(0), 1)),
                 },
             ),
         );
@@ -378,7 +380,7 @@ mod tests {
     #[test]
     fn replicated_kv_local_outbound_event_queue_must_be_bounded() {
         const MAX_PENDING_EVENTS: usize = 1024;
-        let mut store: ReplicatedKvStore<u64, u64, u64> = ReplicatedKvStore::new(10, 10);
+        let mut store: ReplicatedKvStore<u64, u64, u64> = ReplicatedKvStore::new(1, 10, 10);
 
         for key in 0..=MAX_PENDING_EVENTS {
             store.set(key as u64, key as u64);
@@ -389,7 +391,7 @@ mod tests {
 
     #[test]
     fn paginated_full_sync_must_recover_when_snapshot_version_becomes_unavailable() {
-        let mut local: LocalStore<u16, u16, u16> = LocalStore::new(1, 10, 1);
+        let mut local: LocalStore<u16, u16, u16> = LocalStore::new(1, 1, 10, 1);
         local.set(1, 10);
         local.set(2, 20);
         while local.pop_out().is_some() {}
@@ -492,14 +494,14 @@ mod tests {
                 1,
                 RpcEvent {
                     session_id: 1,
-                    data: RpcEventData::RpcReq(messages::RpcReq::FetchChanged { from: Version(3), count: 1 })
+                    data: RpcEventData::RpcReq(messages::RpcReq::FetchChanged { from: Version(3), count: 1, req_id: 3 })
                 }
             ))),
             "after the pivoted full sync reports a skipped newer key, the remote should catch up without waiting for another broadcast"
         );
         assert_eq!(remote.pop_out(), None);
 
-        local.on_rpc_req(1, messages::RpcReq::FetchChanged { from: Version(3), count: 1 });
+        local.on_rpc_req(1, messages::RpcReq::FetchChanged { from: Version(3), count: 1, req_id: 3 });
         let Some(Event::NetEvent(NetEvent::Unicast(
             _,
             RpcEvent {
@@ -528,13 +530,14 @@ mod tests {
 
     #[test]
     fn stale_session_id_packets_must_be_ignored() {
-        let mut store: ReplicatedKvStore<u64, u64, u64> = ReplicatedKvStore::new(10, 10);
+        let mut store: ReplicatedKvStore<u64, u64, u64> = ReplicatedKvStore::new(1, 10, 10);
         let peer = 42;
 
         // 1. Send an event with session_id = 2. This should create a RemoteStore with session_id = 2.
         store.on_remote_event(
             peer,
             NetEvent::Broadcast(BroadcastEvent {
+                source: peer,
                 session_id: 2,
                 data: BroadcastEventData::Version(Version(0)),
             }),
@@ -550,6 +553,7 @@ mod tests {
         store.on_remote_event(
             peer,
             NetEvent::Broadcast(BroadcastEvent {
+                source: peer,
                 session_id: 1,
                 data: BroadcastEventData::Version(Version(0)),
             }),
@@ -565,6 +569,7 @@ mod tests {
         store.on_remote_event(
             peer,
             NetEvent::Broadcast(BroadcastEvent {
+                source: peer,
                 session_id: 3,
                 data: BroadcastEventData::Version(Version(0)),
             }),
