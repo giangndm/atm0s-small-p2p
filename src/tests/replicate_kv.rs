@@ -174,8 +174,8 @@ fn fuzz_replicated_kv_convergence_under_network_gaps() {
     let node1 = PeerId::from(1);
     let node2 = PeerId::from(2);
 
-    let mut store1 = ReplicatedKvStore::new(100, 3);
-    let mut store2 = ReplicatedKvStore::new(100, 3);
+    let mut store1 = ReplicatedKvStore::new(node1, 100, 3);
+    let mut store2 = ReplicatedKvStore::new(node2, 100, 3);
 
     struct Packet {
         from: PeerId,

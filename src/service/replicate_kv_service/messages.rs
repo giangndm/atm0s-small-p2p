@@ -74,7 +74,8 @@ impl Deref for Version {
 }
 
 #[derive(Debug, PartialEq, Eq, Serialize, Deserialize, Clone)]
-pub struct BroadcastEvent<K, V> {
+pub struct BroadcastEvent<N, K, V> {
+    pub source: N,
     pub session_id: u64,
     pub data: BroadcastEventData<K, V>,
 }
@@ -87,7 +88,7 @@ pub enum BroadcastEventData<K, V> {
 
 #[derive(Debug, PartialEq, Eq, Serialize, Deserialize, Clone)]
 pub enum RpcReq<K> {
-    FetchChanged { from: Version, count: u64 },
+    FetchChanged { from: Version, count: u64, req_id: u64 },
     FetchSnapshot { from: Option<K>, max_version: Option<Version>, max_items: u64, req_id: u64 },
 }
 
@@ -105,7 +106,7 @@ pub struct SnapshotData<K, V> {
 
 #[derive(Debug, PartialEq, Eq, Serialize, Deserialize, Clone)]
 pub enum RpcRes<K, V> {
-    FetchChanged(Result<Vec<Changed<K, V>>, FetchChangedError>, Version),
+    FetchChanged(Result<Vec<Changed<K, V>>, FetchChangedError>, Version, u64),
     FetchSnapshot(Option<SnapshotData<K, V>>, Version, u64),
 }
 
@@ -135,6 +136,6 @@ pub enum Event<N, K, V> {
 
 #[derive(Debug, PartialEq, Eq, Serialize, Deserialize, Clone)]
 pub enum NetEvent<N, K, V> {
-    Broadcast(BroadcastEvent<K, V>),
+    Broadcast(BroadcastEvent<N, K, V>),
     Unicast(N, RpcEvent<K, V>),
 }

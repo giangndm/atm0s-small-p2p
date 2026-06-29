@@ -40,6 +40,10 @@ pub struct P2pService {
 }
 
 impl P2pService {
+    pub fn local_peer_id(&self) -> PeerId {
+        self.ctx.local_id()
+    }
+
     pub(super) fn build(service: P2pServiceId, ctx: SharedCtx) -> (Self, Sender<P2pServiceEvent>) {
         let (tx, rx) = channel(SERVICE_CHANNEL_SIZE);
         (
