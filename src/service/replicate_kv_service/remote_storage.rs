@@ -523,6 +523,16 @@ where
                 }
             }
         }
+
+        if self.pendings.len() >= MAX_PENDING_CHANGEDS {
+            log::warn!(
+                "[RemoteStore {:?}] pending changed cap {MAX_PENDING_CHANGEDS} exceeded after apply => switch to full sync",
+                ctx.remote
+            );
+            self.pendings.clear();
+            self.sending_req = None;
+            ctx.next_state = Some(RemoteStoreState::SyncFull(SyncFullState::preserve_existing_until_complete()));
+        }
     }
 
     fn enqueue_pending_changed(&mut self, ctx: &mut StateCtx<N, K, V>, changed: Changed<K, V>) -> bool {
@@ -534,13 +544,6 @@ where
         }
         if self.pendings.contains_key(&changed.version) {
             return false;
-        }
-        if self.pendings.len() >= MAX_PENDING_CHANGEDS {
-            log::warn!("[RemoteStore {:?}] pending changed cap {MAX_PENDING_CHANGEDS} exceeded => switch to full sync", ctx.remote);
-            self.pendings.clear();
-            self.sending_req = None;
-            ctx.next_state = Some(RemoteStoreState::SyncFull(SyncFullState::preserve_existing_until_complete()));
-            return true;
         }
         self.latest_seen_version = Some(self.latest_seen_version.map_or(changed.version, |v| v.max(changed.version)));
         self.pendings.insert(changed.version, changed);
@@ -3114,6 +3117,51 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn test_large_fetch_changed_page_causes_spurious_resync() {
+        let mut ctx: StateCtx<u16, u16, u16> = StateCtx {
+            req_id: 0,
+            remote: 1,
+            local_session_id: 1,
+            slots: BTreeMap::new(),
+            outs: VecDeque::new(),
+            next_state: None,
+        };
+
+        let now = Instant::now();
+        let mut state = RemoteStoreState::Working(WorkingState::new(Version(10)));
+        state.init(&mut ctx, now);
+        ctx.outs.clear();
+
+        state.on_broadcast(&mut ctx, now, BroadcastEvent {
+            session_id: 2,
+            data: BroadcastEventData::Version(Version(10 + MAX_PENDING_CHANGEDS as u64 + 1)),
+        });
+        
+        let req_event = ctx.outs.pop_front().expect("must have request");
+        let Event::NetEvent(NetEvent::Unicast(_, RpcEvent { data: RpcEventData::RpcReq(RpcReq::FetchChanged { from, count }), .. })) = req_event else {
+            panic!("expected FetchChanged request");
+        };
+        assert_eq!(from, Version(11));
+        assert_eq!(count, MAX_PENDING_CHANGEDS as u64 + 1);
+        ctx.outs.clear();
+
+        let mut changeds = Vec::new();
+        for i in 0..=MAX_PENDING_CHANGEDS {
+            let version = Version(11 + i as u64);
+            changeds.push(Changed {
+                key: 1,
+                version,
+                action: Action::Set(100),
+            });
+        }
+
+        let accepted = state.on_rpc_res(&mut ctx, now, RpcRes::FetchChanged(Ok(changeds), Version(11)));
+        
+        assert!(accepted, "must accept the FetchChanged response");
+        assert_eq!(ctx.next_state, None, "should not transition back to SyncFullState on receiving a valid FetchChanged page exceeding MAX_PENDING_CHANGEDS");
     }
 }
 
