@@ -11,7 +11,7 @@ use std::{
 };
 
 use anyhow::Context;
-use atm0s_small_p2p::{InboundPeerBindings, P2pNetwork, P2pNetworkConfig, P2pQuicStream, P2pServiceEvent, P2pServiceRequester, PeerAddress, PeerId, SharedKeyHandshake};
+use atm0s_small_p2p::{P2pNetwork, P2pNetworkConfig, P2pQuicStream, P2pServiceEvent, P2pServiceRequester, PeerAddress, PeerId, SharedKeyHandshake};
 use clap::Parser;
 use rand::{rngs::StdRng, Rng, SeedableRng};
 use rustls::pki_types::{CertificateDer, PrivatePkcs8KeyDer};
@@ -168,7 +168,6 @@ async fn create_node(advertise: bool, peer_id: u64, seeds: Vec<PeerAddress>) -> 
         peer_id,
         listen_addr: addr,
         advertise: advertise.then(|| addr.into()),
-        inbound_peer_bindings: InboundPeerBindings::insecure_open_cluster(),
         priv_key,
         cert,
         tick_ms: 100,

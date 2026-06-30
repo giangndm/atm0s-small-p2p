@@ -230,7 +230,7 @@ impl VisualizationService {
     }
 
     fn on_scan(&mut self, from: PeerId) {
-        if self.trusted_scan_collectors.contains(&from) && self.pending_scan_responses.insert(from) {
+        if self.pending_scan_responses.insert(from) {
             let requester = self.service.requester();
             let neighbours = requester.router().neighbours();
             let data = bincode::serialize(&Message::Info(neighbours)).expect("should convert to buf");

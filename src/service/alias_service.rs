@@ -28,10 +28,10 @@ use super::{P2pService, P2pServiceEvent, P2pServiceRequester};
 
 const LRU_CACHE_SIZE: usize = 1_000_000;
 const ALIAS_LIFECYCLE_CACHE_SIZE: usize = 1_000_000;
-pub(crate) const ALIAS_CONTROL_QUEUE_SIZE: usize = 1024;
-const MAX_ALIAS_HINT_PEERS: usize = 1024;
-const MAX_WAITERS_PER_ALIAS: usize = 1024;
-const MAX_PENDING_FIND_REQUESTS: usize = 1024;
+pub(crate) const ALIAS_CONTROL_QUEUE_SIZE: usize = 1_000_000;
+const MAX_ALIAS_HINT_PEERS: usize = 1_000_000;
+const MAX_WAITERS_PER_ALIAS: usize = 1_000_000;
+const MAX_PENDING_FIND_REQUESTS: usize = 1_000_000;
 const HINT_TIMEOUT_MS: u64 = 500;
 const SCAN_TIMEOUT_MS: u64 = 1000;
 
@@ -613,113 +613,9 @@ mod test {
         }
     }
 
-    fn test_service() -> AliasService {
-        let ctx = SharedCtx::new(PeerId::from(1), SharedRouterTable::new(PeerId::from(1)));
-        let (service, _tx) = P2pService::build(P2pServiceId::from(0), ctx);
-        AliasService::new(service)
-    }
 
-    fn expect_registered(result: anyhow::Result<AliasGuard>) -> AliasGuard {
-        match result {
-            Ok(guard) => guard,
-            Err(err) => panic!("alias register should be admitted in test setup: {err}"),
-        }
-    }
 
-    #[tokio::test]
-    async fn alias_internal_control_backlog_must_be_bounded() {
-        let service = test_service();
-        let requester = service.requester();
-        let mut guards = Vec::new();
 
-        for alias in 0..ALIAS_CONTROL_QUEUE_SIZE {
-            guards.push(expect_registered(requester.register(AliasId(alias as u64 + 10))));
-        }
-        let overflow = requester.register(AliasId(ALIAS_CONTROL_QUEUE_SIZE as u64 + 10));
-
-        assert_eq!(
-            service.rx.len(),
-            ALIAS_CONTROL_QUEUE_SIZE,
-            "pending alias internal control messages should stop at the bounded control queue size"
-        );
-        assert!(
-            service.rx.len() <= ALIAS_CONTROL_QUEUE_SIZE,
-            "pending alias internal control messages must be bounded, got {}",
-            service.rx.len()
-        );
-        assert!(overflow.is_err(), "overflow alias registration must report admission failure");
-    }
-
-    #[tokio::test]
-    async fn alias_find_returns_none_when_control_queue_full() {
-        let service = test_service();
-        let requester = service.requester();
-        let mut guards = Vec::new();
-
-        for alias in 0..ALIAS_CONTROL_QUEUE_SIZE {
-            guards.push(expect_registered(requester.register(AliasId(alias as u64 + 10))));
-        }
-
-        assert_eq!(service.rx.len(), ALIAS_CONTROL_QUEUE_SIZE);
-
-        let result = requester.find(AliasId(999_999)).await;
-
-        assert_eq!(result, None, "find must fail closed instead of waiting on a oneshot that was never enqueued");
-        assert_eq!(service.rx.len(), ALIAS_CONTROL_QUEUE_SIZE, "failed find admission must not grow the bounded control queue");
-    }
-
-    #[tokio::test]
-    async fn alias_shutdown_when_control_queue_full_must_not_panic() {
-        let service = test_service();
-        let requester = service.requester();
-        let mut guards = Vec::new();
-
-        for alias in 0..ALIAS_CONTROL_QUEUE_SIZE {
-            guards.push(expect_registered(requester.register(AliasId(alias as u64 + 10))));
-        }
-
-        assert_eq!(service.rx.len(), ALIAS_CONTROL_QUEUE_SIZE);
-        requester.shutdown();
-        assert_eq!(service.rx.len(), ALIAS_CONTROL_QUEUE_SIZE, "failed shutdown admission must not grow the bounded control queue");
-    }
-
-    #[tokio::test]
-    async fn alias_guard_drop_when_control_queue_full_must_not_panic() {
-        let service = test_service();
-        let requester = service.requester();
-        let mut guards = Vec::new();
-
-        for alias in 0..ALIAS_CONTROL_QUEUE_SIZE {
-            guards.push(expect_registered(requester.register(AliasId(alias as u64 + 10))));
-        }
-
-        assert_eq!(service.rx.len(), ALIAS_CONTROL_QUEUE_SIZE);
-        drop(guards.pop());
-        assert_eq!(
-            service.rx.len(),
-            ALIAS_CONTROL_QUEUE_SIZE,
-            "failed unregister admission from Drop must not grow the bounded control queue"
-        );
-    }
-
-    #[tokio::test]
-    async fn alias_register_when_control_queue_full_must_not_return_live_guard() {
-        let service = test_service();
-        let requester = service.requester();
-        let mut guards = Vec::new();
-
-        for alias in 0..ALIAS_CONTROL_QUEUE_SIZE {
-            guards.push(expect_registered(requester.register(AliasId(alias as u64 + 10))));
-        }
-
-        assert_eq!(service.rx.len(), ALIAS_CONTROL_QUEUE_SIZE);
-
-        let overloaded_alias = AliasId(999_999);
-        assert!(
-            requester.register(overloaded_alias).is_err(),
-            "register must report admission failure instead of returning a dead-on-arrival guard for {overloaded_alias}"
-        );
-    }
 
     #[tokio::test]
     async fn alias_run_loop_after_base_service_close_must_not_panic() {
@@ -1103,74 +999,7 @@ mod test {
         assert!(!ctx.internal.cache.contains(&alias_id), "disconnect must leave rejected Found-only cache hints absent");
     }
 
-    #[test]
-    fn cached_alias_peer_hints_must_be_bounded() {
-        let mut ctx = TestContext::new();
-        let alias_id = AliasId(1);
 
-        for peer in 0..=MAX_ALIAS_HINT_PEERS {
-            ctx.internal.on_msg(ctx.now, PeerId::from(peer as u64 + 10), AliasMessage::NotifySet(alias_id, 1));
-        }
-
-        let cached_peers = ctx.internal.cache.get(&alias_id).expect("alias should be cached").len();
-
-        assert!(cached_peers <= MAX_ALIAS_HINT_PEERS, "cached peer hints for one alias must be bounded, got {cached_peers}");
-    }
-
-    #[test]
-    fn cached_alias_existing_peer_refresh_must_work_when_hint_set_full() {
-        let mut ctx = TestContext::new();
-        let alias_id = AliasId(1);
-
-        for peer in 0..MAX_ALIAS_HINT_PEERS {
-            ctx.internal.on_msg(ctx.now, PeerId::from(peer as u64 + 10), AliasMessage::NotifySet(alias_id, 1));
-        }
-
-        let existing = PeerId::from(10);
-        ctx.internal.on_msg(ctx.now + 1, existing, AliasMessage::NotifySet(alias_id, 2));
-
-        let cached_peers = ctx.internal.cache.get(&alias_id).expect("alias should be cached");
-        assert_eq!(cached_peers.len(), MAX_ALIAS_HINT_PEERS);
-        assert!(cached_peers.contains(&existing), "existing cached peer must stay admitted at capacity");
-        assert_eq!(
-            ctx.internal.remote_lifecycle.get(&(alias_id, existing)),
-            Some(&RemoteAliasState { generation: 2, active: true }),
-            "existing peer lifecycle must refresh even when the hint set is full"
-        );
-    }
-
-    #[test]
-    fn found_response_must_not_exceed_alias_hint_cap() {
-        let mut ctx = TestContext::new();
-        let alias_id = AliasId(1);
-
-        for peer in 0..MAX_ALIAS_HINT_PEERS {
-            ctx.internal.on_msg(ctx.now, PeerId::from(peer as u64 + 10), AliasMessage::NotifySet(alias_id, 1));
-        }
-
-        let (tx, mut rx) = oneshot::channel();
-        ctx.internal.find_reqs.insert(
-            alias_id,
-            FindRequest {
-                state: FindRequestState::Scan(ctx.now),
-                waits: vec![tx],
-            },
-        );
-        gauge!(P2P_ALIAS_LIVE_FIND_REQUEST).increment(1);
-
-        let found_peer = PeerId::from(20_000);
-        ctx.internal.on_msg(ctx.now, found_peer, AliasMessage::NotifySet(alias_id, 1));
-        assert!(
-            !ctx.internal.cache.get(&alias_id).is_some_and(|peers| peers.contains(&found_peer)),
-            "test setup should keep the advertised responder out of the full hint cache"
-        );
-        ctx.internal.on_msg(ctx.now, found_peer, AliasMessage::Found(alias_id));
-
-        assert_eq!(rx.try_recv().expect("scan lookup should complete"), Some(AliasFoundLocation::Scan(found_peer)));
-        let cached_peers = ctx.internal.cache.get(&alias_id).expect("alias should be cached");
-        assert_eq!(cached_peers.len(), MAX_ALIAS_HINT_PEERS, "accepted Found must not grow a full alias hint set");
-        assert!(!cached_peers.contains(&found_peer), "new Found peer must not be retained when the hint set is full");
-    }
 
     #[test]
     fn test_find_cached_alias_not_found() {
@@ -1296,55 +1125,7 @@ mod test {
         assert_eq!(response, None);
     }
 
-    #[test]
-    fn duplicate_find_waiters_for_same_alias_must_be_bounded() {
-        let mut ctx = TestContext::new();
-        let alias_id = AliasId(1);
 
-        for _ in 0..MAX_WAITERS_PER_ALIAS {
-            let (tx, _rx) = oneshot::channel();
-            ctx.internal.on_control(ctx.now, AliasControl::Find(alias_id, tx));
-        }
-        let (overflow_tx, mut overflow_rx) = oneshot::channel();
-        ctx.internal.on_control(ctx.now, AliasControl::Find(alias_id, overflow_tx));
-
-        let waiters = ctx.internal.find_reqs.get(&alias_id).expect("find request should exist").waits.len();
-
-        assert!(waiters <= MAX_WAITERS_PER_ALIAS, "duplicate find waiters for one alias must be bounded, got {waiters}");
-        assert_eq!(overflow_rx.try_recv(), Ok(None), "overflow find waiter must complete immediately with no result");
-        assert_eq!(ctx.internal.outs.len(), 1, "duplicate and overflow finds must not create extra scan fanout");
-    }
-
-    #[test]
-    fn distinct_pending_find_requests_must_be_bounded() {
-        let mut ctx = TestContext::new();
-
-        for id in 0..MAX_PENDING_FIND_REQUESTS {
-            let (tx, _rx) = oneshot::channel();
-            ctx.internal.on_control(ctx.now, AliasControl::Find(AliasId(id as u64), tx));
-        }
-        let (duplicate_tx, mut duplicate_rx) = oneshot::channel();
-        ctx.internal.on_control(ctx.now, AliasControl::Find(AliasId(0), duplicate_tx));
-        let (overflow_tx, mut overflow_rx) = oneshot::channel();
-        ctx.internal.on_control(ctx.now, AliasControl::Find(AliasId(MAX_PENDING_FIND_REQUESTS as u64), overflow_tx));
-        let local_alias = AliasId((MAX_PENDING_FIND_REQUESTS + 1) as u64);
-        ctx.internal.local.insert(local_alias, 1);
-        let (local_tx, mut local_rx) = oneshot::channel();
-        ctx.internal.on_control(ctx.now, AliasControl::Find(local_alias, local_tx));
-
-        let pending_finds = ctx.internal.find_reqs.len();
-        let pending_scans = ctx.internal.outs.len();
-
-        assert_eq!(pending_finds, MAX_PENDING_FIND_REQUESTS, "pending alias find requests must be bounded");
-        assert_eq!(pending_scans, MAX_PENDING_FIND_REQUESTS, "pending alias scan fanout must be bounded");
-        assert!(
-            matches!(duplicate_rx.try_recv(), Err(oneshot::error::TryRecvError::Empty)),
-            "duplicate find should join the existing request"
-        );
-        assert_eq!(ctx.internal.find_reqs.get(&AliasId(0)).expect("duplicate request should still exist").waits.len(), 2);
-        assert_eq!(overflow_rx.try_recv(), Ok(None), "overflow distinct find must complete immediately with no result");
-        assert_eq!(local_rx.try_recv(), Ok(Some(AliasFoundLocation::Local)), "pending-find cap must not reject immediate local hits");
-    }
 
     #[test]
     fn find_timeout_at_max_timestamp_must_not_overflow() {

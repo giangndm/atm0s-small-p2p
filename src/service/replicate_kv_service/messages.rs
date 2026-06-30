@@ -116,6 +116,7 @@ pub struct RpcEvent<K, V> {
     pub data: RpcEventData<K, V>,
 }
 
+
 #[derive(Debug, PartialEq, Eq, Serialize, Deserialize, Clone)]
 pub enum RpcEventData<K, V> {
     RpcReq(RpcReq<K>),

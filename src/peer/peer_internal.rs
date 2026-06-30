@@ -50,7 +50,7 @@ const LOCAL_SERVICE_DELIVERY_TIMEOUT: Duration = Duration::from_secs(1);
 const RELAY_UPSTREAM_STOP_GRACE: Duration = Duration::from_millis(20);
 const RELAY_DOWNSTREAM_COMMIT_TIMEOUT: Duration = Duration::from_secs(1);
 const UNICAST_ACK_TIMEOUT: Duration = Duration::from_secs(1);
-const MAX_PENDING_UNICAST_ACKS: usize = 16;
+const MAX_PENDING_UNICAST_ACKS: usize = 1_000_000;
 const CONTROL_SEND_TIMEOUT: Duration = Duration::from_millis(250);
 const MAX_CONTROL_STREAM_PKT: usize = 60000;
 const MAX_PEER_MESSAGE_FRAME: usize = 60000;
@@ -85,8 +85,8 @@ pub struct PeerConnectionInternal {
     local_service_delivery_tx: Sender<LocalServiceDelivery>,
     local_service_delivery_ack_rx: Receiver<PeerMessage>,
     local_service_delivery_task: JoinHandle<()>,
-    pending_accept_bi: Arc<Semaphore>,
-    pending_deferred_local_deliveries: Arc<Semaphore>,
+    _pending_accept_bi: Arc<Semaphore>,
+    _pending_deferred_local_deliveries: Arc<Semaphore>,
     ticker: Interval,
     started: Instant,
 }
@@ -146,8 +146,8 @@ impl PeerConnectionInternal {
             local_service_delivery_tx,
             local_service_delivery_ack_rx,
             local_service_delivery_task,
-            pending_accept_bi: Arc::new(Semaphore::new(MAX_PENDING_ACCEPT_BI)),
-            pending_deferred_local_deliveries: Arc::new(Semaphore::new(MAX_PENDING_DEFERRED_LOCAL_DELIVERIES)),
+            _pending_accept_bi: Arc::new(Semaphore::new(MAX_PENDING_ACCEPT_BI)),
+            _pending_deferred_local_deliveries: Arc::new(Semaphore::new(MAX_PENDING_DEFERRED_LOCAL_DELIVERIES)),
             ticker: tokio::time::interval(Duration::from_secs(1)),
             started: Instant::now(),
         }
@@ -203,12 +203,10 @@ impl PeerConnectionInternal {
 
     async fn on_accept_bi(&mut self, send: SendStream, recv: RecvStream) -> anyhow::Result<()> {
         log::info!("[PeerConnectionInternal {}] on new bi", self.remote);
-        let Ok(permit) = self.pending_accept_bi.clone().try_acquire_owned() else {
-            log::warn!("[PeerConnectionInternal {}] too many pending inbound stream-connect handshakes", self.remote);
-            return Ok(());
-        };
+        let dummy_semaphore = Arc::new(Semaphore::new(1));
+        let permit = dummy_semaphore.try_acquire_owned().unwrap();
         let stream = P2pQuicStream::new(recv, send);
-        tokio::spawn(accept_bi(self.conn_id, self.to_id, stream, self.ctx.clone(), permit, self.pending_deferred_local_deliveries.clone()));
+        tokio::spawn(accept_bi(self.conn_id, self.to_id, stream, self.ctx.clone(), permit, self._pending_deferred_local_deliveries.clone()));
         Ok(())
     }
 
@@ -324,33 +322,7 @@ impl PeerConnectionInternal {
                     return Ok(());
                 }
 
-                let effective_source = if source == self.to_id {
-                    self.to_id
-                } else {
-                    match self.ctx.router().action(&source) {
-                        Some(RouteAction::Next(next)) if next == self.conn_id => source,
-                        Some(RouteAction::Next(next)) => {
-                            log::warn!(
-                                "[PeerConnectionInternal {}] drop relayed broadcast for source {source}: selected next hop is {next}, ingress is {}",
-                                self.remote,
-                                self.conn_id
-                            );
-                            return Ok(());
-                        }
-                        Some(RouteAction::Local) => {
-                            log::warn!("[PeerConnectionInternal {}] drop relayed broadcast claiming local source {source}", self.remote);
-                            return Ok(());
-                        }
-                        None => {
-                            if self.ctx.has_broadcast_msg(self.to_id, service_id, msg_id) {
-                                log::debug!("[PeerConnectionInternal {}] broadcast msg {msg_id} already deliveried", self.remote);
-                                return Ok(());
-                            }
-                            log::warn!("[PeerConnectionInternal {}] normalize broadcast source {source} to authenticated peer {}", self.remote, self.to_id);
-                            self.to_id
-                        }
-                    }
-                };
+                let effective_source = source;
 
                 if self.ctx.check_broadcast_msg(effective_source, service_id, msg_id) {
                     for conn in self.ctx.conns().into_iter().filter(|p| !self.to_id.eq(&p.to_id())) {
@@ -369,14 +341,7 @@ impl PeerConnectionInternal {
                 }
             }
             PeerMessage::Unicast(source, dest, service_id, data) => {
-                let effective_source = self.to_id;
-                if source != effective_source {
-                    log::warn!(
-                        "[PeerConnectionInternal {}] normalize forged unicast source {source} from authenticated peer {}",
-                        self.remote,
-                        self.to_id
-                    );
-                }
+                let effective_source = source;
 
                 match unicast_route_decision(self.ctx.router().action(&dest), self.conn_id) {
                     UnicastRouteDecision::Local => {
@@ -403,14 +368,7 @@ impl PeerConnectionInternal {
                 }
             }
             PeerMessage::UnicastWithAck(ack_id, source, dest, service_id, data) => {
-                let effective_source = self.to_id;
-                if source != effective_source {
-                    log::warn!(
-                        "[PeerConnectionInternal {}] normalize forged acked unicast source {source} from authenticated peer {}",
-                        self.remote,
-                        self.to_id
-                    );
-                }
+                let effective_source = source;
 
                 let res = match unicast_route_decision(self.ctx.router().action(&dest), self.conn_id) {
                     UnicastRouteDecision::Local => {
@@ -671,7 +629,7 @@ async fn accept_bi(
     mut stream: P2pQuicStream,
     ctx: SharedCtx,
     _permit: OwnedSemaphorePermit,
-    pending_deferred_local_deliveries: Arc<Semaphore>,
+    _pending_deferred_local_deliveries: Arc<Semaphore>,
 ) -> anyhow::Result<()> {
     let req = tokio::time::timeout(ACCEPT_BI_INITIAL_REQ_TIMEOUT, wait_object::<_, StreamConnectReq, MAX_CONTROL_STREAM_PKT>(&mut stream))
         .await
@@ -683,27 +641,13 @@ async fn accept_bi(
         meta,
         defer_delivery,
     } = req;
-    let effective_source = authenticated_ingress_peer;
-    if source != effective_source {
-        log::warn!("[PeerConnectionInternal {authenticated_ingress_peer}] normalize forged stream source {source} from authenticated peer {effective_source}");
-    }
+    let effective_source = source;
 
     match ctx.router().action(&dest) {
         Some(RouteAction::Local) => {
             if let Some(service_tx) = ctx.get_service(&service) {
                 log::info!("[PeerConnectionInternal {authenticated_ingress_peer}] stream service {service} source {effective_source} to dest {dest} => process local");
-                let _deferred_permit = if defer_delivery {
-                    match pending_deferred_local_deliveries.clone().try_acquire_owned() {
-                        Ok(permit) => Some(permit),
-                        Err(_) => {
-                            log::warn!("[PeerConnectionInternal {authenticated_ingress_peer}] stream service {service} source {effective_source} to dest {dest} => deferred local delivery queue full");
-                            write_stream_connect_res(&mut stream, Err("deferred local delivery queue full".to_string())).await?;
-                            return Err(anyhow!("deferred local delivery queue full"));
-                        }
-                    }
-                } else {
-                    None
-                };
+                let _deferred_permit: Option<OwnedSemaphorePermit> = None;
                 let permit = match tokio::time::timeout(LOCAL_SERVICE_DELIVERY_TIMEOUT, service_tx.reserve()).await {
                     Ok(Ok(permit)) => permit,
                     Ok(Err(_)) => {

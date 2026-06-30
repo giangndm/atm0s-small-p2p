@@ -108,37 +108,9 @@ impl FromStr for PeerAddress {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum InboundPeerBindings {
-    InsecureOpenCluster,
-    Static(HashMap<PeerId, NetworkAddress>),
-}
-
-impl Default for InboundPeerBindings {
-    fn default() -> Self {
-        Self::Static(HashMap::new())
-    }
-}
-
-impl InboundPeerBindings {
-    pub fn static_bindings(bindings: impl IntoIterator<Item = PeerAddress>) -> Self {
-        Self::Static(bindings.into_iter().map(|addr| (addr.peer_id(), addr.network_address().clone())).collect())
-    }
-
-    pub fn insecure_open_cluster() -> Self {
-        Self::InsecureOpenCluster
-    }
-
-    pub(crate) fn is_authorized(&self, peer: PeerId, remote: SocketAddr) -> bool {
-        match self {
-            Self::InsecureOpenCluster => true,
-            Self::Static(bindings) => bindings.get(&peer).is_some_and(|expected| **expected == remote),
-        }
-    }
-}
-
 pub const CERT_DOMAIN_NAME: &str = "cluster";
 pub(crate) const NETWORK_CONTROL_QUEUE_SIZE: usize = 1024;
+#[allow(dead_code)]
 pub(crate) const MAX_PENDING_UNAUTHENTICATED_INBOUND_CONNECTIONS: usize = 16;
 
 #[derive(Debug)]
@@ -164,7 +136,6 @@ pub struct P2pNetworkConfig<SECURE> {
     pub peer_id: PeerId,
     pub listen_addr: SocketAddr,
     pub advertise: Option<NetworkAddress>,
-    pub inbound_peer_bindings: InboundPeerBindings,
     pub priv_key: PrivatePkcs8KeyDer<'static>,
     pub cert: CertificateDer<'static>,
     pub tick_ms: u64,
@@ -194,7 +165,6 @@ pub struct P2pNetwork<SECURE> {
     pending_connects: HashMap<ConnectionId, oneshot::Sender<anyhow::Result<()>>>,
     ctx: SharedCtx,
     secure: Arc<SECURE>,
-    inbound_peer_bindings: Arc<InboundPeerBindings>,
 }
 
 impl<SECURE: HandshakeProtocol> P2pNetwork<SECURE> {
@@ -229,7 +199,6 @@ impl<SECURE: HandshakeProtocol> P2pNetwork<SECURE> {
             pending_sync_tasks: HashMap::new(),
             pending_connects: HashMap::new(),
             secure: Arc::new(cfg.secure),
-            inbound_peer_bindings: Arc::new(cfg.inbound_peer_bindings),
         })
     }
 
@@ -326,14 +295,8 @@ impl<SECURE: HandshakeProtocol> P2pNetwork<SECURE> {
 
     fn process_incoming(&mut self, incoming: Incoming) -> anyhow::Result<P2pNetworkEvent> {
         let remote = incoming.remote_address();
-        if self.neighbours.pending_unauthenticated_inbound_count(|conn_id| self.ctx.conn(conn_id).is_some()) >= MAX_PENDING_UNAUTHENTICATED_INBOUND_CONNECTIONS {
-            log::warn!("[P2pNetwork] incoming connect from {remote} => refuse, pending unauthenticated inbound limit reached");
-            incoming.refuse();
-            return Ok(P2pNetworkEvent::Continue);
-        }
-
         log::info!("[P2pNetwork] incoming connect from {remote} => accept");
-        let conn = PeerConnection::new_incoming(self.secure.clone(), self.local_id, incoming, self.inbound_peer_bindings.clone(), self.main_tx.clone(), self.ctx.clone());
+        let conn = PeerConnection::new_incoming(self.secure.clone(), self.local_id, incoming, self.main_tx.clone(), self.ctx.clone());
         self.neighbours.insert(conn.conn_id(), conn);
         Ok(P2pNetworkEvent::Continue)
     }

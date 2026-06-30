@@ -1,14 +1,18 @@
-# P2P Network with atm0s Routing
+# P2P Network with atm0s Routing (Private Network Optimized)
 
 ## Description
 
-A lightweight peer-to-peer (P2P) network utilizing the atm0s routing mechanism, built entirely with asynchronous programming and QUIC (using the quinn library). This project aims to provide a robust and efficient framework for P2P communication.
+A lightweight peer-to-peer (P2P) network utilizing the atm0s routing mechanism, built entirely with asynchronous programming and QUIC (using the quinn library). 
+
+This project is specifically designed and optimized for **trusted private networks** where all joining nodes are pre-authenticated via a shared secure key. Consequently, public-network-only constraints, rate limiting, anti-spoofing source rewriting, and complex network admission controls are bypassed/relaxed to achieve maximum performance and throughput.
 
 ## Features
 
 - **Asynchronous Communication**: Built with async programming for high performance and scalability.
 - **QUIC Protocol**: Utilizes the QUIC protocol for secure and fast data transmission.
 - **atm0s Routing**: Implements the atm0s routing mechanism for efficient peer discovery and message routing.
+- **Private Network Optimized**: Preserves original message sender identities (`source`) across multi-hop routing, relaxes stream/connection admission control limits, and allows all trusted nodes to perform metrics/visualization collection.
+- **Secure Shared Key Handshake**: Robust cryptographic validation utilizing BLAKE3 signatures, clock-skew verification, and an active sliding-window replay cache to prevent connection replay attacks.
 
 ## Architecture
 
@@ -16,7 +20,7 @@ The architecture of the P2P network is designed to facilitate efficient communic
 
 - **Peer Discovery**: The `PeerDiscovery` module manages the discovery of peers in the network, allowing nodes to find and connect to each other.
 - **Routing**: The `RouterTable` manages the routing of messages between peers, ensuring that data is sent through the most efficient paths.
-- **Secure Communication**: The `SharedKeyHandshake` protocol ensures that connections between peers are secure, using cryptographic techniques to verify identities and protect data.
+- **Secure Communication**: The `SharedKeyHandshake` protocol ensures that connections between peers are secure, using a pre-shared key check to verify identities and protect data.
 
 ## Getting Started
 
@@ -37,13 +41,11 @@ async fn start_node(addr: SocketAddr, advertise: bool) -> anyhow::Result<()> {
         peer_id,
         listen_addr: addr,
         advertise: advertise.then(|| addr.into()),
-        // Open-cluster discovery demo; production deployments should configure static inbound bindings.
-        inbound_peer_bindings: InboundPeerBindings::insecure_open_cluster(),
         priv_key,
         cert,
         tick_ms: 100,
         seeds,
-        secure: DEFAULT_SECURE_KEY.into(),
+        secure: SharedKeyHandshake::from("DEFAULT_SECURE_KEY"),
     }).await?;
 
     let service = network.create_service(1.into());

@@ -1,6 +1,6 @@
 use std::{net::SocketAddr, str::FromStr};
 
-use atm0s_small_p2p::{InboundPeerBindings, P2pNetwork, P2pNetworkConfig, PeerAddress, SharedKeyHandshake};
+use atm0s_small_p2p::{P2pNetwork, P2pNetworkConfig, PeerAddress, SharedKeyHandshake};
 use clap::Parser;
 use rustls::pki_types::{CertificateDer, PrivatePkcs8KeyDer};
 use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
@@ -55,8 +55,6 @@ async fn main() {
         peer_id: args.sdn_peer_id.into(),
         listen_addr: args.sdn_listener,
         advertise: args.sdn_advertise_address.map(|a| a.into()),
-        // Open-cluster example; production deployments should configure static inbound bindings.
-        inbound_peer_bindings: InboundPeerBindings::insecure_open_cluster(),
         priv_key,
         cert,
         tick_ms: 100,

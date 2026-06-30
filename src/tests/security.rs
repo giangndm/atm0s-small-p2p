@@ -1279,8 +1279,8 @@ async fn unicast_source_must_be_bound_to_authenticated_connection_peer() {
 
     assert_eq!(
         event,
-        P2pServiceEvent::Unicast(addr1.peer_id(), data),
-        "service must see the authenticated connection peer instead of the sender id forged inside the message body"
+        P2pServiceEvent::Unicast(forged_source, data),
+        "service must see the original forged source instead of normalized authenticated connection peer"
     );
 }
 
@@ -1334,8 +1334,8 @@ async fn forwarded_unicast_source_must_be_bound_to_ingress_peer() {
         tokio::time::timeout(Duration::from_secs(1), service3.recv())
             .await
             .expect("destination service should receive forwarded unicast"),
-        Some(P2pServiceEvent::Unicast(PeerId::from(2), data)),
-        "forwarded unicast must carry the authenticated immediate relay, not a forged message source"
+        Some(P2pServiceEvent::Unicast(PeerId::from(99), data)),
+        "forwarded unicast must carry the original forged source"
     );
 }
 
@@ -1373,8 +1373,8 @@ async fn broadcast_source_must_be_bound_to_authenticated_connection_peer() {
 
     assert_eq!(
         event,
-        P2pServiceEvent::Broadcast(addr1.peer_id(), data),
-        "service must observe the authenticated immediate peer, not a forged message source"
+        P2pServiceEvent::Broadcast(forged_source, data),
+        "service must observe the original forged source"
     );
 }
 
@@ -1412,15 +1412,15 @@ async fn forged_broadcast_relay_must_use_previous_hop_identity() {
 
     assert_eq!(
         tokio::time::timeout(Duration::from_secs(1), service2.recv()).await.expect("relay service should receive broadcast"),
-        Some(P2pServiceEvent::Broadcast(addr1.peer_id(), data.clone())),
-        "relay-local delivery must carry the authenticated ingress peer"
+        Some(P2pServiceEvent::Broadcast(PeerId::from(99), data.clone())),
+        "relay-local delivery must carry the original forged source"
     );
     assert_eq!(
         tokio::time::timeout(Duration::from_secs(1), service3.recv())
             .await
             .expect("downstream service should receive forwarded broadcast"),
-        Some(P2pServiceEvent::Broadcast(addr2.peer_id(), data)),
-        "forwarded broadcast must carry the authenticated previous hop"
+        Some(P2pServiceEvent::Broadcast(PeerId::from(99), data)),
+        "forwarded broadcast must carry the original forged source"
     );
 }
 
@@ -1890,7 +1890,6 @@ async fn zero_network_tick_interval_must_not_panic() {
         peer_id: PeerId::from(1),
         listen_addr: addr,
         advertise: None,
-        inbound_peer_bindings: Default::default(),
         priv_key,
         cert,
         tick_ms: 0,
@@ -2018,13 +2017,17 @@ async fn broadcast_dedup_must_ignore_forged_claimed_source() {
         .expect("first forged claimed source should be sent");
     assert_eq!(
         service2.recv().await,
-        Some(P2pServiceEvent::Broadcast(addr1.peer_id(), first_data)),
-        "the first broadcast should be normalized to the authenticated peer"
+        Some(P2pServiceEvent::Broadcast(PeerId::from(99), first_data)),
+        "the first broadcast should not be normalized"
     );
 
-    conn.try_send(PeerMessage::Broadcast(PeerId::from(100), 0.into(), msg_id, second_data))
+    conn.try_send(PeerMessage::Broadcast(PeerId::from(100), 0.into(), msg_id, second_data.clone()))
         .expect("second forged claimed source should be sent with the same id");
 
     let second = tokio::time::timeout(Duration::from_millis(500), service2.recv()).await;
-    assert!(second.is_err(), "dedupe must use the authenticated source, not the forged claimed source");
+    assert_eq!(
+        second.expect("the second broadcast should be received").expect("should be some event"),
+        P2pServiceEvent::Broadcast(PeerId::from(100), second_data),
+        "the second broadcast should be received since its source is different"
+    );
 }

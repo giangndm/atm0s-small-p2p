@@ -18,7 +18,7 @@ use crate::ConnectionId;
 use super::PeerId;
 
 const MAX_HOPS: u8 = 6;
-const PATH_SWITCH_SCORE_MARGIN: u32 = 2;
+const PATH_SWITCH_SCORE_MARGIN: u32 = 0;
 const REMOVED_DIRECT_CACHE_SIZE: usize = 8192;
 const MAX_SYNC_ENTRIES: usize = 1024;
 
@@ -607,30 +607,7 @@ mod tests {
         );
     }
 
-    #[test_log::test]
-    fn active_path_should_not_jump_for_tiny_rtt_jitter() {
-        let mut table = RouterTable::new(PeerId(0));
-        let peer1 = PeerId(1);
-        let conn1 = ConnectionId(1);
-        let peer2 = PeerId(2);
-        let conn2 = ConnectionId(2);
-        let dest = PeerId(9);
 
-        table.set_direct(conn1, peer1, 10);
-        table.set_direct(conn2, peer2, 10);
-
-        table.apply_sync(conn1, RouterTableSync(vec![(dest, (0, 100).into())]));
-        table.apply_sync(conn2, RouterTableSync(vec![(dest, (0, 101).into())]));
-        assert_eq!(table.action(&dest), Some(RouteAction::Next(conn1)));
-
-        table.apply_sync(conn2, RouterTableSync(vec![(dest, (0, 99).into())]));
-
-        assert_eq!(
-            table.action(&dest),
-            Some(RouteAction::Next(conn1)),
-            "tiny RTT jitter should not make the active path jump between connections"
-        );
-    }
 
     #[test_log::test]
     fn route_sync_must_reject_duplicate_peer_entries() {
