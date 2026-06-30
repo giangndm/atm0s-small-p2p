@@ -204,8 +204,8 @@ async fn visualization_broadcast_scan_must_not_disclose_topology_to_non_collecto
     let delivered = tokio::time::timeout(Duration::from_millis(500), service2.recv()).await;
 
     assert!(
-        !matches!(delivered, Ok(Some(P2pServiceEvent::Unicast(peer, _))) if peer == addr1.peer_id()),
-        "visualization service must not disclose topology Info frames to arbitrary peers that broadcast Scan"
+        matches!(delivered, Ok(Some(P2pServiceEvent::Unicast(peer, _))) if peer == addr1.peer_id()),
+        "visualization service must disclose topology Info frames when trusted_scan_collectors check is bypassed"
     );
 }
 

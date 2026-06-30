@@ -38,6 +38,7 @@ impl NetworkNeighbours {
         self.conns.values().filter(|c| c.is_connected())
     }
 
+    #[allow(dead_code)]
     pub fn pending_unauthenticated_inbound_count<F>(&self, mut is_authenticated: F) -> usize
     where
         F: FnMut(&ConnectionId) -> bool,

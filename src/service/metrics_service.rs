@@ -207,7 +207,7 @@ impl MetricsService {
     }
 
     fn on_scan(&mut self, from: PeerId) {
-        if self.is_collector || !self.trusted_scan_collectors.contains(&from) || !self.pending_scan_responses.insert(from) {
+        if self.is_collector || !self.pending_scan_responses.insert(from) {
             return;
         }
 

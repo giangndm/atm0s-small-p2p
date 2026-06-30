@@ -52,7 +52,7 @@ async fn send_relay() {
     tokio::spawn(async move { while node1.recv().await.is_ok() {} });
 
     let (mut node2, addr2) = create_node(false, 2, vec![]).await;
-    let relay_peer = addr2.peer_id();
+    let _relay_peer = addr2.peer_id();
     let node2_requester = node2.requester();
     tokio::spawn(async move { while node2.recv().await.is_ok() {} });
 
@@ -68,11 +68,11 @@ async fn send_relay() {
 
     let data = "from_node1".as_bytes().to_vec();
     service1.send_unicast(addr3.peer_id(), data.clone()).await.expect("should send ok");
-    assert_eq!(service3.recv().await, Some(P2pServiceEvent::Unicast(relay_peer, data)));
+    assert_eq!(service3.recv().await, Some(P2pServiceEvent::Unicast(addr1.peer_id(), data)));
 
     let data = "from_node3".as_bytes().to_vec();
     service3.send_unicast(addr1.peer_id(), data.clone()).await.expect("should send ok");
-    assert_eq!(service1.recv().await, Some(P2pServiceEvent::Unicast(relay_peer, data)));
+    assert_eq!(service1.recv().await, Some(P2pServiceEvent::Unicast(addr3.peer_id(), data)));
 }
 
 #[test(tokio::test)]

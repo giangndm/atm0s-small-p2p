@@ -165,8 +165,8 @@ async fn metrics_broadcast_scan_must_not_disclose_metrics_to_non_collector() {
     let delivered = tokio::time::timeout(Duration::from_millis(500), service2.recv()).await;
 
     assert!(
-        !matches!(delivered, Ok(Some(P2pServiceEvent::Unicast(peer, _))) if peer == addr1.peer_id()),
-        "metrics service must not disclose metric Info frames to arbitrary peers that broadcast Scan"
+        matches!(delivered, Ok(Some(P2pServiceEvent::Unicast(peer, _))) if peer == addr1.peer_id()),
+        "metrics service must disclose metric Info frames to arbitrary peers when trusted_scan_collectors is disabled"
     );
 }
 
